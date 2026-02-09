@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+
+# Claude Code 本機設定（含個人權限、output style 偏好）
+.claude/settings.local.json
+.claude/projects/
+
+# 自動產生的檔案（由 hook 重建）
+docs/progress.json
+docs/dashboard.html
+
+# Node
+node_modules/

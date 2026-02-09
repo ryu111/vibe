@@ -1,0 +1,82 @@
+{
+  "plugins": {
+    "forge": {
+      "description": "造工具的工具 — 建立、驗證、管理 Claude Code plugin 組件",
+      "priority": "done",
+      "category": "development",
+      "buildOrder": 0,
+      "tags": ["scaffold", "validation", "templates"],
+      "expected": {
+        "skills": ["scaffold", "skill", "agent", "hook"],
+        "agents": [],
+        "hooks": 0,
+        "scripts": 7
+      }
+    },
+    "flow": {
+      "description": "開發工作流 — 規劃、架構、compact、session 持久化、環境偵測",
+      "priority": "high",
+      "category": "workflow",
+      "buildOrder": 1,
+      "tags": ["planning", "architecture", "compact", "session", "checkpoint"],
+      "expected": {
+        "skills": ["plan", "architect", "compact", "checkpoint", "env-detect"],
+        "agents": ["planner", "architect"],
+        "hooks": 4,
+        "scripts": 7
+      }
+    },
+    "sentinel": {
+      "description": "品質全鏈守衛 — lint、format、review、security、TDD、E2E、verify",
+      "priority": "high",
+      "category": "quality",
+      "buildOrder": 2,
+      "tags": ["lint", "format", "review", "security", "tdd", "e2e", "testing"],
+      "expected": {
+        "skills": ["review", "lint", "format", "security", "tdd", "e2e", "coverage", "verify"],
+        "agents": ["code-reviewer", "security-reviewer", "build-error-resolver", "e2e-runner"],
+        "hooks": 5,
+        "scripts": 6
+      }
+    },
+    "patterns": {
+      "description": "語言/框架模式庫 — 編碼標準、設計模式、最佳實踐（純知識庫）",
+      "priority": "medium",
+      "category": "knowledge",
+      "buildOrder": 3,
+      "tags": ["coding-standards", "design-patterns", "best-practices"],
+      "expected": {
+        "skills": ["coding-standards", "frontend-patterns", "backend-patterns", "db-patterns", "typescript-patterns", "python-patterns", "go-patterns", "testing-patterns"],
+        "agents": [],
+        "hooks": 0,
+        "scripts": 0
+      }
+    },
+    "evolve": {
+      "description": "知識進化 — 持續學習、instincts 進化、文件生成與同步",
+      "priority": "low",
+      "category": "intelligence",
+      "buildOrder": 4,
+      "tags": ["learning", "evolution", "instincts", "docs"],
+      "expected": {
+        "skills": ["learn", "evolve", "doc-gen", "doc-sync"],
+        "agents": ["doc-updater"],
+        "hooks": 2,
+        "scripts": 2
+      }
+    },
+    "collab": {
+      "description": "多視角競爭分析 — Agent Teams 驅動的對抗式審查與重構",
+      "priority": "low",
+      "category": "collaboration",
+      "buildOrder": 5,
+      "tags": ["agent-teams", "adversarial", "competitive-analysis"],
+      "expected": {
+        "skills": ["adversarial-plan", "adversarial-review", "adversarial-refactor"],
+        "agents": [],
+        "hooks": 1,
+        "scripts": 1
+      }
+    }
+  }
+}

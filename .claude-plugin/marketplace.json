@@ -1,0 +1,54 @@
+{
+  "name": "vibe",
+  "owner": {
+    "name": "sbu"
+  },
+  "metadata": {
+    "description": "全方位 Claude Code plugin marketplace，專為全端開發者設計",
+    "version": "0.2.0"
+  },
+  "plugins": [
+    {
+      "name": "forge",
+      "source": "./plugins/forge",
+      "description": "造工具的工具 — 建立、驗證、管理 Claude Code plugin 組件",
+      "category": "development",
+      "tags": ["meta", "plugin-builder", "validation"]
+    },
+    {
+      "name": "flow",
+      "source": "./plugins/flow",
+      "description": "開發工作流 — 規劃、架構設計、compact、session 持久化、環境偵測",
+      "category": "workflow",
+      "tags": ["planning", "architecture", "compact", "session", "checkpoint"]
+    },
+    {
+      "name": "sentinel",
+      "source": "./plugins/sentinel",
+      "description": "品質全鏈守衛 — lint、format、review、security、TDD、E2E、verify",
+      "category": "quality",
+      "tags": ["lint", "format", "review", "security", "tdd", "e2e", "testing"]
+    },
+    {
+      "name": "patterns",
+      "source": "./plugins/patterns",
+      "description": "語言/框架模式庫 — 編碼標準、設計模式、最佳實踐",
+      "category": "knowledge",
+      "tags": ["patterns", "standards", "best-practices"]
+    },
+    {
+      "name": "evolve",
+      "source": "./plugins/evolve",
+      "description": "知識進化 — 持續學習、instincts 進化、文件生成與同步",
+      "category": "intelligence",
+      "tags": ["learning", "evolution", "instincts", "docs", "documentation"]
+    },
+    {
+      "name": "collab",
+      "source": "./plugins/collab",
+      "description": "多模型協作 — 多模型規劃與審查",
+      "category": "collaboration",
+      "tags": ["multi-model", "collaboration", "planning"]
+    }
+  ]
+}

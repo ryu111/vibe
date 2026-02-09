@@ -1,0 +1,9 @@
+{
+  "matcher": "{{MATCHER_PATTERN}}",
+  "hooks": [
+    {
+      "type": "{{HOOK_TYPE}}",
+      "command": "${CLAUDE_PLUGIN_ROOT}/{{SCRIPT_PATH}}"
+    }
+  ]
+}
