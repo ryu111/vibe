@@ -2,7 +2,7 @@
 
 > **定位**：Agent Pipeline 的完整設計規格 — 任務分類、階段轉換、跨 plugin 解耦、使用者可見文字
 > **擁有者**：flow plugin（pipeline 順序 + 轉換邏輯）
-> **協作者**：各 plugin 透過 `plugin.json` 的 `pipeline` 欄位自行宣告
+> **協作者**：各 plugin 透過 `pipeline.json` 的 `provides` 欄位自行宣告
 > **中央參考**：任何影響工作流的變動都與此文件相關 — 新增/移除 agent、調整 stage、修改 plugin 組合時，必須回來更新此文件
 
 ---
@@ -13,10 +13,10 @@ Pipeline 是 Vibe marketplace 的骨幹。以下變動都需要回來檢查此�
 
 | 變動類型 | 影響範圍 |
 |---------|---------|
-| 新增 agent | 對應 plugin 的 `plugin.json.pipeline` 宣告 |
+| 新增 agent | 對應 plugin 的 `pipeline.json.provides` 宣告 |
 | 新增 pipeline stage | `pipeline.json` 的 `stages` 順序 |
-| 新增/移除 plugin | 自動生效（動態發現），但需確認 `pipeline` 欄位 |
-| 修改 agent 名稱 | 對應 plugin 的 `plugin.json.pipeline` 宣告 |
+| 新增/移除 plugin | 自動生效（動態發現），但需確認 `pipeline.json` 的 `provides` 欄位 |
+| 修改 agent 名稱 | 對應 plugin 的 `pipeline.json.provides` 宣告 |
 | 修改使用者可見文字 | 本文件 §5 + Claude 行為模式 |
 | 修改 dashboard | `scripts/generate-dashboard.js` 的 pipeline 視覺化 |
 
@@ -29,7 +29,7 @@ docs/ref/{plugin}.md          ← 受影響 plugin 的設計文件
 docs/plugin-specs.json         ← 數量統計
 scripts/generate-dashboard.js  ← pipeline 視覺化
 plugins/flow/pipeline.json     ← stage 順序定義
-plugins/*/plugin.json          ← 各 plugin 的 pipeline 宣告
+plugins/*/pipeline.json         ← 各 plugin 的 pipeline 宣告（provides 欄位）
 ```
 
 ---
@@ -42,7 +42,7 @@ plugins/*/plugin.json          ← 各 plugin 的 pipeline 宣告
 | 委派方式 | **A+D 方案**（hooks-only） | 4 層防禦，無需額外 agent |
 | 規則存放 | **全部在 hooks 內**，不依賴 CLAUDE.md | Plugin 可攜性 — 別人裝了就生效 |
 | 跨 plugin 耦合 | **靜態順序 + 動態發現** | flow 管順序，各 plugin 自己宣告 agent |
-| Pipeline 配置 | `pipeline.json`（flow）+ `plugin.json.pipeline`（各 plugin） | 零人工維護，安裝/移除自動生效 |
+| Pipeline 配置 | `pipeline.json`（flow 管順序）+ 各 plugin 的 `pipeline.json.provides` | 零人工維護，安裝/移除自動生效 |
 
 ---
 
@@ -123,14 +123,17 @@ plugins/*/plugin.json          ← 各 plugin 的 pipeline 宣告
 
 ### 3.2 各 plugin 自行宣告 pipeline 位置
 
-在 `plugin.json` 中增加 `pipeline` 欄位（convention，非 ECC 官方 schema）：
+在 plugin 根目錄放置 `pipeline.json`，透過 `provides` 欄位宣告此 plugin 提供的 pipeline stages：
 
-**flow**：
+> **重要**：pipeline 資料放在獨立的 `pipeline.json` 而非 `plugin.json`，因為 Claude Code 的 `plugin.json` schema 嚴格驗證，不允許自定義欄位（Unrecognized key 錯誤）。
+
+**flow**（`plugins/flow/pipeline.json`）：
 
 ```json
 {
-  "name": "flow",
-  "pipeline": {
+  "stages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "DOCS"],
+  "stageLabels": { ... },
+  "provides": {
     "PLAN": { "agent": "planner",   "skill": "/flow:plan" },
     "ARCH": { "agent": "architect",  "skill": "/flow:architect" },
     "DEV":  { "agent": "developer",  "skill": null }
@@ -138,30 +141,28 @@ plugins/*/plugin.json          ← 各 plugin 的 pipeline 宣告
 }
 ```
 
-**sentinel**：
+**sentinel**（`plugins/sentinel/pipeline.json`）：
 
 ```json
 {
-  "name": "sentinel",
-  "pipeline": {
+  "provides": {
     "REVIEW": { "agent": "code-reviewer",  "skill": "/sentinel:review" },
     "TEST":   { "agent": "tester",          "skill": "/sentinel:tdd" }
   }
 }
 ```
 
-**evolve**：
+**evolve**（`plugins/evolve/pipeline.json`）：
 
 ```json
 {
-  "name": "evolve",
-  "pipeline": {
+  "provides": {
     "DOCS": { "agent": "doc-updater",  "skill": "/evolve:doc-sync" }
   }
 }
 ```
 
-> ECC 的 YAML/JSON parser 忽略未知欄位，所以 `pipeline` 不會報錯。純粹給 flow 的 hook scripts 讀取用。
+> flow 的 `pipeline.json` 同時包含 `stages`（順序）和 `provides`（自己提供的 stages）。其他 plugin 只需 `provides` 欄位。
 
 ### 3.3 Runtime 動態發現邏輯
 
@@ -183,17 +184,25 @@ function discoverPipeline() {
   const stageMap = {};      // stage → { agent, skill, plugin }
   const agentToStage = {};  // agent name → stage name
 
-  // 掃描所有已安裝 plugin
+  // 掃描所有已安裝 plugin 的 pipeline.json
   for (const dir of fs.readdirSync(pluginsDir)) {
+    const pipePath = path.join(pluginsDir, dir, 'pipeline.json');
+    if (!fs.existsSync(pipePath)) continue;
+
+    const pipeFile = JSON.parse(fs.readFileSync(pipePath, 'utf8'));
+    if (!pipeFile.provides) continue;
+
+    // 讀取 plugin 名稱（用於標記來源）
+    let pluginName = dir;
     const pjPath = path.join(pluginsDir, dir, '.claude-plugin', 'plugin.json');
-    if (!fs.existsSync(pjPath)) continue;
+    try {
+      const pj = JSON.parse(fs.readFileSync(pjPath, 'utf8'));
+      pluginName = pj.name || dir;
+    } catch (_) {}
 
-    const pj = JSON.parse(fs.readFileSync(pjPath, 'utf8'));
-    if (!pj.pipeline) continue;
-
-    for (const [stage, config] of Object.entries(pj.pipeline)) {
-      stageMap[stage] = { ...config, plugin: pj.name };
-      agentToStage[config.agent] = stage;
+    for (const [stage, config] of Object.entries(pipeFile.provides)) {
+      stageMap[stage] = { ...config, plugin: pluginName };
+      if (config.agent) agentToStage[config.agent] = stage;
     }
   }
 
@@ -515,9 +524,9 @@ Claude 收到 systemMessage 後會用自然語言向使用者報告。
 |:----:|------|------|
 | 5 | `plugins/flow/scripts/hooks/pipeline-init.js` | 環境偵測 + pipeline-rules 注入（§4.2） |
 | 6 | `plugins/flow/hooks/hooks.json` | 新增 SubagentStop、Stop 兩個 hook 定義 |
-| 7 | `plugins/flow/.claude-plugin/plugin.json` | 新增 `pipeline` 欄位 |
-| 8 | `plugins/sentinel/.claude-plugin/plugin.json` | 新增 `pipeline` 欄位 |
-| 9 | `plugins/evolve/.claude-plugin/plugin.json` | 新增 `pipeline` 欄位 |
+| 7 | `plugins/flow/pipeline.json` | `provides` 欄位（flow 同時有 `stages`） |
+| 8 | `plugins/sentinel/pipeline.json` | `provides` 欄位 |
+| 9 | `plugins/evolve/pipeline.json` | `provides` 欄位 |
 | 10 | `docs/ref/flow.md` | Skills 6、Hooks 7（移除 session）、Scripts 9（移除 session）、驗收 16 條 |
 | 11 | `docs/plugin-specs.json` | flow hooks 7、scripts 9；evolve hooks 0、scripts 0 |
 | 12 | `scripts/generate-dashboard.js` | Pipeline 視覺化同步更新 |

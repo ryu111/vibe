@@ -51,6 +51,15 @@ if [[ -f "$PLUGIN_JSON" ]]; then
                 v_warn "P-04" "version 建議符合語義版本: ${PVER}"
             fi
         fi
+
+        # 未知欄位檢查（plugin.json schema 嚴格驗證，不允許自定義欄位）
+        KNOWN_KEYS="name|version|description|author|homepage|repository|license|keywords|commands|agents|skills|mcpServers|outputStyles|lspServers"
+        UNKNOWN_KEYS=$(jq -r "keys[] | select(test(\"^(${KNOWN_KEYS})$\") | not)" "$PLUGIN_JSON" 2>/dev/null || true)
+        if [[ -z "$UNKNOWN_KEYS" ]]; then
+            v_pass "P-04b" "plugin.json 無未知欄位"
+        else
+            v_fail "P-04b" "plugin.json 含未知欄位（會導致 Unrecognized key 錯誤）: ${UNKNOWN_KEYS//$'\n'/, }"
+        fi
     else
         v_fail "P-02" "plugin.json JSON 格式錯誤"
     fi

@@ -64,6 +64,7 @@ Plugin 是 Claude Code 的模組化功能擴展單元。每個 plugin 可包含�
 2. **`agents` 必須用明確檔案路徑**：不接受目錄路徑（如 `"./agents/"`），必須列舉每個 `.md` 檔案
 3. **組件欄位必須是 array**：`agents`、`commands`、`skills` 等組件欄位，即使只有一個 entry 也必須用 array 格式
 4. **不要在 plugin.json 中宣告 `hooks`**：見下方說明
+5. **不允許自定義欄位**：plugin.json schema 嚴格驗證，任何未在上方欄位定義中列出的 key 都會導致 `Unrecognized key` 錯誤。自定義資料應放在獨立檔案（如 `pipeline.json`）中
 
 ### Hooks 自動載入
 
@@ -437,6 +438,7 @@ keep-coding-instructions: true
 | agents 載入失敗 | 使用了目錄路徑 | 改為明確列舉 `.md` 檔案路徑 |
 | MCP 失敗 | 缺少 `CLAUDE_PLUGIN_ROOT` | 使用 `${CLAUDE_PLUGIN_ROOT}` 變數 |
 | 路徑錯誤 | 使用了絕對路徑 | 改為相對路徑並以 `./` 開頭 |
+| Unrecognized key | plugin.json 中有自定義欄位 | 移除非標準欄位，自定義資料放獨立檔案 |
 
 ---
 
