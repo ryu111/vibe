@@ -60,7 +60,7 @@ plugins/*/pipeline.json         ← 各 plugin 的 pipeline 宣告（provides �
     ▼
 ┌─────────────────────────────────────────┐
 │ ② pipeline-rules（SessionStart）         │  ← 軟建議：注入委派規則
-│    command hook · once · 10s            │
+│    command hook · 10s · state file 防重複│
 └─────────────────────────────────────────┘
     │
     ▼
@@ -115,11 +115,16 @@ plugins/*/pipeline.json         ← 各 plugin 的 pipeline 宣告（provides �
     "REVIEW": "審查",
     "TEST": "測試",
     "DOCS": "文件"
+  },
+  "provides": {
+    "PLAN": { "agent": "planner",   "skill": "/flow:plan" },
+    "ARCH": { "agent": "architect",  "skill": "/flow:architect" },
+    "DEV":  { "agent": "developer",  "skill": null }
   }
 }
 ```
 
-> 這個檔案只定義「pipeline 有哪些 stage、順序是什麼」。只有在**新增全新的 pipeline stage** 時才需要修改。
+> flow 的 `pipeline.json` 同時包含全域定義（`stages` + `stageLabels`）和自身提供的 stages（`provides`）。其他 plugin 只需 `provides` 欄位。只有在**新增全新的 pipeline stage** 時才需要修改 `stages`。
 
 ### 3.2 各 plugin 自行宣告 pipeline 位置
 
@@ -554,18 +559,18 @@ Claude 收到 systemMessage 後會用自然語言向使用者報告。
 | `task-guard.js` | `scripts/hooks/` | 任務完成前阻擋退出 |
 | `pipeline-discovery.js` | `scripts/lib/` | 跨 plugin pipeline 動態發現 |
 
-**驗收標準**新增 8 條（F-10 ~ F-17）：
+**驗收標準**新增 8 條（F-09 ~ F-16）：
 
 | # | 條件 |
 |:-:|------|
-| F-10 | stage-transition 在 agent 完成後建議下一步 |
-| F-11 | pipeline-check 偵測遺漏階段並提醒 |
-| F-12 | 只裝 flow 時 pipeline 只含 PLAN → ARCH → DEV |
-| F-13 | 全裝時 pipeline 含完整 6 個階段 |
-| F-14 | 移除 sentinel 後自動跳過 REVIEW、TEST |
-| F-15 | task-guard 在有未完成 todo 時阻擋退出 |
-| F-16 | task-guard 達 5 次阻擋後強制放行 |
-| F-17 | `/flow:cancel` 可手動解除 task-guard |
+| F-09 | stage-transition 在 agent 完成後建議下一步 |
+| F-10 | pipeline-check 偵測遺漏階段並提醒 |
+| F-11 | 只裝 flow 時 pipeline 只含 PLAN → ARCH → DEV |
+| F-12 | 全裝時 pipeline 含完整 6 個階段 |
+| F-13 | 移除 sentinel 後自動跳過 REVIEW、TEST |
+| F-14 | task-guard 在有未完成 todo 時阻擋退出 |
+| F-15 | task-guard 達 5 次阻擋後強制放行 |
+| F-16 | `/flow:cancel` 可手動解除 task-guard |
 
 ### plugin-specs.json 更新
 

@@ -46,7 +46,7 @@ memory: project
 | `tools` | 否 | string / array | 繼承全部 | 允許使用的工具清單。支援 `Task(agent_type)` 語法來限制可產生的子代理類型 |
 | `disallowedTools` | 否 | string / array | — | 明確拒絕的工具清單 |
 | `model` | 否 | string | `inherit` | 執行模型。可選值：`sonnet`、`opus`、`haiku`、`inherit`。可被 `ANTHROPIC_DEFAULT_*_MODEL` 和 `CLAUDE_CODE_SUBAGENT_MODEL` 環境變數覆寫 |
-| `permissionMode` | 否 | string | `default` | 權限模式，共五個選項（見下方） |
+| `permissionMode` | 否 | string | `default` | 權限模式，共六個選項（見下方） |
 | `maxTurns` | 否 | number | 無限制 | 最大 agentic turns 數量 |
 | `skills` | 否 | array | — | 啟動時預載入的 skills。完整內容會注入子代理。**注意**：子代理不繼承父對話的 skills |
 | `mcpServers` | 否 | array | — | 此 agent 可用的 MCP servers。可以是伺服器名稱字串，或內聯定義物件 |
@@ -65,12 +65,13 @@ memory: project
 
 ---
 
-## permissionMode 五個選項
+## permissionMode 六個選項
 
 | 模式 | 說明 | 適用場景 |
 |------|------|----------|
 | `default` | 需要使用者確認所有敏感操作 | 一般用途 |
 | `acceptEdits` | 自動接受檔案編輯操作 | 需要頻繁修改檔案的 agent |
+| `delegate` | 只能協調和委派，不能直接寫碼 | 主管型 agent（如 Agent Teams Team Lead） |
 | `dontAsk` | 完全自主，不詢問使用者 | 高信任度的自動化任務 |
 | `bypassPermissions` | 繞過所有權限檢查。**最高優先順序**，不可被其他設定覆寫 | 完全受信任的系統級 agent |
 | `plan` | 唯讀模式，只能讀取和規劃 | 研究和分析用途的 agent |

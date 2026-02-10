@@ -555,11 +555,31 @@ plugins/flow/
     "./agents/planner.md",
     "./agents/architect.md",
     "./agents/developer.md"
-  ],
-  "pipeline": {
+  ]
+}
+```
+
+> **注意**：`plugin.json` 的 schema 嚴格驗證，不允許自定義欄位（會導致 `Unrecognized key` 錯誤）。Pipeline 配置放在獨立的 `pipeline.json`。
+
+### pipeline.json
+
+```json
+{
+  "stages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "DOCS"],
+  "stageLabels": {
+    "PLAN": "規劃",
+    "ARCH": "架構",
+    "DEV": "開發",
+    "REVIEW": "審查",
+    "TEST": "測試",
+    "DOCS": "文件"
+  },
+  "provides": {
     "PLAN": { "agent": "planner",   "skill": "/flow:plan" },
     "ARCH": { "agent": "architect",  "skill": "/flow:architect" },
     "DEV":  { "agent": "developer",  "skill": null }
   }
 }
 ```
+
+> flow 同時定義全域 stage 順序（`stages`）和自身提供的 stage（`provides`）。其他 plugin（如 sentinel、evolve）透過各自的 `pipeline.json.provides` 宣告提供的 stage，`discoverPipeline()` 動態組合完整 pipeline。

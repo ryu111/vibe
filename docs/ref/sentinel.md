@@ -3,7 +3,7 @@
 > **優先級**：高（第一個建構）
 > **定位**：品質全鏈守衛 — lint、format、安全審查、code review、TDD、E2E、覆蓋率
 > **合併自**：原 sentinel + 原 testkit
-> **ECC 對應**：7 agents + PostToolUse hooks + /code-review /tdd /e2e /verify commands
+> **ECC 對應**：6 agents + PostToolUse hooks + /code-review /tdd /e2e /qa /verify commands
 
 ---
 
@@ -30,7 +30,7 @@ sentinel 是 Vibe marketplace 的品質全鏈守衛。它涵蓋從**靜態分析
 
 ## 3. 組件清單
 
-### Skills（8 個）
+### Skills（9 個）
 
 | 名稱 | 說明 |
 |------|------|
@@ -39,11 +39,12 @@ sentinel 是 Vibe marketplace 的品質全鏈守衛。它涵蓋從**靜態分析
 | `format` | 程式碼格式化 — Prettier / Ruff format / gofmt |
 | `security` | 安全掃描 — OWASP Top 10 + secret 洩漏偵測 |
 | `tdd` | TDD 工作流 — RED → GREEN → REFACTOR 強制流程 |
-| `e2e` | E2E 測試 — Playwright Page Object Model |
+| `e2e` | E2E 測試 — agent-browser CLI（snapshot + ref 工作流） |
+| `qa` | 行為測試 — 啟動應用、呼叫 API、驗證真實行為 |
 | `coverage` | 覆蓋率分析 — 目標 80%，關鍵路徑 100% |
 | `verify` | 綜合驗證 — Build → Types → Lint → Tests → Git |
 
-### Agents（5 個）
+### Agents（6 個）
 
 | 名稱 | Model | 權限 | 說明 |
 |------|:-----:|:----:|------|
@@ -51,7 +52,8 @@ sentinel 是 Vibe marketplace 的品質全鏈守衛。它涵蓋從**靜態分析
 | `security-reviewer` | opus | 唯讀 | OWASP Top 10 安全漏洞檢測 |
 | `tester` | sonnet | 可寫 | 獨立測試視角 — 邊界案例、整合測試、覆蓋率 |
 | `build-error-resolver` | haiku | 可寫 | Build 錯誤最小化修復（最多 3 輪） |
-| `e2e-runner` | sonnet | 可寫 | Playwright 測試管理 — 建立 Page Objects、執行、除錯 |
+| `e2e-runner` | sonnet | 可寫 | E2E 測試 — agent-browser CLI（snapshot + ref 工作流） |
+| `qa` | sonnet | 可寫 | 行為測試 — 啟動應用、呼叫 API、驗證真實行為 |
 
 ### Hooks（5 個）
 
@@ -146,10 +148,25 @@ REFACTOR — 改善結構 → 執行 → 仍然 PASS
 
 ```yaml
 name: e2e
-description: E2E 測試 — Playwright Page Object Model，測試隔離，自動重試。
+description: E2E 測試 — 透過 agent-browser CLI 操作瀏覽器，使用 snapshot + ref 工作流驗證完整使用者流程。
 ```
 
-**Page Object 結構**：每頁一個 class，Locators + Actions + Assertions 分離。
+**工具**：[agent-browser](https://github.com/vercel-labs/agent-browser)（Vercel Labs，Apache-2.0）
+- Playwright 之上的 AI 友善 CLI 包裝層
+- Accessibility snapshot 為每個元素標註 `@e1`, `@e2` 等 ref
+- 一行指令 = 一個動作（`agent-browser click @e2`）
+
+**標準工作流**：
+```bash
+agent-browser open <url>           # 1. 導航
+agent-browser snapshot -i          # 2. 取得互動元素 refs
+agent-browser fill @e2 "text"      # 3. 操作（用 ref）
+agent-browser click @e4            # 4. 操作
+agent-browser snapshot -i          # 5. 重新 snapshot 驗證結果
+agent-browser close                # 6. 清理
+```
+
+**測試範圍**：完整使用者流程（登入 → 操作 → 驗證結果 → 登出）。
 
 ### 4.7 coverage — 覆蓋率分析
 
@@ -173,6 +190,24 @@ description: 綜合驗證 — Build → Types → Lint → Tests → console.log
 ```
 
 任一步驟失敗 → 停止並報告 → 可選自動修復。
+
+### 4.9 qa — 行為測試
+
+```yaml
+name: qa
+description: 行為測試 — 啟動應用、呼叫 API、操作 UI，驗證真實行為符合預期。
+```
+
+**測試範圍**：
+
+| 層級 | 驗證項 |
+|------|--------|
+| 服務層 | 啟動 app → 健康檢查 → 回應正確 |
+| API 層 | 呼叫端點 → 驗證狀態碼、回應結構、錯誤處理 |
+| CLI 層 | 執行指令 → 驗證輸出、exit code、副作用 |
+| 整合層 | 跨服務流程 → 驗證端到端資料正確性 |
+
+**與 e2e 的分工**：e2e 專注瀏覽器 UI 流程（WebFetch + puppeteer）；qa 涵蓋非瀏覽器層的真實操作（API + CLI + 服務啟動）。
 
 ---
 
@@ -227,7 +262,7 @@ description: >-
   測試邏輯 — 純粹從規格與程式碼行為推斷應測什麼。
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
-color: lime
+color: pink
 maxTurns: 30
 permissionMode: acceptEdits
 memory: project
@@ -262,18 +297,67 @@ permissionMode: acceptEdits
 ---
 name: e2e-runner
 description: >-
-  管理 Playwright E2E 測試 — 建立 Page Objects、
-  撰寫測試、執行、除錯失敗。最多 3 輪除錯循環。
+  E2E 瀏覽器測試執行者 — 透過 agent-browser CLI 操作瀏覽器。
+  使用 snapshot + ref 工作流驗證完整使用者流程。
+  專注瀏覽器 UI 測試，不測 API/CLI。最多 3 輪除錯循環。
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 color: green
 maxTurns: 30
 permissionMode: acceptEdits
 memory: project
+skills:
+  - agent-browser
 ---
 ```
 
-**工作流**：分析頁面 → 建立 Page Objects → 撰寫測試 → 執行 → 除錯（最多 3 輪）
+**工具策略**：
+- **agent-browser CLI**（唯一瀏覽器工具）：snapshot 取 ref → 用 ref 操作元素 → 重新 snapshot 驗證
+- **skills 預載 agent-browser**：agent 啟動時自動注入 agent-browser 完整操作指南
+
+**工作流**：
+1. `agent-browser open <url>` → 導航
+2. `agent-browser snapshot -i` → 取得互動元素 refs
+3. 用 ref 操作（click/fill/select）
+4. 重新 snapshot 驗證結果
+5. 除錯失敗案例（最多 3 輪）
+6. `agent-browser close` → 清理
+
+### 5.6 qa（可寫）
+
+```yaml
+---
+name: qa
+description: >-
+  全層行為測試者。啟動應用、呼叫 API、驗證 CLI 輸出，
+  確認真實行為符合預期。涵蓋 smoke test、API 驗證、
+  服務健康檢查。不寫測試碼 — 直接執行真實操作並報告結果。
+  不做瀏覽器 UI 測試（那是 e2e-runner 的職責）。
+tools: Read, Bash, Grep, Glob, WebFetch
+model: sonnet
+color: yellow
+maxTurns: 30
+permissionMode: acceptEdits
+memory: project
+---
+```
+
+**工作流**：理解預期行為 → 啟動服務 → 執行真實操作（API/CLI）→ 驗證結果 → 結構化報告
+
+**關鍵規則**：
+- 不寫測試碼（那是 tester 的職責），直接執行真實操作
+- 不做瀏覽器 UI 測試（那是 e2e-runner 的職責）
+- 服務啟動後必須確認健康檢查通過才開始測試
+- 測試結束後清理環境（停止服務、清除測試資料）
+- 報告格式：PASS/FAIL + 預期值 vs 實際值 + 重現步驟
+
+**與其他 agents 的分工**：
+
+| Agent | 負責層 | 做什麼 | 不做什麼 |
+|-------|--------|--------|---------|
+| `tester` | 測試碼 | 撰寫 unit/integration 測試檔案 | 不啟動 app、不做真實操作 |
+| `e2e-runner` | 瀏覽器 | 操作網頁、驗證 UI 流程 | 不測 API/CLI |
+| `qa` | API/CLI/服務 | 啟動 app、呼叫 API、驗證 CLI | 不寫測試碼、不做瀏覽器測試 |
 
 ---
 
@@ -375,6 +459,8 @@ plugins/sentinel/
 │   │   └── SKILL.md
 │   ├── e2e/
 │   │   └── SKILL.md
+│   ├── qa/
+│   │   └── SKILL.md
 │   ├── coverage/
 │   │   └── SKILL.md
 │   └── verify/
@@ -384,7 +470,8 @@ plugins/sentinel/
 │   ├── security-reviewer.md
 │   ├── tester.md
 │   ├── build-error-resolver.md
-│   └── e2e-runner.md
+│   ├── e2e-runner.md
+│   └── qa.md
 ├── hooks/
 │   └── hooks.json
 └── scripts/
@@ -404,14 +491,16 @@ plugins/sentinel/
 
 | # | 條件 |
 |:-:|------|
-| S-01 | Plugin 可載入，8 個 skill 可呼叫 |
-| S-02 | 5 個 agent 可觸發 |
+| S-01 | Plugin 可載入，9 個 skill 可呼叫 |
+| S-02 | 6 個 agent 可觸發 |
 | S-03 | auto-lint/auto-format hooks 在 Write/Edit 後觸發 |
 | S-04 | danger-guard 攔截 `rm -rf /` |
 | S-05 | console-log-check 在 Stop 時偵測殘留 |
 | S-06 | TDD 流程完整（RED → GREEN → REFACTOR） |
 | S-07 | verify 一鍵跑完 Build → Types → Lint → Tests |
 | S-08 | forge:scaffold 驗證全 PASS |
+| S-09 | qa agent 可啟動服務、呼叫 API、驗證行為 |
+| S-10 | e2e-runner 使用 agent-browser CLI 完成瀏覽器測試 |
 
 ---
 
@@ -421,14 +510,15 @@ plugins/sentinel/
 {
   "name": "sentinel",
   "version": "0.1.0",
-  "description": "品質全鏈守衛 — lint、format、review、security、TDD、E2E、verify",
+  "description": "品質全鏈守衛 — lint、format、review、security、TDD、E2E、QA、verify",
   "skills": ["./skills/"],
   "agents": [
     "./agents/code-reviewer.md",
     "./agents/security-reviewer.md",
     "./agents/tester.md",
     "./agents/build-error-resolver.md",
-    "./agents/e2e-runner.md"
+    "./agents/e2e-runner.md",
+    "./agents/qa.md"
   ]
 }
 ```

@@ -27,14 +27,14 @@
       }
     },
     "sentinel": {
-      "description": "品質全鏈守衛 — lint、format、review、security、TDD、E2E、verify",
+      "description": "品質全鏈守衛 — lint、format、review、security、TDD、E2E、QA、verify",
       "priority": "high",
       "category": "quality",
       "buildOrder": 2,
       "tags": ["lint", "format", "review", "security", "tdd", "e2e", "testing"],
       "expected": {
-        "skills": ["review", "lint", "format", "security", "tdd", "e2e", "coverage", "verify"],
-        "agents": ["code-reviewer", "security-reviewer", "tester", "build-error-resolver", "e2e-runner"],
+        "skills": ["review", "lint", "format", "security", "tdd", "e2e", "qa", "coverage", "verify"],
+        "agents": ["code-reviewer", "security-reviewer", "tester", "build-error-resolver", "e2e-runner", "qa"],
         "hooks": 5,
         "scripts": 6
       }

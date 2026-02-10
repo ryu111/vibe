@@ -127,6 +127,76 @@ else
 fi
 
 echo "" >&2
+echo -e "${CYAN}--- Pipeline ---${NC}" >&2
+
+PIPELINE_FILE="${TARGET}/pipeline.json"
+if [[ -f "$PIPELINE_FILE" ]]; then
+    if jq empty "$PIPELINE_FILE" 2>/dev/null; then
+        v_pass "P-10" "pipeline.json 為合法 JSON"
+
+        # stages 欄位（選填，只有 flow 有）
+        HAS_STAGES=$(jq -e '.stages' "$PIPELINE_FILE" >/dev/null 2>&1 && echo "yes" || echo "no")
+        if [[ "$HAS_STAGES" == "yes" ]]; then
+            STAGES_TYPE=$(jq -r '.stages | type' "$PIPELINE_FILE")
+            if [[ "$STAGES_TYPE" == "array" ]]; then
+                v_pass "P-11" "stages 為陣列"
+            else
+                v_fail "P-11" "stages 必須為陣列: ${STAGES_TYPE}"
+            fi
+        fi
+
+        # stageLabels 欄位（選填）
+        HAS_LABELS=$(jq -e '.stageLabels' "$PIPELINE_FILE" >/dev/null 2>&1 && echo "yes" || echo "no")
+        if [[ "$HAS_LABELS" == "yes" ]]; then
+            LABELS_TYPE=$(jq -r '.stageLabels | type' "$PIPELINE_FILE")
+            if [[ "$LABELS_TYPE" == "object" ]]; then
+                v_pass "P-12" "stageLabels 為物件"
+            else
+                v_fail "P-12" "stageLabels 必須為物件: ${LABELS_TYPE}"
+            fi
+        fi
+
+        # provides 欄位（核心欄位）
+        HAS_PROVIDES=$(jq -e '.provides' "$PIPELINE_FILE" >/dev/null 2>&1 && echo "yes" || echo "no")
+        if [[ "$HAS_PROVIDES" == "yes" ]]; then
+            PROVIDES_TYPE=$(jq -r '.provides | type' "$PIPELINE_FILE")
+            if [[ "$PROVIDES_TYPE" == "object" ]]; then
+                v_pass "P-13" "provides 為物件"
+
+                # 驗證每個 stage 的 agent/skill 結構
+                STAGES_IN_PROVIDES=$(jq -r '.provides | keys[]' "$PIPELINE_FILE" 2>/dev/null || true)
+                for stage in $STAGES_IN_PROVIDES; do
+                    [[ -z "$stage" ]] && continue
+                    AGENT=$(jq -r ".provides.\"${stage}\".agent // empty" "$PIPELINE_FILE")
+                    if [[ -n "$AGENT" ]]; then
+                        v_pass "P-14" "provides.${stage} 有 agent: ${AGENT}"
+                    else
+                        v_warn "P-14" "provides.${stage} 缺少 agent 欄位"
+                    fi
+                done
+            else
+                v_fail "P-13" "provides 必須為物件: ${PROVIDES_TYPE}"
+            fi
+        else
+            v_warn "P-13" "pipeline.json 缺少 provides 欄位"
+        fi
+
+        # 未知欄位檢查
+        KNOWN_PIPELINE_KEYS="stages|stageLabels|provides|parallel"
+        UNKNOWN_PIPE_KEYS=$(jq -r "keys[] | select(test(\"^(${KNOWN_PIPELINE_KEYS})$\") | not)" "$PIPELINE_FILE" 2>/dev/null || true)
+        if [[ -z "$UNKNOWN_PIPE_KEYS" ]]; then
+            v_pass "P-15" "pipeline.json 無未知欄位"
+        else
+            v_warn "P-15" "pipeline.json 含未知欄位: ${UNKNOWN_PIPE_KEYS//$'\n'/, }"
+        fi
+    else
+        v_fail "P-10" "pipeline.json JSON 格式錯誤"
+    fi
+else
+    v_pass "P-10" "無 pipeline.json（選填）"
+fi
+
+echo "" >&2
 echo -e "${CYAN}--- Scripts ---${NC}" >&2
 
 SCRIPTS_DIR="${TARGET}/scripts"

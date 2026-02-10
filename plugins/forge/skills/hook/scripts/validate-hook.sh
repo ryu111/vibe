@@ -63,26 +63,43 @@ for event in $EVENTS; do
     for ((i=0; i<GROUP_COUNT; i++)); do
         GROUP_PATH=".hooks.\"${event}\"[$i]"
 
-        # --- V-HK-04: 每個 group 有 hooks 陣列 ---
-        if jq -e "${GROUP_PATH}.hooks" "$HOOKS_FILE" >/dev/null 2>&1; then
-            v_pass "V-HK-04" "${event}[${i}] 有 hooks 陣列"
-        else
-            v_fail "V-HK-04" "${event}[${i}] 缺少 hooks 陣列"
-            continue
-        fi
+        # 偵測格式：flat（直接有 type）或 grouped（有 hooks 陣列）
+        IS_FLAT=$(jq -r "${GROUP_PATH}.type // empty" "$HOOKS_FILE" 2>/dev/null)
 
-        # --- V-HK-09: matcher 合法（如有） ---
-        MATCHER=$(jq -r "${GROUP_PATH}.matcher // empty" "$HOOKS_FILE")
-        if [[ -n "$MATCHER" ]]; then
-            if echo "test" | grep -qE "$MATCHER" 2>/dev/null || true; then
-                v_pass "V-HK-09" "${event}[${i}] matcher 語法合法: ${MATCHER}"
+        if [[ -n "$IS_FLAT" ]]; then
+            # --- Flat 格式：hook entry 直接在陣列中 ---
+            v_pass "V-HK-04" "${event}[${i}] 使用 flat hook 格式"
+
+            # 直接處理這個 entry 為單一 hook
+            HOOK_COUNT=1
+            HOOK_PATHS=("${GROUP_PATH}")
+        else
+            # --- Grouped 格式：有 matcher + hooks 陣列 ---
+            if jq -e "${GROUP_PATH}.hooks" "$HOOKS_FILE" >/dev/null 2>&1; then
+                v_pass "V-HK-04" "${event}[${i}] 有 hooks 陣列"
+            else
+                v_fail "V-HK-04" "${event}[${i}] 缺少 hooks 陣列（且非 flat 格式）"
+                continue
             fi
+
+            # --- V-HK-09: matcher 合法（如有） ---
+            MATCHER=$(jq -r "${GROUP_PATH}.matcher // empty" "$HOOKS_FILE")
+            if [[ -n "$MATCHER" ]]; then
+                if echo "test" | grep -qE "$MATCHER" 2>/dev/null || true; then
+                    v_pass "V-HK-09" "${event}[${i}] matcher 語法合法: ${MATCHER}"
+                fi
+            fi
+
+            HOOK_COUNT=$(jq -r "${GROUP_PATH}.hooks | length" "$HOOKS_FILE")
+            HOOK_PATHS=()
+            for ((j=0; j<HOOK_COUNT; j++)); do
+                HOOK_PATHS+=("${GROUP_PATH}.hooks[$j]")
+            done
         fi
 
         # 遍歷每個 hook
-        HOOK_COUNT=$(jq -r "${GROUP_PATH}.hooks | length" "$HOOKS_FILE")
         for ((j=0; j<HOOK_COUNT; j++)); do
-            HOOK_PATH="${GROUP_PATH}.hooks[$j]"
+            HOOK_PATH="${HOOK_PATHS[$j]}"
             HOOK_TYPE=$(jq -r "${HOOK_PATH}.type // empty" "$HOOKS_FILE")
 
             # --- V-HK-05: type 合法 ---
@@ -154,18 +171,20 @@ for event in $EVENTS; do
                 done <<< "$EXTRA_HOOK_FIELDS"
             fi
 
-            # --- V-HK-17: 檢查 hook group 多餘欄位 ---
-            KNOWN_GROUP_FIELDS="matcher hooks description"
-            EXTRA_GROUP_FIELDS=$(jq -r "${GROUP_PATH} | keys[]" "$HOOKS_FILE" 2>/dev/null | while read -r key; do
-                if ! echo "$KNOWN_GROUP_FIELDS" | grep -qw "$key"; then
-                    echo "$key"
+            # --- V-HK-17: 檢查 hook group 多餘欄位（僅 grouped 格式） ---
+            if [[ -z "$IS_FLAT" ]]; then
+                KNOWN_GROUP_FIELDS="matcher hooks description"
+                EXTRA_GROUP_FIELDS=$(jq -r "${GROUP_PATH} | keys[]" "$HOOKS_FILE" 2>/dev/null | while read -r key; do
+                    if ! echo "$KNOWN_GROUP_FIELDS" | grep -qw "$key"; then
+                        echo "$key"
+                    fi
+                done)
+                if [[ -n "$EXTRA_GROUP_FIELDS" ]]; then
+                    while IFS= read -r field; do
+                        [[ -z "$field" ]] && continue
+                        v_fail "V-HK-17" "${event}[${i}] hook group 不支援的欄位: ${field}"
+                    done <<< "$EXTRA_GROUP_FIELDS"
                 fi
-            done)
-            if [[ -n "$EXTRA_GROUP_FIELDS" ]]; then
-                while IFS= read -r field; do
-                    [[ -z "$field" ]] && continue
-                    v_fail "V-HK-17" "${event}[${i}] hook group 不支援的欄位: ${field}"
-                done <<< "$EXTRA_GROUP_FIELDS"
             fi
 
             # --- V-HK-10: 不可阻擋事件的提醒 ---

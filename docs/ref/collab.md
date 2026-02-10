@@ -355,6 +355,7 @@ plugins/collab/
 {
   "name": "collab",
   "version": "0.1.0",
-  "description": "多視角競爭分析 — Agent Teams 驅動的對抗式審查與重構"
+  "description": "多視角競爭分析 — Agent Teams 驅動的對抗式審查與重構",
+  "skills": ["./skills/"]
 }
 ```

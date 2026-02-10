@@ -172,7 +172,7 @@ description: >-
   語意性變更產出建議供人工審查。
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: haiku
-color: green
+color: purple
 maxTurns: 30
 permissionMode: acceptEdits
 memory: project
@@ -191,6 +191,7 @@ memory: project
 plugins/evolve/
 ├── .claude-plugin/
 │   └── plugin.json
+├── pipeline.json
 ├── skills/
 │   ├── evolve/
 │   │   └── SKILL.md
@@ -226,9 +227,20 @@ plugins/evolve/
   "skills": ["./skills/"],
   "agents": [
     "./agents/doc-updater.md"
-  ],
-  "pipeline": {
+  ]
+}
+```
+
+> **注意**：`plugin.json` 的 schema 嚴格驗證，不允許自定義欄位（會導致 `Unrecognized key` 錯誤）。Pipeline stage 宣告放在獨立的 `pipeline.json`。
+
+### pipeline.json
+
+```json
+{
+  "provides": {
     "DOCS": { "agent": "doc-updater", "skill": "/evolve:doc-sync" }
   }
 }
 ```
+
+> flow 的 `discoverPipeline()` 會掃描所有已安裝 plugin 的 `pipeline.json.provides` 欄位，動態組合完整 pipeline。

@@ -34,8 +34,9 @@ fi
 
 VALID_TOOLS="Read|Write|Edit|Bash|Grep|Glob|WebFetch|WebSearch|Task|TaskCreate|TaskGet|TaskList|TaskUpdate|TaskOutput|NotebookEdit|AskUserQuestion|Skill|KillShell|MCPSearch|ExitPlanMode|LSP"
 VALID_MODELS="sonnet|opus|haiku|inherit"
-VALID_PERM_MODES="default|acceptEdits|dontAsk|bypassPermissions|plan"
+VALID_PERM_MODES="default|acceptEdits|delegate|dontAsk|bypassPermissions|plan"
 VALID_MEMORY="user|project|local"
+VALID_COLORS="red|blue|green|yellow|purple|orange|pink|cyan"
 
 for FILE in "${FILES[@]}"; do
     echo -e "${BOLD}驗證 Agent: ${FILE}${NC}" >&2
@@ -91,7 +92,7 @@ else: print(type(val).__name__)
     }
 
     # --- V-AG-16: 檢查多餘欄位 ---
-    KNOWN_FIELDS="name description tools disallowedTools model permissionMode maxTurns skills mcpServers hooks memory"
+    KNOWN_FIELDS="name description tools disallowedTools model color permissionMode maxTurns skills mcpServers hooks memory"
     EXTRA_FIELDS=$(echo "$FRONTMATTER" | python3 -c "
 import sys, yaml
 data = yaml.safe_load(sys.stdin) or {}
@@ -178,6 +179,16 @@ for f in extra: print(f)
         v_pass "V-AG-08" "model 合法: ${MODEL}"
     else
         v_fail "V-AG-08" "model 不合法: ${MODEL}"
+    fi
+
+    # --- V-AG-19: color ---
+    COLOR=$(get_field "color")
+    if [[ -z "$COLOR" ]]; then
+        v_pass "V-AG-19" "color 未設定（選填）"
+    elif echo "$COLOR" | grep -qE "^(${VALID_COLORS})$"; then
+        v_pass "V-AG-19" "color 合法: ${COLOR}"
+    else
+        v_fail "V-AG-19" "color 不合法: ${COLOR}（合法值：red/blue/green/yellow/purple/orange/pink/cyan）"
     fi
 
     # --- V-AG-09: permissionMode ---
