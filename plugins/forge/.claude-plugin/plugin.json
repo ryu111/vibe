@@ -1,5 +1,5 @@
 {
   "name": "forge",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "造工具的工具 — 建立、驗證、管理 Claude Code plugin 組件"
 }
