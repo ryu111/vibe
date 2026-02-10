@@ -3,8 +3,11 @@
  * pipeline-discovery.js — 跨 plugin Pipeline 動態發現
  *
  * 讀取 flow 的 pipeline.json（stage 順序），
- * 掃描所有已安裝 plugin 的 plugin.json.pipeline 欄位，
+ * 掃描所有已安裝 plugin 的 pipeline.json.provides 欄位，
  * 回傳完整的 pipeline 配置。
+ *
+ * 注意：pipeline 資料放在 pipeline.json 而非 plugin.json，
+ * 因為 Claude Code 的 plugin.json schema 不允許自定義欄位。
  */
 'use strict';
 const fs = require('fs');
@@ -32,18 +35,26 @@ function discoverPipeline() {
   const stageMap = {};      // stage → { agent, skill, plugin }
   const agentToStage = {};  // agent name → stage name
 
-  // 掃描所有已安裝 plugin
+  // 掃描所有已安裝 plugin 的 pipeline.json
   try {
     for (const dir of fs.readdirSync(pluginsDir)) {
-      const pjPath = path.join(pluginsDir, dir, '.claude-plugin', 'plugin.json');
-      if (!fs.existsSync(pjPath)) continue;
+      const pipePath = path.join(pluginsDir, dir, 'pipeline.json');
+      if (!fs.existsSync(pipePath)) continue;
 
       try {
-        const pj = JSON.parse(fs.readFileSync(pjPath, 'utf8'));
-        if (!pj.pipeline) continue;
+        const pipeFile = JSON.parse(fs.readFileSync(pipePath, 'utf8'));
+        if (!pipeFile.provides) continue;
 
-        for (const [stage, config] of Object.entries(pj.pipeline)) {
-          stageMap[stage] = { ...config, plugin: pj.name };
+        // 讀取 plugin 名稱（用於標記來源）
+        let pluginName = dir;
+        const pjPath = path.join(pluginsDir, dir, '.claude-plugin', 'plugin.json');
+        try {
+          const pj = JSON.parse(fs.readFileSync(pjPath, 'utf8'));
+          pluginName = pj.name || dir;
+        } catch (_) {}
+
+        for (const [stage, config] of Object.entries(pipeFile.provides)) {
+          stageMap[stage] = { ...config, plugin: pluginName };
           if (config.agent) {
             agentToStage[config.agent] = stage;
           }
