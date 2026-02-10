@@ -34,7 +34,10 @@ Vibe 是 Claude Code marketplace（複數 plugins 容器），第一個 plugin �
 
 ## 參考文檔
 
-6 份規格書在 `docs/reference/`：plugin / skill / agent / hook / script / template
+- `docs/reference/` — 6 份組件規格書：plugin / skill / agent / hook / script / template
+- `docs/ref/` — 各 plugin 設計文件 + `index.md`（自動生成）+ `pipeline.md`
+- `docs/plugin-specs.json` — 組件數量 Single Source of Truth
+- `docs/ECC研究報告.md` — ECC 黑客松冠軍分析
 
 ## 開發規範
 
