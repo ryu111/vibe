@@ -245,7 +245,7 @@ memory: project
   "matcher": null,
   "hooks": [{
     "type": "prompt",
-    "prompt": "Classify this user request into exactly one type. Respond ONLY with a JSON object.\n\nTypes:\n- research: read-only exploration, questions, understanding code\n- quickfix: trivial change (rename, color, typo) — 1-2 files\n- bugfix: fix specific broken behavior — needs verification\n- feature: new capability — needs planning, architecture, full pipeline\n- refactor: restructure existing code — needs architecture review\n- test: add or fix tests only\n- docs: documentation only\n- tdd: user explicitly requested TDD workflow\n\nStage mappings:\n- research: []\n- quickfix: [\"DEV\"]\n- bugfix: [\"DEV\", \"TEST\"]\n- feature: [\"PLAN\", \"ARCH\", \"DEV\", \"REVIEW\", \"TEST\", \"DOCS\"]\n- refactor: [\"ARCH\", \"DEV\", \"REVIEW\"]\n- test: [\"TEST\"]\n- docs: [\"DOCS\"]\n- tdd: [\"TEST\", \"DEV\", \"REVIEW\"]\n\nRespond: {\"type\":\"...\",\"stages\":[...]}",
+    "prompt": "Classify this user request into exactly one type.\n\nTypes:\n- research: read-only exploration, questions, understanding code\n- quickfix: trivial change (rename, color, typo) — 1-2 files\n- bugfix: fix specific broken behavior — needs verification\n- feature: new capability — needs planning, architecture, full pipeline\n- refactor: restructure existing code — needs architecture review\n- test: add or fix tests only\n- docs: documentation only\n- tdd: user explicitly requested TDD workflow\n\nStage mappings:\n- research: []\n- quickfix: [\"DEV\"]\n- bugfix: [\"DEV\", \"TEST\"]\n- feature: [\"PLAN\", \"ARCH\", \"DEV\", \"REVIEW\", \"TEST\", \"DOCS\"]\n- refactor: [\"ARCH\", \"DEV\", \"REVIEW\"]\n- test: [\"TEST\"]\n- docs: [\"DOCS\"]\n- tdd: [\"TEST\", \"DEV\", \"REVIEW\"]\n\nRespond with ONLY this JSON: {\"decision\":\"allow\",\"type\":\"...\",\"stages\":[...]}",
     "model": "haiku",
     "timeout": 10
   }]
@@ -281,11 +281,13 @@ memory: project
     "type": "command",
     "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/pipeline-init.js",
     "timeout": 10,
-    "once": true,
     "statusMessage": "初始化工作環境..."
   }]
 }
 ```
+
+> **Note**：`once` 欄位僅在 Skill/Slash Command 的 frontmatter hooks 有效，plugin hooks.json 不支援。
+> 防重複由腳本端透過 state file 實現：若 `~/.claude/pipeline-state-{sessionId}.json` 已存在 `initialized: true` 則 exit 0。
 
 **行為**：
 1. 偵測專案環境（語言/框架/PM/工具）
@@ -297,11 +299,35 @@ memory: project
 
 ### 6.3 PreToolUse: suggest-compact
 
-50 calls 閾值 → 每 25 calls 提醒 → 在邏輯邊界建議（不阻擋）
+```json
+{
+  "matcher": "*",
+  "hooks": [{
+    "type": "command",
+    "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/suggest-compact.js",
+    "timeout": 5,
+    "statusMessage": ""
+  }]
+}
+```
+
+50 calls 閾值 → 每 25 calls 提醒 → 在邏輯邊界建議（不阻擋）。
+計數範圍：所有工具呼叫（`matcher: "*"`）。SessionStart 時由 pipeline-init 重設計數器。
 
 ### 6.4 PreCompact: log-compact
 
-記錄 compact 事件 → 重設 tool call 計數器
+```json
+{
+  "matcher": null,
+  "hooks": [{
+    "type": "command",
+    "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/log-compact.js",
+    "timeout": 5
+  }]
+}
+```
+
+記錄 compact 事件 → 重設 tool call 計數器（counter state file 歸零）。
 
 ### 6.5 SubagentStop: stage-transition
 
@@ -324,7 +350,7 @@ memory: project
 2. `discoverPipeline()` 載入配置
 3. `agentToStage[agent_type]` 查找所屬 stage
 4. `findNextStage()` 查找下一個已安裝 stage
-5. 更新 `~/.claude/pipeline-state.json`
+5. 更新 `~/.claude/pipeline-state-{sessionId}.json`
 6. 輸出 `{ "continue": true, "systemMessage": "..." }`
 
 詳見 → `docs/ref/pipeline.md` §4.3
@@ -365,36 +391,62 @@ memory: project
 
 **吸納自**：ralph-wiggum plugin 的 Stop hook blocking 技術。
 
-**啟動條件**：TodoWrite 存在未完成項目時自動啟動（state file 由首次 TodoWrite 呼叫時建立）。
+**啟動條件**：task-guard 在每次 Stop 觸發時，透過 `transcript_path` 讀取對話紀錄，解析最後一次 TodoWrite 呼叫來判斷任務狀態。無需額外的啟動機制。
 
-**State file**：`~/.claude/task-guard-state.json`
+**TodoWrite 狀態讀取方式**：
+Hook 的 stdin 不包含 TodoWrite 資訊。task-guard 必須：
+1. 從 stdin 讀取 `transcript_path`
+2. 讀取 transcript JSONL 檔案
+3. 篩選 `"tool": "TodoWrite"` 的記錄，取最後一筆
+4. 解析其 `input.todos` 陣列
+5. 檢查是否有 `status !== "completed"` 的項目
+
+```js
+// task-guard.js 核心邏輯（偽代碼）
+const transcript = fs.readFileSync(transcriptPath, 'utf8')
+  .split('\n')
+  .filter(Boolean)
+  .map(JSON.parse);
+
+const lastTodoWrite = transcript
+  .filter(entry => entry.tool === 'TodoWrite' || entry.toolName === 'TodoWrite')
+  .pop();
+
+if (!lastTodoWrite) return exit0(); // 無 TodoWrite，不阻擋
+const todos = lastTodoWrite.input?.todos || [];
+const incomplete = todos.filter(t => t.status !== 'completed');
+if (incomplete.length === 0) return exit0(); // 全部完成
+```
+
+**State file**：`~/.claude/task-guard-state-{sessionId}.json`
 
 ```json
 {
-  "active": true,
   "blockCount": 0,
   "maxBlocks": 5,
   "cancelled": false,
-  "snapshotCount": 8,
   "activatedAt": "2026-02-09T14:30:00Z"
 }
 ```
+
+> `maxBlocks` 可透過環境變數 `CLAUDE_TASK_GUARD_MAX_BLOCKS` 覆寫。
 
 **邏輯**：
 
 ```
 Stop 觸發
-  → stop_hook_active === true？ → exit 0（防迴圈）
-  → state 不存在或 !active？ → exit 0（無 guard）
-  → cancelled === true？ → cleanup + exit 0（手動取消）
-  → blockCount >= maxBlocks？ → cleanup + exit 0（安全閥，輸出警告）
-  → TodoWrite 全部 completed？ → cleanup + exit 0（任務完成）
-  → 否則 → blockCount++ + 輸出 block：
-    {
-      "decision": "block",
-      "reason": "繼續完成未完成的任務",
-      "systemMessage": "⚠️ 任務尚未完成（第 N/5 次阻擋）\n\n未完成項目：\n- [ ] ...\n\n請繼續完成以上項目。"
-    }
+  1. stop_hook_active === true → exit 0（防迴圈）
+  2. 讀取 transcript，找最後一次 TodoWrite
+  3. 無 TodoWrite → exit 0（無任務追蹤）
+  4. state 存在且 cancelled === true → cleanup + exit 0（/flow:cancel 手動取消）
+  5. state 存在且 blockCount >= maxBlocks → cleanup + exit 0 + 警告（安全閥）
+  6. TodoWrite 全部 completed → cleanup + exit 0（任務完成）
+  7. 否則 → blockCount++ → 輸出 block：
+     {
+       "decision": "block",
+       "reason": "繼續完成未完成的任務",
+       "systemMessage": "⚠️ 任務尚未完成（第 N/5 次阻擋）\n\n未完成項目：\n- [ ] ...\n\n請繼續完成以上項目。"
+     }
 ```
 
 **Counter 規則**：
@@ -402,7 +454,7 @@ Stop 觸發
 - Agent 切換（planner → developer）不計入
 - 手動取消或完成時歸零
 
-**完成判定**：TodoWrite 無 `pending` 或 `in_progress` 項目。
+**完成判定**：transcript 中最後一次 TodoWrite 呼叫的 todos 陣列全部為 `completed`。
 
 **與 pipeline-check 的關係**：pipeline-check 用 systemMessage 建議；task-guard 用 decision:block 強制。兩者互補 — pipeline-check 處理「忘了跑某階段」，task-guard 處理「做到一半就停」。
 

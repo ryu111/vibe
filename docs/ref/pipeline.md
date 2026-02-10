@@ -241,12 +241,15 @@ hooks.json 定義：
 {
   "hooks": [{
     "type": "prompt",
-    "prompt": "Classify this user request into exactly one type. Respond ONLY with a JSON object.\n\nTypes:\n- research: read-only exploration, questions, understanding code\n- quickfix: trivial change (rename, color, typo) — 1-2 files\n- bugfix: fix specific broken behavior — needs verification\n- feature: new capability — needs planning, architecture, full pipeline\n- refactor: restructure existing code — needs architecture review\n- test: add or fix tests only\n- docs: documentation only\n- tdd: user explicitly requested TDD workflow\n\nStage mappings:\n- research: []\n- quickfix: [\"DEV\"]\n- bugfix: [\"DEV\", \"TEST\"]\n- feature: [\"PLAN\", \"ARCH\", \"DEV\", \"REVIEW\", \"TEST\", \"DOCS\"]\n- refactor: [\"ARCH\", \"DEV\", \"REVIEW\"]\n- test: [\"TEST\"]\n- docs: [\"DOCS\"]\n- tdd: [\"TEST\", \"DEV\", \"REVIEW\"]\n\nRespond: {\"type\":\"...\",\"stages\":[...]}",
+    "prompt": "Classify this user request into exactly one type.\n\nTypes:\n- research: read-only exploration, questions, understanding code\n- quickfix: trivial change (rename, color, typo) — 1-2 files\n- bugfix: fix specific broken behavior — needs verification\n- feature: new capability — needs planning, architecture, full pipeline\n- refactor: restructure existing code — needs architecture review\n- test: add or fix tests only\n- docs: documentation only\n- tdd: user explicitly requested TDD workflow\n\nStage mappings:\n- research: []\n- quickfix: [\"DEV\"]\n- bugfix: [\"DEV\", \"TEST\"]\n- feature: [\"PLAN\", \"ARCH\", \"DEV\", \"REVIEW\", \"TEST\", \"DOCS\"]\n- refactor: [\"ARCH\", \"DEV\", \"REVIEW\"]\n- test: [\"TEST\"]\n- docs: [\"DOCS\"]\n- tdd: [\"TEST\", \"DEV\", \"REVIEW\"]\n\nRespond with ONLY this JSON: {\"decision\":\"allow\",\"type\":\"...\",\"stages\":[...]}",
     "model": "haiku",
     "timeout": 10
   }]
 }
 ```
+
+> **Prompt hook 回應格式**：必須包含 `decision` 欄位（`"allow"` 放行）。
+> 其餘欄位（`type`、`stages`）作為 `additionalContext` 注入，供 Claude 參考。
 
 ### 4.2 pipeline-rules（SessionStart · 合併在 pipeline-init.js）
 
@@ -311,10 +314,15 @@ hooks.json 定義：
 5. 更新 state file（記錄已完成的 agents）
 6. 輸出 `{ "continue": true, "systemMessage": "..." }`
 
-**State file**：`~/.claude/pipeline-state.json`
+**State file**：`~/.claude/pipeline-state-{sessionId}.json`
+
+> 使用 session ID 區分，避免多視窗同時使用時 state 互相覆蓋。
+> `sessionId` 從 hook stdin 的 `session_id` 取得。
 
 ```json
 {
+  "sessionId": "abc123",
+  "initialized": true,
   "completed": ["planner", "architect", "developer"],
   "expectedStages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "DOCS"],
   "lastTransition": "2026-02-09T14:30:00Z"
@@ -400,33 +408,34 @@ hooks.json 定義：
 }
 ```
 
-**State file**：`~/.claude/task-guard-state.json`
+**State file**：`~/.claude/task-guard-state-{sessionId}.json`
 
 ```json
 {
-  "active": true,
   "blockCount": 0,
   "maxBlocks": 5,
   "cancelled": false,
-  "snapshotCount": 8,
   "activatedAt": "2026-02-09T14:30:00Z"
 }
 ```
 
-**啟動（HEAD）**：TodoWrite 首次建立項目時自動建立 state file（非手動啟動）。
+> `maxBlocks` 可透過環境變數 `CLAUDE_TASK_GUARD_MAX_BLOCKS` 覆寫。
 
-**完成判定（TAIL）**：TodoWrite 無 `pending` 或 `in_progress` 項目。
+**TodoWrite 狀態讀取**：Hook stdin 不含 TodoWrite 資訊。task-guard 透過 `transcript_path` 讀取對話紀錄 JSONL，解析最後一次 TodoWrite 呼叫的 `input.todos` 陣列來判斷任務狀態。
+
+**完成判定**：transcript 中最後一次 TodoWrite 的 todos 陣列全部為 `completed`。無 TodoWrite 記錄時不阻擋。
 
 **邏輯**：
 
 ```
 Stop 觸發
   1. stop_hook_active === true → exit 0（防迴圈）
-  2. state 不存在或 !active → exit 0（無 guard）
-  3. cancelled === true → cleanup + exit 0（/flow:cancel 手動取消）
-  4. blockCount >= maxBlocks → cleanup + exit 0 + 警告（安全閥）
-  5. TodoWrite 全部 completed → cleanup + exit 0（任務完成）
-  6. 否則 → blockCount++ → 輸出 block
+  2. 讀取 transcript，找最後一次 TodoWrite
+  3. 無 TodoWrite → exit 0（無任務追蹤）
+  4. state 存在且 cancelled === true → cleanup + exit 0（/flow:cancel 手動取消）
+  5. state 存在且 blockCount >= maxBlocks → cleanup + exit 0 + 警告（安全閥）
+  6. TodoWrite 全部 completed → cleanup + exit 0（任務完成）
+  7. 否則 → blockCount++ → 輸出 block
 ```
 
 **Block 輸出**：
@@ -442,7 +451,7 @@ Stop 觸發
 **Counter 規則**：
 - 只有 Stop hook 實際 block 時才 +1（agent 切換不計入）
 - 完成或取消時歸零 + 清理 state file
-- 5 次上限 = Claude 嘗試停止 5 次都被擋回去，第 6 次無條件放行
+- 5 次上限（可透過 `CLAUDE_TASK_GUARD_MAX_BLOCKS` 環境變數覆寫）= Claude 嘗試停止 5 次都被擋回去，第 6 次無條件放行
 
 **手動取消**：`/flow:cancel` skill 設定 `cancelled: true` → 下次 Stop hook 放行。
 

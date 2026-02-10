@@ -17,6 +17,11 @@ Vibe 是 Claude Code marketplace（複數 plugins 容器），第一個 plugin �
 - Plugins = 模組功能｜Subagents = AI 能力｜Skills = 能力載體
 - Hooks = 事件驅動自動化｜Scripts = 內部實作（DRY）｜Templates = 標準化產出
 - **單一職責**：驗證腳本歸屬各自 skill 的 `scripts/`，共用函式庫在 plugin 層級 `scripts/lib/`
+- **Scripts 目錄規範**：
+  - `scripts/lib/` — plugin 層級共用函式庫（被 ≥2 處使用才放這裡）
+  - `scripts/hooks/` — hook 腳本（hooks.json 引用的 command scripts）
+  - `skills/*/scripts/` — skill 專屬腳本（驗證等）
+  - State files 使用 `~/.claude/{name}-{sessionId}.json`（避免多視窗衝突）
 - **自動驗證閉環**：PostToolUse hook → 寫完就檢查，使用者無感
 - **底層基礎必須正確**：所有組件都要有詳盡規格、驗證腳本
 - **低耦合、獨立可裝**：每個 plugin 獨立運作，透過 ECC hooks 事件間接溝通，零 import。有更多 plugin → 更好體驗；缺任何一個 → 完全正常運作（graceful degradation）
