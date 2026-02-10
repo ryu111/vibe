@@ -2,9 +2,7 @@
 
 ## 概述
 
-Template 分為兩類：
-1. **組件模板**（Component Templates）— 建立新的 Skill/Agent/Hook/Script 時使用的標準格式
-2. **專案模板**（Project Templates）— `/vibe:init` 用來初始化新專案的模板
+Template 是**組件模板**（Component Templates）— 建立新的 Plugin/Skill/Agent/Hook/Script 時使用的標準格式。
 
 組件模板是底層基礎，確保每次新建組件都有一致的格式，減少錯誤。
 
@@ -14,16 +12,14 @@ Template 分為兩類：
 
 ```
 templates/
-├── components/              # 組件模板
-│   ├── skill.md             # Skill SKILL.md 的模板
-│   ├── agent.md             # Agent .md 的模板
-│   ├── hook-entry.json      # Hook 條目的模板
-│   ├── script-entry.sh      # 入口腳本的模板
-│   └── script-lib.sh        # 共用函式庫的模板
-└── projects/                # 專案模板（Phase 4 再實作）
-    ├── nextjs/
-    ├── express-api/
-    └── fullstack/
+└── components/              # 組件模板
+    ├── plugin-json.json     # plugin.json manifest 的模板
+    ├── hooks-json.json      # hooks/hooks.json 的模板
+    ├── skill.md             # Skill SKILL.md 的模板
+    ├── agent.md             # Agent .md 的模板
+    ├── hook-entry.json      # Hook 條目的模板
+    ├── script-entry.sh      # 入口腳本的模板
+    └── script-lib.sh        # 共用函式庫的模板
 ```
 
 ---
@@ -111,6 +107,47 @@ memory: {{MEMORY_SCOPE}}
 
 ---
 
+### Plugin Manifest 模板 — `templates/components/plugin-json.json`
+
+```json
+{
+  "name": "{{PLUGIN_NAME}}",
+  "version": "{{VERSION}}",
+  "description": "{{PLUGIN_DESCRIPTION}}",
+  "author": {
+    "name": "{{AUTHOR_NAME}}"
+  },
+  "license": "{{LICENSE}}",
+  "keywords": []
+}
+```
+
+#### 佔位符說明
+
+| 佔位符 | 說明 | 範例 |
+|--------|------|------|
+| `{{PLUGIN_NAME}}` | Plugin 名稱（kebab-case） | `my-plugin` |
+| `{{VERSION}}` | 語義版本號 | `0.1.0` |
+| `{{PLUGIN_DESCRIPTION}}` | 功能描述 | `程式碼品質檢查工具` |
+| `{{AUTHOR_NAME}}` | 作者名稱 | `Dev Team` |
+| `{{LICENSE}}` | 授權類型 | `MIT` |
+
+> **注意**：不要在 plugin.json 中宣告 `hooks` 欄位，hooks.json 會自動載入。
+
+---
+
+### Hooks 設定模板 — `templates/components/hooks-json.json`
+
+```json
+{
+  "hooks": {}
+}
+```
+
+> 空的 hooks 結構。使用 `hook-entry.json` 模板建立個別條目後，加入對應的事件 key 中。
+
+---
+
 ### Hook 條目模板 — `templates/components/hook-entry.json`
 
 ```json
@@ -194,6 +231,16 @@ main
 ---
 
 ## 模板使用流程
+
+### 建立新 Plugin
+```
+1. 複製 templates/components/plugin-json.json
+2. 替換所有 {{}} 佔位符
+3. 存放到 <plugin>/.claude-plugin/plugin.json
+4. 複製 templates/components/hooks-json.json 到 <plugin>/hooks/hooks.json
+5. 建立 skills/、agents/、scripts/ 目錄
+6. 確認驗證通過
+```
 
 ### 建立新 Skill
 ```

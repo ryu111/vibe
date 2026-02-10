@@ -138,6 +138,8 @@ name: doc-sync
 description: 文件同步 — 偵測程式碼與文件不同步，生成或更新文件。涵蓋 README、API docs、JSDoc、CHANGELOG。
 ```
 
+**解決的痛點**：開發過程中改了程式碼但忘記同步更新文檔，導致文檔逐漸過時失真。
+
 **能力範圍**（合併原 doc-gen + doc-sync）：
 
 | 操作 | 說明 |
@@ -146,6 +148,15 @@ description: 文件同步 — 偵測程式碼與文件不同步，生成或更�
 | 生成新文件 | 從程式碼產生 README、API Reference、JSDoc |
 | 更新現有 | 機械性變更自動套用，語意性變更產出建議 |
 | CHANGELOG | 從 git log + conventional commits 產生 |
+
+**偵測範圍**（不只程式碼文件）：
+
+| 文件類型 | 偵測條件 |
+|---------|---------|
+| README / API docs | 程式碼介面變更（函式簽名、export、路由） |
+| 設計文件（spec） | 架構決策變更（目錄結構、組件增刪） |
+| CLAUDE.md / 規則 | 開發規範或慣例變更 |
+| plugin 設計文件 | 組件數量、hook 事件、skill 清單變更 |
 
 ---
 

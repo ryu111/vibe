@@ -43,4 +43,5 @@ Vibe 是 Claude Code marketplace（複數 plugins 容器），第一個 plugin �
 
 - 所有回覆使用繁體中文
 - 組件產出必須通過對應驗證腳本
+- **功能需驗證測試**：所有功能在完成前必須經過實際驗證測試，reference specs 以實測為準
 - 不確定時詢問，不猜測
