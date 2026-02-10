@@ -114,6 +114,23 @@ Observation → Instinct(0.3) → Cluster(≥3, avg≥0.7) → Skill/Agent
 - 有 mem → 從 mem 的 SQLite/Chroma 讀取觀察紀錄
 - 無 mem → 從當前對話提取，或使用者手動輸入
 
+**mem 觀察類型對應**（有 mem 時）：
+
+| mem 觀察類型 | evolve instinct 分類 |
+|-------------|---------------------|
+| bugfix 🔴 | problem-solution |
+| feature 🟣 | why-it-exists, what-changed |
+| refactor 🔄 | pattern, trade-off |
+| change ✅ | what-changed |
+| discovery 🔵 | how-it-works, gotcha |
+| decision ⚖️ | why-it-exists, trade-off |
+
+**mem 讀取方式**：
+- MCP 工具：`search` → `timeline` → `get_observations`（3 層漸進式，省 token）
+- 直接查詢：`~/.claude-mem/claude-mem.db`（SQLite FTS5）
+
+**注意**：`CLAUDE_MEM_SKIP_TOOLS` 預設跳過 `Skill`，意味著 `/evolve:evolve` 本身的執行不會被 mem 觀察記錄。instincts 來源是其他工具的觀察，而非 evolve skill 自身。
+
 ### 4.2 doc-sync — 文件同步
 
 ```yaml
