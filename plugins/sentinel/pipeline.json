@@ -1,0 +1,6 @@
+{
+  "provides": {
+    "REVIEW": { "agent": "code-reviewer", "skill": "/sentinel:review" },
+    "TEST": { "agent": "tester", "skill": "/sentinel:tdd" }
+  }
+}
