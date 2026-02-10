@@ -5,6 +5,7 @@ description: >-
 tools: {{TOOLS}}
 model: {{MODEL}}
 maxTurns: {{MAX_TURNS}}
+memory: {{MEMORY_SCOPE}}
 ---
 
 ## 你的角色

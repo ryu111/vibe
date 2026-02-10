@@ -95,6 +95,18 @@ hooks:
 | `agent` | 否 | string | `general-purpose` | 當 `context: fork` 時，指定子代理的類型 |
 | `hooks` | 否 | object（YAML） | 無 | 生命週期 hooks，支援 `PreToolUse`、`PostToolUse`、`Stop` |
 
+### 待確認欄位
+
+以下欄位在社群實戰 plugin (ECC) 中出現，但尚未在官方文檔中確認：
+
+| 欄位 | 類型 | 說明 | 來源 |
+|------|------|------|------|
+| `version` | string | Skill 版本號（如 `"2.0.0"`） | ECC continuous-learning-v2 |
+| `tools` | string | `allowed-tools` 的可能別名 | ECC eval-harness |
+| `command` | boolean | 標記此 .md 為 command 而非 skill | ECC evolve command |
+
+> **注意**：使用前需實測確認。Claude Code 的 YAML parser 對未知欄位採寬容策略（忽略不報錯），因此社群使用≠官方支援。若為無效欄位，不會報錯但也不會生效。
+
 ---
 
 ## 呼叫控制矩陣
@@ -110,6 +122,18 @@ hooks:
 ## 指令內容語法
 
 Frontmatter 下方的 Markdown 即為 skill 的指令內容，在 skill 被觸發時送給 Claude。
+
+### 內容類型
+
+Skill 內容可分為兩種類型，選擇何種類型影響呼叫方式和 `context` 設定：
+
+| 類型 | 說明 | 呼叫方式 | context 建議 |
+|------|------|----------|-------------|
+| **Reference（參考知識）** | 慣例、模式、風格指南、領域知識。Claude 在主對話中搭配上下文使用 | 自動載入為主 | inline（預設） |
+| **Task（任務步驟）** | 部署、提交、程式碼生成等具體動作的逐步說明 | `/name` 手動呼叫為主 | `fork`（隔離執行） |
+
+**Reference 範例**：API 設計慣例、程式碼風格規範、框架用法指南
+**Task 範例**：部署流程、commit 工作流、測試執行、PR 生成
 
 ### 變數替換
 
@@ -169,10 +193,18 @@ allowed-tools: Read, Grep, Glob
 ### Fork 模式特性
 
 - **隔離 context**：建立獨立的 context，不存取主對話歷史
-- **Skill 即 prompt**：skill 的指令內容成為子代理的 system prompt
-- **Agent 類型**：由 `agent` 欄位決定執行環境，預設為 `general-purpose`
+- **Skill 即 prompt**：skill 的指令內容成為子代理的 task prompt
+- **Agent 類型**：由 `agent` 欄位決定執行環境（模型、工具、權限），預設為 `general-purpose`
+- **也載入**：CLAUDE.md 會一併載入到子代理中
 - **適合場景**：任務指令明確、需要獨立執行的 skills
 - **不適合場景**：純指引類（guidance）的 skills，因為無法存取主對話上下文
+
+### Skill Fork vs Subagent 預載比較
+
+| 方法 | System Prompt | Task | 額外載入 |
+|------|--------------|------|---------|
+| Skill `context: fork` | 來自 agent 類型（`Explore`、`Plan` 等） | SKILL.md 內容 | CLAUDE.md |
+| Subagent 預載 skills | 子代理的 markdown 主體 | Claude 的委派訊息 | 預載 skills + CLAUDE.md |
 
 ---
 
@@ -192,11 +224,10 @@ Skills 採用三層漸進揭露機制，以最佳化 context window 使用：
 
 ## 字元預算
 
-- **動態計算**：預設為 context window 的 2%
-- **Fallback**：當無法動態計算時，fallback 為 16,000 字元
+- **預設值**：15,000 字元
 - **環境變數覆寫**：可透過 `SLASH_COMMAND_TOOL_CHAR_BUDGET` 環境變數覆寫
 - **超過預算**：超過字元預算的 skills 會被排除，不會載入
-- **檢查方式**：使用 `/context` 指令可檢查目前 skills 的載入狀況
+- **檢查方式**：使用 `/context` 指令可檢查目前 skills 的載入狀況和排除的 skills
 
 ---
 
@@ -269,6 +300,26 @@ ExitPlanMode, LSP, mcp__<server>__<tool>
 
 ---
 
+## 疑難排解
+
+### Skill 未觸發
+
+1. 檢查 `description` 是否包含使用者會自然說出的關鍵字
+2. 確認 skill 出現在「有哪些 skills 可用？」的回覆中
+3. 嘗試重新表述請求以更貼近 description
+4. 若 skill 可手動呼叫，使用 `/skill-name` 直接呼叫
+
+### Skill 觸發過於頻繁
+
+1. 讓 `description` 更加具體
+2. 若只想手動呼叫，加上 `disable-model-invocation: true`
+
+### Claude 看不到所有 Skills
+
+Skills 的 description 會載入 context。若 skills 數量多，可能超過字元預算（預設 15,000 字元）。執行 `/context` 檢查被排除的 skills。可透過 `SLASH_COMMAND_TOOL_CHAR_BUDGET` 環境變數增加限制。
+
+---
+
 ## 最佳實踐
 
 ### Description 撰寫
@@ -280,7 +331,7 @@ ExitPlanMode, LSP, mcp__<server>__<tool>
 ### Body 撰寫
 
 - 使用祈使語態（例如 "分析程式碼結構" 而非 "你應該分析程式碼結構"）
-- 建議長度 1,500 - 2,000 詞，上限 5,000 詞
+- **建議 SKILL.md 保持在 500 行以下**，詳細參考資料移至獨立檔案
 - 大型參考資料移至 `references/` 目錄
 - 避免與其他 skills 重複內容
 

@@ -10,7 +10,19 @@ Plugin 是 Claude Code 的模組化功能擴展單元。每個 plugin 可包含�
 - **MCP Servers** — Model Context Protocol 伺服器
 - **LSP Servers** — Language Server Protocol 伺服器
 - **Output Styles** — 輸出樣式自訂
-- **Commands** — 額外命令
+- **Commands** — 額外命令（與 Skills 相同運作方式，向後相容）
+
+### 獨立配置 vs Plugin
+
+| 方法 | Skill 名稱 | 最適合 |
+|------|-----------|--------|
+| **獨立**（`.claude/` 目錄） | `/hello` | 個人工作流、專案特定自訂、快速實驗 |
+| **Plugin**（含 `.claude-plugin/plugin.json`） | `/plugin-name:hello` | 團隊共享、社群分發、版本化發布、跨專案重用 |
+
+**使用獨立配置**：單一專案自訂、個人配置、實驗中的 skills/hooks
+**使用 Plugin**：團隊/社群共享、多專案重用、版本控制、marketplace 分發
+
+> 建議先在 `.claude/` 中快速迭代，準備好共享時再轉換為 plugin。
 
 ---
 
@@ -20,29 +32,44 @@ Plugin 是 Claude Code 的模組化功能擴展單元。每個 plugin 可包含�
 
 如果省略 `plugin.json`，Claude Code 會自動探索預設目錄中的組件，並從目錄名稱衍生 plugin name。
 
-### `name` 是唯一必要欄位
+### 必要欄位
 
-只要提供 `name`，其餘欄位皆為選填。
+`name` 和 `version` 為必要欄位。雖然 schema 定義中僅 `name` 標記必填，但 **validator 實際上要求 `version` 存在**，否則會拒絕。
 
 ### 完整欄位定義
 
 | 欄位 | 類型 | 必要 | 說明 |
 |------|------|------|------|
-| `name` | `string` | 是（唯一必要） | kebab-case，不含空格。用於組件命名空間 |
-| `version` | `string` | 否 | 語義版本號。`plugin.json` 優先於 marketplace entry |
+| `name` | `string` | 是 | kebab-case，不含空格。用於組件命名空間 |
+| `version` | `string` | 是（實務必填） | 語義版本號。`plugin.json` 優先於 marketplace entry |
 | `description` | `string` | 否 | 插件用途簡述 |
 | `author` | `object` | 否 | `{name(必要), email(選填), url(選填)}` |
 | `homepage` | `string` | 否 | 文檔 URL |
 | `repository` | `string` | 否 | 原始碼 URL |
 | `license` | `string` | 否 | MIT、Apache-2.0 等 |
 | `keywords` | `array` | 否 | 探索標籤 |
-| `commands` | `string \| array` | 否 | 額外命令路徑 |
-| `agents` | `string \| array` | 否 | 額外 agent 路徑 |
-| `skills` | `string \| array` | 否 | 額外 skill 路徑 |
-| `hooks` | `string \| array \| object` | 否 | Hook 設定路徑或行內定義 |
-| `mcpServers` | `string \| array \| object` | 否 | MCP 設定路徑或行內定義 |
-| `outputStyles` | `string \| array` | 否 | 輸出樣式路徑 |
-| `lspServers` | `string \| array \| object` | 否 | LSP 設定路徑或行內定義 |
+| `commands` | `array` | 否 | 額外命令路徑（目錄路徑或檔案路徑） |
+| `agents` | `array` | 否 | 額外 agent 路徑。**必須為明確的 `.md` 檔案路徑**，不接受目錄路徑 |
+| `skills` | `array` | 否 | 額外 skill 路徑（目錄路徑） |
+| `hooks` | — | — | **不要宣告**。見下方「Hooks 自動載入」 |
+| `mcpServers` | `array \| object` | 否 | MCP 設定路徑或行內定義 |
+| `outputStyles` | `array` | 否 | 輸出樣式路徑 |
+| `lspServers` | `array \| object` | 否 | LSP 設定路徑或行內定義 |
+
+### Validator 實務限制（重要）
+
+以下限制來自實戰經驗，schema 定義中未明確記載但 validator 會嚴格執行：
+
+1. **`version` 必填**：沒有 version 的 plugin.json 會被 validator 拒絕
+2. **`agents` 必須用明確檔案路徑**：不接受目錄路徑（如 `"./agents/"`），必須列舉每個 `.md` 檔案
+3. **組件欄位必須是 array**：`agents`、`commands`、`skills` 等組件欄位，即使只有一個 entry 也必須用 array 格式
+4. **不要在 plugin.json 中宣告 `hooks`**：見下方說明
+
+### Hooks 自動載入
+
+Claude Code v2.1+ 會**自動載入** `hooks/hooks.json`，不需要在 plugin.json 中宣告。若同時在 manifest 中宣告 `hooks` 欄位，會造成 **Duplicate hooks** 錯誤。
+
+**正確做法**：將 hooks 設定放在 `hooks/hooks.json`，不在 plugin.json 中引用。
 
 ### 路徑規則
 
@@ -63,9 +90,11 @@ Plugin 是 Claude Code 的模組化功能擴展單元。每個 plugin 可包含�
   },
   "license": "MIT",
   "keywords": ["analysis", "formatting"],
-  "skills": "./extra-skills",
-  "hooks": "./config/hooks.json",
-  "mcpServers": "./config/mcp.json"
+  "skills": ["./extra-skills/"],
+  "agents": [
+    "./agents/reviewer.md",
+    "./agents/formatter.md"
+  ]
 }
 ```
 
@@ -205,6 +234,14 @@ plugin-name:component-name
 
 ## 七、Output Styles
 
+### 內建樣式
+
+| 名稱 | 說明 |
+|------|------|
+| `default` | 預設系統提示，專為軟體工程任務最佳化 |
+| `explanatory` | 在完成任務時提供教育性的「Insights」，幫助理解實作選擇和程式碼庫模式 |
+| `learning` | 協作式邊做邊學模式，Claude 會添加 `TODO(human)` 標記讓使用者自行實作 |
+
 ### 格式
 
 Output Styles 是 Markdown 檔案，搭配 frontmatter 定義。
@@ -212,14 +249,29 @@ Output Styles 是 Markdown 檔案，搭配 frontmatter 定義。
 | 欄位 | 說明 | 預設值 |
 |------|------|--------|
 | `name` | 樣式名稱 | 繼承檔名 |
-| `description` | 樣式描述 | 無 |
-| `keep-coding-instructions` | 是否保留編碼指令 | `false` |
+| `description` | 樣式描述，在 `/output-style` UI 中顯示 | 無 |
+| `keep-coding-instructions` | 是否保留系統提示中與編碼相關的部分 | `false` |
 
 ### 行為
 
 - 直接修改系統提示（system prompt）。
-- **不包含**高效輸出說明。
+- **所有**輸出樣式都排除高效輸出的指令（如簡潔回應）。
 - 自訂樣式**不含**編碼說明，除非 `keep-coding-instructions: true`。
+- 所有輸出樣式會在對話期間觸發提醒，讓 Claude 遵守樣式指令。
+
+### 存放位置
+
+| 範圍 | 路徑 |
+|------|------|
+| 使用者級別 | `~/.claude/output-styles/` |
+| 專案級別 | `.claude/output-styles/` |
+| Plugin | `plugin/output-styles/`（透過 `outputStyles` 欄位引用） |
+
+### 切換方式
+
+- `/output-style` — 開啟選單選擇
+- `/output-style [style]` — 直接切換（如 `/output-style explanatory`）
+- 設定保存在 `.claude/settings.local.json` 的 `outputStyle` 欄位
 
 ### 範例
 
@@ -273,13 +325,20 @@ keep-coding-instructions: true
 
 ### 官方 LSP 插件
 
-| 插件名稱 | 語言 |
-|----------|------|
-| `pyright-lsp` | Python |
-| `typescript-lsp` | TypeScript / JavaScript |
-| `rust-lsp` | Rust |
+| 插件名稱 | 語言 | 所需二進位檔 |
+|----------|------|------------|
+| `clangd-lsp` | C/C++ | `clangd` |
+| `csharp-lsp` | C# | `csharp-ls` |
+| `gopls-lsp` | Go | `gopls` |
+| `jdtls-lsp` | Java | `jdtls` |
+| `lua-lsp` | Lua | `lua-language-server` |
+| `php-lsp` | PHP | `intelephense` |
+| `pyright-lsp` | Python | `pyright-langserver` |
+| `rust-analyzer-lsp` | Rust | `rust-analyzer` |
+| `swift-lsp` | Swift | `sourcekit-lsp` |
+| `typescript-lsp` | TypeScript / JavaScript | `typescript-language-server` |
 
-> 使用者必須自行安裝對應的語言伺服器。
+> 使用者必須自行安裝對應的語言伺服器二進位檔。若安裝插件後在 `/plugin` 錯誤頁面看到 `Executable not found in $PATH`，需安裝上表中的二進位檔。
 
 ---
 
@@ -374,6 +433,8 @@ keep-coding-instructions: true
 | 插件未載入 | 無效的 `plugin.json` | 使用 `/plugin validate` 驗證 |
 | 命令未出現 | 目錄結構錯誤 | 確保組件在 plugin 根目錄下 |
 | Hooks 未觸發 | 腳本不可執行 | `chmod +x` 賦予執行權限 |
+| Duplicate hooks | 在 plugin.json 中宣告了 hooks | 移除 plugin.json 的 hooks 欄位，依賴自動載入 |
+| agents 載入失敗 | 使用了目錄路徑 | 改為明確列舉 `.md` 檔案路徑 |
 | MCP 失敗 | 缺少 `CLAUDE_PLUGIN_ROOT` | 使用 `${CLAUDE_PLUGIN_ROOT}` 變數 |
 | 路徑錯誤 | 使用了絕對路徑 | 改為相對路徑並以 `./` 開頭 |
 
@@ -392,6 +453,30 @@ keep-coding-instructions: true
   - `metadata.description`：描述
   - `metadata.version`：版本
   - `metadata.pluginRoot`：Plugin 根目錄
+
+### 官方插件分類
+
+| 分類 | 說明 | 範例 |
+|------|------|------|
+| Code Intelligence | LSP 插件，提供定義跳轉、引用查找、型別錯誤 | pyright-lsp, typescript-lsp |
+| External Integrations | 預配置 MCP 伺服器，連接外部服務 | github, slack, sentry, linear |
+| Development Workflow | 開發任務的命令和代理 | commit-commands, pr-review-toolkit |
+| Output Styles | 自訂 Claude 回應方式 | explanatory-output-style |
+
+### Plugin Entry 欄位（plugins 陣列中每個元素）
+
+| 欄位 | 必要 | 說明 |
+|------|------|------|
+| `name` | 是 | Plugin 名稱 |
+| `source` | 是 | 來源路徑或類型 |
+| `description` | 否 | Plugin 描述 |
+| `author` | 否 | 作者物件 |
+| `homepage` | 否 | 文檔 URL |
+| `repository` | 否 | 原始碼 URL |
+| `license` | 否 | 授權 |
+| `keywords` | 否 | 搜尋關鍵字 |
+| `category` | 否 | 分類（如 `"workflow"`、`"testing"`） |
+| `tags` | 否 | 標籤陣列 |
 
 ### `strict` 欄位
 

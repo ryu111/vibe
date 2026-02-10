@@ -5,6 +5,18 @@
 Script 是 Plugin 中的共用腳本，負責實作 Hooks 和 Skills 呼叫的實際邏輯。
 遵循 DRY 原則，重複的功能提取為獨立腳本，被多個組件重用。
 
+### 語言選擇
+
+腳本**不限於 bash** — Claude Code 支援任何有正確 shebang 和執行權限的腳本語言。
+
+| 語言 | Shebang | 適用場景 |
+|------|---------|---------|
+| Bash | `#!/usr/bin/env bash` | macOS/Linux 原生，簡單邏輯 |
+| Node.js | `#!/usr/bin/env node` | 跨平台（含 Windows）、複雜 JSON 處理 |
+| Python | `#!/usr/bin/env python3` | 資料分析、ML 相關 |
+
+**本規格書以 bash 為範例**，但所有規則（shebang、JSON I/O、exit code）同樣適用於其他語言。跨平台需求強時建議使用 Node.js。
+
 ---
 
 ## 檔案結構

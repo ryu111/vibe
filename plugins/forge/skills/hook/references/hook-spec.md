@@ -73,11 +73,18 @@ fi
 |------|------|------|
 | `prompt` | string | 使用者提交的 prompt 內容 |
 
+**注入上下文的兩種方式**（exit code 0）：
+
+1. **純文本 stdout**（更簡單）：非 JSON 的純文字直接加入上下文
+2. **JSON `additionalContext`**（結構化）：使用下方 JSON 格式
+
+兩種方式都會注入 Claude 上下文。純 stdout 在 transcript 中顯示為 hook 輸出；`additionalContext` 更隱蔽。
+
 **專有輸出**（`hookSpecificOutput`）：
 | 欄位 | 類型 | 說明 |
 |------|------|------|
-| `decision` | string | `"block"` → 阻擋並清除 prompt |
-| `reason` | string | 阻擋時顯示給使用者的原因 |
+| `decision` | string | `"block"` → 阻擋並清除 prompt（搭配 exit 0 + JSON 使用） |
+| `reason` | string | 阻擋時顯示給使用者的原因（不加入上下文） |
 | `additionalContext` | string | 加入 Claude 上下文 |
 
 ---
@@ -224,6 +231,8 @@ fi
 
 **觸發時機**：子代理完成回應時。
 
+> **注意**：Agent frontmatter 中的 `Stop` hook 會自動轉換為此事件（見第十節「Stop → SubagentStop 自動轉換」）。
+
 **專有輸入欄位**：
 | 欄位 | 類型 | 說明 |
 |------|------|------|
@@ -270,7 +279,9 @@ fi
 
 ### TeammateIdle
 
-**觸發時機**：Agent Team 隊友即將閒置時。
+**觸發時機**：Agent Team 隊友完成工作並停止時，自動通知主管（Team Lead）。
+
+> **Agent Teams** 是實驗性功能（需設定 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`）。多個 Claude Code 實例組成團隊，隊友獨立工作並可直接互相通訊。與 Subagents 不同，Agent Teams 中的隊友是完全獨立的 Claude 實例。
 
 **專有輸入欄位**：
 | 欄位 | 類型 | 說明 |
@@ -287,7 +298,7 @@ fi
 
 ### TaskCompleted
 
-**觸發時機**：任務標記完成時。
+**觸發時機**：Agent Team 共享任務清單中的任務被標記完成時。任務具有 pending → in-progress → completed 三種狀態，支援依賴關係（依賴未完成的任務不能被認領）。
 
 **專有輸入欄位**：
 | 欄位 | 類型 | 說明 |
@@ -350,9 +361,9 @@ fi
 |------|------|------|------|
 | `type` | string | 是 | 固定 `"command"` |
 | `command` | string | 是 | 要執行的 shell 命令 |
-| `timeout` | number | 否 | 超時秒數，預設 **600 秒（10 分鐘）** |
+| `timeout` | number | 否 | 超時秒數，預設 **60 秒** |
 | `statusMessage` | string | 否 | 自訂 spinner 訊息 |
-| `once` | boolean | 否 | `true` = 每 session 只執行一次（僅 Skills） |
+| `once` | boolean | 否 | `true` = 每 session 只執行一次（僅 Skills 和 Slash Commands） |
 | `async` | boolean | 否 | `true` = 背景執行，不阻擋流程 |
 
 **輸入**：JSON 透過 stdin 傳入。
@@ -362,9 +373,20 @@ fi
 
 | Exit Code | 意義 | 行為 |
 |-----------|------|------|
-| `0` | 成功 | 解析 stdout JSON |
-| `2` | 阻擋 | 阻擋動作（stderr 作為錯誤訊息），僅可阻擋事件有效 |
-| 其他 | 錯誤 | 非阻擋錯誤，繼續執行 |
+| `0` | 成功 | 解析 stdout JSON。stdout 在 verbose mode (ctrl+o) 顯示，但 `UserPromptSubmit` 和 `SessionStart` 會注入 Claude 上下文 |
+| `2` | 阻擋 | 阻擋動作。**僅使用 stderr**（stdout 中的 JSON 被忽略），僅可阻擋事件有效 |
+| 其他 | 錯誤 | 非阻擋錯誤。stderr 在 verbose mode 顯示為 `Failed with non-blocking status code: {stderr}`，繼續執行 |
+
+**Exit Code 2 各事件行為**：
+
+| 事件 | 行為 |
+|------|------|
+| `PreToolUse` | 阻擋工具呼叫，向 Claude 顯示 stderr |
+| `PermissionRequest` | 拒絕權限，向 Claude 顯示 stderr |
+| `PostToolUse` | 向 Claude 顯示 stderr（工具已執行） |
+| `UserPromptSubmit` | 阻擋並清除 prompt，僅向使用者顯示 stderr |
+| `Stop` / `SubagentStop` | 阻止停止，向 Claude 顯示 stderr |
+| `Notification` / `PreCompact` / `SessionStart` / `SessionEnd` | 僅向使用者顯示 stderr，無法阻擋 |
 
 **Async 限制**：
 - 僅 command hook 支援 `async`
@@ -376,7 +398,7 @@ fi
 
 ### 2. Prompt Hook（`type: "prompt"`）
 
-將 hook 輸入和自訂 prompt 送給 Claude 模型做單輪評估。
+將 hook 輸入和自訂 prompt 送給快速 LLM（Haiku）做單輪評估。適用於所有 hook 事件，特別適合需要上下文感知判斷的場景。
 
 ```json
 {
@@ -392,17 +414,19 @@ fi
 | 欄位 | 類型 | 必填 | 說明 |
 |------|------|------|------|
 | `type` | string | 是 | 固定 `"prompt"` |
-| `prompt` | string | 是 | 送給模型的提示文字，`$ARGUMENTS` 替換為 hook 輸入 JSON |
+| `prompt` | string | 是 | 送給模型的提示文字。使用 `$ARGUMENTS` 作為 hook 輸入 JSON 的佔位符；若無 `$ARGUMENTS`，輸入 JSON 會附加到 prompt |
 | `model` | string | 否 | 模型名稱，預設快速模型（Haiku） |
 | `timeout` | number | 否 | 超時秒數，預設 **30 秒** |
 | `statusMessage` | string | 否 | 自訂 spinner 訊息 |
-| `once` | boolean | 否 | `true` = 每 session 只執行一次（僅 Skills） |
+| `once` | boolean | 否 | `true` = 每 session 只執行一次（僅 Skills 和 Slash Commands） |
 
 **回應格式**：
 ```json
 { "ok": true }                              // 允許
 { "ok": false, "reason": "原因說明" }       // 阻擋（僅可阻擋事件有效）
 ```
+
+**最佳適用場景**：`Stop`、`SubagentStop`、`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`。
 
 **不支援事件**：`TeammateIdle`。
 
@@ -430,7 +454,7 @@ fi
 | `model` | string | 否 | 模型名稱，預設快速模型 |
 | `timeout` | number | 否 | 超時秒數，預設 **60 秒** |
 | `statusMessage` | string | 否 | 自訂 spinner 訊息 |
-| `once` | boolean | 否 | `true` = 每 session 只執行一次（僅 Skills） |
+| `once` | boolean | 否 | `true` = 每 session 只執行一次（僅 Skills 和 Slash Commands） |
 
 **Agent 可用工具**：`Read`, `Grep`, `Glob`（唯讀）
 **最大輪數**：50
@@ -466,14 +490,23 @@ fi
 
 ## 五、通用輸出欄位
 
-以下欄位可在任何 hook 的 JSON 輸出中使用：
+以下欄位可在任何 hook 的 JSON 輸出（stdout，exit code 0）中使用：
 
 | 欄位 | 類型 | 預設值 | 說明 |
 |------|------|--------|------|
-| `continue` | boolean | `true` | `false` = 停止 Claude 所有處理 |
-| `stopReason` | string | — | `continue` 為 `false` 時的停止原因說明 |
-| `suppressOutput` | boolean | `false` | `true` = 隱藏 verbose mode 輸出 |
-| `systemMessage` | string | — | 顯示給使用者的系統訊息 |
+| `continue` | boolean | `true` | `false` = 停止 Claude 所有處理。**優先順序高於** `decision: "block"` |
+| `stopReason` | string | — | `continue` 為 `false` 時的停止原因（顯示給使用者，不顯示給 Claude） |
+| `suppressOutput` | boolean | `false` | `true` = 隱藏 verbose mode (ctrl+o) 輸出 |
+| `systemMessage` | string | — | 顯示給使用者的警告訊息 |
+
+### `continue: false` vs `decision: "block"` 的差別
+
+| 欄位 | 行為 | 適用對象 |
+|------|------|----------|
+| `continue: false` | **完全停止** Claude 所有處理 | 所有事件 |
+| `decision: "block"` | 阻擋特定動作並回饋給 Claude 繼續 | PreToolUse / PostToolUse / Stop / SubagentStop |
+
+`continue: false` 在所有情況下**優先於** `decision: "block"`。
 
 ---
 
@@ -506,7 +539,8 @@ fi
   "hooks": {
     "<EventName>": [
       {
-        "matcher": "<regex>",
+        "matcher": "<regex 或 expression>",
+        "description": "此 hook group 的用途說明（選填）",
         "hooks": [
           {
             "type": "command|prompt|agent",
@@ -525,6 +559,14 @@ fi
 }
 ```
 
+### Hook Group 欄位
+
+| 欄位 | 必要 | 說明 |
+|------|------|------|
+| `matcher` | 視事件 | 匹配條件（正則或 expression 語法，見第八節） |
+| `description` | 否 | 此 hook group 的用途說明，純文檔化用途 |
+| `hooks` | 是 | 此 group 下的 hook 陣列 |
+
 ### 結構層級說明
 
 ```
@@ -533,6 +575,7 @@ hooks.json
     └── <EventName>                  # 事件名稱（區分大小寫）
         └── [array of hook groups]   # 每個 group 有 matcher + hooks
             ├── matcher              # 匹配條件（選用，視 event 而定）
+            ├── description          # 用途說明（選用，文檔化）
             └── hooks                # 此 group 下的 hook 清單
                 └── [hook]           # 單個 hook（command/prompt/agent）
 ```
@@ -541,7 +584,11 @@ hooks.json
 
 ## 八、Matcher 語法
 
-Matcher 用於過濾 hook 的觸發條件，採用正則表達式語法，大小寫敏感。
+Matcher 支援兩種語法：**正則表達式**（基礎）和 **Expression 語法**（進階）。
+
+### 8.1 正則表達式語法（基礎）
+
+匹配工具名稱或事件來源，大小寫敏感。
 
 | 範例 | 說明 |
 |------|------|
@@ -552,11 +599,43 @@ Matcher 用於過濾 hook 的觸發條件，採用正則表達式語法，大小
 
 **MCP 工具命名格式**：`mcp__<server>__<tool>`
 
-### 各事件的 Matcher 對象
+### 8.2 Expression 語法（進階）
+
+支援條件式匹配工具輸入參數，可組合多個條件。
+
+| 語法 | 說明 | 範例 |
+|------|------|------|
+| `tool == "Name"` | 工具名稱精確匹配 | `tool == "Bash"` |
+| `tool_input.field matches "regex"` | 工具輸入欄位正則匹配 | `tool_input.command matches "(npm run dev\|pnpm dev)"` |
+| `&&` | 邏輯 AND | `tool == "Bash" && tool_input.command matches "rm"` |
+| `\|\|` | 邏輯 OR | `tool == "Edit" \|\| tool == "Write"` |
+| `!(...)` | 否定 | `!(tool_input.file_path matches "README\\.md")` |
+
+#### Expression 語法範例
+
+```json
+// 攔截特定 Bash 命令
+"matcher": "tool == \"Bash\" && tool_input.command matches \"(npm run dev|pnpm dev|yarn dev)\""
+
+// 匹配特定副檔名的 Write 操作
+"matcher": "tool == \"Write\" && tool_input.file_path matches \"\\.(ts|tsx)$\""
+
+// 排除特定檔案
+"matcher": "tool == \"Edit\" && !(tool_input.file_path matches \"README\\.md\")"
+
+// 組合條件
+"matcher": "tool == \"Write\" && tool_input.file_path matches \"\\.(md|txt)$\" && !(tool_input.file_path matches \"CHANGELOG\")"
+```
+
+#### 可用的 `tool_input` 欄位
+
+Expression 中可引用的 `tool_input` 欄位取決於工具類型（見第二節各工具的 `tool_input` 結構）。
+
+### 8.3 各事件的 Matcher 對象
 
 | 事件 | Matcher 匹配對象 | 範例 |
 |------|----------------|------|
-| `PreToolUse` / `PostToolUse` / `PostToolUseFailure` | 工具名稱 | `"Write"`, `"Bash"` |
+| `PreToolUse` / `PostToolUse` / `PostToolUseFailure` | 工具名稱（支援 expression） | `"Write"`, `tool == "Bash" && ...` |
 | `PermissionRequest` | 工具名稱 | `"Write\|Edit"` |
 | `SessionStart` | 來源類型 | `"startup"`, `"resume"`, `"startup\|resume"` |
 | `PreCompact` | 觸發類型 | `"manual"`, `"auto"` |
@@ -574,7 +653,7 @@ Matcher 用於過濾 hook 的觸發條件，採用正則表達式語法，大小
 | `$CLAUDE_PROJECT_DIR` | 專案根目錄 | 所有 hook |
 | `${CLAUDE_PLUGIN_ROOT}` | Plugin 根目錄 | Plugin hook |
 | `$CLAUDE_ENV_FILE` | 持久化環境變數檔案路徑 | 僅 `SessionStart` |
-| `$CLAUDE_CODE_REMOTE` | 遠端環境時為 `"true"` | 所有 hook |
+| `$CLAUDE_CODE_REMOTE` | 遠端（Web）環境時為 `"true"`，本機 CLI 環境未設定或空 | 所有 hook |
 
 ---
 
@@ -587,7 +666,37 @@ Matcher 用於過濾 hook 的觸發條件，採用正則表達式語法，大小
 | `.claude/settings.local.json` | 單一專案 | 應加入 gitignore |
 | Managed policy | 組織全域 | 由組織管理 |
 | Plugin `hooks/hooks.json` | Plugin 啟用時 | 隨 plugin 啟用/停用 |
-| Skill / Agent frontmatter | 元件活躍時 | 隨元件生命週期 |
+| Skill / Agent frontmatter | 元件活躍時 | 隨元件生命週期，**僅支援 PreToolUse、PostToolUse、Stop** |
+
+### Frontmatter 支援的事件
+
+Skills、Agents 和 Slash Commands 的 frontmatter 中只能使用以下 3 個事件：
+
+| 事件 | 說明 |
+|------|------|
+| `PreToolUse` | 工具呼叫前攔截 |
+| `PostToolUse` | 工具完成後檢查 |
+| `Stop` | 元件完成時評估（agent 中自動轉換為 SubagentStop） |
+
+> **注意**：其他事件（SessionStart、SessionEnd、Notification 等）只能在 `hooks.json` 或 `settings.json` 中定義。
+
+### Stop → SubagentStop 自動轉換
+
+Agent frontmatter 中定義的 `Stop` hook 會在運行時**自動轉換為 `SubagentStop`** 事件。這是因為子代理完成時觸發的事件是 `SubagentStop`，而非 `Stop`（`Stop` 僅對主代理觸發）。
+
+因此在 agent `.md` 檔案中：
+
+```yaml
+---
+hooks:
+  Stop:
+    - hooks:
+        - type: command
+          command: "./scripts/check.sh"
+---
+```
+
+等同於在 `hooks.json` 中定義 `SubagentStop` 事件。此轉換對 Skill frontmatter **不適用**（Skill 中的 Stop 就是 Stop）。
 
 ---
 
@@ -602,14 +711,34 @@ Matcher 用於過濾 hook 的觸發條件，採用正則表達式語法，大小
 
 ## 十二、限制與安全
 
-- Hook 以系統使用者完整權限執行
-- `TeammateIdle` 不支援 prompt / agent hook
+### 執行行為
+
+- Hook 以系統使用者完整權限執行（可存取使用者所有檔案和認證）
+- **預設 timeout**：60 秒（command）、30 秒（prompt）、60 秒（agent），每個 hook 可獨立配置
+- **個別超時不影響其他 hook**
+- 匹配的 hooks **平行執行**，自動去重複
 - `async` 僅 command hook 支援
 - `Stop` 不在使用者中斷時觸發
 - Shell profile 中的 `echo` 會干擾 JSON 解析
-- 匹配的 hooks 平行執行，自動去重複
-- `allowManagedHooksOnly: true`：僅允許 managed hooks
+
+### Frontmatter 限制
+
+- **Skills / Agents / Slash Commands frontmatter 僅支援 3 個事件**：`PreToolUse`、`PostToolUse`、`Stop`
+- `once` 欄位僅在 Skills 和 Slash Commands 中有效，Agents 不支援
+
+### 安全控制
+
+- `allowManagedHooksOnly: true`：僅允許 managed hooks（企業管理員設定）
 - `disableAllHooks: true`：完全停用所有 hooks
+- `TeammateIdle` 不支援 prompt / agent hook
+
+### 安全最佳實踐
+
+1. **驗證和清理輸入** — 永遠不要盲目信任 stdin 資料
+2. **引用 shell 變數** — 使用 `"$VAR"` 而非 `$VAR`
+3. **阻止路徑遍歷** — 檢查檔案路徑中的 `..`
+4. **使用絕對路徑** — 為腳本指定完整路徑（用 `"$CLAUDE_PROJECT_DIR"` 或 `"${CLAUDE_PLUGIN_ROOT}"`）
+5. **跳過敏感檔案** — 避免 `.env`、`.git/`、金鑰等
 
 ---
 
@@ -632,8 +761,10 @@ Hook 必須通過以下驗證：
 | V-HK-11 | 腳本使用 `${CLAUDE_PLUGIN_ROOT}` 而非硬編碼路徑 | Warning |
 | V-HK-12 | `timeout` 為正整數 | Warning |
 | V-HK-13 | `statusMessage` 為字串類型（若提供） | Warning |
-| V-HK-14 | `once` 為布林類型（若提供） | Warning |
+| V-HK-14 | `once` 為布林類型（若提供），且僅用於 Skills 和 Slash Commands 的 hooks | Warning |
 | V-HK-15 | `async` 為布林類型且僅用於 command hook（若提供） | Warning |
+| V-HK-16 | hook entry 無多餘欄位（白名單：type/command/prompt/model/timeout/statusMessage/once/async） | Error |
+| V-HK-17 | hook group 無多餘欄位（白名單：matcher/hooks/description） | Error |
 
 ### 合法 Event 名稱（14 個）
 
@@ -647,11 +778,33 @@ SubagentStop, Stop, TeammateIdle, TaskCompleted, PreCompact, SessionEnd
 
 ## 十四、偵錯
 
+### 基本方法
+
 | 方法 | 說明 |
 |------|------|
 | `claude --debug` | 啟用 debug 模式，支援分類過濾（例如 `"api,hooks"`） |
-| `Ctrl+O` | 切換 verbose mode |
-| `/hooks` | 互動式選單，檢視與管理 hooks |
+| `Ctrl+O` | 切換 verbose mode，顯示 hook 執行進度和輸出 |
+| `/hooks` | 互動式選單，檢視、新增、管理 hooks |
+
+### Debug 輸出範例
+
+```
+[DEBUG] Executing hooks for PostToolUse:Write
+[DEBUG] Getting matching hook commands for PostToolUse with query: Write
+[DEBUG] Found 1 hook matchers in settings
+[DEBUG] Matched 1 hooks for query "Write"
+[DEBUG] Found 1 hook commands to execute
+[DEBUG] Executing hook command: <命令> with timeout 60000ms
+[DEBUG] Hook command completed with status 0: <stdout>
+```
+
+### 故障排除清單
+
+1. **檢查配置** — 執行 `/hooks` 確認 hook 已註冊
+2. **驗證 JSON 語法** — 確保 settings.json 有效
+3. **手動測試命令** — 先在終端機執行 hook 命令
+4. **檢查執行權限** — 確保腳本有 `+x` 權限
+5. **注意大小寫** — matcher 匹配工具名稱時區分大小寫
 
 ---
 
