@@ -1,0 +1,11 @@
+{
+  "stages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "DOCS"],
+  "stageLabels": {
+    "PLAN": "規劃",
+    "ARCH": "架構",
+    "DEV": "開發",
+    "REVIEW": "審查",
+    "TEST": "測試",
+    "DOCS": "文件"
+  }
+}
