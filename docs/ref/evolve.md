@@ -45,14 +45,14 @@ evolve 是 Vibe marketplace 的知識進化 plugin。它做兩件互補的事：
 
 | 名稱 | Model | 權限 | 說明 |
 |------|:-----:|:----:|------|
-| `doc-updater` | opus | 可寫 | 分析程式碼變更並更新對應文件 |
+| `doc-updater` | haiku | 可寫 | 分析程式碼變更並更新對應文件 |
 
 ### Hooks（2 個）
 
-| 事件 | 名稱 | 類型 | 說明 |
-|------|------|:----:|------|
-| SessionEnd | evaluate-session | prompt | 評估 session 是否有可提取模式 |
-| SessionStart | load-instincts | command | 載入高信心 instincts |
+| 事件 | 名稱 | 類型 | 強度 | 說明 |
+|------|------|:----:|:----:|------|
+| SessionEnd | evaluate-session | prompt | 軟建議 | 評估 session 是否有可提取模式 |
+| SessionStart | load-instincts | command | — | 載入高信心 instincts |
 
 ---
 
@@ -141,11 +141,10 @@ description: 文件同步 — 偵測程式碼與文件不同步並更新。
 ---
 name: doc-updater
 description: >-
-  Analyzes code changes and automatically updates corresponding
-  documentation. Mechanical changes are auto-applied; semantic
-  changes produce suggestions for review.
+  分析程式碼變更並自動更新對應文件。機械性變更自動套用，
+  語意性變更產出建議供人工審查。
 tools: Read, Write, Edit, Bash, Grep, Glob
-model: opus
+model: haiku
 color: green
 maxTurns: 30
 permissionMode: acceptEdits

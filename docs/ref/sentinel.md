@@ -43,24 +43,25 @@ sentinel 是 Vibe marketplace 的品質全鏈守衛。它涵蓋從**靜態分析
 | `coverage` | 覆蓋率分析 — 目標 80%，關鍵路徑 100% |
 | `verify` | 綜合驗證 — Build → Types → Lint → Tests → Git |
 
-### Agents（4 個）
+### Agents（5 個）
 
 | 名稱 | Model | 權限 | 說明 |
 |------|:-----:|:----:|------|
 | `code-reviewer` | opus | 唯讀 | 通用程式碼審查，按 CRITICAL→HIGH→MEDIUM→LOW 排序 |
 | `security-reviewer` | opus | 唯讀 | OWASP Top 10 安全漏洞檢測 |
-| `build-error-resolver` | opus | 可寫 | Build 錯誤最小化修復（最多 3 輪） |
-| `e2e-runner` | opus | 可寫 | Playwright 測試管理 — 建立 Page Objects、執行、除錯 |
+| `tester` | sonnet | 可寫 | 獨立測試視角 — 邊界案例、整合測試、覆蓋率 |
+| `build-error-resolver` | haiku | 可寫 | Build 錯誤最小化修復（最多 3 輪） |
+| `e2e-runner` | sonnet | 可寫 | Playwright 測試管理 — 建立 Page Objects、執行、除錯 |
 
 ### Hooks（5 個）
 
-| 事件 | 名稱 | 類型 | 說明 |
-|------|------|:----:|------|
-| PostToolUse | auto-lint | command | Write/Edit 後自動 lint |
-| PostToolUse | auto-format | command | Write/Edit 後自動 format |
-| PostToolUse | test-check | prompt | 修改商業邏輯後提醒跑測試 |
-| Stop | console-log-check | command | 結束前檢查殘留 console.log |
-| PreToolUse | danger-guard | command | 攔截高風險指令 |
+| 事件 | 名稱 | 類型 | 強度 | 說明 |
+|------|------|:----:|:----:|------|
+| PostToolUse | auto-lint | command | 強建議 | Write/Edit 後自動 lint，錯誤注入 systemMessage |
+| PostToolUse | auto-format | command | — | Write/Edit 後自動套用格式化 |
+| PostToolUse | test-check | prompt | 軟建議 | 修改商業邏輯後提醒跑測試 |
+| Stop | console-log-check | command | 強建議 | 結束前檢查殘留 console.log，注入 systemMessage |
+| PreToolUse | danger-guard | command | 硬阻擋 | 攔截高風險指令（exit 2） |
 
 ---
 
@@ -183,9 +184,8 @@ description: 綜合驗證 — Build → Types → Lint → Tests → console.log
 ---
 name: code-reviewer
 description: >-
-  Reviews code quality including correctness, security,
-  performance and maintainability. Produces structured reports
-  sorted by severity (CRITICAL → HIGH → MEDIUM → LOW).
+  全面審查程式碼品質，包含正確性、安全性、效能與可維護性。
+  產出按嚴重程度排序的結構化報告（CRITICAL → HIGH → MEDIUM → LOW）。
 tools: Read, Grep, Glob, Bash
 model: opus
 color: blue
@@ -203,9 +203,8 @@ memory: project
 ---
 name: security-reviewer
 description: >-
-  Performs OWASP Top 10 security vulnerability detection,
-  traces data flows, and reports with attack scenarios
-  and remediation suggestions.
+  執行 OWASP Top 10 安全漏洞檢測，追蹤資料流，
+  產出含攻擊場景與修復建議的安全報告。
 tools: Read, Grep, Glob, Bash
 model: opus
 color: red
@@ -217,17 +216,38 @@ memory: project
 
 **工作流**：識別攻擊面 → 追蹤資料流 → 檢測 OWASP Top 10 → 報告含攻擊場景和修復建議
 
-### 5.3 build-error-resolver（可寫）
+### 5.3 tester（可寫）
+
+```yaml
+---
+name: tester
+description: >-
+  獨立測試視角的測試撰寫者。分析程式碼的邊界案例，
+  撰寫整合測試，驗證覆蓋率目標。不參考 developer 的
+  測試邏輯 — 純粹從規格與程式碼行為推斷應測什麼。
+tools: Read, Write, Edit, Bash, Grep, Glob
+model: sonnet
+color: lime
+maxTurns: 30
+permissionMode: acceptEdits
+memory: project
+---
+```
+
+**工作流**：分析公開介面 → 設計邊界案例 → 撰寫獨立測試 → 執行 + 覆蓋率檢查
+
+**關鍵規則**：不看 developer 的測試理由，從規格和行為獨立推斷測試案例。
+
+### 5.4 build-error-resolver（可寫）
 
 ```yaml
 ---
 name: build-error-resolver
 description: >-
-  Resolves build errors with minimal, targeted fixes.
-  Only fixes errors — no refactoring or optimization.
-  Maximum 3 fix-verify cycles.
+  以最小、精準的修復解決 build 錯誤。
+  只修錯誤 — 不重構不優化。最多 3 輪修復-驗證循環。
 tools: Read, Write, Edit, Bash, Grep, Glob
-model: opus
+model: haiku
 color: orange
 maxTurns: 15
 permissionMode: acceptEdits
@@ -236,17 +256,16 @@ permissionMode: acceptEdits
 
 **關鍵規則**：只修錯誤，不重構不優化。最多 3 輪。
 
-### 5.4 e2e-runner（可寫）
+### 5.5 e2e-runner（可寫）
 
 ```yaml
 ---
 name: e2e-runner
 description: >-
-  Manages Playwright E2E tests — creates Page Objects,
-  writes tests, executes, and debugs failures.
-  Maximum 3 debug cycles.
+  管理 Playwright E2E 測試 — 建立 Page Objects、
+  撰寫測試、執行、除錯失敗。最多 3 輪除錯循環。
 tools: Read, Write, Edit, Bash, Grep, Glob
-model: opus
+model: sonnet
 color: green
 maxTurns: 30
 permissionMode: acceptEdits
@@ -274,7 +293,7 @@ memory: project
 }
 ```
 
-偵測語言 → 選擇 linter → 執行 --fix → 回傳結果
+**強度：強建議** — 偵測語言 → 選擇 linter → 執行 --fix → 結果透過 `systemMessage` 注入，Claude 幾乎不會忽略 lint 錯誤。
 
 ### 6.2 PostToolUse: auto-format
 
@@ -290,7 +309,11 @@ memory: project
 }
 ```
 
+**強度：動作型** — 直接套用格式化，無需 Claude 決策。
+
 ### 6.3 PostToolUse: test-check
+
+**強度：軟建議** — prompt hook 回應作為 `additionalContext`，Claude 可自行判斷是否跑測試。
 
 ```json
 {
@@ -306,11 +329,15 @@ memory: project
 
 ### 6.4 Stop: console-log-check
 
+**強度：強建議** — 偵測殘留 console.log/debugger，透過 `systemMessage` 注入提醒。
+
 > **注意**：此 hook 定義為 `Stop`，但若在 agent frontmatter 中使用，會自動轉換為 `SubagentStop` 事件。
 
 必須有 `stop_hook_active` 防無限迴圈（當 `stop_hook_active === true` 時直接 exit 0）。
 
 ### 6.5 PreToolUse: danger-guard
+
+**強度：硬阻擋** — `exit 2` + stderr 直接阻止工具執行，Claude 無法繞過。
 
 攔截清單：`rm -rf /`、`DROP TABLE/DATABASE`、`git push --force main`、`chmod 777`
 
@@ -355,6 +382,7 @@ plugins/sentinel/
 ├── agents/
 │   ├── code-reviewer.md
 │   ├── security-reviewer.md
+│   ├── tester.md
 │   ├── build-error-resolver.md
 │   └── e2e-runner.md
 ├── hooks/
@@ -377,7 +405,7 @@ plugins/sentinel/
 | # | 條件 |
 |:-:|------|
 | S-01 | Plugin 可載入，8 個 skill 可呼叫 |
-| S-02 | 4 個 agent 可觸發 |
+| S-02 | 5 個 agent 可觸發 |
 | S-03 | auto-lint/auto-format hooks 在 Write/Edit 後觸發 |
 | S-04 | danger-guard 攔截 `rm -rf /` |
 | S-05 | console-log-check 在 Stop 時偵測殘留 |
@@ -398,6 +426,7 @@ plugins/sentinel/
   "agents": [
     "./agents/code-reviewer.md",
     "./agents/security-reviewer.md",
+    "./agents/tester.md",
     "./agents/build-error-resolver.md",
     "./agents/e2e-runner.md"
   ]

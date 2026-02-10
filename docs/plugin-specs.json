@@ -20,10 +20,10 @@
       "buildOrder": 1,
       "tags": ["planning", "architecture", "compact", "session", "checkpoint"],
       "expected": {
-        "skills": ["plan", "architect", "compact", "checkpoint", "env-detect"],
-        "agents": ["planner", "architect"],
-        "hooks": 4,
-        "scripts": 7
+        "skills": ["plan", "architect", "compact", "checkpoint", "env-detect", "cancel"],
+        "agents": ["planner", "architect", "developer"],
+        "hooks": 8,
+        "scripts": 11
       }
     },
     "sentinel": {
@@ -34,7 +34,7 @@
       "tags": ["lint", "format", "review", "security", "tdd", "e2e", "testing"],
       "expected": {
         "skills": ["review", "lint", "format", "security", "tdd", "e2e", "coverage", "verify"],
-        "agents": ["code-reviewer", "security-reviewer", "build-error-resolver", "e2e-runner"],
+        "agents": ["code-reviewer", "security-reviewer", "tester", "build-error-resolver", "e2e-runner"],
         "hooks": 5,
         "scripts": 6
       }
