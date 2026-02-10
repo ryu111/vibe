@@ -13,6 +13,7 @@ const ROOT = process.cwd();
 const SPECS_PATH = path.join(ROOT, 'docs', 'plugin-specs.json');
 const PROGRESS_PATH = path.join(ROOT, 'docs', 'progress.json');
 const OUTPUT_PATH = path.join(ROOT, 'docs', 'dashboard.html');
+const INDEX_PATH = path.join(ROOT, 'docs', 'ref', 'index.md');
 
 function loadJSON(p) {
   return JSON.parse(fs.readFileSync(p, 'utf-8'));
@@ -431,7 +432,7 @@ function genFlowDiagram() {
         },
       ],
       extraSteps: [
-        { label: 'SessionStart: load-context', auto: true },
+        { label: 'SessionStart: pipeline-init', auto: true },
         { label: 'PreToolUse: suggest-compact', auto: true },
         { label: '/flow:compact', auto: false },
         { label: '/flow:checkpoint', auto: false },
@@ -542,11 +543,8 @@ function genFlowDiagram() {
         },
       ],
       extraSteps: [
-        { label: 'SessionStart: load-instincts', auto: true },
-        { label: 'SessionEnd: evaluate-session', auto: true },
-        { label: '/evolve:learn', auto: false },
         { label: '/evolve:evolve', auto: false },
-        { label: '/evolve:doc-gen', auto: false },
+        { label: '/evolve:doc-sync', auto: false },
       ],
     },
   ];
@@ -1199,13 +1197,214 @@ ${genAgentDetails()}
 `;
 }
 
+// ─── index.md 自動生成 ────────────────────────
+
+function generateIndex(specs) {
+  const pluginEntries = Object.entries(specs.plugins)
+    .sort((a, b) => a[1].buildOrder - b[1].buildOrder);
+  const buildPlugins = pluginEntries.filter(([name]) => name !== 'forge');
+
+  let totalSkills = 0, totalAgents = 0, totalHooks = 0, totalScripts = 0;
+  for (const [, spec] of pluginEntries) {
+    totalSkills += spec.expected.skills.length;
+    totalAgents += spec.expected.agents.length;
+    totalHooks += spec.expected.hooks;
+    totalScripts += spec.expected.scripts;
+  }
+  const totalAll = totalSkills + totalAgents + totalHooks + totalScripts;
+  const pluginCount = pluginEntries.length;
+  const doneCount = pluginEntries.filter(([, s]) => s.priority === 'done').length;
+  const newCount = pluginCount - doneCount;
+  const patternsSkills = (specs.plugins.patterns || { expected: { skills: [] } }).expected.skills.length;
+  const dynamicSkills = totalSkills - patternsSkills;
+
+  // §4 建構順序
+  const buildRows = buildPlugins.map(([name, spec]) => {
+    const e = spec.expected;
+    const parts = [];
+    if (e.skills.length) parts.push(`${e.skills.length}S`);
+    if (e.agents.length) parts.push(`${e.agents.length}A`);
+    if (e.hooks) parts.push(`${e.hooks}H`);
+    if (e.scripts) parts.push(`${e.scripts}Sc`);
+    const phase = spec.buildOrder + 2;
+    let prereq = 'forge ✅';
+    if (name === 'patterns') prereq = '無';
+    else if (name === 'collab') prereq = 'Agent Teams';
+    else if (name === 'evolve') prereq = 'flow 可選';
+    return `| ${phase} | **${name}** | ${prereq} | ${parts.join(' + ')} |`;
+  }).join('\n');
+
+  // §5 文件索引
+  const fileRows = buildPlugins.map(([name, spec], i) => {
+    const e = spec.expected;
+    return `| ${i + 1} | ${name} | [${name}.md](${name}.md) | ${e.skills.length} | ${e.agents.length} | ${e.hooks} | ${e.scripts} |`;
+  }).join('\n');
+
+  return `# Vibe Marketplace — Plugin 設計總覽
+
+> ${pluginCount} 個 plugin（forge + ${newCount} 新）的總流程、依賴關係，以及各文件索引。
+>
+> **此檔案由 \`scripts/generate-dashboard.js\` 自動產生，請勿手動編輯。**
+> 修改來源：\`docs/plugin-specs.json\`（數量）+ \`scripts/generate-dashboard.js\`（結構）
+
+---
+
+## 1. 開發全流程圖
+
+完整視覺化流程圖請見 [dashboard.html](../dashboard.html)。
+
+\`\`\`
+開發者啟動 Claude Code
+    │
+    ▼
+┌─ FLOW ─────────────────────────────────────┐
+│  SessionStart: pipeline-init（環境偵測+規則）│
+│  /flow:plan → /flow:architect → developer   │
+│  suggest-compact · checkpoint · cancel      │
+└─────────────────────┬───────────────────────┘
+                      ▼
+┌─ PATTERNS ──────────────────────────────────┐
+│  8 個純知識 skills（無 hooks/agents）         │
+└─────────────────────┬───────────────────────┘
+                      ▼
+┌─ SENTINEL ──────────────────────────────────┐
+│  自動: auto-lint · auto-format · test-check │
+│  手動: review · security · tdd · e2e · verify│
+│  攔截: danger-guard · console-log-check     │
+└─────────────────────┬───────────────────────┘
+                      ▼
+┌─ EVOLVE ────────────────────────────────────┐
+│  /evolve:evolve（知識進化）                   │
+│  /evolve:doc-sync（文件同步）                 │
+│  agent: doc-updater                         │
+└─────────────────────┬───────────────────────┘
+                      ▼
+                   完成
+
+  ┌─ COLLAB ──── 任意階段可插入（需 Agent Teams）┐
+  │  adversarial-plan · review · refactor       │
+  └─────────────────────────────────────────────┘
+
+  ┌─ claude-mem ──── 獨立 plugin，推薦搭配 ─────┐
+  │  自動: 觀察捕獲 · session 摘要 · context 注入│
+  └─────────────────────────────────────────────┘
+\`\`\`
+
+---
+
+## 2. 自動 vs 手動
+
+\`\`\`
+自動觸發（Hooks，使用者無感）            手動觸發（Skills，使用者主動）
+─────────────────────────            ─────────────────────────────
+FLOW     SessionStart: pipeline-init  /flow:plan       功能規劃
+FLOW     PreToolUse: suggest-compact  /flow:architect  架構設計
+FLOW     PreCompact: log-compact      /flow:compact    手動壓縮
+FLOW     SubagentStop: stage-trans.   /flow:checkpoint 建立檢查點
+FLOW     Stop: pipeline-check         /flow:env-detect 環境偵測
+FLOW     Stop: task-guard             /flow:cancel     取消鎖定
+SENTINEL PostToolUse: auto-lint       /sentinel:review  深度審查
+SENTINEL PostToolUse: auto-format     /sentinel:security 安全掃描
+SENTINEL PostToolUse: test-check      /sentinel:tdd     TDD 工作流
+SENTINEL PreToolUse: danger-guard     /sentinel:e2e     E2E 測試
+SENTINEL Stop: console-log-check      /sentinel:coverage 覆蓋率
+COLLAB   SessionStart: team-init      /sentinel:lint    手動 lint
+                                      /sentinel:format  手動格式化
+                                      /sentinel:verify  綜合驗證
+                                      /evolve:evolve    知識進化
+                                      /evolve:doc-sync  文件同步
+                                      /collab:adversarial-plan  競爭規劃
+                                      /collab:adversarial-review 對抗審查
+                                      /collab:adversarial-refactor 競爭重構
+
+自動: ${totalHooks} hooks                         手動: ${dynamicSkills} skills（+ patterns ${patternsSkills} 知識 skills）
+跨 session 記憶：claude-mem（獨立 plugin，非依賴）
+\`\`\`
+
+---
+
+## 3. 依賴關係圖
+
+\`\`\`
+┌─────────────────────────────────────────────────────────┐
+│                    獨立（可單獨安裝）                      │
+│    ┌────────────┐    ┌────────────┐                     │
+│    │  patterns  │    │ claude-mem │                     │
+│    │  純知識庫   │    │  記憶持久化 │                     │
+│    └────────────┘    └────────────┘                     │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│                 核心雙引擎（建議一起安裝）                  │
+│    ┌────────────┐    ┌────────────┐                     │
+│    │    flow    │    │  sentinel  │                     │
+│    └────────────┘    └────────────┘                     │
+│          │                  │                           │
+│          └──────┬───────────┘                           │
+│                 │ 可選增強                               │
+│          ┌──────▼───────┐                               │
+│          │   evolve     │                               │
+│          └──────────────┘                               │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│                 進階（需 Agent Teams）                    │
+│    ┌────────────┐                                       │
+│    │   collab   │  需 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS │
+│    └────────────┘                                       │
+└─────────────────────────────────────────────────────────┘
+\`\`\`
+
+---
+
+## 4. 建構順序
+
+| Phase | Plugin | 前置條件 | 組件數 |
+|:-----:|--------|---------|:------:|
+${buildRows}
+
+> **flow 先於 sentinel**：規劃 → 寫碼 → 品質檢查，符合自然開發流程。
+
+---
+
+## 5. 文件索引
+
+| # | Plugin | 文件 | Skills | Agents | Hooks | Scripts |
+|:-:|--------|------|:------:|:------:|:-----:|:-------:|
+${fileRows}
+
+> **S** = Skill, **A** = Agent, **H** = Hook, **Sc** = Script
+
+---
+
+## 6. 總量統計
+
+| 組件類型 | 數量 | 說明 |
+|---------|:----:|------|
+| **Plugins** | ${pluginCount} | forge ✅ + ${newCount} 新 |
+| **Skills** | ${totalSkills} | ${dynamicSkills} 動態能力 + ${patternsSkills} 知識庫（patterns） |
+| **Agents** | ${totalAgents} | 跨 ${pluginEntries.filter(([, s]) => s.expected.agents.length > 0).length} 個 plugins |
+| **Hooks** | ${totalHooks} | 自動觸發 |
+| **Scripts** | ${totalScripts} | hook 腳本 + 共用函式庫 |
+| **合計** | ${totalAll} | 跨 ${pluginCount} 個獨立安裝的 plugins |
+`;
+}
+
 // ─── 主流程 ────────────────────────────────────
 
 function main() {
+  // index.md 只需要 specs（不需要 progress）
+  if (fs.existsSync(SPECS_PATH)) {
+    const specs = loadJSON(SPECS_PATH);
+    fs.writeFileSync(INDEX_PATH, generateIndex(specs));
+    console.log(`Index 已更新：docs/ref/index.md`);
+  }
+
+  // dashboard 需要 specs + progress
   for (const p of [SPECS_PATH, PROGRESS_PATH]) {
     if (!fs.existsSync(p)) {
-      console.error(`找不到 ${path.basename(p)}`);
-      process.exit(1);
+      console.error(`找不到 ${path.basename(p)}（跳過 dashboard）`);
+      return;
     }
   }
   const specs = loadJSON(SPECS_PATH);

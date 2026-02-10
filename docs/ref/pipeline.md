@@ -248,9 +248,11 @@ hooks.json 定義：
 }
 ```
 
-### 4.2 pipeline-rules（SessionStart · 合併在 session-start.js）
+### 4.2 pipeline-rules（SessionStart · 合併在 pipeline-init.js）
 
-合併在現有的 `session-start.js` 中，在載入 context 的同時注入 pipeline 規則。
+合併在 `pipeline-init.js` 中，在環境偵測的同時注入 pipeline 規則。
+
+> **Note**：跨 session context 載入由 claude-mem 的 SessionStart hook 獨立處理。
 
 **輸出**：JSON `{ "additionalContext": "..." }`
 
@@ -502,13 +504,13 @@ Claude 收到 systemMessage 後會用自然語言向使用者報告。
 
 | 優先 | 檔案 | 變動 |
 |:----:|------|------|
-| 5 | `plugins/flow/scripts/hooks/session-start.js` | 合併 pipeline-rules 注入（§4.2） |
+| 5 | `plugins/flow/scripts/hooks/pipeline-init.js` | 環境偵測 + pipeline-rules 注入（§4.2） |
 | 6 | `plugins/flow/hooks/hooks.json` | 新增 SubagentStop、Stop 兩個 hook 定義 |
 | 7 | `plugins/flow/.claude-plugin/plugin.json` | 新增 `pipeline` 欄位 |
 | 8 | `plugins/sentinel/.claude-plugin/plugin.json` | 新增 `pipeline` 欄位 |
 | 9 | `plugins/evolve/.claude-plugin/plugin.json` | 新增 `pipeline` 欄位 |
-| 10 | `docs/ref/flow.md` | Skills 5→6、Hooks 5→8、Scripts 7→11、驗收 +8 |
-| 11 | `docs/plugin-specs.json` | flow skills +cancel、hooks 5→8、scripts 7→11 |
+| 10 | `docs/ref/flow.md` | Skills 6、Hooks 7（移除 session）、Scripts 9（移除 session）、驗收 16 條 |
+| 11 | `docs/plugin-specs.json` | flow hooks 7、scripts 9；evolve hooks 0、scripts 0 |
 | 12 | `scripts/generate-dashboard.js` | Pipeline 視覺化同步更新 |
 
 ### flow.md 具體更新
@@ -553,8 +555,8 @@ Claude 收到 systemMessage 後會用自然語言向使用者報告。
 "flow": {
   "expected": {
     "skills": ["plan", "architect", "compact", "checkpoint", "env-detect", "cancel"],
-    "hooks": 8,
-    "scripts": 11
+    "hooks": 7,
+    "scripts": 9
   }
 }
 ```

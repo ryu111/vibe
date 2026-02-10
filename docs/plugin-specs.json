@@ -14,16 +14,16 @@
       }
     },
     "flow": {
-      "description": "開發工作流 — 規劃、架構、compact、session 持久化、環境偵測",
+      "description": "開發工作流 — 規劃、架構、compact、pipeline 管理、環境偵測",
       "priority": "high",
       "category": "workflow",
       "buildOrder": 1,
-      "tags": ["planning", "architecture", "compact", "session", "checkpoint"],
+      "tags": ["planning", "architecture", "compact", "pipeline", "checkpoint"],
       "expected": {
         "skills": ["plan", "architect", "compact", "checkpoint", "env-detect", "cancel"],
         "agents": ["planner", "architect", "developer"],
-        "hooks": 8,
-        "scripts": 11
+        "hooks": 7,
+        "scripts": 9
       }
     },
     "sentinel": {
@@ -53,16 +53,16 @@
       }
     },
     "evolve": {
-      "description": "知識進化 — 持續學習、instincts 進化、文件生成與同步",
+      "description": "知識進化 — instincts 聚類進化、文件偵測與同步",
       "priority": "low",
       "category": "intelligence",
       "buildOrder": 4,
-      "tags": ["learning", "evolution", "instincts", "docs"],
+      "tags": ["evolution", "instincts", "docs"],
       "expected": {
-        "skills": ["learn", "evolve", "doc-gen", "doc-sync"],
+        "skills": ["evolve", "doc-sync"],
         "agents": ["doc-updater"],
-        "hooks": 2,
-        "scripts": 2
+        "hooks": 0,
+        "scripts": 0
       }
     },
     "collab": {

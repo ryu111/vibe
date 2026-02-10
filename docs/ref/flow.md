@@ -1,30 +1,30 @@
 # flow — 開發工作流
 
 > **優先級**：高（第二個建構）
-> **定位**：開發全生命週期 — 規劃、架構、compact、session 持久化、環境偵測
-> **合併自**：原 flow + 原 session
-> **ECC 對應**：planner/architect agents + suggest-compact hook + session hooks + /plan /checkpoint commands
+> **定位**：開發工作流 — 規劃、架構、compact、pipeline 管理、環境偵測
+> **合併自**：原 flow + 原 session（session 持久化已移交 claude-mem）
+> **ECC 對應**：planner/architect agents + suggest-compact hook + /plan /checkpoint commands
 
 ---
 
 ## 1. 概述
 
-flow 是 Vibe marketplace 的開發工作流引擎。它管理**從 session 開始到結束**的完整生命週期：載入前次 context → 規劃 → 架構設計 → context 管理 → 儲存進度。
+flow 是 Vibe marketplace 的開發工作流引擎。它管理**規劃 → 架構 → 實作**的完整 pipeline，以及 context 壓縮和環境偵測。
 
-合併 session 的原因：計畫進度和 session 持久化本質上是同一件事 — 都是「接續上次的工作」。
+Session 持久化（跨 session context）已移交 **claude-mem**（獨立 plugin，推薦搭配但非依賴）。flow 專注於工作流本身。
 
-核心理念：**先想清楚再寫碼，上次結束的地方 = 這次開始的地方。**
+核心理念：**先想清楚再寫碼，pipeline 引導每一步。**
 
 ## 2. 設計目標
 
 | # | 目標 | 說明 |
 |:-:|------|------|
-| 1 | **Session 連續性** | SessionStart/End hooks 自動載入/儲存 context |
-| 2 | **需求結構化** | 模糊需求 → 分階段實作計畫 |
-| 3 | **架構設計** | 分析現有程式碼庫，提出符合慣例的方案 |
-| 4 | **Context 管理** | 追蹤 tool calls，在邏輯邊界建議 compact |
-| 5 | **環境感知** | 自動偵測語言/框架/PM/工具，供其他 plugin 使用 |
-| 6 | **Checkpoint** | 手動建立工作檢查點，可回溯恢復 |
+| 1 | **需求結構化** | 模糊需求 → 分階段實作計畫 |
+| 2 | **架構設計** | 分析現有程式碼庫，提出符合慣例的方案 |
+| 3 | **Context 管理** | 追蹤 tool calls，在邏輯邊界建議 compact |
+| 4 | **環境感知** | 自動偵測語言/框架/PM/工具，供其他 plugin 使用 |
+| 5 | **Checkpoint** | 手動建立工作檢查點，可回溯恢復 |
+| 6 | **Pipeline 管理** | 任務分類 → 階段轉換 → 完整性檢查 → 任務鎖定 |
 
 ---
 
@@ -49,18 +49,19 @@ flow 是 Vibe marketplace 的開發工作流引擎。它管理**從 session 開�
 | `architect` | opus | 唯讀 | 程式碼庫分析 + 架構方案 + 介面設計 |
 | `developer` | sonnet | 可寫 | 按計畫實作程式碼 + 寫測試 + 遵循架構慣例 |
 
-### Hooks（8 個）
+### Hooks（7 個）
 
 | 事件 | 名稱 | 類型 | 強度 | 說明 |
 |------|------|:----:|:----:|------|
 | UserPromptSubmit | task-classifier | prompt | 軟建議 | 分類任務類型，注入建議的 pipeline 階段 |
-| SessionStart | load-context | command | — | 載入前次 context + 環境偵測 + pipeline 規則注入 |
-| SessionEnd | save-context | command | — | 儲存當前 context + 清理舊 sessions |
+| SessionStart | pipeline-init | command | — | 環境偵測 + pipeline 規則注入 |
 | PreToolUse | suggest-compact | command | 軟建議 | 追蹤 tool calls，達 50 建議 compact |
 | PreCompact | log-compact | command | — | 記錄 compact 事件 + 重設計數 |
 | SubagentStop | stage-transition | command | 強建議 | Agent 完成後建議下一個 pipeline 階段 |
 | Stop | pipeline-check | command | 強建議 | 結束前檢查是否有遺漏的建議階段 |
 | Stop | task-guard | command | 絕對阻擋 | 未完成任務時阻擋退出（`decision: "block"`） |
+
+> **Session 持久化**（載入/儲存 context）由 claude-mem 處理，不在 flow 範圍內。
 
 ---
 
@@ -271,66 +272,38 @@ memory: project
 | docs | DOCS | 「幫 API 寫文件」 |
 | tdd | TEST(RED) → DEV(GREEN) → REVIEW | 「用 TDD 寫這個功能」 |
 
-### 6.2 SessionStart: load-context
+### 6.2 SessionStart: pipeline-init
 
 ```json
 {
   "matcher": "startup|resume",
   "hooks": [{
     "type": "command",
-    "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/session-start.js",
+    "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/pipeline-init.js",
     "timeout": 10,
     "once": true,
-    "statusMessage": "載入工作環境..."
+    "statusMessage": "初始化工作環境..."
   }]
 }
 ```
 
 **行為**：
-1. 讀取最近 session 檔案（`~/.claude/sessions/`）
-2. 載入前次 context（修改中的檔案、任務進度）
-3. 偵測專案環境（語言/框架/PM/工具）
-4. 產出 hookSpecificOutput 供 Claude 參考
+1. 偵測專案環境（語言/框架/PM/工具）
+2. 注入 pipeline 委派規則（`additionalContext`）
+3. 產出 hookSpecificOutput 供 Claude 參考
 
-### 6.3 SessionEnd: save-context
+> **Note**：跨 session context（前次修改檔案、任務進度）由 claude-mem 的 SessionStart hook 處理。
+> 此 hook 只負責環境偵測和 pipeline 規則注入。
 
-```json
-{
-  "matcher": null,
-  "hooks": [{
-    "type": "command",
-    "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/session-end.js",
-    "timeout": 10,
-    "statusMessage": "儲存工作進度..."
-  }]
-}
-```
-
-**行為**：收集 session 資訊 → 寫入 session 檔案 → 清理過舊的（保留最近 10 個）
-
-**Session 檔案格式**：
-
-```json
-{
-  "id": "sess-20260209-143000",
-  "repo": "my-app",
-  "timestamp": "2026-02-09T14:30:00Z",
-  "summary": "實作用戶認證 API — Phase 2/3 完成",
-  "modified_files": ["src/auth.ts"],
-  "task_progress": { "current_phase": "Phase 2", "completed": [...], "remaining": [...] },
-  "environment": { "language": "typescript", "framework": "next.js", "packageManager": "pnpm" }
-}
-```
-
-### 6.4 PreToolUse: suggest-compact
+### 6.3 PreToolUse: suggest-compact
 
 50 calls 閾值 → 每 25 calls 提醒 → 在邏輯邊界建議（不阻擋）
 
-### 6.5 PreCompact: log-compact
+### 6.4 PreCompact: log-compact
 
 記錄 compact 事件 → 重設 tool call 計數器
 
-### 6.6 SubagentStop: stage-transition
+### 6.5 SubagentStop: stage-transition
 
 ```json
 {
@@ -356,7 +329,7 @@ memory: project
 
 詳見 → `docs/ref/pipeline.md` §4.3
 
-### 6.7 Stop: pipeline-check
+### 6.6 Stop: pipeline-check
 
 ```json
 {
@@ -374,7 +347,7 @@ memory: project
 
 詳見 → `docs/ref/pipeline.md` §4.4
 
-### 6.8 Stop: task-guard
+### 6.7 Stop: task-guard
 
 ```json
 {
@@ -439,17 +412,17 @@ Stop 觸發
 
 | 腳本 | 位置 | 功能 |
 |------|------|------|
-| `session-start.js` | `scripts/hooks/` | 載入 context + 環境偵測 + pipeline 規則注入 |
-| `session-end.js` | `scripts/hooks/` | 儲存 context |
+| `pipeline-init.js` | `scripts/hooks/` | 環境偵測 + pipeline 規則注入 |
 | `suggest-compact.js` | `scripts/hooks/` | 追蹤 tool calls |
 | `log-compact.js` | `scripts/hooks/` | 記錄 compact 事件 |
 | `stage-transition.js` | `scripts/hooks/` | Pipeline 階段轉換 + state 管理 |
 | `pipeline-check.js` | `scripts/hooks/` | 結束前遺漏階段檢查 |
 | `task-guard.js` | `scripts/hooks/` | 任務完成前阻擋退出 |
-| `session-manager.js` | `scripts/lib/` | Session CRUD |
 | `env-detector.js` | `scripts/lib/` | 環境偵測 |
 | `counter.js` | `scripts/lib/` | tool call 計數器 |
 | `pipeline-discovery.js` | `scripts/lib/` | 跨 plugin pipeline 動態發現 |
+
+> Session CRUD（`session-manager.js`、`session-end.js`）已移除，由 claude-mem 處理。
 
 ---
 
@@ -481,18 +454,16 @@ plugins/flow/
 │   └── hooks.json
 └── scripts/
     ├── hooks/
-    │   ├── session-start.js         ← +pipeline 規則注入
-    │   ├── session-end.js
+    │   ├── pipeline-init.js         ← 環境偵測 + pipeline 規則
     │   ├── suggest-compact.js
     │   ├── log-compact.js
-    │   ├── stage-transition.js      ← 新增
-    │   ├── pipeline-check.js        ← 新增
-    │   └── task-guard.js            ← 新增
+    │   ├── stage-transition.js
+    │   ├── pipeline-check.js
+    │   └── task-guard.js
     └── lib/
-        ├── session-manager.js
         ├── env-detector.js
         ├── counter.js
-        └── pipeline-discovery.js    ← 新增
+        └── pipeline-discovery.js
 ```
 
 ---
@@ -504,20 +475,19 @@ plugins/flow/
 | F-01 | Plugin 可載入，6 個 skill 可呼叫 |
 | F-02 | 3 個 agent 可觸發 |
 | F-03 | task-classifier 在 UserPromptSubmit 時注入任務分類 |
-| F-04 | SessionStart hook 載入前次 context + 注入 pipeline 規則 |
-| F-05 | SessionEnd hook 儲存 context |
-| F-06 | suggest-compact 50+ calls 後提醒 |
-| F-07 | Checkpoint 可建立/列出/恢復 |
-| F-08 | env-detect 正確偵測 TS/Python/Go 環境 |
-| F-09 | forge:scaffold 驗證全 PASS |
-| F-10 | stage-transition 在 agent 完成後建議下一步 |
-| F-11 | pipeline-check 偵測遺漏階段並提醒 |
-| F-12 | 只裝 flow 時 pipeline 只含 PLAN → ARCH → DEV |
-| F-13 | 全裝時 pipeline 含完整 6 個階段 |
-| F-14 | 移除 sentinel 後自動跳過 REVIEW、TEST |
-| F-15 | task-guard 在有未完成 todo 時阻擋退出 |
-| F-16 | task-guard 達 5 次阻擋後強制放行 |
-| F-17 | `/flow:cancel` 可手動解除 task-guard |
+| F-04 | pipeline-init 在 SessionStart 注入 pipeline 規則 + 偵測環境 |
+| F-05 | suggest-compact 50+ calls 後提醒 |
+| F-06 | Checkpoint 可建立/列出/恢復 |
+| F-07 | env-detect 正確偵測 TS/Python/Go 環境 |
+| F-08 | forge:scaffold 驗證全 PASS |
+| F-09 | stage-transition 在 agent 完成後建議下一步 |
+| F-10 | pipeline-check 偵測遺漏階段並提醒 |
+| F-11 | 只裝 flow 時 pipeline 只含 PLAN → ARCH → DEV |
+| F-12 | 全裝時 pipeline 含完整 6 個階段 |
+| F-13 | 移除 sentinel 後自動跳過 REVIEW、TEST |
+| F-14 | task-guard 在有未完成 todo 時阻擋退出 |
+| F-15 | task-guard 達 5 次阻擋後強制放行 |
+| F-16 | `/flow:cancel` 可手動解除 task-guard |
 
 ---
 
@@ -527,7 +497,7 @@ plugins/flow/
 {
   "name": "flow",
   "version": "0.1.0",
-  "description": "開發工作流 — 規劃、架構、compact、session 持久化、環境偵測、任務鎖定",
+  "description": "開發工作流 — 規劃、架構、compact、pipeline 管理、環境偵測",
   "skills": ["./skills/"],
   "agents": [
     "./agents/planner.md",
