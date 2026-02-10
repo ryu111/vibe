@@ -5,12 +5,12 @@
  * 結束前檢查變更檔案中殘留的 console.log / debugger。
  * 強度：強建議（systemMessage 注入提醒）。
  */
-'use strict';
-const { execSync } = require('child_process');
+"use strict";
+const { execSync } = require("child_process");
 
-let input = '';
-process.stdin.on('data', d => input += d);
-process.stdin.on('end', () => {
+let input = "";
+process.stdin.on("data", (d) => (input += d));
+process.stdin.on("end", () => {
   try {
     const data = JSON.parse(input);
 
@@ -20,12 +20,19 @@ process.stdin.on('end', () => {
     // 取得變更的檔案
     let files = [];
     try {
-      const staged = execSync('git diff --cached --name-only 2>/dev/null', { stdio: 'pipe' })
-        .toString().trim();
-      const unstaged = execSync('git diff --name-only 2>/dev/null', { stdio: 'pipe' })
-        .toString().trim();
-      files = [...new Set([...staged.split('\n'), ...unstaged.split('\n')])]
-        .filter(f => f && /\.(js|jsx|ts|tsx|vue|svelte)$/.test(f));
+      const staged = execSync("git diff --cached --name-only 2>/dev/null", {
+        stdio: "pipe",
+      })
+        .toString()
+        .trim();
+      const unstaged = execSync("git diff --name-only 2>/dev/null", {
+        stdio: "pipe",
+      })
+        .toString()
+        .trim();
+      files = [
+        ...new Set([...staged.split("\n"), ...unstaged.split("\n")]),
+      ].filter((f) => f && /\.(js|jsx|ts|tsx|vue|svelte)$/.test(f));
     } catch {
       // 非 git 目錄或 git 不可用
       process.exit(0);
@@ -39,8 +46,10 @@ process.stdin.on('end', () => {
       try {
         const output = execSync(
           `grep -n "console\\.log\\|console\\.debug\\|debugger" "${file}" 2>/dev/null`,
-          { stdio: 'pipe' }
-        ).toString().trim();
+          { stdio: "pipe" },
+        )
+          .toString()
+          .trim();
 
         if (output) {
           findings.push({ file, lines: output });
@@ -54,13 +63,15 @@ process.stdin.on('end', () => {
 
     // 產出提醒
     const details = findings
-      .map(f => `**${f.file}**:\n\`\`\`\n${f.lines}\n\`\`\``)
-      .join('\n\n');
+      .map((f) => `**${f.file}**:\n\`\`\`\n${f.lines}\n\`\`\``)
+      .join("\n\n");
 
-    console.log(JSON.stringify({
-      continue: true,
-      systemMessage: `⚠️ 偵測到殘留的 debug 程式碼，建議移除後再結束：\n\n${details}`,
-    }));
+    console.log(
+      JSON.stringify({
+        continue: true,
+        systemMessage: `⚠️ 偵測到殘留的 debug 程式碼，建議移除後再結束：\n\n${details}`,
+      }),
+    );
   } catch (err) {
     process.stderr.write(`check-console-log: ${err.message}\n`);
   }

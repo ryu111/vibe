@@ -5,25 +5,25 @@
  * 副檔名 → 語言 → linter/formatter 映射。
  * 被 auto-lint.js 和 auto-format.js 共用。
  */
-'use strict';
-const path = require('path');
+"use strict";
+const path = require("path");
 
 const LANG_MAP = {
-  '.ts':   { lang: 'typescript',  linter: 'eslint',           formatter: 'prettier' },
-  '.tsx':  { lang: 'typescript',  linter: 'eslint',           formatter: 'prettier' },
-  '.js':   { lang: 'javascript',  linter: 'eslint',           formatter: 'prettier' },
-  '.jsx':  { lang: 'javascript',  linter: 'eslint',           formatter: 'prettier' },
-  '.mjs':  { lang: 'javascript',  linter: 'eslint',           formatter: 'prettier' },
-  '.cjs':  { lang: 'javascript',  linter: 'eslint',           formatter: 'prettier' },
-  '.py':   { lang: 'python',      linter: 'ruff check',       formatter: 'ruff format' },
-  '.go':   { lang: 'go',          linter: 'golangci-lint run', formatter: 'gofmt -w' },
-  '.css':  { lang: 'css',         linter: 'stylelint',        formatter: 'prettier' },
-  '.scss': { lang: 'scss',        linter: 'stylelint',        formatter: 'prettier' },
-  '.json': { lang: 'json',        linter: null,               formatter: 'prettier' },
-  '.md':   { lang: 'markdown',    linter: null,               formatter: 'prettier' },
-  '.html': { lang: 'html',        linter: null,               formatter: 'prettier' },
-  '.vue':  { lang: 'vue',         linter: 'eslint',           formatter: 'prettier' },
-  '.svelte': { lang: 'svelte',    linter: 'eslint',           formatter: 'prettier' },
+  ".ts": { lang: "typescript", linter: "eslint", formatter: "prettier" },
+  ".tsx": { lang: "typescript", linter: "eslint", formatter: "prettier" },
+  ".js": { lang: "javascript", linter: "eslint", formatter: "prettier" },
+  ".jsx": { lang: "javascript", linter: "eslint", formatter: "prettier" },
+  ".mjs": { lang: "javascript", linter: "eslint", formatter: "prettier" },
+  ".cjs": { lang: "javascript", linter: "eslint", formatter: "prettier" },
+  ".py": { lang: "python", linter: "ruff check", formatter: "ruff format" },
+  ".go": { lang: "go", linter: "golangci-lint run", formatter: "gofmt -w" },
+  ".css": { lang: "css", linter: "stylelint", formatter: "prettier" },
+  ".scss": { lang: "scss", linter: "stylelint", formatter: "prettier" },
+  ".json": { lang: "json", linter: null, formatter: "prettier" },
+  ".md": { lang: "markdown", linter: null, formatter: "prettier" },
+  ".html": { lang: "html", linter: null, formatter: "prettier" },
+  ".vue": { lang: "vue", linter: "eslint", formatter: "prettier" },
+  ".svelte": { lang: "svelte", linter: "eslint", formatter: "prettier" },
 };
 
 /**

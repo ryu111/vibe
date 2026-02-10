@@ -5,8 +5,8 @@
  * 偵測系統上已安裝的品質工具。
  * 被 auto-lint.js 和 auto-format.js 共用。
  */
-'use strict';
-const { execSync } = require('child_process');
+"use strict";
+const { execSync } = require("child_process");
 
 // 快取已偵測的結果（同一 process 內）
 const _cache = {};
@@ -17,10 +17,10 @@ const _cache = {};
  * @returns {boolean}
  */
 function isInstalled(cmd) {
-  const bin = cmd.split(' ')[0];
+  const bin = cmd.split(" ")[0];
   if (_cache[bin] !== undefined) return _cache[bin];
   try {
-    execSync(`which ${bin}`, { stdio: 'pipe' });
+    execSync(`which ${bin}`, { stdio: "pipe" });
     _cache[bin] = true;
   } catch {
     _cache[bin] = false;
@@ -36,8 +36,12 @@ function isInstalled(cmd) {
 function detectTools(langInfo) {
   if (!langInfo) return { linter: null, formatter: null };
   return {
-    linter: langInfo.linter && isInstalled(langInfo.linter) ? langInfo.linter : null,
-    formatter: langInfo.formatter && isInstalled(langInfo.formatter) ? langInfo.formatter : null,
+    linter:
+      langInfo.linter && isInstalled(langInfo.linter) ? langInfo.linter : null,
+    formatter:
+      langInfo.formatter && isInstalled(langInfo.formatter)
+        ? langInfo.formatter
+        : null,
   };
 }
 

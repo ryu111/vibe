@@ -6,24 +6,27 @@
  * 強度：強建議（systemMessage 注入錯誤資訊）。
  * 未安裝 linter 時靜默退出。
  */
-'use strict';
-const { execSync } = require('child_process');
-const path = require('path');
+"use strict";
+const { execSync } = require("child_process");
+const path = require("path");
 
-const langMap = require(path.join(__dirname, '..', 'lib', 'lang-map.js'));
-const toolDetector = require(path.join(__dirname, '..', 'lib', 'tool-detector.js'));
+const langMap = require(path.join(__dirname, "..", "lib", "lang-map.js"));
+const toolDetector = require(
+  path.join(__dirname, "..", "lib", "tool-detector.js"),
+);
 
-let input = '';
-process.stdin.on('data', d => input += d);
-process.stdin.on('end', () => {
+let input = "";
+process.stdin.on("data", (d) => (input += d));
+process.stdin.on("end", () => {
   try {
     const data = JSON.parse(input);
 
     // 取得被修改的檔案路徑
-    const filePath = data.tool_input?.file_path
-      || data.tool_input?.path
-      || data.input?.file_path
-      || null;
+    const filePath =
+      data.tool_input?.file_path ||
+      data.tool_input?.path ||
+      data.input?.file_path ||
+      null;
 
     if (!filePath) process.exit(0);
 
@@ -38,18 +41,20 @@ process.stdin.on('end', () => {
     // 執行 lint --fix
     const lintCmd = `${tools.linter} --fix "${filePath}"`;
     try {
-      execSync(lintCmd, { stdio: 'pipe', timeout: 12000 });
+      execSync(lintCmd, { stdio: "pipe", timeout: 12000 });
     } catch (err) {
       // lint 有錯誤（exit code !== 0）
-      const stderr = err.stderr ? err.stderr.toString().trim() : '';
-      const stdout = err.stdout ? err.stdout.toString().trim() : '';
+      const stderr = err.stderr ? err.stderr.toString().trim() : "";
+      const stdout = err.stdout ? err.stdout.toString().trim() : "";
       const output = stderr || stdout;
 
       if (output) {
-        console.log(JSON.stringify({
-          continue: true,
-          systemMessage: `⚠️ Lint 發現問題（${info.lang}）：\n\`\`\`\n${output.slice(0, 500)}\n\`\`\`\n請修復上述 lint 錯誤。`,
-        }));
+        console.log(
+          JSON.stringify({
+            continue: true,
+            systemMessage: `⚠️ Lint 發現問題（${info.lang}）：\n\`\`\`\n${output.slice(0, 500)}\n\`\`\`\n請修復上述 lint 錯誤。`,
+          }),
+        );
       }
       process.exit(0);
     }

@@ -5,36 +5,45 @@
  * 攔截高風險 Bash 指令。
  * 強度：硬阻擋（exit 2 + stderr）。
  */
-'use strict';
+"use strict";
 
 const DANGER_PATTERNS = [
-  { pattern: /\brm\s+(-\w*r\w*f\w*|-\w*f\w*r\w*)\s+\/(\s|$)/, desc: 'rm -rf /' },
-  { pattern: /\bDROP\s+(TABLE|DATABASE)\b/i, desc: 'DROP TABLE/DATABASE' },
-  { pattern: /\bgit\s+push\s+--force\s+(main|master)\b/, desc: 'git push --force main/master' },
-  { pattern: /\bgit\s+push\s+-f\s+(main|master)\b/, desc: 'git push -f main/master' },
-  { pattern: /\bchmod\s+777\b/, desc: 'chmod 777' },
-  { pattern: />\s*\/dev\/sd[a-z]/, desc: '寫入裝置檔案' },
-  { pattern: /\bmkfs\b/, desc: 'mkfs 格式化磁碟' },
-  { pattern: /\bdd\s+.*of=\/dev\//, desc: 'dd 寫入裝置' },
+  {
+    pattern: /\brm\s+(-\w*r\w*f\w*|-\w*f\w*r\w*)\s+\/(\s|$)/,
+    desc: "rm -rf /",
+  },
+  { pattern: /\bDROP\s+(TABLE|DATABASE)\b/i, desc: "DROP TABLE/DATABASE" },
+  {
+    pattern: /\bgit\s+push\s+--force\s+(main|master)\b/,
+    desc: "git push --force main/master",
+  },
+  {
+    pattern: /\bgit\s+push\s+-f\s+(main|master)\b/,
+    desc: "git push -f main/master",
+  },
+  { pattern: /\bchmod\s+777\b/, desc: "chmod 777" },
+  { pattern: />\s*\/dev\/sd[a-z]/, desc: "寫入裝置檔案" },
+  { pattern: /\bmkfs\b/, desc: "mkfs 格式化磁碟" },
+  { pattern: /\bdd\s+.*of=\/dev\//, desc: "dd 寫入裝置" },
 ];
 
-let input = '';
-process.stdin.on('data', d => input += d);
-process.stdin.on('end', () => {
+let input = "";
+process.stdin.on("data", (d) => (input += d));
+process.stdin.on("end", () => {
   try {
     const data = JSON.parse(input);
 
     // 取得 Bash 指令
-    const command = data.tool_input?.command
-      || data.input?.command
-      || '';
+    const command = data.tool_input?.command || data.input?.command || "";
 
     if (!command) process.exit(0);
 
     // 比對危險模式
     for (const { pattern, desc } of DANGER_PATTERNS) {
       if (pattern.test(command)) {
-        process.stderr.write(`⛔ danger-guard: 攔截危險指令 — ${desc}\n指令：${command}\n`);
+        process.stderr.write(
+          `⛔ danger-guard: 攔截危險指令 — ${desc}\n指令：${command}\n`,
+        );
         process.exit(2);
       }
     }
