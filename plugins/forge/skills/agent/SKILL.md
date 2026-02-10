@@ -71,8 +71,8 @@ hooks:
 |------|---------|------|
 | 一般用途 | `default` | 敏感操作需使用者確認 |
 | 頻繁寫檔 | `acceptEdits` | 自動接受檔案編輯 |
-| 多 agent 協作 | `delegate` | 委派模式 |
 | 完全自動化 | `dontAsk` | 不詢問，完全自主 |
+| 系統級別 | `bypassPermissions` | 最高權限，不可被覆寫 |
 | 只讀分析 | `plan` | 唯讀，只能讀取和規劃 |
 
 **不該問的**：名稱、description、tools、model（你推斷）
@@ -97,7 +97,7 @@ hooks:
 - `tools` 和 `disallowedTools`：**不可同時存在**
 - `model`：sonnet / opus / haiku / inherit
 - `color`：red / blue / green / yellow / purple / orange / pink / cyan
-- `permissionMode`：6 個選項（default / acceptEdits / delegate / dontAsk / bypassPermissions / plan）
+- `permissionMode`：5 個選項（default / acceptEdits / dontAsk / bypassPermissions / plan）
 - `memory`：user / project / local（啟用後 Read/Write/Edit 自動加入 tools）
 - `maxTurns`：正整數，限制最大執行回合
 

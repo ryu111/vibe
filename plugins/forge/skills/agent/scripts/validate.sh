@@ -34,7 +34,7 @@ fi
 
 VALID_TOOLS="Read|Write|Edit|Bash|Grep|Glob|WebFetch|WebSearch|Task|TaskCreate|TaskGet|TaskList|TaskUpdate|TaskOutput|NotebookEdit|AskUserQuestion|Skill|KillShell|MCPSearch|ExitPlanMode|LSP"
 VALID_MODELS="sonnet|opus|haiku|inherit"
-VALID_PERM_MODES="default|acceptEdits|delegate|dontAsk|bypassPermissions|plan"
+VALID_PERM_MODES="default|acceptEdits|dontAsk|bypassPermissions|plan"
 VALID_MEMORY="user|project|local"
 
 for FILE in "${FILES[@]}"; do

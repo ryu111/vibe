@@ -157,7 +157,7 @@ hooks:
 |------|:----:|------|
 | `type` | 是 | `"command"` |
 | `command` | 是 | shell 命令或腳本路徑 |
-| `timeout` | 否 | 超時秒數（預設 600） |
+| `timeout` | 否 | 超時秒數（預設 60） |
 | `statusMessage` | 否 | spinner 訊息 |
 | `once` | 否 | 每 session 只執行一次 |
 | `async` | 否 | 背景執行（僅 command 支援） |
