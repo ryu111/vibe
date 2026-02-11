@@ -75,9 +75,18 @@ process.stdin.on('end', () => {
       ? completedStages.join(' → ')
       : '（無）';
 
+    // 建立遺漏階段的執行指引
+    const missingHints = missing.map(s => {
+      const info = pipeline.stageMap[s];
+      const label = pipeline.stageLabels[s] || s;
+      if (info && info.skill) return `- ${label}：執行 ${info.skill}`;
+      if (info && info.agent) return `- ${label}：委派給 ${info.agent}`;
+      return `- ${label}`;
+    }).join('\n');
+
     console.log(JSON.stringify({
       continue: true,
-      systemMessage: `[Pipeline 提醒] 以下建議階段尚未執行：${missingLabels}\n已完成：${completedStr}\n如果是刻意跳過，請向使用者說明原因。`,
+      systemMessage: `🚫 [Pipeline 未完成] 以下階段尚未執行：${missingLabels}\n已完成：${completedStr}\n\n你必須先完成這些階段：\n${missingHints}\n\n如果使用者明確要求跳過，請告知使用者跳過了哪些階段及其風險。`,
     }));
   } catch (err) {
     process.stderr.write(`pipeline-check: ${err.message}\n`);

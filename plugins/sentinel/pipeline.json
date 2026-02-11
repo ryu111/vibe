@@ -1,6 +1,8 @@
 {
   "provides": {
     "REVIEW": { "agent": "code-reviewer", "skill": "/sentinel:review" },
-    "TEST": { "agent": "tester", "skill": "/sentinel:tdd" }
+    "TEST": { "agent": "tester", "skill": "/sentinel:tdd" },
+    "QA": { "agent": "qa", "skill": "/sentinel:qa" },
+    "E2E": { "agent": "e2e-runner", "skill": "/sentinel:e2e" }
   }
 }

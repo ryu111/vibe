@@ -44,17 +44,20 @@ process.stdin.on('end', () => {
       .filter(s => pipeline.stageMap[s])
       .map(s => `${s}（${pipeline.stageLabels[s] || s}）`);
 
-    // 建立委派規則文字
+    // 建立委派規則文字（包含具體執行方法）
     const rules = [];
     for (const stage of pipeline.stageOrder) {
       const info = pipeline.stageMap[stage];
       if (!info) continue;
       const label = pipeline.stageLabels[stage] || stage;
-      const skillHint = info.skill ? `（${info.skill}）` : '';
-      rules.push(`- ${label}：${info.agent}${skillHint}`);
+      if (info.skill) {
+        rules.push(`- ${stage}（${label}）→ 使用 Skill 工具呼叫 ${info.skill}`);
+      } else {
+        rules.push(`- ${stage}（${label}）→ 使用 Task 工具委派給 ${info.agent} agent`);
+      }
     }
 
-    // 組裝 additionalContext
+    // 組裝 systemMessage（強注入 — 不可忽略）
     const parts = [];
 
     // 環境摘要
@@ -69,11 +72,16 @@ process.stdin.on('end', () => {
 
     // Pipeline 規則
     if (rules.length > 0) {
-      parts.push('[Pipeline 委派規則]');
-      parts.push('程式碼變更應透過對應的 sub-agent 執行，而非 Main Agent 直接處理：');
+      parts.push('[Pipeline 委派規則 — 必須遵守]');
+      parts.push('⚠️ 開發任務**必須**按照以下順序委派給對應的 sub-agent，不可由 Main Agent 直接執行：');
       parts.push(...rules);
-      parts.push('task-classifier 會建議需要的階段，請依建議執行。');
-      parts.push('未安裝的 plugin 對應的階段可以跳過。');
+      parts.push('');
+      parts.push('📌 重要規則：');
+      parts.push('1. task-classifier hook 會分類任務類型和必要階段 — 收到後按指示執行');
+      parts.push('2. 每個階段完成後，stage-transition hook 會指示下一步 — 你**必須**照做');
+      parts.push('3. 不可跳過已安裝的階段（REVIEW、TEST、QA 階段**不可省略**）');
+      parts.push('4. 未安裝的 plugin 對應的階段會自動跳過');
+      parts.push('5. Pipeline 執行中**禁止使用 AskUserQuestion** — 各階段自動完成，不中斷使用者');
       parts.push(`已安裝階段：${installedStages.join(' → ')}`);
     }
 
@@ -93,9 +101,9 @@ process.stdin.on('end', () => {
       lastTransition: new Date().toISOString(),
     }, null, 2));
 
-    // 輸出
+    // 輸出（systemMessage = 強注入，主 agent 不可忽略）
     if (parts.length > 0) {
-      console.log(JSON.stringify({ additionalContext: parts.join('\n') }));
+      console.log(JSON.stringify({ systemMessage: parts.join('\n') }));
     }
   } catch (err) {
     // 靜默失敗，不阻擋 session 啟動

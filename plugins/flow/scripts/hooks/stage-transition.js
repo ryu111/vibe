@@ -75,10 +75,21 @@ process.stdin.on('end', () => {
     if (nextStage) {
       const nextLabel = pipeline.stageLabels[nextStage] || nextStage;
       const nextInfo = pipeline.stageMap[nextStage];
-      const skillHint = nextInfo && nextInfo.skill ? `\n可使用 ${nextInfo.skill} 觸發。` : '';
-      message = `[Pipeline] ${agentType} 已完成（${currentLabel}階段）。\n建議下一步：${nextStage}（${nextLabel}）${skillHint}\n已完成階段：${completedStr}`;
+      const skillCmd = nextInfo && nextInfo.skill ? nextInfo.skill : null;
+      const agentName = nextInfo && nextInfo.agent ? nextInfo.agent : null;
+
+      const method = skillCmd
+        ? `➡️ 執行方法：使用 Skill 工具呼叫 ${skillCmd}`
+        : `➡️ 執行方法：使用 Task 工具委派給 ${agentName} agent（subagent_type: "${agentName}"）`;
+
+      message = `⚠️ [Pipeline 指令] ${agentType} 已完成（${currentLabel}階段）。
+你**必須立即**執行下一階段：${nextStage}（${nextLabel}）。
+${method}
+這是 Pipeline 流程的必要步驟，不可跳過。
+⛔ Pipeline 自動模式：不要使用 AskUserQuestion，完成後直接進入下一階段。
+已完成：${completedStr}`;
     } else {
-      message = `[Pipeline] ${agentType} 已完成（${currentLabel}階段）。\n所有建議階段已完成：${completedStr}\n可以向使用者報告成果。`;
+      message = `✅ [Pipeline 完成] ${agentType} 已完成（${currentLabel}階段）。\n所有階段已完成：${completedStr}\n向使用者報告成果。`;
     }
 
     // 寫入 state file
