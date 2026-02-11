@@ -19,9 +19,9 @@ function openInBrowser(port) {
   const isVSCode = process.env.TERM_PROGRAM === 'vscode';
 
   if (isVSCode) {
-    // VSCode Simple Browser — 透過 URI scheme 開啟
+    // VSCode Simple Browser — 透過 open -a 觸發 URI scheme
     const encodedUrl = encodeURIComponent(url);
-    const child = spawn('code', ['--open-url', `vscode://vscode.simple-browser/show?url=${encodedUrl}`], {
+    const child = spawn('open', ['-a', 'Visual Studio Code', `vscode://vscode.simple-browser/show?url=${encodedUrl}`], {
       detached: true, stdio: 'ignore',
     });
     child.unref();
