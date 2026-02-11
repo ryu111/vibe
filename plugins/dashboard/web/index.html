@@ -113,7 +113,7 @@
     .ac.fail::after { background: var(--red); }
     .ac.fail::before { border-left-color: var(--red); }
     .ac.active::after { background: linear-gradient(90deg, transparent, var(--sc, var(--blue)), transparent); background-size: 200% 100%; animation: lineFlowR 1.2s ease-in-out infinite; }
-    .ac.active::before { border-left-color: var(--sc, var(--blue)); animation: arrowPulse 1s ease-in-out infinite; }
+    .ac.active::before { border-left-color: var(--sc, var(--blue)); animation: arrowFlowR 1.2s ease-in-out infinite; }
     .ac:nth-child(4)::after, .ac:nth-child(4)::before { display: none; }
     /* 第二排連接線（左向） */
     .snake-row2 .ac::after { right: auto; left: -19px; }
@@ -121,11 +121,12 @@
     .snake-row2 .ac.pass::before { border-right-color: var(--green); }
     .snake-row2 .ac.fail::before { border-right-color: var(--red); }
     .snake-row2 .ac.active::after { animation-name: lineFlowL; }
-    .snake-row2 .ac.active::before { border-right-color: var(--sc, var(--blue)); }
+    .snake-row2 .ac.active::before { border-right-color: var(--sc, var(--blue)); animation-name: arrowFlowL; }
     .snake-row2 .ac:nth-child(1)::after, .snake-row2 .ac:nth-child(1)::before { display: none; }
     @keyframes lineFlowR { 0% { background-position: -100% 0; } 100% { background-position: 200% 0; } }
     @keyframes lineFlowL { 0% { background-position: 200% 0; } 100% { background-position: -100% 0; } }
-    @keyframes arrowPulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+    @keyframes arrowFlowR { 0%,100% { transform: translateY(-50%); opacity: 0.5; } 50% { transform: translateY(-50%) translateX(3px); opacity: 1; filter: drop-shadow(0 0 8px currentColor); } }
+    @keyframes arrowFlowL { 0%,100% { transform: translateY(-50%); opacity: 0.5; } 50% { transform: translateY(-50%) translateX(-3px); opacity: 1; filter: drop-shadow(0 0 8px currentColor); } }
 
     /* Card States */
     .ac.pass { border-color: var(--green); background: rgba(166,227,161,0.05); }
