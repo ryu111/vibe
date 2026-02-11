@@ -114,7 +114,7 @@
     .ac.fail::before { border-left-color: var(--red); }
     .ac.active::after { background: linear-gradient(90deg, transparent, var(--sc, var(--blue)), transparent); background-size: 200% 100%; animation: lineFlowR 1.2s ease-in-out infinite; }
     .ac.active::before { border-left-color: var(--sc, var(--blue)); animation: arrowFlowR 1.2s ease-in-out infinite; }
-    .ac:nth-child(4)::after, .ac:nth-child(4)::before { display: none; }
+    .snake > .ac:nth-child(4)::after, .snake > .ac:nth-child(4)::before { display: none; }
     /* 第二排連接線（左向） */
     .snake-row2 .ac::after { right: auto; left: -19px; }
     .snake-row2 .ac::before { right: auto; left: -21px; border-left: none; border-right: 5px solid var(--surface2); }
