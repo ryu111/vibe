@@ -114,7 +114,7 @@ process.stdin.on('end', () => {
     console.log(JSON.stringify({
       decision: 'block',
       reason: '繼續完成未完成的任務',
-      systemMessage: `⚠️ 任務尚未完成（第 ${state.blockCount}/${state.maxBlocks || MAX_BLOCKS} 次阻擋）\n\n未完成項目：\n${todoList}\n\n請繼續完成以上項目。如果確實無法繼續，請告知使用者原因。`,
+      systemMessage: `⛔ 任務尚未完成（第 ${state.blockCount}/${state.maxBlocks || MAX_BLOCKS} 次阻擋）\n\n未完成項目：\n${todoList}\n\n請繼續完成以上項目。如果確實無法繼續，請告知使用者原因。`,
     }));
   } catch (err) {
     // 錯誤時不阻擋

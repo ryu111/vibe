@@ -244,7 +244,7 @@ process.stdin.on('end', () => {
           ? `\n⏭️ 已智慧跳過：${skippedStages.join('、')}`
           : '';
 
-        message = `⚠️ [Pipeline 指令] ${agentType} 已完成（${currentLabel}階段）。${forcedNote}
+        message = `⛔ [Pipeline 指令] ${agentType} 已完成（${currentLabel}階段）。${forcedNote}
 你**必須立即**執行下一階段：${nextStageCandidate}（${nextLabel}）。
 ${method}${stageContext}${skipNote}
 這是 Pipeline 流程的必要步驟，不可跳過。
