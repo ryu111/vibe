@@ -18,23 +18,9 @@ allowed-tools: Read, Write, Bash, Glob, Grep
 3. 記錄 checkpoint metadata 到 `~/.claude/flow-checkpoints-{sessionId}.json`
 4. 報告：checkpoint ID、時間、涵蓋檔案
 
-**Metadata 格式**：
-```json
-{
-  "id": "chk-{timestamp}-{seq}",
-  "timestamp": "ISO 8601",
-  "description": "使用者描述或自動摘要",
-  "git_ref": "stash ref 或 commit hash",
-  "modified_files": ["file1", "file2"]
-}
-```
-
 ### 列出 checkpoints（list）
 
-讀取 `~/.claude/flow-checkpoints-{sessionId}.json`，表格顯示：
-
-| ID | 時間 | 描述 | 檔案數 |
-|----|------|------|:------:|
+讀取 checkpoint 記錄，表格顯示所有 checkpoints。
 
 ### 恢復 checkpoint（restore）
 
@@ -49,6 +35,20 @@ allowed-tools: Read, Write, Bash, Glob, Grep
 2. **預覽先行**：`restore` 前必須預覽變更
 3. **不刪除 stash**：只建立引用，不主動清理
 4. **Session 隔離**：checkpoint 記錄按 session 分開
+
+---
+
+## 參考：Metadata 格式
+
+```json
+{
+  "id": "chk-{timestamp}-{seq}",
+  "timestamp": "ISO 8601",
+  "description": "使用者描述或自動摘要",
+  "git_ref": "stash ref 或 commit hash",
+  "modified_files": ["file1", "file2"]
+}
+```
 
 ## 使用者要求
 

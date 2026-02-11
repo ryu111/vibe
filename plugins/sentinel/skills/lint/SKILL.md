@@ -23,7 +23,9 @@ allowed-tools: Read, Bash, Grep, Glob
    - 無指定路徑 → 分析整個專案（`eslint .`、`ruff check .`）
 5. **呈現結果**：摘要錯誤數量、警告數量、按嚴重程度排序
 
-## 輸出格式
+---
+
+## 參考：輸出格式
 
 ```
 ## Lint 結果

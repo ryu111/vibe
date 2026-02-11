@@ -12,16 +12,13 @@ allowed-tools: Read, Bash, Grep, Glob, AskUserQuestion
 ## 工作流程
 
 1. **偵測可用的檢查**：讀取 package.json（或 pyproject.toml / Makefile），找出可用的 scripts
-2. **按順序執行**：
-   - **Build**：`npm run build` / `go build` / `python -m build`
-   - **Types**：`tsc --noEmit` / `mypy`
-   - **Lint**：`eslint .` / `ruff check .`
-   - **Tests**：`npm test` / `pytest` / `go test ./...`
-   - **Git**：`git status`（確認無遺漏的變更）
+2. **按順序執行**：Build → Types → Lint → Tests → Git status
 3. **任一失敗立即停止**：報告失敗的步驟和錯誤訊息
 4. **全部通過**：摘要所有檢查結果
 
-## 輸出格式
+---
+
+## 參考：輸出格式
 
 ```
 ## 綜合驗證結果
@@ -36,7 +33,7 @@ allowed-tools: Read, Bash, Grep, Glob, AskUserQuestion
 {錯誤輸出}
 ```
 
-## 部分執行
+## 參考：部分執行
 
 使用者可以指定只執行某個檢查：
 - `/sentinel:verify build` → 只跑 Build

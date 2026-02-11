@@ -14,7 +14,9 @@ allowed-tools: Read, Bash, Glob
 1. **執行偵測**：呼叫 env-detector.js 偵測專案環境
 2. **呈現結果**：以清晰格式顯示偵測結果
 
-## 偵測項目
+---
+
+## 參考：偵測項目
 
 | 類別 | 偵測內容 |
 |------|---------|
@@ -23,14 +25,14 @@ allowed-tools: Read, Bash, Glob
 | 套件管理器 | pnpm / yarn / bun / npm / poetry / pipenv / uv |
 | 工具 | Linter / Formatter / Test Runner / Bundler |
 
-## 偵測順序
+## 參考：偵測順序
 
 套件管理器偵測順序（源自 ECC）：
 1. `npm_config_user_agent` 環境變數
 2. Lock file（pnpm-lock.yaml → yarn.lock → bun.lockb → package-lock.json）
 3. package.json 中的 `packageManager` 欄位
 
-## 輸出格式
+## 參考：輸出格式
 
 ```
 ## 環境偵測結果
