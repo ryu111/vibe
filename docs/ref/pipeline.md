@@ -85,7 +85,7 @@ plugins/*/pipeline.json         ← 各 plugin 的 pipeline 宣告（provides �
 |:-:|------|------|:----:|:----:|:--------:|------|
 | ① | task-classifier | UserPromptSubmit | prompt | 軟建議 | additionalContext | 分類任務類型，建議 pipeline 階段 |
 | ② | pipeline-rules | SessionStart | command | 軟建議 | additionalContext | 注入委派規則（哪些工作該給 sub-agent） |
-| ③ | stage-transition | SubagentStop | command | 強建議 | systemMessage | Agent 完成時建議下一步 |
+| ③ | stage-transition | SubagentStop | command | 強建議 | systemMessage | Agent 完成後判斷：前進/回退/跳過 |
 | ④ | pipeline-check | Stop | command | 強建議 | systemMessage | 結束前檢查是否有遺漏的建議階段 |
 
 ### 輸出管道差異
@@ -107,14 +107,16 @@ plugins/*/pipeline.json         ← 各 plugin 的 pipeline 宣告（provides �
 ```json
 // plugins/flow/pipeline.json
 {
-  "stages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "DOCS"],
+  "stages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "QA", "E2E", "DOCS"],
   "stageLabels": {
     "PLAN": "規劃",
     "ARCH": "架構",
     "DEV": "開發",
     "REVIEW": "審查",
     "TEST": "測試",
-    "DOCS": "文件"
+    "QA": "行為驗證",
+    "E2E": "端對端測試",
+    "DOCS": "文件整理"
   },
   "provides": {
     "PLAN": { "agent": "planner",   "skill": "/flow:plan" },
@@ -136,7 +138,7 @@ plugins/*/pipeline.json         ← 各 plugin 的 pipeline 宣告（provides �
 
 ```json
 {
-  "stages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "DOCS"],
+  "stages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "QA", "E2E", "DOCS"],
   "stageLabels": { ... },
   "provides": {
     "PLAN": { "agent": "planner",   "skill": "/flow:plan" },
@@ -152,7 +154,9 @@ plugins/*/pipeline.json         ← 各 plugin 的 pipeline 宣告（provides �
 {
   "provides": {
     "REVIEW": { "agent": "code-reviewer",  "skill": "/sentinel:review" },
-    "TEST":   { "agent": "tester",          "skill": "/sentinel:tdd" }
+    "TEST":   { "agent": "tester",          "skill": "/sentinel:tdd" },
+    "QA":     { "agent": "qa",              "skill": "/sentinel:qa" },
+    "E2E":    { "agent": "e2e-runner",      "skill": "/sentinel:e2e" }
   }
 }
 ```
@@ -236,10 +240,11 @@ module.exports = { discoverPipeline, findNextStage };
 | 安裝組合 | 實際 pipeline |
 |---------|--------------|
 | 只裝 flow | PLAN → ARCH → DEV |
-| flow + sentinel | PLAN → ARCH → DEV → REVIEW → TEST |
+| flow + sentinel | PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E |
 | flow + evolve | PLAN → ARCH → DEV → DOCS |
-| 全裝 | PLAN → ARCH → DEV → REVIEW → TEST → DOCS |
-| 移除 sentinel | 自動跳過 REVIEW、TEST，無需改任何 config |
+| 全裝 | PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS |
+| 移除 sentinel | 自動跳過 REVIEW、TEST、QA、E2E，無需改任何 config |
+| 純 API + 全裝 | PLAN → ARCH → DEV → REVIEW → TEST → QA → ~~E2E~~ → DOCS（智慧跳過） |
 
 ---
 
@@ -319,14 +324,51 @@ hooks.json 定義：
 }
 ```
 
-**邏輯**：
+**邏輯**（v0.3.0 — 含智慧回退/跳過/context 注入）：
 
 1. `stop_hook_active === true` → exit 0（防無限迴圈，必須第一步檢查）
 2. `discoverPipeline()` 動態載入 pipeline 配置
 3. `agentToStage[agent_type]` 查找所屬 stage
-4. `findNextStage()` 查找下一個已安裝的 stage
-5. 更新 state file（記錄已完成的 agents）
-6. 輸出 `{ "continue": true, "systemMessage": "..." }`
+4. `parseVerdict(agent_transcript_path)` 從 transcript JSONL 解析 `PIPELINE_VERDICT` 標記
+5. `shouldRetryStage()` 判斷是否需要回退
+6. **回退路徑**：品質階段 FAIL:CRITICAL/HIGH → 回到 DEV → 重試同一品質階段
+7. **前進路徑**：智慧跳過判斷 → 階段 context 注入 → 指示下一步
+8. 更新 state file（含 `stageResults`、`retries`）
+9. 輸出 `{ "continue": true, "systemMessage": "..." }`
+
+**智慧回退機制**：
+
+| 條件 | 行為 |
+|------|------|
+| PIPELINE_VERDICT: PASS | 正常前進 |
+| PIPELINE_VERDICT: FAIL:CRITICAL/HIGH | 回退到 DEV 修復後重試 |
+| PIPELINE_VERDICT: FAIL:MEDIUM/LOW | 正常前進（只是建議） |
+| 無 VERDICT | 正常前進（graceful degradation） |
+| 回退次數 ≥ MAX_RETRIES | 強制前進 + 警告 |
+
+- 每個品質階段（REVIEW/TEST/QA/E2E）有獨立的回退計數器
+- 預設上限 3 輪（`CLAUDE_PIPELINE_MAX_RETRIES` 環境變數可覆寫）
+
+**智慧跳過**：
+- 純 API 框架（express/fastify/hono/koa/nest）自動跳過 E2E 階段
+- 基於 `state.environment.framework.name` 判斷
+
+**階段 context 注入**：
+- QA → 強調 API/CLI 行為正確性，不寫測試碼
+- E2E（UI 專案）→ 強調瀏覽器使用者流程
+- E2E（API 專案）→ 強調跨步驟資料一致性
+
+**PIPELINE_VERDICT 協議**：sentinel agents 在報告末尾輸出 HTML comment 標記：
+
+```
+<!-- PIPELINE_VERDICT: PASS -->
+<!-- PIPELINE_VERDICT: FAIL:CRITICAL -->
+<!-- PIPELINE_VERDICT: FAIL:HIGH -->
+<!-- PIPELINE_VERDICT: FAIL:MEDIUM -->
+<!-- PIPELINE_VERDICT: FAIL:LOW -->
+```
+
+stage-transition 從 `agent_transcript_path`（JSONL）最後 20 行中搜尋此標記。
 
 **State file**：`~/.claude/pipeline-state-{sessionId}.json`
 
@@ -338,28 +380,49 @@ hooks.json 定義：
   "sessionId": "abc123",
   "initialized": true,
   "completed": ["planner", "architect", "developer"],
-  "expectedStages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "DOCS"],
+  "expectedStages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "QA", "E2E", "DOCS"],
+  "stageResults": {
+    "REVIEW": { "verdict": "FAIL", "severity": "HIGH" },
+    "TEST": { "verdict": "PASS", "severity": null }
+  },
+  "retries": { "REVIEW": 1 },
   "lastTransition": "2026-02-09T14:30:00Z"
 }
 ```
 
 #### Claude 看到的 systemMessage 內容：
 
-有下一步時：
+**正常前進**：
 
 ```
-[Pipeline] developer 已完成（DEV 階段）。
-建議下一步：REVIEW（審查）
-可使用 /sentinel:review 觸發。
-已完成階段：PLAN → ARCH → DEV
+⚠️ [Pipeline 指令] developer 已完成（開發階段）。
+你**必須立即**執行下一階段：REVIEW（審查）。
+➡️ 執行方法：使用 Skill 工具呼叫 /sentinel:review
+⛔ Pipeline 自動模式：不要使用 AskUserQuestion，完成後直接進入下一階段。
+已完成：PLAN → ARCH → DEV
 ```
 
-Pipeline 結束時：
+**智慧回退**：
 
 ```
-[Pipeline] doc-updater 已完成（DOCS 階段）。
-所有建議階段已完成：PLAN → ARCH → DEV → REVIEW → TEST → DOCS
-可以向使用者報告成果。
+🔄 [Pipeline 回退] code-reviewer 完成（審查階段），但發現 HIGH 等級問題。
+回退原因：HIGH 等級問題需要修復
+回退次數：1/3
+
+你**必須**執行以下步驟：
+1️⃣ 先回到 DEV 階段修復 HIGH 等級問題 → 使用 Task 工具委派給 developer agent
+2️⃣ 修復完成後重新執行 REVIEW（審查）→ 使用 Skill 工具呼叫 /sentinel:review
+
+⛔ Pipeline 自動模式：不要使用 AskUserQuestion，修復後直接重新執行品質檢查。
+已完成：PLAN → ARCH → DEV → REVIEW
+```
+
+**Pipeline 結束**：
+
+```
+✅ [Pipeline 完成] e2e-runner 已完成（端對端測試階段）。
+所有階段已完成：PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E
+向使用者報告成果。
 ```
 
 不認識的 agent（不在任何 plugin 的 pipeline 宣告中）→ exit 0，不輸出。
@@ -692,16 +755,18 @@ SubagentStop 觸發（前景 agent 完成）
 **初期實作不需並行**。所有 pipeline 階段串行執行：
 
 ```
-PLAN → ARCH → DEV → REVIEW → TEST → DOCS
- │       │      │      │       │      │
- └───────┴──────┴──────┴───────┴──────┘
-         全部前景，逐一執行
+PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
+ │       │      │      │       │     │     │      │
+ └───────┴──────┴──────┴───────┴─────┴─────┴──────┘
+         全部前景，逐一執行（含智慧回退 + 智慧跳過）
 ```
 
-**好處**：
-- SubagentStop 正常運作，stage-transition 邏輯簡單
+**V1 已包含**：
+- SubagentStop 正常運作
+- 智慧回退（品質階段失敗 → DEV → 重試，每階段最多 3 輪）
+- 智慧跳過（純 API 專案自動跳過 E2E 瀏覽器測試）
+- 階段 context 注入（QA/E2E 各有專屬提示）
 - statusMessage 全部可見
 - 不需 agent-tracker hook
-- 實作複雜度最低
 
 **並行執行留待 V2**：當串行版本穩定後，再啟用 `parallel` 欄位 + agent-tracker。

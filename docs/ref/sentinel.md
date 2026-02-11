@@ -297,9 +297,10 @@ permissionMode: acceptEdits
 ---
 name: e2e-runner
 description: >-
-  E2E 瀏覽器測試執行者 — 透過 agent-browser CLI 操作瀏覽器。
-  使用 snapshot + ref 工作流驗證完整使用者流程。
-  專注瀏覽器 UI 測試，不測 API/CLI。最多 3 輪除錯循環。
+  E2E 端對端測試執行者。兩種模式：
+  UI 模式（agent-browser CLI 操作瀏覽器）和
+  API 模式（curl 驗證跨步驟資料一致性）。
+  自動根據專案類型選擇模式。最多 3 輪除錯循環。
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 color: green
@@ -311,17 +312,35 @@ skills:
 ---
 ```
 
-**工具策略**：
-- **agent-browser CLI**（唯一瀏覽器工具）：snapshot 取 ref → 用 ref 操作元素 → 重新 snapshot 驗證
-- **skills 預載 agent-browser**：agent 啟動時自動注入 agent-browser 完整操作指南
+**雙模式設計**（v0.2.1）：
 
-**工作流**：
+| 模式 | 觸發條件 | 工具 | 重點 |
+|------|---------|------|------|
+| UI 模式 | 有前端（React/Vue/HTML） | agent-browser CLI | 瀏覽器使用者流程 |
+| API 模式 | 純 API 專案（Express/Fastify 等） | curl / WebFetch | 跨步驟資料一致性 |
+
+**UI 模式工作流**：
 1. `agent-browser open <url>` → 導航
 2. `agent-browser snapshot -i` → 取得互動元素 refs
 3. 用 ref 操作（click/fill/select）
 4. 重新 snapshot 驗證結果
 5. 除錯失敗案例（最多 3 輪）
 6. `agent-browser close` → 清理
+
+**API 模式工作流**：
+1. 啟動服務
+2. 設計跨步驟的複合測試旅程
+3. 用 curl 執行依賴鏈驗證（如：更新 email → 用新 email 登入）
+4. 停止服務
+
+**與 QA 的分工**：
+
+| E2E（此 agent） | QA |
+|:--------:|:--:|
+| 跨步驟資料一致性 | 單一 API 正確性 |
+| 多使用者互動場景 | 回應格式、status code |
+| 狀態依賴鏈驗證 | 錯誤處理驗證 |
+| 複合流程的完整性 | 單一操作的正確性 |
 
 ### 5.6 qa（可寫）
 
@@ -356,8 +375,23 @@ memory: project
 | Agent | 負責層 | 做什麼 | 不做什麼 |
 |-------|--------|--------|---------|
 | `tester` | 測試碼 | 撰寫 unit/integration 測試檔案 | 不啟動 app、不做真實操作 |
-| `e2e-runner` | 瀏覽器 | 操作網頁、驗證 UI 流程 | 不測 API/CLI |
-| `qa` | API/CLI/服務 | 啟動 app、呼叫 API、驗證 CLI | 不寫測試碼、不做瀏覽器測試 |
+| `e2e-runner` | 跨步驟 | 複合流程、資料一致性、多使用者互動 | 不重複 QA 已測的單一 API |
+| `qa` | API/CLI/服務 | 啟動 app、呼叫 API、驗證 CLI | 不寫測試碼、不測複合流程 |
+
+### PIPELINE_VERDICT 協議
+
+品質 agents（code-reviewer/tester/qa/e2e-runner）在報告末尾**必須**輸出結論標記，用於 flow 的 stage-transition 智慧回退判斷：
+
+| Agent | PASS 條件 | FAIL 標記 |
+|-------|----------|-----------|
+| code-reviewer | 無 CRITICAL/HIGH | `FAIL:CRITICAL` 或 `FAIL:HIGH` |
+| tester | 全部測試通過 | `FAIL:HIGH` |
+| qa | 全部場景通過 | `FAIL:HIGH` |
+| e2e-runner | 全部流程通過 | `FAIL:HIGH` |
+
+格式：`<!-- PIPELINE_VERDICT: PASS|FAIL:CRITICAL|FAIL:HIGH|FAIL:MEDIUM|FAIL:LOW -->`
+
+> FAIL:MEDIUM/LOW 不觸發回退，僅供參考。
 
 ---
 
@@ -500,7 +534,9 @@ plugins/sentinel/
 | S-07 | verify 一鍵跑完 Build → Types → Lint → Tests |
 | S-08 | forge:scaffold 驗證全 PASS |
 | S-09 | qa agent 可啟動服務、呼叫 API、驗證行為 |
-| S-10 | e2e-runner 使用 agent-browser CLI 完成瀏覽器測試 |
+| S-10 | e2e-runner 支援 UI/API 雙模式 |
+| S-11 | 4 個品質 agent 輸出 PIPELINE_VERDICT 標記 |
+| S-12 | QA 和 E2E 測試範圍不重疊 |
 
 ---
 
@@ -509,7 +545,7 @@ plugins/sentinel/
 ```json
 {
   "name": "sentinel",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "品質全鏈守衛 — lint、format、review、security、TDD、E2E、QA、verify",
   "skills": ["./skills/"],
   "agents": [

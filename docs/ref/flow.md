@@ -57,7 +57,7 @@ Session 持久化（跨 session context）已移交 **claude-mem**（獨立 plug
 | SessionStart | pipeline-init | command | — | 環境偵測 + pipeline 規則注入 |
 | PreToolUse | suggest-compact | command | 軟建議 | 追蹤 tool calls，達 50 建議 compact |
 | PreCompact | log-compact | command | — | 記錄 compact 事件 + 重設計數 |
-| SubagentStop | stage-transition | command | 強建議 | Agent 完成後建議下一個 pipeline 階段 |
+| SubagentStop | stage-transition | command | 強建議 | Agent 完成後判斷下一步（前進/回退/跳過） |
 | Stop | pipeline-check | command | 強建議 | 結束前檢查是否有遺漏的建議階段 |
 | Stop | task-guard | command | 絕對阻擋 | 未完成任務時阻擋退出（`decision: "block"`） |
 
@@ -343,15 +343,40 @@ memory: project
 }
 ```
 
-**強度：強建議** — Agent 完成時透過 `systemMessage` 建議下一個 pipeline 階段。
+**強度：強建議** — Agent 完成時透過 `systemMessage` 判斷下一步：正常前進、智慧回退、或智慧跳過。
 
-**邏輯**：
+**核心邏輯**：
 1. `stop_hook_active === true` → exit 0（防迴圈）
 2. `discoverPipeline()` 載入配置
 3. `agentToStage[agent_type]` 查找所屬 stage
-4. `findNextStage()` 查找下一個已安裝 stage
-5. 更新 `~/.claude/pipeline-state-{sessionId}.json`
-6. 輸出 `{ "continue": true, "systemMessage": "..." }`
+4. `parseVerdict(agent_transcript_path)` 從 transcript 解析 PIPELINE_VERDICT 標記
+5. `shouldRetryStage()` 判斷是否需要回退
+6. 回退 → systemMessage 指示回到 DEV 修復後重試
+7. 前進 → 智慧跳過判斷 + 階段 context 注入 → systemMessage 指示下一步
+8. 更新 `~/.claude/pipeline-state-{sessionId}.json`（含 `stageResults`、`retries`）
+
+**智慧回退**（v0.3.0）：
+- **觸發條件**：品質階段（REVIEW/TEST/QA/E2E）的 agent 輸出 `FAIL:CRITICAL` 或 `FAIL:HIGH`
+- **回退目標**：回到 DEV 階段修復後重試同一品質階段
+- **上限**：每個階段獨立 3 輪（`CLAUDE_PIPELINE_MAX_RETRIES` 可覆寫）
+- **超限處理**：強制前進 + 警告訊息
+- **FAIL:MEDIUM/LOW**：不觸發回退（只是建議）
+
+**PIPELINE_VERDICT 協議**：sentinel agents 在報告末尾輸出 HTML comment 標記：
+- `<!-- PIPELINE_VERDICT: PASS -->` — 通過
+- `<!-- PIPELINE_VERDICT: FAIL:CRITICAL -->` — 嚴重問題
+- `<!-- PIPELINE_VERDICT: FAIL:HIGH -->` — 重要問題
+- `<!-- PIPELINE_VERDICT: FAIL:MEDIUM -->` — 中等問題（不回退）
+- `<!-- PIPELINE_VERDICT: FAIL:LOW -->` — 低優先（不回退）
+
+**智慧跳過**（v0.3.0）：
+- 純 API 框架（express/fastify/hono/koa/nest）自動跳過 E2E 瀏覽器測試
+- 基於 `state.environment.framework.name` 判斷
+
+**階段 context 注入**（v0.3.0）：
+- QA：強調 API/CLI 行為正確性，不寫測試碼
+- E2E（UI）：強調瀏覽器使用者流程，不重複 QA
+- E2E（API）：強調跨步驟資料一致性，不重複 QA
 
 詳見 → `docs/ref/pipeline.md` §4.3
 
@@ -532,7 +557,7 @@ plugins/flow/
 | F-06 | Checkpoint 可建立/列出/恢復 |
 | F-07 | env-detect 正確偵測 TS/Python/Go 環境 |
 | F-08 | forge:scaffold 驗證全 PASS |
-| F-09 | stage-transition 在 agent 完成後建議下一步 |
+| F-09 | stage-transition 在 agent 完成後建議下一步（含回退/跳過） |
 | F-10 | pipeline-check 偵測遺漏階段並提醒 |
 | F-11 | 只裝 flow 時 pipeline 只含 PLAN → ARCH → DEV |
 | F-12 | 全裝時 pipeline 含完整 6 個階段 |
@@ -540,6 +565,10 @@ plugins/flow/
 | F-14 | task-guard 在有未完成 todo 時阻擋退出 |
 | F-15 | task-guard 達 5 次阻擋後強制放行 |
 | F-16 | `/flow:cancel` 可手動解除 task-guard |
+| F-17 | FAIL:HIGH verdict 觸發智慧回退到 DEV |
+| F-18 | 各品質階段回退次數獨立（不互相影響） |
+| F-19 | 超過回退上限（3 輪）後強制繼續 + 警告 |
+| F-20 | 純 API 框架自動跳過 E2E 階段 |
 
 ---
 
@@ -548,7 +577,7 @@ plugins/flow/
 ```json
 {
   "name": "flow",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "開發工作流 — 規劃、架構、compact、pipeline 管理、環境偵測",
   "skills": ["./skills/"],
   "agents": [
@@ -565,14 +594,16 @@ plugins/flow/
 
 ```json
 {
-  "stages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "DOCS"],
+  "stages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "QA", "E2E", "DOCS"],
   "stageLabels": {
     "PLAN": "規劃",
     "ARCH": "架構",
     "DEV": "開發",
     "REVIEW": "審查",
     "TEST": "測試",
-    "DOCS": "文件"
+    "QA": "行為驗證",
+    "E2E": "端對端測試",
+    "DOCS": "文件整理"
   },
   "provides": {
     "PLAN": { "agent": "planner",   "skill": "/flow:plan" },
