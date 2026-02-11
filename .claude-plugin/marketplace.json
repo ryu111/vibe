@@ -44,6 +44,13 @@
       "tags": ["learning", "evolution", "instincts", "docs", "documentation"]
     },
     {
+      "name": "dashboard",
+      "source": "./plugins/dashboard",
+      "description": "Pipeline 即時儀表板 — WebSocket 推播監控多 session 工作流進度",
+      "category": "monitoring",
+      "tags": ["visualization", "monitoring", "websocket", "dashboard"]
+    },
+    {
       "name": "collab",
       "source": "./plugins/collab",
       "description": "多模型協作 — 多模型規劃與審查",
