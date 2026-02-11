@@ -326,7 +326,7 @@
     .pixel .office-turn { display: flex; justify-content: flex-end; padding-right: 72px; margin: 4px 0; font-size: 16px; color: var(--surface2); font-family: monospace !important; }
     .pixel .office-turn.done { color: var(--green); text-shadow: 0 0 6px var(--green); }
     .pixel .office-turn.active { animation: pixelPulse 1s steps(2) infinite; }
-    .pixel .office-deco { display: flex; justify-content: space-between; align-items: flex-end; padding: 16px 8px 0; font-size: 8px; }
+    .pixel .office-deco { display: flex; justify-content: space-around; align-items: flex-end; padding: 16px 12px 4px; font-size: 8px; gap: 12px; }
 
     /* 工位 */
     .pixel .ws { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 120px; position: relative; }
@@ -397,9 +397,10 @@
     .pixel .deco-board { background: var(--surface0); border: 2px solid var(--surface1); padding: 4px 8px; font-size: 6px; min-width: 80px; text-align: center; }
     .pixel .deco-board .bar { height: 4px; background: var(--surface1); margin-top: 3px; overflow: hidden; }
     .pixel .deco-board .bar-fill { height: 100%; background: var(--green); transition: width 0.5s; }
-    .pixel .deco-window { width: 48px; height: 36px; background: linear-gradient(180deg, #0a0a2e 0%, #1a1a4e 100%); border: 3px solid var(--surface1); position: relative; overflow: hidden; }
-    .pixel .deco-star { position: absolute; color: #fff; font-size: 6px; animation: wsStarTwinkle 2s steps(2) infinite; }
-    @keyframes wsStarTwinkle { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
+    .pixel .deco-window { width: 56px; height: 40px; background: linear-gradient(180deg, #060620 0%, #0e1040 50%, #1a1a4e 100%); border: 3px solid var(--surface1); position: relative; overflow: hidden; }
+    .pixel .deco-window::before { content: '🌙'; position: absolute; top: 4px; right: 6px; font-size: 8px; opacity: 0.7; }
+    .pixel .deco-star { position: absolute; color: #fff; animation: wsStarTwinkle 2s steps(2) infinite; }
+    @keyframes wsStarTwinkle { 0%,100% { opacity: 0.2; } 50% { opacity: 1; } }
     .pixel .deco-clock { font-size: 7px; color: var(--green); font-variant-numeric: tabular-nums; }
 
     /* ===== 辦公室模式加強 ===== */
@@ -439,22 +440,26 @@
     @keyframes maFootprint { 0% { opacity: 0.3; } 50% { opacity: 0.15; } 100% { opacity: 0; } }
 
     /* 伺服器機架 */
-    .pixel .deco-rack { display: inline-flex; flex-direction: column; gap: 3px; padding: 3px 5px; background: var(--surface0); border: 2px solid var(--surface1); vertical-align: bottom; }
-    .pixel .deco-rack-row { display: flex; gap: 2px; }
-    .pixel .deco-led { width: 3px; height: 3px; }
+    .pixel .deco-rack { display: inline-flex; flex-direction: column; gap: 3px; padding: 4px 6px; background: var(--surface0); border: 2px solid var(--surface1); vertical-align: bottom; min-height: 28px; }
+    .pixel .deco-rack::before { content: 'SRV'; display: block; font-size: 4px; color: var(--subtext0); text-align: center; letter-spacing: 1px; }
+    .pixel .deco-rack-row { display: flex; gap: 3px; }
+    .pixel .deco-led { width: 4px; height: 4px; }
     .pixel .deco-led.on { background: var(--green); box-shadow: 0 0 3px var(--green); animation: wsStarTwinkle 1.5s steps(2) infinite; }
     .pixel .deco-led.blink { background: var(--yellow); animation: wsScreenBlink 0.8s steps(1) infinite; }
     .pixel .deco-led.off { background: var(--surface2); }
 
     /* 水族箱 */
-    .pixel .deco-tank { display: inline-block; width: 32px; height: 22px; background: linear-gradient(180deg, rgba(137,220,235,0.1) 0%, rgba(137,220,235,0.25) 100%); border: 2px solid color-mix(in srgb, var(--cyan) 60%, #000); position: relative; overflow: hidden; vertical-align: bottom; }
-    .pixel .deco-fish { position: absolute; font-size: 7px; top: 6px; animation: wsFishSwim 5s linear infinite; }
+    .pixel .deco-tank { display: inline-block; width: 48px; height: 32px; background: linear-gradient(180deg, rgba(137,220,235,0.08) 0%, rgba(137,220,235,0.2) 100%); border: 2px solid color-mix(in srgb, var(--cyan) 60%, #000); position: relative; overflow: hidden; vertical-align: bottom; }
+    .pixel .deco-tank::after { content: '~~'; position: absolute; top: 0; left: 0; width: 100%; font-size: 5px; color: rgba(137,220,235,0.2); letter-spacing: 4px; text-align: center; animation: wsTankWave 3s steps(2) infinite; }
+    .pixel .deco-fish { position: absolute; font-size: 8px; top: 10px; animation: wsFishSwim 6s linear infinite; }
+    .pixel .deco-fish:nth-child(2) { top: 16px; font-size: 6px; animation-duration: 8s; animation-delay: -3s; }
     .pixel .deco-bubble { position: absolute; width: 2px; height: 2px; background: rgba(137,220,235,0.5); border-radius: 0; animation: wsTankBubble 3s steps(4) infinite; }
-    @keyframes wsFishSwim { 0%,49.9% { left: -8px; transform: scaleX(1); } 50%,99.9% { left: calc(100% + 2px); transform: scaleX(-1); } }
+    @keyframes wsFishSwim { 0% { left: -10px; transform: scaleX(1); } 45% { left: calc(100% + 4px); transform: scaleX(1); } 50% { left: calc(100% + 4px); transform: scaleX(-1); } 95% { left: -10px; transform: scaleX(-1); } 100% { left: -10px; transform: scaleX(1); } }
     @keyframes wsTankBubble { 0% { bottom: 2px; opacity: 0.6; } 100% { bottom: 100%; opacity: 0; } }
+    @keyframes wsTankWave { 0%,100% { transform: translateX(-2px); } 50% { transform: translateX(2px); } }
 
     /* 入口地毯 */
-    .pixel .office-carpet { position: absolute; top: 30px; left: 4%; width: 8%; height: 4px; background: repeating-linear-gradient(90deg, var(--red) 0 3px, color-mix(in srgb, var(--red) 50%, #000) 3px 6px); opacity: 0.5; }
+    .pixel .office-carpet { position: absolute; top: 28px; left: 3%; width: 10%; height: 8px; background: repeating-linear-gradient(90deg, var(--red) 0 4px, color-mix(in srgb, var(--red) 40%, #000) 4px 8px); opacity: 0.6; border: 1px solid color-mix(in srgb, var(--red) 30%, #000); }
 
     /* Hover 互動 — 工位發光 + tooltip */
     .pixel .ws { cursor: default; transition: filter 0.15s; }
@@ -739,7 +744,7 @@
       E2E:    { left: '26%', top: '52%' },
       DOCS:   { left: '11%', top: '52%' },
     };
-    const MA_IDLE = { left: '4%', top: '5%' };
+    const MA_IDLE = { left: '4%', top: '12%' };
 
     function OfficeView({ s, tick }) {
       const arrowStatus = (fromStage) => {
@@ -812,13 +817,17 @@
             </div>
             <div class="deco-tank">
               <div class="deco-fish">🐠</div>
-              <div class="deco-bubble" style="left:8px;animation-delay:0s"></div>
-              <div class="deco-bubble" style="left:20px;animation-delay:1.5s"></div>
+              <div class="deco-fish">🐟</div>
+              <div class="deco-bubble" style="left:10px;animation-delay:0s"></div>
+              <div class="deco-bubble" style="left:28px;animation-delay:1.5s"></div>
+              <div class="deco-bubble" style="left:18px;animation-delay:2.5s"></div>
             </div>
             <div class="deco-window">
-              <div class="deco-star" style="top:8px;left:6px">✦</div>
-              <div class="deco-star" style="top:16px;right:10px;animation-delay:0.5s">✦</div>
-              <div class="deco-star" style="bottom:10px;left:14px;animation-delay:1s">✦</div>
+              <div class="deco-star" style="top:6px;left:6px;font-size:7px">✦</div>
+              <div class="deco-star" style="top:18px;left:20px;font-size:5px;animation-delay:0.5s">✦</div>
+              <div class="deco-star" style="bottom:8px;left:10px;font-size:4px;animation-delay:1s">·</div>
+              <div class="deco-star" style="top:10px;right:14px;font-size:6px;animation-delay:1.5s">✦</div>
+              <div class="deco-star" style="bottom:14px;right:8px;font-size:3px;animation-delay:0.7s">·</div>
             </div>
           </div>
         </div>
