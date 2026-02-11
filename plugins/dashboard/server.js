@@ -3,7 +3,7 @@
  * Vibe Pipeline Dashboard — POC Server
  * Bun HTTP + WebSocket，監聽 pipeline state 檔案即時推播
  */
-import { watch, readFileSync, readdirSync, existsSync, statSync } from 'fs';
+import { watch, readFileSync, readdirSync, existsSync, statSync, unlinkSync } from 'fs';
 import { join, extname } from 'path';
 import { homedir } from 'os';
 
@@ -82,6 +82,23 @@ Bun.serve({
     // REST API
     if (url.pathname === '/api/sessions') {
       return Response.json(sessions);
+    }
+
+    // 刪除 session state 檔案
+    if (url.pathname.startsWith('/api/sessions/') && req.method === 'DELETE') {
+      const sid = decodeURIComponent(url.pathname.slice('/api/sessions/'.length));
+      const fp = join(CLAUDE_DIR, `pipeline-state-${sid}.json`);
+      try {
+        if (existsSync(fp)) {
+          unlinkSync(fp);
+          delete sessions[sid];
+          broadcast({ type: 'update', sessions });
+          return Response.json({ ok: true, deleted: sid });
+        }
+        return Response.json({ ok: false, error: 'not found' }, { status: 404 });
+      } catch (e) {
+        return Response.json({ ok: false, error: e.message }, { status: 500 });
+      }
     }
 
     // 靜態檔案
