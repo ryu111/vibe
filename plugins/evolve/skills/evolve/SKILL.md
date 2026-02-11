@@ -7,44 +7,6 @@ description: 知識進化 — 將 instincts 聚類並進化為 skills 或 agents
 
 你是知識進化專家。將散落在多次對話中的碎片化經驗（instincts）聚類、評估，最終進化為可重用的 Claude Code 組件（skill 或 agent）。
 
-## Instinct 格式
-
-每個 instinct 是一條原子化知識：
-
-```json
-{
-  "id": "inst-YYYYMMDD-NNN",
-  "confidence": 0.5,
-  "occurrences": 1,
-  "problem": "遇到什麼問題",
-  "solution": "怎麼解決的",
-  "when_to_use": "什麼情境適用",
-  "tags": ["tag1", "tag2"]
-}
-```
-
-## 信心分數
-
-| 分數 | 狀態 | 行為 |
-|:----:|------|------|
-| 0.3 | 初始 | 首次觀察到 |
-| 0.5 | 確認 | 第二次觀察 |
-| 0.7 | 成熟 | 多次成功應用 |
-| 0.9 | 可進化 | 可考慮進化為 skill/agent |
-| < 0.3 | 衰退 | 長期未使用，自動降級 |
-
-## 進化路徑
-
-```
-觀察 → Instinct(0.3) → Cluster(≥3, avg≥0.7) → Skill 或 Agent
-```
-
-| 進化目標 | 條件 |
-|---------|------|
-| **Cluster** | ≥3 instincts 有相同 tag |
-| **Skill** | avg confidence ≥ 0.7，instincts ≥ 5 |
-| **Agent** | avg confidence ≥ 0.8，instincts ≥ 8，需多步驟自主決策 |
-
 ## 工作流程
 
 ### Step 1：收集 Instincts
@@ -54,15 +16,6 @@ description: 知識進化 — 將 instincts 聚類並進化為 skills 或 agents
 1. `search(query)` — 用關鍵字搜尋，取得 ID 清單
 2. `timeline(anchor=ID)` — 取得上下文
 3. `get_observations([IDs])` — 取得完整內容
-
-mem 觀察類型對應：
-| mem 類型 | instinct 分類 |
-|---------|--------------|
-| bugfix | problem-solution |
-| feature | why-it-exists |
-| refactor | pattern, trade-off |
-| discovery | how-it-works, gotcha |
-| decision | why-it-exists, trade-off |
 
 **無 claude-mem 時**：
 - 從當前對話歷史提取
@@ -85,21 +38,60 @@ mem 觀察類型對應：
 
 ### Step 4：產出
 
-進化為 skill 時：
-- 使用 `forge:skill` 建立 SKILL.md
-- 內容來自 instincts 的 problem/solution/when_to_use
-
-進化為 agent 時：
-- 使用 `forge:agent` 建立 agent .md
-- 系統提示來自 instincts 的模式歸納
+進化為 skill → 使用 `forge:skill` 建立 SKILL.md
+進化為 agent → 使用 `forge:agent` 建立 agent .md
 
 ### Step 5：回報
 
-向使用者呈現：
-- 收集了多少 instincts
-- 形成了多少 clusters
-- 進化了什麼組件
-- 哪些 clusters 尚未達標（需要更多觀察）
+向使用者呈現：收集了多少 instincts、形成了多少 clusters、進化了什麼組件、哪些 clusters 尚未達標。
+
+---
+
+## 參考：Instinct 格式
+
+每個 instinct 是一條原子化知識：
+
+```json
+{
+  "id": "inst-YYYYMMDD-NNN",
+  "confidence": 0.5,
+  "occurrences": 1,
+  "problem": "遇到什麼問題",
+  "solution": "怎麼解決的",
+  "when_to_use": "什麼情境適用",
+  "tags": ["tag1", "tag2"]
+}
+```
+
+## 參考：信心分數與進化閾值
+
+| 分數 | 狀態 | 行為 |
+|:----:|------|------|
+| 0.3 | 初始 | 首次觀察到 |
+| 0.5 | 確認 | 第二次觀察 |
+| 0.7 | 成熟 | 多次成功應用 |
+| 0.9 | 可進化 | 可考慮進化為 skill/agent |
+| < 0.3 | 衰退 | 長期未使用，自動降級 |
+
+| 進化目標 | 條件 |
+|---------|------|
+| **Cluster** | ≥3 instincts 有相同 tag |
+| **Skill** | avg confidence ≥ 0.7，instincts ≥ 5 |
+| **Agent** | avg confidence ≥ 0.8，instincts ≥ 8，需多步驟自主決策 |
+
+進化路徑：`觀察 → Instinct(0.3) → Cluster(≥3, avg≥0.7) → Skill 或 Agent`
+
+## 參考：mem 觀察類型對應
+
+有 claude-mem 時，根據觀察類型分類：
+
+| mem 類型 | instinct 分類 |
+|---------|--------------|
+| bugfix | problem-solution |
+| feature | why-it-exists |
+| refactor | pattern, trade-off |
+| discovery | how-it-works, gotcha |
+| decision | why-it-exists, trade-off |
 
 ## 關鍵原則
 
