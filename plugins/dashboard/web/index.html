@@ -106,8 +106,8 @@
     @keyframes todoPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
     /* Card 連接線 — 線段 + 箭頭 */
-    .ac::after { content: ''; position: absolute; right: -21px; top: 50%; width: 18px; height: 2px; transform: translateY(-50%); background: var(--surface2); border-radius: 1px; z-index: 1; transition: all 0.4s; }
-    .ac::before { content: ''; position: absolute; right: -24px; top: 50%; transform: translateY(-50%); border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 5px solid var(--surface2); z-index: 1; transition: all 0.4s; }
+    .ac::after { content: ''; position: absolute; right: -19px; top: 50%; width: 14px; height: 2px; transform: translateY(-50%); background: var(--surface2); border-radius: 1px; z-index: 1; transition: all 0.4s; }
+    .ac::before { content: ''; position: absolute; right: -21px; top: 50%; transform: translateY(-50%); border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 5px solid var(--surface2); z-index: 1; transition: all 0.4s; }
     .ac.pass::after { background: var(--green); box-shadow: 0 0 6px rgba(166,227,161,0.3); }
     .ac.pass::before { border-left-color: var(--green); }
     .ac.fail::after { background: var(--red); }
@@ -116,8 +116,8 @@
     .ac.active::before { border-left-color: var(--sc, var(--blue)); animation: arrowPulse 1s ease-in-out infinite; }
     .ac:nth-child(4)::after, .ac:nth-child(4)::before { display: none; }
     /* 第二排連接線（左向） */
-    .snake-row2 .ac::after { right: auto; left: -21px; }
-    .snake-row2 .ac::before { right: auto; left: -24px; border-left: none; border-right: 5px solid var(--surface2); }
+    .snake-row2 .ac::after { right: auto; left: -19px; }
+    .snake-row2 .ac::before { right: auto; left: -21px; border-left: none; border-right: 5px solid var(--surface2); }
     .snake-row2 .ac.pass::before { border-right-color: var(--green); }
     .snake-row2 .ac.fail::before { border-right-color: var(--red); }
     .snake-row2 .ac.active::after { animation-name: lineFlowL; }
@@ -179,13 +179,13 @@
     .row .value { font-weight: 600; }
 
     /* Timeline */
-    .timeline { background: var(--surface0); border-radius: 10px; padding: 12px 14px; border: 1px solid var(--surface1); flex: 1; min-height: 80px; }
+    .timeline { background: var(--surface0); border-radius: 10px; padding: 12px 14px; border: 1px solid var(--surface1); flex: 1; min-height: 80px; overflow: hidden; }
     .timeline h3 { font-size: 10px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
-    .tl-item { display: flex; align-items: center; gap: 8px; padding: 4px 2px; font-size: 11px; border-bottom: 1px solid rgba(69,71,90,0.3); animation: slideIn 0.3s ease; }
+    .tl-item { display: flex; align-items: center; gap: 8px; padding: 4px 2px; font-size: 11px; border-bottom: 1px solid rgba(69,71,90,0.3); animation: slideIn 0.3s ease; min-width: 0; }
     .tl-item:last-child { border-bottom: none; }
     .tl-item:hover { background: rgba(69,71,90,0.15); border-radius: 4px; }
     .tl-item .time { color: var(--overlay0); font-size: 9px; min-width: 52px; font-variant-numeric: tabular-nums; }
-    .tl-item .msg { flex: 1; }
+    .tl-item .msg { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tl-item.pass .msg { color: var(--green); }
     .tl-item.fail .msg { color: var(--red); }
     .tl-item.active .msg { color: var(--blue); }
