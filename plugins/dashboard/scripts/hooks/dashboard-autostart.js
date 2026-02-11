@@ -9,7 +9,7 @@
 'use strict';
 const path = require('path');
 const { spawn } = require('child_process');
-const { isRunning, start, getState, getLanIP, PORT } = require(path.join(__dirname, '..', 'lib', 'server-manager.js'));
+const { isRunning, start, getState, getLanIP, PORT, hasActiveClients } = require(path.join(__dirname, '..', 'lib', 'server-manager.js'));
 
 /**
  * 在 VSCode Simple Browser 開啟 Dashboard（背景執行，不阻塞 hook）
@@ -68,6 +68,12 @@ process.stdin.on('end', async () => {
       const lanIP = getLanIP();
       const urls = [`http://localhost:${state?.port || PORT}`];
       if (lanIP) urls.push(`http://${lanIP}:${state?.port || PORT}`);
+
+      // 新 session：檢查是否已有瀏覽器連線中，沒有才開
+      const hasClients = await hasActiveClients(state?.port || PORT);
+      if (!hasClients) {
+        openInBrowser(state?.port || PORT);
+      }
 
       console.log(JSON.stringify({
         additionalContext: `Dashboard 執行中（PID: ${state?.pid || '?'}）：${urls.join(' / ')}。使用 /dashboard 管理。`,

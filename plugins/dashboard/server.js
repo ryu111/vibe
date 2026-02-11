@@ -87,6 +87,11 @@ Bun.serve({
       return Response.json(sessions);
     }
 
+    // 查詢連線中的 WebSocket 客戶端數
+    if (url.pathname === '/api/clients') {
+      return Response.json({ count: clients.size });
+    }
+
     // 刪除 session state 檔案
     if (url.pathname.startsWith('/api/sessions/') && req.method === 'DELETE') {
       const sid = decodeURIComponent(url.pathname.slice('/api/sessions/'.length));
