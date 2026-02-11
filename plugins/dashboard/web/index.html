@@ -320,8 +320,9 @@
     }
     .pixel .office-wall-top { display: flex; justify-content: space-between; align-items: center; padding: 0 8px 16px; font-size: 8px; }
     .pixel .office-row { display: flex; justify-content: center; align-items: center; gap: 12px; margin: 8px 0; }
-    .pixel .office-arrow { font-size: 16px; color: var(--surface2); font-family: monospace !important; min-width: 20px; text-align: center; transition: all 0.3s; }
+    .pixel .office-arrow { font-size: 16px; color: var(--surface2); font-family: monospace !important; min-width: 20px; text-align: center; transition: all 0.3s; position: relative; }
     .pixel .office-arrow.done { color: var(--green); text-shadow: 0 0 6px var(--green); }
+    .pixel .office-arrow.done::after { content: ''; position: absolute; bottom: -2px; left: 0; width: 100%; height: 2px; background: var(--green); opacity: 0.5; }
     .pixel .office-arrow.active { color: var(--blue); animation: pixelPulse 1s steps(2) infinite; }
     .pixel .office-turn { display: flex; justify-content: flex-end; padding-right: 72px; margin: 4px 0; font-size: 16px; color: var(--surface2); font-family: monospace !important; }
     .pixel .office-turn.done { color: var(--green); text-shadow: 0 0 6px var(--green); }
@@ -396,11 +397,19 @@
     @keyframes wsScreenPulse { 0%,100% { box-shadow: 0 0 4px var(--ac); } 50% { box-shadow: 0 0 12px var(--ac); } }
     @keyframes wsScreenBlink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0.3; } }
 
+    /* active 工位發光環 */
+    .pixel .ws.st-active { filter: brightness(1.1); }
+    .pixel .ws.st-active::before { content: ''; position: absolute; inset: -4px; border: 2px solid var(--ac); opacity: 0.4; animation: wsGlowRing 1.5s steps(2) infinite; z-index: -1; pointer-events: none; }
+    @keyframes wsGlowRing { 0%,100% { opacity: 0.2; box-shadow: 0 0 4px var(--ac); } 50% { opacity: 0.6; box-shadow: 0 0 12px var(--ac); } }
+
     /* 裝飾元素 */
     .pixel .deco-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
     .pixel .deco-coffee { position: relative; font-size: 16px; }
-    .pixel .deco-coffee::after { content: '~'; position: absolute; top: -10px; left: 50%; font-size: 8px; color: var(--surface2); animation: wsSteam 2s steps(2) infinite; font-family: monospace !important; }
-    @keyframes wsSteam { 0%,100% { opacity: 0.3; transform: translateY(0); } 50% { opacity: 0.7; transform: translateY(-3px); } }
+    .pixel .deco-coffee::before { content: '~'; position: absolute; top: -14px; left: 40%; font-size: 10px; color: var(--surface2); animation: wsSteam 2.5s steps(2) infinite 0.5s; font-family: monospace !important; }
+    .pixel .deco-coffee::after { content: '~'; position: absolute; top: -10px; left: 55%; font-size: 8px; color: var(--surface2); animation: wsSteam 2s steps(2) infinite; font-family: monospace !important; }
+    .pixel .deco-plant { display: inline-block; font-size: 14px; animation: wsPlantSway 3s steps(2) infinite; transform-origin: bottom center; }
+    @keyframes wsSteam { 0%,100% { opacity: 0.3; transform: translateY(0); } 50% { opacity: 0.7; transform: translateY(-4px); } }
+    @keyframes wsPlantSway { 0%,100% { transform: rotate(0); } 50% { transform: rotate(3deg); } }
     .pixel .deco-board { background: var(--surface0); border: 2px solid var(--surface1); padding: 4px 8px; font-size: 6px; min-width: 80px; text-align: center; }
     .pixel .deco-board .bar { height: 4px; background: var(--surface1); margin-top: 3px; overflow: hidden; }
     .pixel .deco-board .bar-fill { height: 100%; background: var(--green); transition: width 0.5s; }
@@ -479,8 +488,18 @@
     .pixel .ws-tip-value { font-weight: 700; }
 
     /* 辦公室 responsive */
-    @media (max-width: 1100px) { .pixel .ws { width: 100px; } .pixel .office-row { gap: 8px; } }
-    @media (max-width: 700px) { .pixel .office-row { flex-wrap: wrap; } .pixel .ws { width: 90px; } .pixel .office-arrow { display: none; } }
+    @media (max-width: 1100px) { .pixel .ws { width: 100px; } .pixel .office-row { gap: 8px; } .pixel .office-deco { gap: 8px; padding: 12px 8px 4px; } }
+    @media (max-width: 700px) { .pixel .office-row { flex-wrap: wrap; justify-content: center; } .pixel .ws { width: 90px; } .pixel .office-arrow, .pixel .office-turn { display: none; } .pixel .office-deco { flex-wrap: wrap; justify-content: center; } .pixel .deco-board { min-width: 60px; } }
+    /* 全螢幕像素模式 */
+    .fullscreen .pixel .office { min-height: 480px; padding: 24px 32px; }
+    .fullscreen .pixel .ws { width: 130px; }
+    .fullscreen .pixel .ws-head { font-size: 24px; }
+    .fullscreen .pixel .ws-screen { width: 34px; height: 24px; }
+    .fullscreen .pixel .ws-desk-top { width: 56px; }
+    .fullscreen .pixel .ws-bubble { font-size: 7px; }
+    .fullscreen .pixel .ws-label { font-size: 7px; }
+    .fullscreen .pixel .office-arrow { font-size: 20px; }
+    .fullscreen .pixel .main-agent .ma-head { font-size: 20px; }
 
     /* Session 資源指標 */
     .sc-res { display: flex; gap: 8px; margin-top: 3px; font-size: 9px; color: var(--subtext0); }
@@ -811,7 +830,7 @@
               ${i > 0 && html`<div class="office-arrow ${arrowStatus(r2[i])}">←</div>`}
               <${Workstation} stage=${stage} s=${s} tick=${tick} pinnedWs=${pinnedWs} setPinnedWs=${setPinnedWs} />
             `)}
-            <div class="deco-item">🌿</div>
+            <div class="deco-item"><span class="deco-plant">🌿</span></div>
           </div>
 
           <div class="office-deco">
@@ -820,6 +839,7 @@
               <div class="bar"><div class="bar-fill" style="width:${progress}%"></div></div>
               <div>${stagesDone}/${stagesTotal} · ${progress}%</div>
               ${curAgent && html`<div style="margin-top:2px;color:var(--blue)">→ ${curAgent}</div>`}
+              <div style="margin-top:2px;color:var(--subtext0)">⏱ ${elapsed(s.startedAt || s.lastTransition)}</div>
             </div>
             <div class="deco-rack">
               <div class="deco-rack-row"><div class="deco-led on"></div><div class="deco-led ${isDelegating ? 'blink' : 'on'}"></div><div class="deco-led on"></div></div>
