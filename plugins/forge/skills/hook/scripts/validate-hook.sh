@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ============================================================
 # 腳本名稱：validate-hook.sh
-# 用途：驗證 Hook 組件（V-HK-01 ~ V-HK-15）
+# 用途：驗證 Hook 組件（V-HK-01 ~ V-HK-19）
 # 呼叫方：/forge:hook 或 /forge:scaffold 組合呼叫
 # 輸入：$1 = hooks.json 路徑
 # 輸出：stderr 驗證結果，exit code 0=通過 1=失敗
@@ -70,6 +70,9 @@ for event in $EVENTS; do
             # --- Flat 格式：hook entry 直接在陣列中 ---
             v_pass "V-HK-04" "${event}[${i}] 使用 flat hook 格式"
 
+            # --- V-HK-19: flat 格式相容性警告 ---
+            v_warn "V-HK-19" "${event}[${i}] 使用 flat 格式 — ECC runtime 可能不支援，建議轉為 grouped 格式（{ matcher, hooks: [...] }）"
+
             # 直接處理這個 entry 為單一 hook
             HOOK_COUNT=1
             HOOK_PATHS=("${GROUP_PATH}")
@@ -80,6 +83,16 @@ for event in $EVENTS; do
             else
                 v_fail "V-HK-04" "${event}[${i}] 缺少 hooks 陣列（且非 flat 格式）"
                 continue
+            fi
+
+            # --- V-HK-18: matcher 型別檢查（不可為 null） ---
+            MATCHER_TYPE=$(jq -r "${GROUP_PATH}.matcher | type" "$HOOKS_FILE")
+            if [[ "$MATCHER_TYPE" == "null" ]]; then
+                v_fail "V-HK-18" "${event}[${i}] matcher 為 null — ECC 要求字串型別（用 \"*\" 代替 null）"
+            elif [[ "$MATCHER_TYPE" != "string" ]]; then
+                v_fail "V-HK-18" "${event}[${i}] matcher 型別錯誤: ${MATCHER_TYPE}（應為 string）"
+            else
+                v_pass "V-HK-18" "${event}[${i}] matcher 型別正確: string"
             fi
 
             # --- V-HK-09: matcher 合法（如有） ---

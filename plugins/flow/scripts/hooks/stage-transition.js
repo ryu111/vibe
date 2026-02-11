@@ -258,6 +258,9 @@ ${method}${stageContext}${skipNote}
       }
     }
 
+    // 清除委派標記（sub-agent 已完成，重新啟動 dev-gate 保護）
+    state.delegationActive = false;
+
     // 寫入 state file
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
 

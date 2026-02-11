@@ -75,7 +75,7 @@ COLLAB   SessionStart: team-init      /sentinel:lint    手動 lint
                                       /collab:adversarial-review 對抗審查
                                       /collab:adversarial-refactor 競爭重構
 
-自動: 13 hooks                         手動: 24 skills（+ patterns 8 知識 skills）
+自動: 15 hooks                         手動: 24 skills（+ patterns 8 知識 skills）
 跨 session 記憶：claude-mem（獨立 plugin，非依賴）
 ```
 
@@ -119,7 +119,7 @@ COLLAB   SessionStart: team-init      /sentinel:lint    手動 lint
 
 | Phase | Plugin | 前置條件 | 組件數 |
 |:-----:|--------|---------|:------:|
-| 3 | **flow** | forge ✅ | 6S + 3A + 7H + 10Sc |
+| 3 | **flow** | forge ✅ | 6S + 3A + 9H + 12Sc |
 | 4 | **sentinel** | forge ✅ | 9S + 6A + 5H + 6Sc |
 | 5 | **patterns** | 無 | 8S |
 | 6 | **evolve** | flow 可選 | 2S + 1A |
@@ -133,7 +133,7 @@ COLLAB   SessionStart: team-init      /sentinel:lint    手動 lint
 
 | # | Plugin | 文件 | Skills | Agents | Hooks | Scripts |
 |:-:|--------|------|:------:|:------:|:-----:|:-------:|
-| 1 | flow | [flow.md](flow.md) | 6 | 3 | 7 | 10 |
+| 1 | flow | [flow.md](flow.md) | 6 | 3 | 9 | 12 |
 | 2 | sentinel | [sentinel.md](sentinel.md) | 9 | 6 | 5 | 6 |
 | 3 | patterns | [patterns.md](patterns.md) | 8 | 0 | 0 | 0 |
 | 4 | evolve | [evolve.md](evolve.md) | 2 | 1 | 0 | 0 |
@@ -150,6 +150,6 @@ COLLAB   SessionStart: team-init      /sentinel:lint    手動 lint
 | **Plugins** | 6 | forge ✅ + 5 新 |
 | **Skills** | 32 | 24 動態能力 + 8 知識庫（patterns） |
 | **Agents** | 10 | 跨 3 個 plugins |
-| **Hooks** | 13 | 自動觸發 |
-| **Scripts** | 24 | hook 腳本 + 共用函式庫 |
-| **合計** | 79 | 跨 6 個獨立安裝的 plugins |
+| **Hooks** | 15 | 自動觸發 |
+| **Scripts** | 26 | hook 腳本 + 共用函式庫 |
+| **合計** | 83 | 跨 6 個獨立安裝的 plugins |

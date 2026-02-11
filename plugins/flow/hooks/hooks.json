@@ -28,6 +28,26 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/delegation-tracker.js",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/dev-gate.js",
+            "timeout": 5
+          }
+        ]
+      },
+      {
         "matcher": "*",
         "hooks": [
           {

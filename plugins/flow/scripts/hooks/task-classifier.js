@@ -95,8 +95,9 @@ process.stdin.on('end', () => {
     // 輸出分類結果給主 agent
     if (stages.length > 0) {
       const stageStr = stages.join(' → ');
+      const firstStage = stages[0];
       console.log(JSON.stringify({
-        additionalContext: `[Pipeline 任務分類] 類型：${label}\n必要階段：${stageStr}\n請立即從第一個階段開始，按順序委派給對應的 sub-agent 執行。`,
+        additionalContext: `⛔ [Pipeline 任務分類] 類型：${label}\n必要階段：${stageStr}\n🚫 你是管理者 — 禁止直接使用 Write/Edit 寫程式碼。立即使用 Task 工具委派 ${firstStage} 階段的 sub-agent。`,
       }));
     } else {
       console.log(JSON.stringify({

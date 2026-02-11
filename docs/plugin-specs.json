@@ -22,8 +22,8 @@
       "expected": {
         "skills": ["plan", "architect", "compact", "checkpoint", "env-detect", "cancel"],
         "agents": ["planner", "architect", "developer"],
-        "hooks": 7,
-        "scripts": 10
+        "hooks": 9,
+        "scripts": 12
       }
     },
     "sentinel": {

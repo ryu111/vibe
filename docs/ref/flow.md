@@ -49,15 +49,17 @@ Session 持久化（跨 session context）已移交 **claude-mem**（獨立 plug
 | `architect` | opus | 唯讀 | 程式碼庫分析 + 架構方案 + 介面設計 |
 | `developer` | sonnet | 可寫 | 按計畫實作程式碼 + 寫測試 + 遵循架構慣例 |
 
-### Hooks（7 個）
+### Hooks（9 個）
 
 | 事件 | 名稱 | 類型 | 強度 | 說明 |
 |------|------|:----:|:----:|------|
-| UserPromptSubmit | task-classifier | prompt | 軟建議 | 分類任務類型，注入建議的 pipeline 階段 |
-| SessionStart | pipeline-init | command | — | 環境偵測 + pipeline 規則注入 |
+| UserPromptSubmit | task-classifier | command | 軟建議 | 分類任務類型，注入建議的 pipeline 階段 |
+| SessionStart | pipeline-init | command | — | 環境偵測 + pipeline 規則注入（⛔ 強語言委派） |
+| PreToolUse | delegation-tracker | command | — | Task 呼叫時標記 `delegationActive`，允許 sub-agent Write/Edit |
+| PreToolUse | dev-gate | command | 絕對阻擋 | Pipeline 模式下阻擋 Main Agent 直接 Write/Edit 程式碼 |
 | PreToolUse | suggest-compact | command | 軟建議 | 追蹤 tool calls，達 50 建議 compact |
 | PreCompact | log-compact | command | — | 記錄 compact 事件 + 重設計數 |
-| SubagentStop | stage-transition | command | 強建議 | Agent 完成後判斷下一步（前進/回退/跳過） |
+| SubagentStop | stage-transition | command | 強建議 | Agent 完成後判斷下一步（前進/回退/跳過）+ 清除 `delegationActive` |
 | Stop | pipeline-check | command | 強建議 | 結束前檢查是否有遺漏的建議階段 |
 | Stop | task-guard | command | 絕對阻擋 | 未完成任務時阻擋退出（`decision: "block"`） |
 
@@ -489,7 +491,10 @@ Stop 觸發
 
 | 腳本 | 位置 | 功能 |
 |------|------|------|
-| `pipeline-init.js` | `scripts/hooks/` | 環境偵測 + pipeline 規則注入 |
+| `pipeline-init.js` | `scripts/hooks/` | 環境偵測 + pipeline 規則注入（⛔ 強語言委派） |
+| `dev-gate.js` | `scripts/hooks/` | Pipeline 模式下阻擋 Main Agent 直接 Write/Edit |
+| `delegation-tracker.js` | `scripts/hooks/` | Task 呼叫時標記委派狀態，避免 dev-gate 誤擋 sub-agent |
+| `task-classifier.js` | `scripts/hooks/` | 任務分類 + pipeline 階段決定 |
 | `suggest-compact.js` | `scripts/hooks/` | 追蹤 tool calls |
 | `log-compact.js` | `scripts/hooks/` | 記錄 compact 事件 |
 | `stage-transition.js` | `scripts/hooks/` | Pipeline 階段轉換 + state 管理 |
@@ -531,7 +536,10 @@ plugins/flow/
 │   └── hooks.json
 └── scripts/
     ├── hooks/
-    │   ├── pipeline-init.js         ← 環境偵測 + pipeline 規則
+    │   ├── pipeline-init.js         ← 環境偵測 + pipeline 規則（⛔ 強語言）
+    │   ├── dev-gate.js              ← Pipeline 模式 Write/Edit 閘門
+    │   ├── delegation-tracker.js    ← Task 呼叫追蹤
+    │   ├── task-classifier.js       ← 任務分類
     │   ├── suggest-compact.js
     │   ├── log-compact.js
     │   ├── stage-transition.js
@@ -577,7 +585,7 @@ plugins/flow/
 ```json
 {
   "name": "flow",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "description": "開發工作流 — 規劃、架構、compact、pipeline 管理、環境偵測",
   "skills": ["./skills/"],
   "agents": [

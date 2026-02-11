@@ -545,7 +545,7 @@ plugins/sentinel/
 ```json
 {
   "name": "sentinel",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "品質全鏈守衛 — lint、format、review、security、TDD、E2E、QA、verify",
   "skills": ["./skills/"],
   "agents": [
