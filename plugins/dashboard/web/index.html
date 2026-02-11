@@ -72,7 +72,7 @@
     .task-badge { font-size: 10px; padding: 2px 8px; border-radius: 6px; background: var(--surface1); color: var(--subtext0); font-weight: 500; }
 
     /* === S/U Snake Grid === */
-    .snake { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 24px; padding: 8px 0; position: relative; }
+    .snake { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 32px; padding: 8px 0; position: relative; }
     .snake-row2 { display: contents; }
     /* 轉角連接器 */
     .snake-turn { grid-column: 4; display: flex; align-items: center; justify-content: center; color: var(--overlay0); font-size: 20px; font-weight: 700; transition: all 0.4s; }
@@ -105,28 +105,22 @@
     .ac-todo.skip { opacity: 0.4; }
     @keyframes todoPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-    /* Card 連接線 — 線段 + 箭頭 */
-    .ac::after { content: ''; position: absolute; right: -19px; top: 50%; width: 14px; height: 2px; transform: translateY(-50%); background: var(--surface2); border-radius: 1px; z-index: 1; transition: all 0.4s; }
-    .ac::before { content: ''; position: absolute; right: -21px; top: 50%; transform: translateY(-50%); border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 5px solid var(--surface2); z-index: 1; transition: all 0.4s; }
-    .ac.pass::after { background: var(--green); box-shadow: 0 0 6px rgba(166,227,161,0.3); }
-    .ac.pass::before { border-left-color: var(--green); }
-    .ac.fail::after { background: var(--red); }
-    .ac.fail::before { border-left-color: var(--red); }
-    .ac.active::after { background: linear-gradient(90deg, transparent, var(--sc, var(--blue)), transparent); background-size: 200% 100%; animation: lineFlowR 1.2s ease-in-out infinite; }
-    .ac.active::before { border-left-color: var(--sc, var(--blue)); animation: arrowFlowR 1.2s ease-in-out infinite; }
-    .snake > .ac:nth-child(4)::after, .snake > .ac:nth-child(4)::before { display: none; }
-    /* 第二排連接線（左向） */
-    .snake-row2 .ac::after { right: auto; left: -19px; }
-    .snake-row2 .ac::before { right: auto; left: -21px; border-left: none; border-right: 5px solid var(--surface2); }
-    .snake-row2 .ac.pass::before { border-right-color: var(--green); }
-    .snake-row2 .ac.fail::before { border-right-color: var(--red); }
-    .snake-row2 .ac.active::after { animation-name: lineFlowL; }
-    .snake-row2 .ac.active::before { border-right-color: var(--sc, var(--blue)); animation-name: arrowFlowL; }
-    .snake-row2 .ac:nth-child(1)::after, .snake-row2 .ac:nth-child(1)::before { display: none; }
-    @keyframes lineFlowR { 0% { background-position: -100% 0; } 100% { background-position: 200% 0; } }
-    @keyframes lineFlowL { 0% { background-position: 200% 0; } 100% { background-position: -100% 0; } }
-    @keyframes arrowFlowR { 0%,100% { transform: translateY(-50%); opacity: 0.5; } 50% { transform: translateY(-50%) translateX(3px); opacity: 1; filter: drop-shadow(0 0 8px currentColor); } }
-    @keyframes arrowFlowL { 0%,100% { transform: translateY(-50%); opacity: 0.5; } 50% { transform: translateY(-50%) translateX(-3px); opacity: 1; filter: drop-shadow(0 0 8px currentColor); } }
+    /* Card 連接箭頭（文字字元，與 ↓ 同風格） */
+    .ac::after { display: none; }
+    .ac::before { content: '→'; position: absolute; top: 50%; left: calc(100% + 16px); transform: translate(-50%, -50%); font-size: 18px; font-weight: 700; color: var(--surface2); z-index: 2; transition: all 0.4s; }
+    .ac.pass::before { color: var(--green); text-shadow: 0 0 8px rgba(166,227,161,0.4); }
+    .ac.skipped::before { color: var(--green); opacity: 0.4; }
+    .ac.fail::before { color: var(--red); }
+    .ac.active::before { color: var(--sc, var(--blue)); animation: arrowFlowR 1.2s ease-in-out infinite; }
+    .snake > .ac:nth-child(4)::before { display: none; }
+    /* 第二排箭頭（左向） */
+    .snake-row2 .ac::before { content: '←'; left: -16px; }
+    .snake-row2 .ac.pass::before { color: var(--green); }
+    .snake-row2 .ac.fail::before { color: var(--red); }
+    .snake-row2 .ac.active::before { color: var(--sc, var(--blue)); animation-name: arrowFlowL; }
+    .snake-row2 .ac:nth-child(1)::before { display: none; }
+    @keyframes arrowFlowR { 0%,100% { transform: translate(-50%, -50%); text-shadow: none; } 50% { transform: translate(-50%, -50%) translateX(2px); text-shadow: 0 0 12px currentColor; } }
+    @keyframes arrowFlowL { 0%,100% { transform: translate(-50%, -50%); text-shadow: none; } 50% { transform: translate(-50%, -50%) translateX(-2px); text-shadow: 0 0 12px currentColor; } }
 
     /* Card States */
     .ac.pass { border-color: var(--green); background: rgba(166,227,161,0.05); }
@@ -223,7 +217,7 @@
     .focus-cards .summary, .focus-cards .cards, .focus-cards .timeline { display: none; }
     .focus-cards .celebrate { margin: 0; }
     .focus-cards .progress-bar { height: 4px; }
-    .focus-cards .snake { gap: 10px 20px; }
+    .focus-cards .snake { gap: 10px 28px; }
     .focus-cards .ac { min-height: 180px; padding: 12px; }
 
     /* Timeline 收合 */
@@ -314,8 +308,7 @@
     .pixel .ac-stats { font-size: 6px; }
     .pixel .sc-res { font-size: 6px; }
     .pixel .confetti-piece { border-radius: 0 !important; }
-    .pixel .ac::after { height: 3px; border-radius: 0 !important; }
-    .pixel .ac::before { border-width: 5px !important; }
+    .pixel .ac::before { font-family: monospace; }
 
     /* Session 資源指標 */
     .sc-res { display: flex; gap: 8px; margin-top: 3px; font-size: 9px; color: var(--subtext0); }
@@ -407,11 +400,11 @@
     }
     function getStatus(stage, s) {
       if (!s?.expectedStages?.includes(stage)) return 'skipped';
+      const cur = getCurrent(s);
+      if (stage === cur) return s.delegationActive ? 'active' : 'next';
       const r = s.stageResults?.[stage];
       if (r?.verdict === 'PASS') return 'pass';
       if (r?.verdict === 'FAIL') return 'fail';
-      const cur = getCurrent(s);
-      if (stage === cur) return s.delegationActive ? 'active' : 'next';
       return 'pending';
     }
     function pct(s) {
@@ -791,7 +784,7 @@
               <!-- S/U Snake Grid -->
               <div class="snake">
                 ${ROW1.map(stage => html`<${AgentCard} stage=${stage} s=${s} tick=${tick} />`)}
-                <div class="snake-turn ${getStatus('REVIEW', s) === 'pass' ? (getStatus('TEST', s) === 'active' ? 'flowing' : 'done') : ''}">↓</div>
+                <div class="snake-turn ${getStatus('REVIEW', s) === 'active' ? 'flowing' : getStatus('REVIEW', s) === 'pass' ? 'done' : ''}">↓</div>
                 <div class="snake-row2">
                   ${row2Reversed.map(stage => html`<${AgentCard} stage=${stage} s=${s} tick=${tick} />`)}
                 </div>
