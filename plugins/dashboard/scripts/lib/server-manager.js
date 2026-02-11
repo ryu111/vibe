@@ -116,30 +116,4 @@ function getLanIP() {
   return null;
 }
 
-/**
- * 查詢是否有瀏覽器正在看 Dashboard（檢查 WebSocket 連線數）
- * @param {number} [port]
- * @returns {Promise<boolean>}
- */
-async function hasActiveClients(port) {
-  port = port || PORT;
-  try {
-    const http = require('http');
-    return new Promise((resolve) => {
-      const req = http.get(`http://127.0.0.1:${port}/api/clients`, { timeout: 1000 }, (res) => {
-        let body = '';
-        res.on('data', d => body += d);
-        res.on('end', () => {
-          try {
-            const { count } = JSON.parse(body);
-            resolve(count > 0);
-          } catch (_) { resolve(false); }
-        });
-      });
-      req.on('error', () => resolve(false));
-      req.on('timeout', () => { req.destroy(); resolve(false); });
-    });
-  } catch (_) { return false; }
-}
-
-module.exports = { PORT, PID_FILE, SERVER_PATH, isRunning, start, stop, getState, getLanIP, hasActiveClients };
+module.exports = { PORT, PID_FILE, SERVER_PATH, isRunning, start, stop, getState, getLanIP };
