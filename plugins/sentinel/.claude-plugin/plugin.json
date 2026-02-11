@@ -1,6 +1,6 @@
 {
   "name": "sentinel",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "品質全鏈守衛 — lint、format、review、security、TDD、E2E、QA、verify",
   "skills": ["./skills/"],
   "agents": [
