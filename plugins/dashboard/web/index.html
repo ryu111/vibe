@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vibe Pipeline Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #1e1e2e; --surface0: #313244; --surface1: #45475a; --surface2: #585b70;
+      --overlay0: #6c7086; --text: #cdd6f4; --subtext0: #a6adc8;
+      --blue: #89b4fa; --green: #a6e3a1; --red: #f38ba8; --yellow: #f9e2af;
+      --purple: #cba6f7; --cyan: #89dceb; --pink: #f5c2e7; --orange: #fab387;
+    }
+    body { font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Menlo', monospace; background: var(--bg); color: var(--text); }
+    .layout { display: grid; grid-template-columns: 230px 1fr; height: 100vh; }
+
+    /* Sidebar */
+    .sidebar { background: var(--surface0); border-right: 1px solid var(--surface1); padding: 16px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+    .sidebar-header { display: flex; align-items: center; justify-content: space-between; }
+    .sidebar-header h2 { font-size: 11px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1.5px; }
+    .sidebar-header .count { font-size: 10px; color: var(--overlay0); background: var(--surface1); padding: 1px 6px; border-radius: 8px; }
+    .group-label { font-size: 10px; color: var(--overlay0); text-transform: uppercase; letter-spacing: 1px; margin-top: 8px; padding: 4px 0; border-top: 1px solid var(--surface1); }
+    .session-card { padding: 10px 12px; border-radius: 8px; cursor: pointer; transition: all 0.2s; border: 1px solid transparent; position: relative; }
+    .session-card:hover { background: var(--surface1); }
+    .session-card.active { background: var(--surface1); border-color: var(--blue); }
+    .session-card.idle { opacity: 0.5; }
+    .session-card.idle:hover { opacity: 0.8; }
+    .session-id { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+    .session-id .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: livePulse 2s ease infinite; }
+    .session-meta { font-size: 11px; color: var(--subtext0); margin-top: 3px; }
+    .conn { font-size: 11px; display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+    .dot.on { background: var(--green); }
+    .dot.off { background: var(--red); animation: blink 1.5s infinite; }
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    @keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    /* Main */
+    .main { padding: 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+    .main h1 { font-size: 16px; display: flex; align-items: center; gap: 8px; }
+    .main h1 .task-badge { font-size: 11px; padding: 2px 8px; border-radius: 6px; background: var(--surface1); color: var(--subtext0); font-weight: 500; }
+
+    /* Pipeline Flow */
+    .pipeline { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 20px 0; flex-wrap: wrap; }
+    .stage { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 12px 14px; border-radius: 12px; background: var(--surface0); border: 2px solid var(--surface1); min-width: 76px; transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); position: relative; }
+    .stage .emoji { font-size: 20px; line-height: 1; transition: transform 0.3s; }
+    .stage .name { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; }
+    .stage .agent { font-size: 9px; color: var(--subtext0); max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .stage .badge { font-size: 9px; font-weight: 600; padding: 2px 6px; border-radius: 4px; transition: all 0.3s; }
+
+    /* Stage 狀態 — 使用 agent 色彩 */
+    .stage.pass { border-color: var(--green); background: rgba(166,227,161,0.06); }
+    .stage.pass .badge { background: rgba(166,227,161,0.15); color: var(--green); }
+    .stage.pass .emoji { transform: scale(1.1); }
+    .stage.fail { border-color: var(--red); background: rgba(243,139,168,0.06); }
+    .stage.fail .badge { background: rgba(243,139,168,0.15); color: var(--red); }
+    .stage.active { border-color: var(--sc, var(--blue)); animation: stagePulse 2s ease-in-out infinite; background: color-mix(in srgb, var(--sc, var(--blue)) 6%, transparent); }
+    .stage.active .badge { background: color-mix(in srgb, var(--sc, var(--blue)) 15%, transparent); color: var(--sc, var(--blue)); }
+    .stage.active .emoji { animation: bounce 1s ease infinite; }
+    .stage.skipped { opacity: 0.25; border-style: dashed; }
+    .stage.pending { opacity: 0.45; }
+    .stage.next { border-color: color-mix(in srgb, var(--sc, var(--yellow)) 60%, transparent); opacity: 0.75; }
+    .connector { color: var(--surface2); font-size: 14px; margin: 0 2px; transition: color 0.5s; }
+    .connector.done { color: var(--green); }
+    .retry-badge { position: absolute; top: -8px; right: -8px; background: var(--orange); color: var(--bg); font-size: 9px; font-weight: 700; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+
+    @keyframes stagePulse {
+      0%, 100% { box-shadow: 0 0 8px color-mix(in srgb, var(--sc, var(--blue)) 25%, transparent); }
+      50% { box-shadow: 0 0 24px color-mix(in srgb, var(--sc, var(--blue)) 50%, transparent); }
+    }
+    @keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+    @keyframes popIn { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+
+    /* Progress */
+    .progress { height: 4px; background: var(--surface1); border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, var(--blue), var(--green)); border-radius: 2px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
+
+    /* Celebration */
+    .celebrate { position: relative; }
+    .celebrate::after { content: '🎉'; position: absolute; right: -28px; top: 50%; transform: translateY(-50%); font-size: 18px; animation: celebratePop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+    .progress-fill.complete { background: linear-gradient(90deg, var(--green), var(--cyan), var(--green)); background-size: 200% 100%; animation: shimmer 2s linear infinite; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    @keyframes celebratePop { 0% { transform: translateY(-50%) scale(0); } 100% { transform: translateY(-50%) scale(1); } }
+
+    /* Cards */
+    .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .card { background: var(--surface0); border-radius: 12px; padding: 14px 16px; border: 1px solid var(--surface1); transition: border-color 0.3s; }
+    .card:hover { border-color: var(--surface2); }
+    .card h3 { font-size: 11px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+    .row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; }
+    .row .label { color: var(--subtext0); }
+    .row .value { font-weight: 600; }
+
+    /* Timeline */
+    .timeline { background: var(--surface0); border-radius: 12px; padding: 14px 16px; border: 1px solid var(--surface1); flex: 1; min-height: 100px; }
+    .timeline h3 { font-size: 11px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+    .tl-item { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 12px; border-bottom: 1px solid rgba(69,71,90,0.4); animation: slideIn 0.3s ease; }
+    .tl-item:last-child { border-bottom: none; }
+    .tl-item .time { color: var(--overlay0); font-size: 10px; min-width: 56px; font-variant-numeric: tabular-nums; }
+    .tl-item .msg { flex: 1; }
+    .tl-item.pass .msg { color: var(--green); }
+    .tl-item.fail .msg { color: var(--red); }
+    .tl-item.active .msg { color: var(--blue); }
+    @keyframes slideIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+
+    /* Empty */
+    .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 12px; color: var(--subtext0); }
+    .empty .icon { font-size: 56px; animation: float 3s ease-in-out infinite; }
+    .empty .hint { font-size: 13px; text-align: center; line-height: 1.8; }
+    .empty code { background: var(--surface0); padding: 2px 8px; border-radius: 4px; font-size: 12px; color: var(--text); }
+    @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+
+    /* Responsive */
+    @media (max-width: 700px) {
+      .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      .sidebar { max-height: 180px; border-right: none; border-bottom: 1px solid var(--surface1); flex-direction: row; flex-wrap: wrap; gap: 8px; padding: 12px; }
+      .session-card { min-width: 140px; flex: 1; }
+      .cards { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module">
+    import { h, render } from 'https://esm.sh/preact@10.25.4';
+    import { useState, useEffect, useRef, useMemo } from 'https://esm.sh/preact@10.25.4/hooks';
+    import htm from 'https://esm.sh/htm@3.1.1';
+    const html = htm.bind(h);
+
+    // --- 常量 ---
+    const ALL_STAGES = ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'];
+    const SM = {
+      PLAN:   { agent: 'planner',       color: '#cba6f7', emoji: '📋', label: '規劃' },
+      ARCH:   { agent: 'architect',     color: '#89dceb', emoji: '🏛️', label: '架構' },
+      DEV:    { agent: 'developer',     color: '#f9e2af', emoji: '🏗️', label: '開發' },
+      REVIEW: { agent: 'code-reviewer', color: '#89b4fa', emoji: '🔍', label: '審查' },
+      TEST:   { agent: 'tester',        color: '#f5c2e7', emoji: '🧪', label: '測試' },
+      QA:     { agent: 'qa',            color: '#f9e2af', emoji: '✅', label: '驗證' },
+      E2E:    { agent: 'e2e-runner',    color: '#a6e3a1', emoji: '🌐', label: 'E2E' },
+      DOCS:   { agent: 'doc-updater',   color: '#cba6f7', emoji: '📝', label: '文件' },
+    };
+
+    // --- 輔助函式 ---
+    function getCurrent(s) {
+      return s?.currentStage || s?.expectedStages?.find(st => s.stageResults?.[st]?.verdict !== 'PASS') || null;
+    }
+    function getStatus(stage, s) {
+      if (!s?.expectedStages?.includes(stage)) return 'skipped';
+      const r = s.stageResults?.[stage];
+      if (r?.verdict === 'PASS') return 'pass';
+      if (r?.verdict === 'FAIL') return 'fail';
+      const cur = getCurrent(s);
+      if (stage === cur) return s.delegationActive ? 'active' : 'next';
+      return 'pending';
+    }
+    function pct(s) {
+      if (!s?.expectedStages?.length) return 0;
+      return Math.round(s.expectedStages.filter(st => s.stageResults?.[st]?.verdict === 'PASS').length / s.expectedStages.length * 100);
+    }
+    function hasPipeline(s) { return (s?.expectedStages?.length || 0) > 0; }
+    function isLive(s) { return s?.delegationActive || false; }
+    function sid(id) { return id?.length > 12 ? id.slice(0, 12) + '…' : id || '—'; }
+    function now() { return new Date().toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+    function elapsed(iso) {
+      if (!iso) return '';
+      const d = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+      if (d < 60) return `${d}s`;
+      if (d < 3600) return `${Math.floor(d/60)}m`;
+      return `${Math.floor(d/3600)}h`;
+    }
+
+    // --- App ---
+    function App() {
+      const [sessions, setSessions] = useState({});
+      const [active, setActive] = useState(null);
+      const [conn, setConn] = useState(false);
+      const [events, setEvents] = useState([]);
+      const prevRef = useRef({});
+
+      // 分組 session
+      const { pipeline: pipeSessions, idle: idleSessions } = useMemo(() => {
+        const pipe = [], idle = [];
+        for (const [id, s] of Object.entries(sessions)) {
+          (hasPipeline(s) ? pipe : idle).push([id, s]);
+        }
+        // Pipeline sessions 按最近活動排序
+        pipe.sort((a, b) => new Date(b[1].lastTransition || 0) - new Date(a[1].lastTransition || 0));
+        return { pipeline: pipe, idle };
+      }, [sessions]);
+
+      // WebSocket
+      useEffect(() => {
+        let ws, rt;
+        function connect() {
+          const p = location.protocol === 'https:' ? 'wss' : 'ws';
+          ws = new WebSocket(`${p}://${location.host}/ws`);
+          ws.onopen = () => setConn(true);
+          ws.onclose = () => { setConn(false); rt = setTimeout(connect, 2000); };
+          ws.onmessage = e => {
+            const m = JSON.parse(e.data);
+            if (m.sessions) setSessions(m.sessions);
+          };
+        }
+        connect();
+        return () => { ws?.close(); clearTimeout(rt); };
+      }, []);
+
+      // 自動選擇 session（優先選有 pipeline 的）
+      useEffect(() => {
+        const sids = Object.keys(sessions);
+        if (!sids.length) return;
+        if (active && sessions[active]) return;
+        // 優先選有 pipeline 的 session
+        const pipeId = pipeSessions[0]?.[0];
+        setActive(pipeId || sids[sids.length - 1]);
+      }, [sessions, pipeSessions]);
+
+      // Timeline 追蹤
+      useEffect(() => {
+        if (!active || !sessions[active]) return;
+        const curr = sessions[active];
+        const prev = prevRef.current[active];
+        const t = now();
+
+        if (prev) {
+          const newA = (curr.completed || []).filter(a => !(prev.completed || []).includes(a));
+          for (const agent of newA) {
+            const e = Object.entries(SM).find(([, m]) => m.agent === agent);
+            if (e) {
+              const [stage, meta] = e;
+              const v = curr.stageResults?.[stage]?.verdict;
+              const sev = curr.stageResults?.[stage]?.severity;
+              setEvents(ev => [{ time: t, text: `${meta.emoji} ${meta.label}（${agent}）→ ${v || '完成'}${sev ? ' [' + sev + ']' : ''}`, type: v?.toLowerCase() || 'info' }, ...ev]);
+            }
+          }
+          if (curr.delegationActive && !prev.delegationActive) {
+            const cur = getCurrent(curr);
+            if (cur && SM[cur]) {
+              setEvents(ev => [{ time: t, text: `${SM[cur].emoji} ${SM[cur].label}（${SM[cur].agent}）開始工作...`, type: 'active' }, ...ev]);
+            }
+          }
+          if (curr.taskType && !prev.taskType) {
+            setEvents(ev => [{ time: t, text: `🏷️ 任務分類：${curr.taskType}（${curr.expectedStages?.length || 0} 階段）`, type: 'info' }, ...ev]);
+          }
+          const newRetries = Object.keys(curr.retries || {}).filter(k => (curr.retries[k] || 0) > (prev.retries?.[k] || 0));
+          for (const stage of newRetries) {
+            setEvents(ev => [{ time: t, text: `🔁 ${stage} 重試 #${curr.retries[stage]}`, type: 'fail' }, ...ev]);
+          }
+          // 偵測完成
+          if (pct(curr) === 100 && pct(prev) < 100) {
+            setEvents(ev => [{ time: t, text: `🎉 Pipeline 完成！所有階段通過`, type: 'pass' }, ...ev]);
+          }
+        }
+        prevRef.current[active] = JSON.parse(JSON.stringify(curr));
+      }, [sessions, active]);
+
+      const s = active ? sessions[active] : null;
+      const progress = s ? pct(s) : 0;
+      const isComplete = progress === 100 && hasPipeline(s);
+
+      function selectSession(id) {
+        setActive(id);
+        setEvents([]);
+        prevRef.current = {};
+      }
+
+      return html`
+        <div class="layout">
+          <!-- Sidebar -->
+          <div class="sidebar">
+            <div class="conn"><span class="dot ${conn ? 'on' : 'off'}"></span>${conn ? '已連線' : '連線中...'}</div>
+
+            ${pipeSessions.length > 0 && html`
+              <div class="sidebar-header">
+                <h2>Pipeline</h2>
+                <span class="count">${pipeSessions.length}</span>
+              </div>
+              ${pipeSessions.map(([id, ss]) => html`
+                <div class="session-card ${id === active ? 'active' : ''}" onClick=${() => selectSession(id)}>
+                  <div class="session-id">
+                    ${isLive(ss) && html`<span class="live-dot"></span>`}
+                    ${sid(id)}
+                  </div>
+                  <div class="session-meta">${ss.taskType || '—'} · ${pct(ss)}% · ${elapsed(ss.lastTransition)}</div>
+                  <div class="progress" style="margin-top:5px"><div class="progress-fill" style="width:${pct(ss)}%"></div></div>
+                </div>
+              `)}
+            `}
+
+            ${idleSessions.length > 0 && html`
+              <div class="group-label">閒置 (${idleSessions.length})</div>
+              ${idleSessions.map(([id, ss]) => html`
+                <div class="session-card idle ${id === active ? 'active' : ''}" onClick=${() => selectSession(id)}>
+                  <div class="session-id">${sid(id)}</div>
+                  <div class="session-meta">${ss.taskType || '初始化'}</div>
+                </div>
+              `)}
+            `}
+
+            ${!Object.keys(sessions).length && html`<div style="color:var(--subtext0);font-size:12px">無活躍 session</div>`}
+          </div>
+
+          <!-- Main -->
+          <div class="main">
+            ${s ? html`
+              <h1>
+                🎯 Pipeline — ${sid(active)}
+                ${s.taskType && html`<span class="task-badge">${s.taskType}</span>`}
+                ${isComplete && html`<span style="margin-left:4px">🎉</span>`}
+              </h1>
+
+              <!-- Pipeline Flow -->
+              <div class="pipeline">
+                ${ALL_STAGES.map((stage, i) => {
+                  const status = getStatus(stage, s);
+                  const meta = SM[stage];
+                  const retries = s.retries?.[stage] || 0;
+                  const prevDone = i === 0 || getStatus(ALL_STAGES[i - 1], s) === 'pass';
+                  return html`
+                    ${i > 0 && html`<span class="connector ${prevDone ? 'done' : ''}">→</span>`}
+                    <div class="stage ${status}" style="--sc:${meta.color}">
+                      ${retries > 0 && html`<div class="retry-badge">${retries}</div>`}
+                      <span class="emoji">${meta.emoji}</span>
+                      <span class="name" style="${status === 'active' ? `color:${meta.color}` : ''}">${stage}</span>
+                      <span class="agent">${meta.agent}</span>
+                      ${status === 'pass' && html`<span class="badge">PASS</span>`}
+                      ${status === 'fail' && html`<span class="badge">${s.stageResults?.[stage]?.severity || 'FAIL'}</span>`}
+                      ${status === 'active' && html`<span class="badge">Working...</span>`}
+                      ${status === 'next' && html`<span class="badge">Next</span>`}
+                      ${status === 'skipped' && html`<span class="badge">Skip</span>`}
+                    </div>
+                  `;
+                })}
+              </div>
+
+              <!-- Progress -->
+              <div class="${isComplete ? 'celebrate' : ''}" style="position:relative">
+                <div class="progress" style="height:6px;border-radius:3px">
+                  <div class="progress-fill ${isComplete ? 'complete' : ''}" style="width:${progress}%;border-radius:3px"></div>
+                </div>
+              </div>
+
+              <!-- Info Cards -->
+              <div class="cards">
+                <div class="card">
+                  <h3>🔧 環境</h3>
+                  <div class="row"><span class="label">語言</span><span class="value">${s.environment?.languages?.primary || '—'}</span></div>
+                  <div class="row"><span class="label">框架</span><span class="value">${s.environment?.framework ? s.environment.framework.name + ' ' + (s.environment.framework.version || '') : '—'}</span></div>
+                  <div class="row"><span class="label">套件管理</span><span class="value">${s.environment?.packageManager?.name || '—'}</span></div>
+                  <div class="row"><span class="label">Linter</span><span class="value">${s.environment?.tools?.linter || '—'}</span></div>
+                  <div class="row"><span class="label">Formatter</span><span class="value">${s.environment?.tools?.formatter || '—'}</span></div>
+                  <div class="row"><span class="label">測試框架</span><span class="value">${s.environment?.tools?.test || '—'}</span></div>
+                </div>
+                <div class="card">
+                  <h3>📊 指標</h3>
+                  <div class="row"><span class="label">任務類型</span><span class="value">${s.taskType || '—'}</span></div>
+                  <div class="row"><span class="label">進度</span><span class="value" style="${isComplete ? 'color:var(--green)' : ''}">${progress}%${isComplete ? ' ✓' : ''}</span></div>
+                  <div class="row"><span class="label">已完成</span><span class="value">${(s.completed || []).length} agents</span></div>
+                  <div class="row"><span class="label">重試次數</span><span class="value">${Object.values(s.retries || {}).reduce((a, b) => a + b, 0)}</span></div>
+                  <div class="row"><span class="label">委派中</span><span class="value">${s.delegationActive ? '⚡ Active' : '—'}</span></div>
+                  <div class="row"><span class="label">當前階段</span><span class="value">${getCurrent(s) || (isComplete ? '✅ 完成' : '—')}</span></div>
+                </div>
+              </div>
+
+              <!-- Timeline -->
+              <div class="timeline">
+                <h3>📋 Timeline</h3>
+                ${events.length ? events.slice(0, 30).map(ev => html`
+                  <div class="tl-item ${ev.type}">
+                    <span class="time">${ev.time}</span>
+                    <span class="msg">${ev.text}</span>
+                  </div>
+                `) : html`<div style="color:var(--subtext0);font-size:12px;padding:8px 0">等待 pipeline 啟動...</div>`}
+              </div>
+            ` : html`
+              <div class="empty">
+                <div class="icon">🎯</div>
+                <div style="font-size:18px;font-weight:600">Vibe Pipeline Dashboard</div>
+                <div class="hint">
+                  無活躍的 pipeline session<br/><br/>
+                  使用 Claude Code + flow plugin 開始任務<br/>
+                  或執行模擬腳本：<br/>
+                  <code>bun plugins/dashboard/simulate.js</code>
+                </div>
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    render(html`<${App} />`, document.getElementById('app'));
+  </script>
+</body>
+</html>
