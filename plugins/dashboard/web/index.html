@@ -72,19 +72,21 @@
     .task-badge { font-size: 10px; padding: 2px 8px; border-radius: 6px; background: var(--surface1); color: var(--subtext0); font-weight: 500; }
 
     /* === S/U Snake Grid === */
-    .snake { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 8px 0; position: relative; }
+    .snake { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 24px; padding: 8px 0; position: relative; }
     .snake-row2 { display: contents; }
     /* 轉角連接器 */
-    .snake-turn { grid-column: 4; display: flex; align-items: center; justify-content: center; color: var(--overlay0); font-size: 20px; font-weight: 700; }
+    .snake-turn { grid-column: 4; display: flex; align-items: center; justify-content: center; color: var(--overlay0); font-size: 20px; font-weight: 700; transition: all 0.4s; }
     .snake-turn.done { color: var(--green); text-shadow: 0 0 8px rgba(166,227,161,0.4); }
+    .snake-turn.flowing { color: var(--green); animation: turnFlow 1.2s ease-in-out infinite; }
+    @keyframes turnFlow { 0%,100% { transform: translateY(0); opacity: 0.5; text-shadow: none; } 50% { transform: translateY(3px); opacity: 1; text-shadow: 0 0 12px rgba(166,227,161,0.6); } }
 
     /* Agent Card */
     .ac { border-radius: 10px; background: var(--surface0); border: 2px solid var(--surface1); padding: 14px; display: flex; flex-direction: column; gap: 8px; transition: all 0.4s cubic-bezier(0.4,0,0.2,1); position: relative; min-height: 170px; }
     .ac-top { display: flex; align-items: center; gap: 8px; }
     .ac-emoji { font-size: 22px; line-height: 1; transition: transform 0.3s; }
     .ac-info { flex: 1; min-width: 0; }
-    .ac-name { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; }
-    .ac-agent { font-size: 9px; color: var(--subtext0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ac-name { font-size: 13px; font-weight: 700; letter-spacing: 0.5px; display: flex; align-items: baseline; gap: 6px; }
+    .ac-name .agent-abbr { font-size: 9px; font-weight: 400; color: var(--subtext0); letter-spacing: 0; }
     .ac-badge { font-size: 9px; font-weight: 600; padding: 2px 8px; border-radius: 4px; transition: all 0.3s; flex-shrink: 0; }
     .ac-retry { position: absolute; top: -6px; right: -6px; background: var(--orange); color: var(--bg); font-size: 9px; font-weight: 700; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; animation: popIn 0.3s cubic-bezier(0.175,0.885,0.32,1.275); }
 
@@ -103,13 +105,27 @@
     .ac-todo.skip { opacity: 0.4; }
     @keyframes todoPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-    /* Card 連接箭頭 */
-    .ac::after { content: '▸'; position: absolute; right: -14px; top: 50%; transform: translateY(-50%); color: var(--overlay0); font-size: 16px; z-index: 1; transition: color 0.4s; font-weight: 700; }
-    .ac.pass::after { color: var(--green); }
-    .ac:nth-child(4)::after, .ac:nth-child(8)::after { display: none; }
-    /* 第二排箭頭反轉 */
-    .snake-row2 .ac::after { content: '◂'; left: -14px; right: auto; }
-    .snake-row2 .ac:nth-child(1)::after { display: none; }
+    /* Card 連接線 — 線段 + 箭頭 */
+    .ac::after { content: ''; position: absolute; right: -21px; top: 50%; width: 18px; height: 2px; transform: translateY(-50%); background: var(--surface2); border-radius: 1px; z-index: 1; transition: all 0.4s; }
+    .ac::before { content: ''; position: absolute; right: -24px; top: 50%; transform: translateY(-50%); border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 5px solid var(--surface2); z-index: 1; transition: all 0.4s; }
+    .ac.pass::after { background: var(--green); box-shadow: 0 0 6px rgba(166,227,161,0.3); }
+    .ac.pass::before { border-left-color: var(--green); }
+    .ac.fail::after { background: var(--red); }
+    .ac.fail::before { border-left-color: var(--red); }
+    .ac.active::after { background: linear-gradient(90deg, transparent, var(--sc, var(--blue)), transparent); background-size: 200% 100%; animation: lineFlowR 1.2s ease-in-out infinite; }
+    .ac.active::before { border-left-color: var(--sc, var(--blue)); animation: arrowPulse 1s ease-in-out infinite; }
+    .ac:nth-child(4)::after, .ac:nth-child(4)::before { display: none; }
+    /* 第二排連接線（左向） */
+    .snake-row2 .ac::after { right: auto; left: -21px; }
+    .snake-row2 .ac::before { right: auto; left: -24px; border-left: none; border-right: 5px solid var(--surface2); }
+    .snake-row2 .ac.pass::before { border-right-color: var(--green); }
+    .snake-row2 .ac.fail::before { border-right-color: var(--red); }
+    .snake-row2 .ac.active::after { animation-name: lineFlowL; }
+    .snake-row2 .ac.active::before { border-right-color: var(--sc, var(--blue)); }
+    .snake-row2 .ac:nth-child(1)::after, .snake-row2 .ac:nth-child(1)::before { display: none; }
+    @keyframes lineFlowR { 0% { background-position: -100% 0; } 100% { background-position: 200% 0; } }
+    @keyframes lineFlowL { 0% { background-position: 200% 0; } 100% { background-position: -100% 0; } }
+    @keyframes arrowPulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
 
     /* Card States */
     .ac.pass { border-color: var(--green); background: rgba(166,227,161,0.05); }
@@ -188,19 +204,26 @@
     .empty code { background: var(--surface0); padding: 2px 8px; border-radius: 4px; font-size: 11px; color: var(--text); }
     @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 
+    /* 工具列分隔區 */
+    .toolbar-sep { width: 1px; height: 18px; background: var(--surface1); margin: 0 2px; flex-shrink: 0; }
     /* 連線燈號（工具列內） */
-    .conn-indicator { display: flex; align-items: center; gap: 5px; padding: 3px 8px; font-size: 10px; color: var(--subtext0); border-left: 1px solid var(--surface1); margin-left: 4px; white-space: nowrap; }
+    .conn-indicator { display: flex; align-items: center; gap: 5px; padding: 3px 8px; font-size: 10px; color: var(--subtext0); white-space: nowrap; }
 
     /* 全螢幕模式 */
     .layout.fullscreen { grid-template-columns: 1fr; }
     .layout.fullscreen .sidebar { display: none; }
     .layout.fullscreen .main { padding: 20px 40px; }
 
-    /* 卡片聚焦模式 */
-    .focus-cards .main { display: flex; flex-direction: column; justify-content: center; padding: 16px 24px; }
-    .focus-cards .main h1 { font-size: 13px; }
-    .focus-cards .snake { gap: 14px; }
-    .focus-cards .ac { min-height: 190px; }
+    /* 卡片聚焦模式 — VS Code 最小化 */
+    .focus-cards { grid-template-columns: 1fr !important; }
+    .focus-cards .sidebar { display: none; }
+    .focus-cards .main { padding: 8px 16px; gap: 8px; justify-content: start; }
+    .focus-cards .main h1 { font-size: 12px; }
+    .focus-cards .summary, .focus-cards .cards, .focus-cards .timeline { display: none; }
+    .focus-cards .celebrate { margin: 0; }
+    .focus-cards .progress-bar { height: 4px; }
+    .focus-cards .snake { gap: 10px 20px; }
+    .focus-cards .ac { min-height: 180px; padding: 12px; }
 
     /* Timeline 收合 */
     .timeline .tl-toggle { cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none; }
@@ -247,7 +270,7 @@
     /* 像素字體尺寸調整（Press Start 2P 較寬） */
     .pixel .main h1 { font-size: 11px; }
     .pixel .ac-name { font-size: 8px; }
-    .pixel .ac-agent { font-size: 6px; }
+    .pixel .ac-name .agent-abbr { font-size: 5px; }
     .pixel .ac-badge { font-size: 6px; padding: 2px 4px; }
     .pixel .ac-todo { font-size: 7px; }
     .pixel .row { font-size: 8px; }
@@ -290,6 +313,8 @@
     .pixel .ac-stats { font-size: 6px; }
     .pixel .sc-res { font-size: 6px; }
     .pixel .confetti-piece { border-radius: 0 !important; }
+    .pixel .ac::after { height: 3px; border-radius: 0 !important; }
+    .pixel .ac::before { border-width: 5px !important; }
 
     /* Session 資源指標 */
     .sc-res { display: flex; gap: 8px; margin-top: 3px; font-size: 9px; color: var(--subtext0); }
@@ -300,6 +325,9 @@
     .sc-res-fill.ram { background: var(--purple); }
 
     /* 卡片統計列 */
+    .ac-skills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .ac-skill { font-size: 8px; padding: 1px 6px; border-radius: 3px; background: var(--surface0); color: var(--surface2); border: 1px solid var(--surface1); opacity: 0.5; }
+    .ac-skill.used { background: rgba(166,227,161,0.15); color: var(--green); border-color: var(--green); opacity: 1; }
     .ac-stats { display: flex; gap: 10px; font-size: 9px; color: var(--subtext0); margin-top: auto; padding-top: 6px; border-top: 1px solid rgba(69,71,90,0.2); }
     .ac-stats span { display: flex; align-items: center; gap: 3px; }
     .ac-stats .stat-icon { font-size: 10px; }
@@ -327,9 +355,9 @@
 
     /* Responsive — 平板 */
     @media (max-width: 1100px) {
-      .snake { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .snake { grid-template-columns: repeat(2, 1fr); gap: 8px 16px; }
       .snake-turn { grid-column: 2; }
-      .ac::after { display: none; }
+      .ac::after, .ac::before { display: none; }
       .ac-stats { gap: 6px; }
     }
     /* Responsive — 手機 */
@@ -356,18 +384,20 @@
     const html = htm.bind(h);
 
     // --- 常量 ---
+    const TYPE_LABELS = { research: '研究探索', quickfix: '快速修復', bugfix: '修復 Bug', feature: '新功能開發', refactor: '重構', test: '測試', tdd: 'TDD 開發' };
+    const typeLabel = t => TYPE_LABELS[t] || t || '—';
     const ROW1 = ['PLAN', 'ARCH', 'DEV', 'REVIEW'];
     const ROW2 = ['TEST', 'QA', 'E2E', 'DOCS'];
     const ALL_STAGES = [...ROW1, ...ROW2];
     const SM = {
-      PLAN:   { agent: 'planner',       color: '#cba6f7', emoji: '📋', label: '規劃', todos: ['分析需求', '定義範圍', '評估風險'] },
-      ARCH:   { agent: 'architect',     color: '#89dceb', emoji: '🏛️', label: '架構', todos: ['分析架構', '設計方案', '評估取捨'] },
-      DEV:    { agent: 'developer',     color: '#f9e2af', emoji: '🏗️', label: '開發', todos: ['撰寫程式碼', '建立測試', '整合模組'] },
-      REVIEW: { agent: 'code-reviewer', color: '#89b4fa', emoji: '🔍', label: '審查', todos: ['檢查正確性', '安全性評估', '程式碼品質'] },
-      TEST:   { agent: 'tester',        color: '#f5c2e7', emoji: '🧪', label: '測試', todos: ['撰寫測試', '執行測試', '覆蓋率分析'] },
-      QA:     { agent: 'qa',            color: '#f9e2af', emoji: '✅', label: '驗證', todos: ['啟動服務', 'API 驗證', '行為測試'] },
-      E2E:    { agent: 'e2e-runner',    color: '#a6e3a1', emoji: '🌐', label: 'E2E', todos: ['分析頁面', '建 Page Objects', '撰寫測試'] },
-      DOCS:   { agent: 'doc-updater',   color: '#cba6f7', emoji: '📝', label: '文件', todos: ['分析變更', '更新文件', '同步 README'] },
+      PLAN:   { agent: 'planner',       color: '#cba6f7', emoji: '📋', label: '規劃', todos: ['分析需求', '定義範圍', '評估風險'], skills: ['plan'] },
+      ARCH:   { agent: 'architect',     color: '#89dceb', emoji: '🏛️', label: '架構', todos: ['分析架構', '設計方案', '評估取捨'], skills: ['architect'] },
+      DEV:    { agent: 'developer',     color: '#f9e2af', emoji: '🏗️', label: '開發', todos: ['撰寫程式碼', '建立測試', '整合模組'], skills: ['lint', 'format', 'env-detect'] },
+      REVIEW: { agent: 'code-reviewer', color: '#89b4fa', emoji: '🔍', label: '審查', todos: ['檢查正確性', '安全性評估', '程式碼品質'], skills: ['review', 'security'] },
+      TEST:   { agent: 'tester',        color: '#f5c2e7', emoji: '🧪', label: '測試', todos: ['撰寫測試', '執行測試', '覆蓋率分析'], skills: ['tdd', 'coverage'] },
+      QA:     { agent: 'qa',            color: '#f9e2af', emoji: '✅', label: '驗證', todos: ['啟動服務', 'API 驗證', '行為測試'], skills: ['qa', 'verify'] },
+      E2E:    { agent: 'e2e-runner',    color: '#a6e3a1', emoji: '🌐', label: 'E2E', todos: ['分析頁面', '建 Page Objects', '撰寫測試'], skills: ['e2e'] },
+      DOCS:   { agent: 'doc-updater',   color: '#cba6f7', emoji: '📝', label: '文件', todos: ['分析變更', '更新文件', '同步 README'], skills: ['doc-sync'] },
     };
 
     // --- 輔助函式 ---
@@ -411,7 +441,7 @@
     }
 
     // --- Agent Card 元件 ---
-    function AgentCard({ stage, s }) {
+    function AgentCard({ stage, s, tick }) {
       const status = getStatus(stage, s);
       const meta = SM[stage];
       const retries = s.retries?.[stage] || 0;
@@ -426,8 +456,7 @@
           <div class="ac-top">
             <span class="ac-emoji">${meta.emoji}</span>
             <div class="ac-info">
-              <div class="ac-name" style="${status === 'active' ? `color:${meta.color}` : ''}">${stage}</div>
-              <div class="ac-agent">${meta.agent}</div>
+              <div class="ac-name" style="${status === 'active' ? `color:${meta.color}` : ''}">${stage} <span class="agent-abbr">${meta.agent}</span></div>
             </div>
             ${status === 'pass' && html`<span class="ac-badge">PASS</span>`}
             ${status === 'fail' && html`<span class="ac-badge">${sev || 'FAIL'}</span>`}
@@ -440,11 +469,25 @@
               let ts = 'pending';
               if (status === 'pass') ts = 'done';
               else if (status === 'fail') ts = i < todos.length - 1 ? 'done' : 'fail';
-              else if (status === 'active') ts = i === 0 ? 'active' : 'pending';
+              else if (status === 'active') {
+                const n = todos.length;
+                const cycle = n > 1 ? n * 2 - 2 : 1;
+                const raw = Math.floor(tick / 3) % cycle;
+                const phase = raw < n ? raw : cycle - raw;
+                ts = i < phase ? 'done' : i === phase ? 'active' : 'pending';
+              }
               else if (status === 'skipped') ts = 'skip';
               return html`<div class="ac-todo ${ts}"><span class="ac-todo-dot"></span><span>${todo}</span></div>`;
             })}
           </div>
+          ${meta.skills?.length > 0 && html`
+            <div class="ac-skills">
+              ${meta.skills.map(sk => {
+                const used = r?.skillsUsed?.includes(sk);
+                return html`<span class="ac-skill ${used ? 'used' : ''}">${sk}</span>`;
+              })}
+            </div>
+          `}
           ${(dur || tools) && html`
             <div class="ac-stats">
               ${dur && html`<span><span class="stat-icon">⏱</span>${dur}s</span>`}
@@ -520,7 +563,7 @@
         const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `pipeline-${active?.slice(0, 8) || 'report'}.json`; a.click();
       } else {
-        const lines = [`# Pipeline Report\n`, `- **Session**: ${active}`, `- **Type**: ${s.taskType || '—'}`, `- **Progress**: ${pct(s)}%`, `- **Exported**: ${new Date().toISOString()}\n`, `## Stages\n`, `| Stage | Agent | Verdict | Retries |`, `|-------|-------|---------|---------|`];
+        const lines = [`# Pipeline Report\n`, `- **Session**: ${active}`, `- **Type**: ${typeLabel(s.taskType)}`, `- **Progress**: ${pct(s)}%`, `- **Exported**: ${new Date().toISOString()}\n`, `## Stages\n`, `| Stage | Agent | Verdict | Retries |`, `|-------|-------|---------|---------|`];
         for (const st of stages) lines.push(`| ${st.stage} | ${st.agent} | ${st.verdict} | ${st.retries} |`);
         if (events.length) { lines.push(`\n## Timeline\n`); for (const ev of events.slice(0, 30)) lines.push(`- \`${ev.time}\` ${ev.text}`); }
         const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
@@ -619,12 +662,18 @@
 
       function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2000); }
 
-      // 自動選擇
+      // 自動選擇 + 跟隨活躍 session
       useEffect(() => {
         const sids = Object.keys(sessions);
         if (!sids.length) return;
-        if (active && sessions[active]) return;
-        setActive(pipeSessions[0]?.[0] || sids[sids.length - 1]);
+        // 找到正在工作的 session（delegationActive）
+        const liveSid = pipeSessions.find(([, ss]) => ss.delegationActive)?.[0];
+        // 如果有活躍 session 且不是當前選的 → 自動切換
+        if (liveSid && liveSid !== active) { selectSession(liveSid); return; }
+        // 如果當前 active 已消失 → 選最近的
+        if (!active || !sessions[active]) {
+          setActive(pipeSessions[0]?.[0] || sids[sids.length - 1]);
+        }
       }, [sessions, pipeSessions]);
 
       // Timeline 追蹤
@@ -638,7 +687,7 @@
               setEvents(ev => [{ time: t, text: `${meta.emoji} ${meta.label}（${agent}）→ ${v || '完成'}${sev ? ' ['+sev+']' : ''}`, type: v?.toLowerCase() || 'info' }, ...ev]); }
           }
           if (curr.delegationActive && !prev.delegationActive) { const cur = getCurrent(curr); if (cur && SM[cur]) setEvents(ev => [{ time: t, text: `${SM[cur].emoji} ${SM[cur].label}（${SM[cur].agent}）開始工作...`, type: 'active' }, ...ev]); }
-          if (curr.taskType && !prev.taskType) setEvents(ev => [{ time: t, text: `🏷️ 任務分類：${curr.taskType}（${curr.expectedStages?.length || 0} 階段）`, type: 'info' }, ...ev]);
+          if (curr.taskType && !prev.taskType) setEvents(ev => [{ time: t, text: `🏷️ 任務分類：${typeLabel(curr.taskType)}（${curr.expectedStages?.length || 0} 階段）`, type: 'info' }, ...ev]);
           for (const stage of Object.keys(curr.retries || {}).filter(k => (curr.retries[k] || 0) > (prev.retries?.[k] || 0)))
             setEvents(ev => [{ time: t, text: `🔁 ${stage} 重試 #${curr.retries[stage]}`, type: 'fail' }, ...ev]);
           if (pct(curr) === 100 && pct(prev) < 100) setEvents(ev => [{ time: t, text: `🎉 Pipeline 完成！所有階段通過`, type: 'pass' }, ...ev]);
@@ -677,7 +726,7 @@
                   <div class="sc ${id === active ? 'active' : ''}" data-pct="${pct(ss)}%" onClick=${() => selectSession(id)}>
                     <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
                     <div class="sc-id">${isLive(ss) && html`<span class="live-dot"></span>`}${sid(id)}</div>
-                    <div class="sc-meta">${ss.taskType || '—'} · ${pct(ss)}% · ${elapsed(ss.startedAt || ss.lastTransition)}</div>
+                    <div class="sc-meta">${typeLabel(ss.taskType)} · ${pct(ss)}% · ${elapsed(ss.startedAt || ss.lastTransition)}</div>
                     <div class="sc-bar"><div class="sc-bar-fill" style="width:${pct(ss)}%"></div></div>
                     ${ss.resources && html`
                       <div class="sc-res">
@@ -695,7 +744,7 @@
                   <div class="sc idle ${id === active ? 'active' : ''}" data-pct="—" onClick=${() => selectSession(id)}>
                     <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
                     <div class="sc-id">${sid(id)}</div>
-                    <div class="sc-meta">${ss.taskType || '初始化'}</div>
+                    <div class="sc-meta">${ss.taskType ? typeLabel(ss.taskType) : '初始化'}</div>
                   </div>
                 `)}
               `}
@@ -709,7 +758,7 @@
                   <div class="sc zombie ${id === active ? 'active' : ''}" data-pct="💀" onClick=${() => selectSession(id)}>
                     <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
                     <div class="sc-id">💀 ${sid(id)}</div>
-                    <div class="sc-meta">${ss.taskType || '—'} · ${elapsed(ss.lastTransition)} 未活動</div>
+                    <div class="sc-meta">${typeLabel(ss.taskType)} · ${elapsed(ss.lastTransition)} 未活動</div>
                     <div class="zombie-sub">${hasPipeline(ss) ? `${pct(ss)}% 停滯` : '無 pipeline'}</div>
                   </div>
                 `)}
@@ -724,30 +773,26 @@
             ${s ? html`
               <h1>
                 🎯 Pipeline — ${sid(active)}
-                ${s.taskType && html`<span class="task-badge">${s.taskType}</span>`}
+                ${s.taskType && html`<span class="task-badge">${typeLabel(s.taskType)}</span>`}
                 ${isComplete && html`<span style="margin-left:4px">🎉</span>`}
                 <div class="toolbar">
-                  <button class="tool-btn ${theme === 'pixel' ? 'active' : ''}" onClick=${() => setTheme(t => t === 'default' ? 'pixel' : 'default')} title="像素風 (P)">
-                    🎮
-                  </button>
-                  <button class="tool-btn ${focusCards ? 'active' : ''}" onClick=${() => setFocusCards(!focusCards)} title="卡片聚焦 (C)">
-                    🃏
-                  </button>
-                  <button class="tool-btn ${fullscreen ? 'active' : ''}" onClick=${() => setFullscreen(!fullscreen)} title="全螢幕 (F)">
-                    ${fullscreen ? '⊡' : '⊞'}
-                  </button>
-                  <button class="tool-btn" onClick=${() => exportReport(s, active, events, 'md')} title="導出 Markdown (E)">📄</button>
-                  <button class="tool-btn" onClick=${() => exportReport(s, active, events, 'json')} title="導出 JSON">{ }</button>
+                  <button class="tool-btn ${theme === 'pixel' ? 'active' : ''}" onClick=${() => setTheme(t => t === 'default' ? 'pixel' : 'default')} title="像素風 (P)">🎮 像素</button>
+                  <button class="tool-btn ${focusCards ? 'active' : ''}" onClick=${() => setFocusCards(!focusCards)} title="卡片聚焦 (C)">🃏 聚焦</button>
+                  <button class="tool-btn ${fullscreen ? 'active' : ''}" onClick=${() => setFullscreen(!fullscreen)} title="全螢幕 (F)">${fullscreen ? '⊡' : '⊞'} 全螢幕</button>
+                  <div class="toolbar-sep"></div>
+                  <button class="tool-btn" onClick=${() => exportReport(s, active, events, 'md')} title="導出 Markdown (E)">📄 MD</button>
+                  <button class="tool-btn" onClick=${() => exportReport(s, active, events, 'json')} title="導出 JSON">{ } JSON</button>
+                  <div class="toolbar-sep"></div>
                   <div class="conn-indicator"><span class="dot ${conn ? 'on' : 'off'}"></span><span>${conn ? '已連線' : '連線中…'}</span></div>
                 </div>
               </h1>
 
               <!-- S/U Snake Grid -->
               <div class="snake">
-                ${ROW1.map(stage => html`<${AgentCard} stage=${stage} s=${s} />`)}
-                <div class="snake-turn ${getStatus('REVIEW', s) === 'pass' ? 'done' : ''}">↓</div>
+                ${ROW1.map(stage => html`<${AgentCard} stage=${stage} s=${s} tick=${tick} />`)}
+                <div class="snake-turn ${getStatus('REVIEW', s) === 'pass' ? (getStatus('TEST', s) === 'active' ? 'flowing' : 'done') : ''}">↓</div>
                 <div class="snake-row2">
-                  ${row2Reversed.map(stage => html`<${AgentCard} stage=${stage} s=${s} />`)}
+                  ${row2Reversed.map(stage => html`<${AgentCard} stage=${stage} s=${s} tick=${tick} />`)}
                 </div>
               </div>
 
@@ -772,7 +817,7 @@
                   </div>
                   <div class="card">
                     <h3>📊 指標</h3>
-                    <div class="row"><span class="label">任務類型</span><span class="value">${s.taskType || '—'}</span></div>
+                    <div class="row"><span class="label">任務類型</span><span class="value">${typeLabel(s.taskType)}</span></div>
                     <div class="row"><span class="label">進度</span><span class="value">${progress}%</span></div>
                     <div class="row"><span class="label">已完成</span><span class="value">${(s.completed || []).length} agents</span></div>
                     <div class="row"><span class="label">重試次數</span><span class="value">${Object.values(s.retries || {}).reduce((a, b) => a + b, 0)}</span></div>

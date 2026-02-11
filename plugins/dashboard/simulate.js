@@ -24,6 +24,11 @@ const STAGE_CPU = {
   REVIEW: [35, 65], TEST: [65, 95], QA: [45, 75],
   E2E: [75, 95], DOCS: [10, 30],
 };
+const STAGE_SKILLS = {
+  PLAN: ['plan'], ARCH: ['architect'], DEV: ['lint', 'format', 'env-detect'],
+  REVIEW: ['review', 'security'], TEST: ['tdd', 'coverage'], QA: ['qa', 'verify'],
+  E2E: ['e2e'], DOCS: ['doc-sync'],
+};
 const STAGE_TOOLS = {
   PLAN: [5, 12], ARCH: [8, 18], DEV: [25, 55],
   REVIEW: [15, 35], TEST: [20, 45], QA: [10, 25],
@@ -89,7 +94,9 @@ async function doStage(stage, durationMs, verdict = 'PASS', severity = null) {
 
   state.delegationActive = false;
   state.resources.cpu = Math.round(2 + Math.random() * 8);
-  state.stageResults[stage] = { verdict, severity, duration, toolCalls };
+  const allSkills = STAGE_SKILLS[stage] || [];
+  const skillsUsed = verdict === 'PASS' ? allSkills.filter(() => Math.random() > 0.2) : allSkills.filter(() => Math.random() > 0.5);
+  state.stageResults[stage] = { verdict, severity, duration, toolCalls, skillsUsed };
   if (!state.completed.includes(STAGE_AGENTS[stage])) {
     state.completed.push(STAGE_AGENTS[stage]);
   }
