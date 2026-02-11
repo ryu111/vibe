@@ -123,8 +123,8 @@ async function run() {
 
   // 8. 完成 — 保留足夠時間觀看結果
   console.log('\n  🏁 Pipeline 完成！');
-  console.log('  ⏳ 30 秒後自動清理（Ctrl+C 提早結束）');
-  await sleep(30000);
+  console.log('  ⏳ 5 分鐘後自動清理（Ctrl+C 提早結束）');
+  await sleep(300000);
 
   unlinkSync(fp);
   console.log('  🗑️  State 檔案已清理\n');

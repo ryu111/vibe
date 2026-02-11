@@ -118,8 +118,8 @@
     .ac.active { border-color: var(--sc, var(--blue)); animation: cardPulse 2s ease-in-out infinite; background: color-mix(in srgb, var(--sc, var(--blue)) 5%, transparent); }
     .ac.active .ac-badge { background: color-mix(in srgb, var(--sc, var(--blue)) 15%, transparent); color: var(--sc, var(--blue)); }
     .ac.active .ac-emoji { animation: bounce 1s ease infinite; }
-    .ac.skipped { opacity: 0.2; border-style: dashed; }
-    .ac.pending { opacity: 0.4; }
+    .ac.skipped { opacity: 0.25; border-style: dashed; filter: grayscale(1); }
+    .ac.pending { opacity: 0.45; filter: grayscale(0.6); }
     .ac.next { border-color: color-mix(in srgb, var(--sc, var(--yellow)) 50%, transparent); opacity: 0.7; }
 
     @keyframes cardPulse {
