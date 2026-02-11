@@ -188,14 +188,19 @@
     .empty code { background: var(--surface0); padding: 2px 8px; border-radius: 4px; font-size: 11px; color: var(--text); }
     @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 
-    /* 浮動連線燈號（右下角） */
-    .conn-float { position: fixed; bottom: 12px; right: 12px; display: flex; align-items: center; gap: 6px; padding: 5px 10px; background: var(--surface0); border: 1px solid var(--surface1); border-radius: 20px; font-size: 10px; color: var(--subtext0); z-index: 100; transition: all 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
-    .conn-float:hover { border-color: var(--surface2); }
+    /* 連線燈號（工具列內） */
+    .conn-indicator { display: flex; align-items: center; gap: 5px; padding: 3px 8px; font-size: 10px; color: var(--subtext0); border-left: 1px solid var(--surface1); margin-left: 4px; white-space: nowrap; }
 
     /* 全螢幕模式 */
     .layout.fullscreen { grid-template-columns: 1fr; }
     .layout.fullscreen .sidebar { display: none; }
     .layout.fullscreen .main { padding: 20px 40px; }
+
+    /* 卡片聚焦模式 */
+    .focus-cards .main { display: flex; flex-direction: column; justify-content: center; padding: 16px 24px; }
+    .focus-cards .main h1 { font-size: 13px; }
+    .focus-cards .snake { gap: 14px; }
+    .focus-cards .ac { min-height: 190px; }
 
     /* Timeline 收合 */
     .timeline .tl-toggle { cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none; }
@@ -229,7 +234,7 @@
 
     /* 像素邊框 — 方角 + 粗邊 */
     .pixel .ac, .pixel .card, .pixel .summary, .pixel .timeline, .pixel .sc,
-    .pixel .conn-float, .pixel .kbd-toast, .pixel .tool-btn, .pixel .filter-bar select {
+    .pixel .conn-indicator, .pixel .kbd-toast, .pixel .tool-btn, .pixel .filter-bar select {
       border-radius: 0 !important; border-width: 3px !important; border-style: solid !important;
       box-shadow: 4px 4px 0 rgba(0,0,0,0.5) !important;
     }
@@ -253,7 +258,7 @@
     .pixel .sc-id { font-size: 8px; }
     .pixel .sc-meta { font-size: 7px; }
     .pixel .task-badge { font-size: 7px; }
-    .pixel .conn-float { font-size: 7px; }
+    .pixel .conn-indicator { font-size: 7px; }
     .pixel .tool-btn { font-size: 7px; }
     .pixel .filter-bar select, .pixel .filter-bar label { font-size: 7px; }
     .pixel .group-hdr h2 { font-size: 7px; }
@@ -535,6 +540,7 @@
       const [fullscreen, setFullscreen] = useState(false);
       const [toast, setToast] = useState(null);
       const [theme, setTheme] = useState('default');
+      const [focusCards, setFocusCards] = useState(false);
       const [tick, setTick] = useState(0);
       const [showConfetti, setShowConfetti] = useState(false);
       const prevRef = useRef({});
@@ -602,7 +608,8 @@
             case 'f': case 'F': setFullscreen(p => !p); showToast('F — 全螢幕切換'); break;
             case 't': case 'T': setTlOpen(p => !p); showToast('T — Timeline 切換'); break;
             case 'p': case 'P': setTheme(t => t === 'default' ? 'pixel' : 'default'); showToast('P — 主題切換'); break;
-            case '?': showToast('↑↓ 切換 · S 側邊欄 · F 全螢幕 · T Timeline · E 導出 · P 主題'); break;
+            case 'c': case 'C': setFocusCards(p => !p); showToast('C — 卡片聚焦'); break;
+            case '?': showToast('↑↓ 切換 · S 側邊欄 · F 全螢幕 · C 卡片 · T Timeline · E 導出 · P 主題'); break;
             case 'e': case 'E': if (s) { exportReport(s, active, events, 'md'); showToast('E — 導出 Markdown'); } break;
           }
         }
@@ -640,13 +647,11 @@
       }, [sessions, active]);
 
       return html`
-        <div class="${theme === 'pixel' ? 'pixel ' : ''}layout ${sideOpen && !fullscreen ? '' : fullscreen ? 'fullscreen' : 'collapsed'}"
+        <div class="${theme === 'pixel' ? 'pixel ' : ''}${focusCards ? 'focus-cards ' : ''}layout ${sideOpen && !fullscreen ? '' : fullscreen ? 'fullscreen' : 'collapsed'}"
           style="${theme === 'pixel' ? 'image-rendering:pixelated' : ''}"
         >
           <!-- Confetti -->
           ${showConfetti && html`<${Confetti} />`}
-          <!-- 浮動連線燈號 -->
-          <div class="conn-float"><span class="dot ${conn ? 'on' : 'off'}"></span><span>${conn ? '已連線' : '重新連線中…'}</span></div>
           <!-- Toast -->
           ${toast && html`<div class="kbd-toast">${toast}</div>`}
           <!-- Sidebar -->
@@ -725,11 +730,15 @@
                   <button class="tool-btn ${theme === 'pixel' ? 'active' : ''}" onClick=${() => setTheme(t => t === 'default' ? 'pixel' : 'default')} title="像素風 (P)">
                     🎮
                   </button>
+                  <button class="tool-btn ${focusCards ? 'active' : ''}" onClick=${() => setFocusCards(!focusCards)} title="卡片聚焦 (C)">
+                    🃏
+                  </button>
                   <button class="tool-btn ${fullscreen ? 'active' : ''}" onClick=${() => setFullscreen(!fullscreen)} title="全螢幕 (F)">
                     ${fullscreen ? '⊡' : '⊞'}
                   </button>
                   <button class="tool-btn" onClick=${() => exportReport(s, active, events, 'md')} title="導出 Markdown (E)">📄</button>
                   <button class="tool-btn" onClick=${() => exportReport(s, active, events, 'json')} title="導出 JSON">{ }</button>
+                  <div class="conn-indicator"><span class="dot ${conn ? 'on' : 'off'}"></span><span>${conn ? '已連線' : '連線中…'}</span></div>
                 </div>
               </h1>
 
@@ -750,7 +759,7 @@
               </div>
 
               <!-- 完成燈號 or 資訊卡 -->
-              ${isComplete ? html`<${LightSummary} s=${s} />` : html`
+              ${focusCards ? null : isComplete ? html`<${LightSummary} s=${s} />` : html`
                 <div class="cards">
                   <div class="card">
                     <h3>🔧 環境</h3>
@@ -774,6 +783,7 @@
               `}
 
               <!-- Timeline -->
+              ${!focusCards && html`
               <div class="timeline ${tlOpen ? '' : 'collapsed'}">
                 <h3 class="tl-toggle" onClick=${() => setTlOpen(!tlOpen)}>
                   <span>📋 Timeline ${events.length ? `(${events.length})` : ''}</span>
@@ -785,8 +795,10 @@
                   `) : html`<div style="color:var(--subtext0);font-size:11px;padding:6px 0">等待 pipeline 啟動…</div>`}
                 </div>
               </div>
+              `}
             ` : html`
               <div class="empty">
+                <div style="position:absolute;top:12px;right:16px" class="conn-indicator"><span class="dot ${conn ? 'on' : 'off'}"></span><span>${conn ? '已連線' : '連線中…'}</span></div>
                 <div class="icon">🎯</div>
                 <div style="font-size:18px;font-weight:600">Vibe Pipeline Dashboard</div>
                 <div class="hint">
