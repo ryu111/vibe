@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/dashboard-autostart.js",
+            "timeout": 5,
+            "statusMessage": "檢查 Dashboard..."
+          }
+        ]
+      }
+    ]
+  }
+}

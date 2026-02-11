@@ -1,6 +1,6 @@
 # Vibe Marketplace — Plugin 設計總覽
 
-> 6 個 plugin（forge + 5 新）的總流程、依賴關係，以及各文件索引。
+> 7 個 plugin（forge + 6 新）的總流程、依賴關係，以及各文件索引。
 >
 > **此檔案由 `scripts/generate-dashboard.js` 自動產生，請勿手動編輯。**
 > 修改來源：`docs/plugin-specs.json`（數量）+ `scripts/generate-dashboard.js`（結構）
@@ -75,7 +75,7 @@ COLLAB   SessionStart: team-init      /sentinel:lint    手動 lint
                                       /collab:adversarial-review 對抗審查
                                       /collab:adversarial-refactor 競爭重構
 
-自動: 15 hooks                         手動: 24 skills（+ patterns 8 知識 skills）
+自動: 16 hooks                         手動: 25 skills（+ patterns 8 知識 skills）
 跨 session 記憶：claude-mem（獨立 plugin，非依賴）
 ```
 
@@ -124,6 +124,7 @@ COLLAB   SessionStart: team-init      /sentinel:lint    手動 lint
 | 5 | **patterns** | 無 | 8S |
 | 6 | **evolve** | flow 可選 | 2S + 1A |
 | 7 | **collab** | Agent Teams | 3S + 1H + 1Sc |
+| 8 | **dashboard** | forge ✅ | 1S + 1H + 2Sc |
 
 > **flow 先於 sentinel**：規劃 → 寫碼 → 品質檢查，符合自然開發流程。
 
@@ -138,6 +139,7 @@ COLLAB   SessionStart: team-init      /sentinel:lint    手動 lint
 | 3 | patterns | [patterns.md](patterns.md) | 8 | 0 | 0 | 0 |
 | 4 | evolve | [evolve.md](evolve.md) | 2 | 1 | 0 | 0 |
 | 5 | collab | [collab.md](collab.md) | 3 | 0 | 1 | 1 |
+| 6 | dashboard | [dashboard.md](dashboard.md) | 1 | 0 | 1 | 2 |
 
 > **S** = Skill, **A** = Agent, **H** = Hook, **Sc** = Script
 
@@ -147,9 +149,9 @@ COLLAB   SessionStart: team-init      /sentinel:lint    手動 lint
 
 | 組件類型 | 數量 | 說明 |
 |---------|:----:|------|
-| **Plugins** | 6 | forge ✅ + 5 新 |
-| **Skills** | 32 | 24 動態能力 + 8 知識庫（patterns） |
+| **Plugins** | 7 | forge ✅ + 6 新 |
+| **Skills** | 33 | 25 動態能力 + 8 知識庫（patterns） |
 | **Agents** | 10 | 跨 3 個 plugins |
-| **Hooks** | 15 | 自動觸發 |
-| **Scripts** | 26 | hook 腳本 + 共用函式庫 |
-| **合計** | 83 | 跨 6 個獨立安裝的 plugins |
+| **Hooks** | 16 | 自動觸發 |
+| **Scripts** | 28 | hook 腳本 + 共用函式庫 |
+| **合計** | 87 | 跨 7 個獨立安裝的 plugins |

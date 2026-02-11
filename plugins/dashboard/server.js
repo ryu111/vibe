@@ -1,13 +1,16 @@
 #!/usr/bin/env bun
 /**
- * Vibe Pipeline Dashboard — POC Server
+ * Vibe Pipeline Dashboard Server
  * Bun HTTP + WebSocket，監聽 pipeline state 檔案即時推播
  */
-import { watch, readFileSync, readdirSync, existsSync, statSync, unlinkSync } from 'fs';
+import { watch, readFileSync, readdirSync, existsSync, statSync, unlinkSync, writeFileSync } from 'fs';
 import { join, extname } from 'path';
 import { homedir } from 'os';
 
-const PORT = Number(process.env.VIBE_DASHBOARD_PORT) || 3800;
+// --port CLI 參數 or 環境變數
+const portArg = process.argv.find(a => a.startsWith('--port='));
+const PORT = Number(portArg?.split('=')[1]) || Number(process.env.VIBE_DASHBOARD_PORT) || 3800;
+const PID_FILE = join(homedir(), '.claude', 'dashboard-server.pid');
 const CLAUDE_DIR = join(homedir(), '.claude');
 const WEB_DIR = join(import.meta.dir, 'web');
 
@@ -127,12 +130,44 @@ Bun.serve({
   },
 });
 
+// --- PID 管理 ---
+try {
+  const pidDir = join(homedir(), '.claude');
+  if (!existsSync(pidDir)) {
+    const { mkdirSync } = await import('fs');
+    mkdirSync(pidDir, { recursive: true });
+  }
+  writeFileSync(PID_FILE, JSON.stringify({
+    pid: process.pid,
+    port: PORT,
+    startedAt: new Date().toISOString(),
+  }));
+} catch (_) { /* PID 寫入失敗不阻擋啟動 */ }
+
+// --- 優雅關閉 ---
+function shutdown() {
+  // 關閉所有 WebSocket 連線
+  for (const ws of clients) {
+    try { ws.close(1001, 'Server shutting down'); } catch (_) {}
+  }
+  clients.clear();
+
+  // 清理 PID 檔案
+  try { unlinkSync(PID_FILE); } catch (_) {}
+
+  process.exit(0);
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
 // 取得區網 IP
 import { networkInterfaces } from 'os';
 const lanIP = Object.values(networkInterfaces()).flat().find(i => i.family === 'IPv4' && !i.internal)?.address;
 
 console.log(`\n  🎯 Vibe Pipeline Dashboard`);
 console.log(`  ─────────────────────────`);
+console.log(`  PID:     ${process.pid}`);
 console.log(`  Local:   http://localhost:${PORT}`);
 if (lanIP) console.log(`  LAN:     http://${lanIP}:${PORT}`);
 console.log(`  WS:      ws://localhost:${PORT}/ws`);

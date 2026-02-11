@@ -65,6 +65,19 @@
         "scripts": 0
       }
     },
+    "dashboard": {
+      "description": "Pipeline 視覺化監控 — 即時狀態、階段進度、WebSocket 推播",
+      "priority": "low",
+      "category": "monitoring",
+      "buildOrder": 6,
+      "tags": ["visualization", "monitoring", "websocket"],
+      "expected": {
+        "skills": ["dashboard"],
+        "agents": [],
+        "hooks": 1,
+        "scripts": 2
+      }
+    },
     "collab": {
       "description": "多視角競爭分析 — Agent Teams 驅動的對抗式審查與重構",
       "priority": "low",
