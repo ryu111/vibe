@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Vibe Pipeline Dashboard</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
@@ -212,6 +214,72 @@
     .kbd-toast { position: fixed; top: 12px; right: 12px; background: var(--surface0); border: 1px solid var(--surface1); border-radius: 8px; padding: 8px 14px; font-size: 10px; color: var(--subtext0); z-index: 200; animation: fadeInOut 2s ease forwards; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
     @keyframes fadeInOut { 0% { opacity: 0; transform: translateY(-8px); } 15% { opacity: 1; transform: translateY(0); } 85% { opacity: 1; } 100% { opacity: 0; } }
 
+    /* ======================= */
+    /* 🎮 像素風主題 (8-bit)  */
+    /* ======================= */
+    .pixel {
+      --bg: #0f0f23; --surface0: #1a1a3e; --surface1: #2a2a5e; --surface2: #3a3a7e;
+      --overlay0: #6a6aae; --text: #e0e0ff; --subtext0: #9a9acc; --subtext1: #b0b0dd;
+      --blue: #5599ff; --green: #55ff55; --red: #ff5555; --yellow: #ffff55;
+      --purple: #aa55ff; --cyan: #55ffff; --pink: #ff55ff; --orange: #ffaa55;
+      image-rendering: pixelated;
+    }
+    .pixel, .pixel * { font-family: 'Press Start 2P', monospace !important; }
+    .pixel .layout { border: 4px solid #55ff55; }
+
+    /* 像素邊框 — 方角 + 粗邊 */
+    .pixel .ac, .pixel .card, .pixel .summary, .pixel .timeline, .pixel .sc,
+    .pixel .conn-float, .pixel .kbd-toast, .pixel .tool-btn, .pixel .filter-bar select {
+      border-radius: 0 !important; border-width: 3px !important; border-style: solid !important;
+      box-shadow: 4px 4px 0 rgba(0,0,0,0.5) !important;
+    }
+    .pixel .ac-badge, .pixel .task-badge, .pixel .group-hdr .count, .pixel .cleanup-btn,
+    .pixel .sc-bar, .pixel .progress-bar { border-radius: 0 !important; }
+    .pixel .ac-todo-dot, .pixel .dot, .pixel .live-dot, .pixel .light, .pixel .ac-retry {
+      border-radius: 0 !important;
+    }
+
+    /* 像素字體尺寸調整（Press Start 2P 較寬） */
+    .pixel .main h1 { font-size: 11px; }
+    .pixel .ac-name { font-size: 8px; }
+    .pixel .ac-agent { font-size: 6px; }
+    .pixel .ac-badge { font-size: 6px; padding: 2px 4px; }
+    .pixel .ac-todo { font-size: 7px; }
+    .pixel .row { font-size: 8px; }
+    .pixel .card h3, .pixel .summary h3, .pixel .timeline h3 { font-size: 7px; }
+    .pixel .light-row { font-size: 8px; }
+    .pixel .tl-item { font-size: 8px; }
+    .pixel .tl-item .time { font-size: 6px; }
+    .pixel .sc-id { font-size: 8px; }
+    .pixel .sc-meta { font-size: 7px; }
+    .pixel .task-badge { font-size: 7px; }
+    .pixel .conn-float { font-size: 7px; }
+    .pixel .tool-btn { font-size: 7px; }
+    .pixel .filter-bar select, .pixel .filter-bar label { font-size: 7px; }
+    .pixel .group-hdr h2 { font-size: 7px; }
+    .pixel .group-sep { font-size: 7px; }
+    .pixel .empty .hint { font-size: 8px; }
+    .pixel .kbd-toast { font-size: 7px; }
+
+    /* 像素進度條 — 方塊分段 */
+    .pixel .progress-fill { background: var(--green) !important; animation: none !important; }
+    .pixel .progress-fill.complete { background: var(--green) !important; }
+    .pixel .sc-bar-fill { background: var(--green) !important; }
+
+    /* 像素卡片脈衝 — 閃爍式 */
+    .pixel .ac.active { animation: pixelPulse 1s steps(2) infinite !important; }
+    @keyframes pixelPulse { 0%,100% { border-color: var(--sc, var(--blue)); } 50% { border-color: var(--yellow); } }
+
+    /* 像素 emoji 替代 */
+    .pixel .ac-emoji { font-size: 16px; }
+    .pixel .empty .icon { font-size: 40px; animation: pixelFloat 2s steps(4) infinite; }
+    @keyframes pixelFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+
+    /* 像素按鈕 hover */
+    .pixel .tool-btn:hover { background: var(--green) !important; color: var(--bg) !important; border-color: var(--green) !important; }
+    .pixel .sb-toggle { border-radius: 0 !important; }
+    .pixel .sb-toggle:hover { background: var(--green) !important; color: var(--bg) !important; }
+
     /* Responsive */
     @media (max-width: 700px) {
       .layout, .layout.collapsed { grid-template-columns: 1fr; grid-template-rows: auto 1fr; --sidebar-w: 1fr; }
@@ -388,6 +456,7 @@
       const [tlOpen, setTlOpen] = useState(true);
       const [fullscreen, setFullscreen] = useState(false);
       const [toast, setToast] = useState(null);
+      const [theme, setTheme] = useState('default');
       const prevRef = useRef({});
 
       // 分組 + 排序
@@ -439,7 +508,8 @@
             case 's': case 'S': setSideOpen(p => !p); showToast('S — 側邊欄切換'); break;
             case 'f': case 'F': setFullscreen(p => !p); showToast('F — 全螢幕切換'); break;
             case 't': case 'T': setTlOpen(p => !p); showToast('T — Timeline 切換'); break;
-            case '?': showToast('↑↓ 切換 · S 側邊欄 · F 全螢幕 · T Timeline · E 導出'); break;
+            case 'p': case 'P': setTheme(t => t === 'default' ? 'pixel' : 'default'); showToast('P — 主題切換'); break;
+            case '?': showToast('↑↓ 切換 · S 側邊欄 · F 全螢幕 · T Timeline · E 導出 · P 主題'); break;
             case 'e': case 'E': if (s) { exportReport(s, active, events, 'md'); showToast('E — 導出 Markdown'); } break;
           }
         }
@@ -477,7 +547,9 @@
       }, [sessions, active]);
 
       return html`
-        <div class="layout ${sideOpen && !fullscreen ? '' : fullscreen ? 'fullscreen' : 'collapsed'}">
+        <div class="${theme === 'pixel' ? 'pixel ' : ''}layout ${sideOpen && !fullscreen ? '' : fullscreen ? 'fullscreen' : 'collapsed'}"
+          style="${theme === 'pixel' ? 'image-rendering:pixelated' : ''}"
+        >
           <!-- 浮動連線燈號 -->
           <div class="conn-float"><span class="dot ${conn ? 'on' : 'off'}"></span><span>${conn ? '已連線' : '重新連線中…'}</span></div>
           <!-- Toast -->
@@ -549,6 +621,9 @@
                 ${s.taskType && html`<span class="task-badge">${s.taskType}</span>`}
                 ${isComplete && html`<span style="margin-left:4px">🎉</span>`}
                 <div class="toolbar">
+                  <button class="tool-btn ${theme === 'pixel' ? 'active' : ''}" onClick=${() => setTheme(t => t === 'default' ? 'pixel' : 'default')} title="像素風 (P)">
+                    🎮
+                  </button>
                   <button class="tool-btn ${fullscreen ? 'active' : ''}" onClick=${() => setFullscreen(!fullscreen)} title="全螢幕 (F)">
                     ${fullscreen ? '⊡' : '⊞'}
                   </button>
