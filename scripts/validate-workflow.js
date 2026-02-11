@@ -1,0 +1,521 @@
+#!/usr/bin/env node
+/**
+ * validate-workflow.js — 工作流驗證腳本（專案層級）
+ *
+ * 驗證 pipeline 流程的正確性：階段是否完整、順序是否正確、
+ * 產出是否齊全、品質是否達標、規範是否遵守。
+ *
+ * 用法：
+ *   node scripts/validate-workflow.js <sessionId>      # 驗證指定 session
+ *   node scripts/validate-workflow.js --latest          # 驗證最近的 session
+ *   node scripts/validate-workflow.js --check-config    # 只檢查 pipeline 配置
+ *
+ * 輸出：結構化 JSON 報告（stdout）+ 可讀摘要（stderr）
+ */
+'use strict';
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { execSync } = require('child_process');
+
+const ROOT = process.cwd();
+const PLUGINS_DIR = path.join(ROOT, 'plugins');
+const CLAUDE_DIR = path.join(os.homedir(), '.claude');
+
+// ─── Pipeline 發現（專案層級版，不依賴 CLAUDE_PLUGIN_ROOT）─────
+
+function discoverPipelineLocal() {
+  // 讀取 flow 的 stage 定義
+  const flowPipelinePath = path.join(PLUGINS_DIR, 'flow', 'pipeline.json');
+  if (!fs.existsSync(flowPipelinePath)) {
+    return { stageOrder: [], stageLabels: {}, stageMap: {}, agentToStage: {} };
+  }
+
+  const flowConfig = JSON.parse(fs.readFileSync(flowPipelinePath, 'utf8'));
+  const stageMap = {};
+  const agentToStage = {};
+
+  // 掃描所有 plugin 的 pipeline.json
+  for (const dir of fs.readdirSync(PLUGINS_DIR)) {
+    const pipePath = path.join(PLUGINS_DIR, dir, 'pipeline.json');
+    if (!fs.existsSync(pipePath)) continue;
+
+    try {
+      const config = JSON.parse(fs.readFileSync(pipePath, 'utf8'));
+      if (!config.provides) continue;
+
+      for (const [stage, info] of Object.entries(config.provides)) {
+        stageMap[stage] = { ...info, plugin: dir };
+        if (info.agent) agentToStage[info.agent] = stage;
+      }
+    } catch (_) {}
+  }
+
+  return {
+    stageOrder: flowConfig.stages || [],
+    stageLabels: flowConfig.stageLabels || {},
+    stageMap,
+    agentToStage,
+  };
+}
+
+// ─── State File 操作 ──────────────────────────────
+
+function findLatestState() {
+  if (!fs.existsSync(CLAUDE_DIR)) return null;
+  const files = fs.readdirSync(CLAUDE_DIR)
+    .filter(f => f.startsWith('pipeline-state-') && f.endsWith('.json'))
+    .map(f => ({
+      name: f,
+      path: path.join(CLAUDE_DIR, f),
+      mtime: fs.statSync(path.join(CLAUDE_DIR, f)).mtime,
+    }))
+    .sort((a, b) => b.mtime - a.mtime);
+
+  return files.length > 0 ? files[0] : null;
+}
+
+function loadState(sessionId) {
+  if (sessionId === '--latest') {
+    const latest = findLatestState();
+    if (!latest) return null;
+    return JSON.parse(fs.readFileSync(latest.path, 'utf8'));
+  }
+  const statePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
+  if (!fs.existsSync(statePath)) return null;
+  return JSON.parse(fs.readFileSync(statePath, 'utf8'));
+}
+
+// ─── 檢查器 ──────────────────────────────────────
+
+/**
+ * 1. Pipeline 配置完整性
+ */
+function checkConfig(pipeline) {
+  const checks = [];
+
+  // 每個 stage 是否都有 provider
+  for (const stage of pipeline.stageOrder) {
+    const hasProvider = !!pipeline.stageMap[stage];
+    checks.push({
+      id: 'CFG-PROVIDER',
+      name: `${stage} 有 provider`,
+      result: hasProvider ? 'PASS' : 'SKIP',
+      expected: 'provider 已安裝',
+      actual: hasProvider
+        ? `${pipeline.stageMap[stage].plugin} → ${pipeline.stageMap[stage].agent}`
+        : '未安裝（會自動跳過）',
+    });
+  }
+
+  // 每個 provider 的 agent 檔案是否存在
+  for (const [stage, info] of Object.entries(pipeline.stageMap)) {
+    const agentPath = path.join(PLUGINS_DIR, info.plugin, 'agents', `${info.agent}.md`);
+    const exists = fs.existsSync(agentPath);
+    checks.push({
+      id: 'CFG-AGENT',
+      name: `${stage} agent 檔案存在 (${info.agent}.md)`,
+      result: exists ? 'PASS' : 'FAIL',
+      expected: agentPath,
+      actual: exists ? '存在' : '不存在',
+    });
+  }
+
+  // 每個 skill 引用是否存在
+  for (const [stage, info] of Object.entries(pipeline.stageMap)) {
+    if (!info.skill) continue;
+    // /sentinel:review → plugins/sentinel/skills/review/SKILL.md
+    const parts = info.skill.replace('/', '').split(':');
+    if (parts.length !== 2) continue;
+    const skillPath = path.join(PLUGINS_DIR, parts[0], 'skills', parts[1], 'SKILL.md');
+    const exists = fs.existsSync(skillPath);
+    checks.push({
+      id: 'CFG-SKILL',
+      name: `${stage} skill 存在 (${info.skill})`,
+      result: exists ? 'PASS' : 'FAIL',
+      expected: skillPath,
+      actual: exists ? '存在' : '不存在',
+    });
+  }
+
+  // stageLabels 是否完整
+  for (const stage of pipeline.stageOrder) {
+    const hasLabel = !!pipeline.stageLabels[stage];
+    checks.push({
+      id: 'CFG-LABEL',
+      name: `${stage} 有中文標籤`,
+      result: hasLabel ? 'PASS' : 'FAIL',
+      expected: '有標籤',
+      actual: hasLabel ? pipeline.stageLabels[stage] : '缺少',
+    });
+  }
+
+  return checks;
+}
+
+/**
+ * 2. 流程合規性 — 檢查 state file
+ */
+function checkCompliance(pipeline, state) {
+  const checks = [];
+  const installedStages = pipeline.stageOrder.filter(s => pipeline.stageMap[s]);
+  const expectedStages = state.expectedStages || installedStages;
+
+  // 每個預期階段是否已執行
+  const completedAgents = state.completed || [];
+  for (const stage of expectedStages) {
+    const info = pipeline.stageMap[stage];
+    if (!info) continue;
+    const executed = completedAgents.includes(info.agent);
+    checks.push({
+      id: 'COMP-STAGE',
+      name: `${stage}（${pipeline.stageLabels[stage] || stage}）已執行`,
+      result: executed ? 'PASS' : 'FAIL',
+      expected: `由 ${info.agent} 執行`,
+      actual: executed ? '已完成' : '未執行',
+    });
+  }
+
+  // 執行順序是否正確
+  const completedStageOrder = completedAgents
+    .map(agent => pipeline.agentToStage[agent])
+    .filter(Boolean);
+
+  let orderCorrect = true;
+  for (let i = 1; i < completedStageOrder.length; i++) {
+    const prevIdx = pipeline.stageOrder.indexOf(completedStageOrder[i - 1]);
+    const currIdx = pipeline.stageOrder.indexOf(completedStageOrder[i]);
+    if (currIdx < prevIdx) {
+      orderCorrect = false;
+      break;
+    }
+  }
+
+  checks.push({
+    id: 'COMP-ORDER',
+    name: '階段執行順序正確',
+    result: orderCorrect ? 'PASS' : 'FAIL',
+    expected: expectedStages.join(' → '),
+    actual: completedStageOrder.join(' → ') || '（無執行紀錄）',
+  });
+
+  // 任務分類是否有記錄
+  checks.push({
+    id: 'COMP-TYPE',
+    name: '任務類型已分類',
+    result: state.taskType ? 'PASS' : 'WARN',
+    expected: '有分類紀錄',
+    actual: state.taskType || '未分類（可能是舊版 session）',
+  });
+
+  return checks;
+}
+
+/**
+ * 3. 產出完整性 — 檢查工作目錄
+ */
+function checkArtifacts(targetDir) {
+  const checks = [];
+
+  // 原始碼
+  const srcDir = path.join(targetDir, 'src');
+  const hasSrc = fs.existsSync(srcDir);
+  let srcFileCount = 0;
+  if (hasSrc) {
+    srcFileCount = countFiles(srcDir);
+  }
+  checks.push({
+    id: 'ART-SRC',
+    name: '原始碼目錄存在且非空',
+    result: hasSrc && srcFileCount > 0 ? 'PASS' : 'FAIL',
+    expected: 'src/ 有原始碼檔案',
+    actual: hasSrc ? `${srcFileCount} 個檔案` : 'src/ 不存在',
+  });
+
+  // 測試
+  const testDirs = ['tests', 'test', '__tests__', 'spec'];
+  const testDir = testDirs.find(d => fs.existsSync(path.join(targetDir, d)));
+  let testFileCount = 0;
+  if (testDir) {
+    testFileCount = countFiles(path.join(targetDir, testDir));
+  }
+  checks.push({
+    id: 'ART-TEST',
+    name: '測試目錄存在且非空',
+    result: testDir && testFileCount > 0 ? 'PASS' : 'FAIL',
+    expected: '有測試檔案',
+    actual: testDir ? `${testDir}/ — ${testFileCount} 個檔案` : '無測試目錄',
+  });
+
+  // package.json
+  const pkgPath = path.join(targetDir, 'package.json');
+  const hasPkg = fs.existsSync(pkgPath);
+  checks.push({
+    id: 'ART-PKG',
+    name: 'package.json 存在',
+    result: hasPkg ? 'PASS' : 'SKIP',
+    expected: '專案根目錄有 package.json',
+    actual: hasPkg ? '存在' : '不存在（可能非 Node 專案）',
+  });
+
+  // tsconfig.json（有 TS 依賴時才檢查）
+  if (hasPkg) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+      if (deps.typescript) {
+        const hasTsConfig = fs.existsSync(path.join(targetDir, 'tsconfig.json'));
+        checks.push({
+          id: 'ART-TS',
+          name: 'tsconfig.json 存在（TS 專案）',
+          result: hasTsConfig ? 'PASS' : 'FAIL',
+          expected: '有 typescript 依賴時需要 tsconfig.json',
+          actual: hasTsConfig ? '存在' : '不存在',
+        });
+      }
+    } catch (_) {}
+  }
+
+  return checks;
+}
+
+/**
+ * 4. 品質基線 — 執行 build/test/lint
+ */
+function checkQuality(targetDir) {
+  const checks = [];
+  const pkgPath = path.join(targetDir, 'package.json');
+  if (!fs.existsSync(pkgPath)) return checks;
+
+  let pkg;
+  try {
+    pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  } catch (_) {
+    return checks;
+  }
+
+  const scripts = pkg.scripts || {};
+
+  // Build
+  if (scripts.build) {
+    try {
+      execSync('npm run build', { cwd: targetDir, stdio: 'pipe', timeout: 60000 });
+      checks.push({ id: 'QA-BUILD', name: 'Build 通過', result: 'PASS', expected: '無錯誤', actual: '成功' });
+    } catch (err) {
+      const stderr = err.stderr ? err.stderr.toString().slice(0, 200) : '未知錯誤';
+      checks.push({ id: 'QA-BUILD', name: 'Build 通過', result: 'FAIL', expected: '無錯誤', actual: stderr });
+    }
+  }
+
+  // Typecheck
+  if (scripts.typecheck) {
+    try {
+      execSync('npm run typecheck', { cwd: targetDir, stdio: 'pipe', timeout: 60000 });
+      checks.push({ id: 'QA-TYPE', name: 'Typecheck 通過', result: 'PASS', expected: '無型別錯誤', actual: '成功' });
+    } catch (err) {
+      const stderr = err.stderr ? err.stderr.toString().slice(0, 200) : '未知錯誤';
+      checks.push({ id: 'QA-TYPE', name: 'Typecheck 通過', result: 'FAIL', expected: '無型別錯誤', actual: stderr });
+    }
+  }
+
+  // Test
+  if (scripts.test) {
+    try {
+      execSync('npm test', { cwd: targetDir, stdio: 'pipe', timeout: 120000 });
+      checks.push({ id: 'QA-TEST', name: '測試全部通過', result: 'PASS', expected: '無失敗', actual: '成功' });
+    } catch (err) {
+      const stdout = err.stdout ? err.stdout.toString().slice(-300) : '未知錯誤';
+      checks.push({ id: 'QA-TEST', name: '測試全部通過', result: 'FAIL', expected: '無失敗', actual: stdout });
+    }
+  }
+
+  // Lint
+  if (scripts.lint) {
+    try {
+      execSync('npm run lint', { cwd: targetDir, stdio: 'pipe', timeout: 30000 });
+      checks.push({ id: 'QA-LINT', name: 'Lint 通過', result: 'PASS', expected: '無警告', actual: '成功' });
+    } catch (err) {
+      const stdout = err.stdout ? err.stdout.toString().slice(-200) : '未知錯誤';
+      checks.push({ id: 'QA-LINT', name: 'Lint 通過', result: 'WARN', expected: '無警告', actual: stdout });
+    }
+  }
+
+  return checks;
+}
+
+/**
+ * 5. 規範遵守 — git log、版號
+ */
+function checkConventions(targetDir) {
+  const checks = [];
+
+  // 最近 commit 是否有繁中
+  try {
+    const log = execSync('git log -1 --format=%s', { cwd: targetDir, stdio: 'pipe' }).toString().trim();
+    // 簡易中文偵測：是否包含 CJK 字元
+    const hasChinese = /[\u4e00-\u9fff]/.test(log);
+    checks.push({
+      id: 'CONV-LANG',
+      name: 'Commit message 使用繁體中文',
+      result: hasChinese ? 'PASS' : 'WARN',
+      expected: '包含中文字元',
+      actual: log.slice(0, 80),
+    });
+  } catch (_) {
+    checks.push({
+      id: 'CONV-LANG',
+      name: 'Commit message 使用繁體中文',
+      result: 'SKIP',
+      expected: '有 git 歷史',
+      actual: '非 git 倉庫或無 commit',
+    });
+  }
+
+  // plugin.json 版號是否有更新（檢查 git diff）
+  try {
+    const diff = execSync('git diff HEAD~1 -- "*/plugin.json"', { cwd: targetDir, stdio: 'pipe' }).toString();
+    const hasVersionChange = /^\+.*"version".*$/m.test(diff);
+    if (diff.length > 0) {
+      checks.push({
+        id: 'CONV-VERSION',
+        name: 'Plugin 版號已更新',
+        result: hasVersionChange ? 'PASS' : 'WARN',
+        expected: 'plugin.json version 有變更',
+        actual: hasVersionChange ? '版號已更新' : 'plugin.json 有改動但版號未更新',
+      });
+    }
+  } catch (_) {}
+
+  return checks;
+}
+
+// ─── 工具函式 ──────────────────────────────────────
+
+function countFiles(dir) {
+  if (!fs.existsSync(dir)) return 0;
+  let count = 0;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue;
+    if (entry.isDirectory()) {
+      count += countFiles(path.join(dir, entry.name));
+    } else {
+      count++;
+    }
+  }
+  return count;
+}
+
+// ─── 報告產生 ──────────────────────────────────────
+
+function generateReport(checks, state, pipeline) {
+  const passed = checks.filter(c => c.result === 'PASS').length;
+  const failed = checks.filter(c => c.result === 'FAIL').length;
+  const warned = checks.filter(c => c.result === 'WARN').length;
+  const skipped = checks.filter(c => c.result === 'SKIP').length;
+
+  return {
+    timestamp: new Date().toISOString(),
+    sessionId: state ? state.sessionId : null,
+    taskType: state ? state.taskType : null,
+    result: failed > 0 ? 'FAIL' : warned > 0 ? 'WARN' : 'PASS',
+    summary: {
+      total: checks.length,
+      passed,
+      failed,
+      warned,
+      skipped,
+    },
+    pipeline: {
+      definedStages: pipeline.stageOrder,
+      installedStages: pipeline.stageOrder.filter(s => pipeline.stageMap[s]),
+      expectedStages: state ? (state.expectedStages || []) : [],
+      completedAgents: state ? (state.completed || []) : [],
+    },
+    checks,
+    failures: checks.filter(c => c.result === 'FAIL'),
+    warnings: checks.filter(c => c.result === 'WARN'),
+  };
+}
+
+function printSummary(report) {
+  const icon = report.result === 'PASS' ? '✅' : report.result === 'WARN' ? '⚠️' : '❌';
+  process.stderr.write(`\n${icon} 工作流驗證結果：${report.result}\n`);
+  process.stderr.write(`   通過: ${report.summary.passed}  失敗: ${report.summary.failed}  警告: ${report.summary.warned}  跳過: ${report.summary.skipped}\n`);
+
+  if (report.sessionId) {
+    process.stderr.write(`   Session: ${report.sessionId}\n`);
+    process.stderr.write(`   任務類型: ${report.taskType || '未分類'}\n`);
+  }
+
+  if (report.pipeline.completedAgents.length > 0) {
+    process.stderr.write(`   已完成 agents: ${report.pipeline.completedAgents.join(' → ')}\n`);
+  }
+
+  if (report.failures.length > 0) {
+    process.stderr.write('\n   ── 失敗項目 ──\n');
+    for (const f of report.failures) {
+      process.stderr.write(`   ❌ ${f.name}\n      預期: ${f.expected}\n      實際: ${f.actual}\n`);
+    }
+  }
+
+  if (report.warnings.length > 0) {
+    process.stderr.write('\n   ── 警告項目 ──\n');
+    for (const w of report.warnings) {
+      process.stderr.write(`   ⚠️  ${w.name}\n      ${w.actual}\n`);
+    }
+  }
+
+  process.stderr.write('\n');
+}
+
+// ─── 主程式 ──────────────────────────────────────
+
+function main() {
+  const arg = process.argv[2];
+
+  if (!arg) {
+    process.stderr.write('用法：node scripts/validate-workflow.js <sessionId|--latest|--check-config>\n');
+    process.exit(1);
+  }
+
+  const pipeline = discoverPipelineLocal();
+
+  if (pipeline.stageOrder.length === 0) {
+    process.stderr.write('錯誤：找不到 plugins/flow/pipeline.json\n');
+    process.exit(1);
+  }
+
+  // --check-config：只驗證 pipeline 配置
+  if (arg === '--check-config') {
+    const checks = checkConfig(pipeline);
+    const report = generateReport(checks, null, pipeline);
+    printSummary(report);
+    console.log(JSON.stringify(report, null, 2));
+    process.exit(report.result === 'FAIL' ? 1 : 0);
+  }
+
+  // 驗證完整工作流
+  const state = loadState(arg);
+  if (!state) {
+    process.stderr.write(`錯誤：找不到 session state（${arg}）\n`);
+    process.stderr.write('提示：用 --latest 驗證最近的 session，或 --check-config 只驗證配置\n');
+    process.exit(1);
+  }
+
+  const targetDir = state.environment?.cwd || ROOT;
+
+  const allChecks = [
+    ...checkConfig(pipeline),
+    ...checkCompliance(pipeline, state),
+    ...checkArtifacts(targetDir),
+    ...checkQuality(targetDir),
+    ...checkConventions(targetDir),
+  ];
+
+  const report = generateReport(allChecks, state, pipeline);
+  printSummary(report);
+  console.log(JSON.stringify(report, null, 2));
+  process.exit(report.result === 'FAIL' ? 1 : 0);
+}
+
+main();
