@@ -9,123 +9,175 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
       --bg: #1e1e2e; --surface0: #313244; --surface1: #45475a; --surface2: #585b70;
-      --overlay0: #6c7086; --text: #cdd6f4; --subtext0: #a6adc8;
+      --overlay0: #6c7086; --text: #cdd6f4; --subtext0: #a6adc8; --subtext1: #bac2de;
       --blue: #89b4fa; --green: #a6e3a1; --red: #f38ba8; --yellow: #f9e2af;
       --purple: #cba6f7; --cyan: #89dceb; --pink: #f5c2e7; --orange: #fab387;
     }
     body { font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Menlo', monospace; background: var(--bg); color: var(--text); }
-    .layout { display: grid; grid-template-columns: 230px 1fr; height: 100vh; }
+    .layout { display: grid; grid-template-columns: var(--sidebar-w, 230px) 1fr; height: 100vh; transition: grid-template-columns 0.3s ease; }
+    .layout.collapsed { --sidebar-w: 52px; }
 
     /* Sidebar */
-    .sidebar { background: var(--surface0); border-right: 1px solid var(--surface1); padding: 16px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
-    .sidebar-header { display: flex; align-items: center; justify-content: space-between; }
-    .sidebar-header h2 { font-size: 11px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1.5px; }
-    .sidebar-header .count { font-size: 10px; color: var(--overlay0); background: var(--surface1); padding: 1px 6px; border-radius: 8px; }
-    .group-label { font-size: 10px; color: var(--overlay0); text-transform: uppercase; letter-spacing: 1px; margin-top: 8px; padding: 4px 0; border-top: 1px solid var(--surface1); }
-    .session-card { padding: 10px 12px; border-radius: 8px; cursor: pointer; transition: all 0.2s; border: 1px solid transparent; position: relative; }
-    .session-card:hover { background: var(--surface1); }
-    .session-card.active { background: var(--surface1); border-color: var(--blue); }
-    .session-card.idle { opacity: 0.5; }
-    .session-card.idle:hover { opacity: 0.8; }
-    .session-card.zombie { opacity: 0.4; border-color: var(--orange); border-style: dashed; }
-    .session-card.zombie:hover { opacity: 0.7; }
-    .session-card .close-btn { position: absolute; top: 4px; right: 6px; width: 18px; height: 18px; border-radius: 50%; background: var(--surface2); color: var(--text); font-size: 10px; line-height: 18px; text-align: center; cursor: pointer; opacity: 0; transition: all 0.2s; border: none; font-family: inherit; }
-    .session-card:hover .close-btn { opacity: 0.6; }
-    .session-card .close-btn:hover { opacity: 1; background: var(--red); color: var(--bg); }
-    .zombie-label { font-size: 9px; color: var(--orange); margin-top: 2px; }
-    .cleanup-btn { font-size: 10px; color: var(--orange); background: none; border: 1px solid var(--orange); border-radius: 4px; padding: 2px 8px; cursor: pointer; font-family: inherit; transition: all 0.2s; }
-    .cleanup-btn:hover { background: var(--orange); color: var(--bg); }
-    .session-id { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-    .session-id .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: livePulse 2s ease infinite; }
-    .session-meta { font-size: 11px; color: var(--subtext0); margin-top: 3px; }
-    .conn { font-size: 11px; display: flex; align-items: center; gap: 6px; margin-bottom: 4px; transition: opacity 0.3s; }
-    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; transition: background 0.3s; }
+    .sidebar { background: var(--surface0); border-right: 1px solid var(--surface1); display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; transition: all 0.3s ease; }
+    .sb-top { padding: 10px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--surface1); min-height: 40px; }
+    .sb-toggle { width: 28px; height: 28px; border-radius: 6px; background: var(--surface1); border: none; color: var(--text); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.2s; }
+    .sb-toggle:hover { background: var(--surface2); }
+    .conn { font-size: 11px; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; transition: opacity 0.3s; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; transition: background 0.3s; }
     .dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
     .dot.off { background: var(--orange); animation: blink 1s infinite; }
+    .sb-body { padding: 8px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+    .collapsed .conn span:not(.dot) { display: none; }
+    .collapsed .sb-body { padding: 4px; }
+
+    /* Sidebar Groups */
+    .group-hdr { display: flex; align-items: center; justify-content: space-between; padding: 6px 4px 2px; }
+    .group-hdr h2 { font-size: 10px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1.5px; white-space: nowrap; overflow: hidden; }
+    .group-hdr .count { font-size: 9px; color: var(--overlay0); background: var(--surface1); padding: 1px 5px; border-radius: 8px; flex-shrink: 0; }
+    .group-sep { font-size: 9px; color: var(--overlay0); text-transform: uppercase; letter-spacing: 1px; margin-top: 6px; padding: 4px 4px 2px; border-top: 1px solid var(--surface1); display: flex; align-items: center; justify-content: space-between; white-space: nowrap; overflow: hidden; }
+
+    /* Session Card */
+    .sc { padding: 8px 10px; border-radius: 8px; cursor: pointer; transition: all 0.2s; border: 1px solid transparent; position: relative; }
+    .sc:hover { background: var(--surface1); }
+    .sc.active { background: var(--surface1); border-color: var(--blue); }
+    .sc.idle { opacity: 0.5; }
+    .sc.idle:hover { opacity: 0.8; }
+    .sc.zombie { opacity: 0.4; border-color: var(--orange); border-style: dashed; }
+    .sc.zombie:hover { opacity: 0.7; }
+    .sc .x { position: absolute; top: 3px; right: 5px; width: 16px; height: 16px; border-radius: 50%; background: var(--surface2); color: var(--text); font-size: 9px; line-height: 16px; text-align: center; cursor: pointer; opacity: 0; transition: all 0.2s; border: none; font-family: inherit; }
+    .sc:hover .x { opacity: 0.5; }
+    .sc .x:hover { opacity: 1; background: var(--red); color: var(--bg); }
+    .sc-id { font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: livePulse 2s ease infinite; flex-shrink: 0; }
+    .sc-meta { font-size: 10px; color: var(--subtext0); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sc-bar { height: 3px; background: var(--surface1); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+    .sc-bar-fill { height: 100%; background: linear-gradient(90deg, var(--blue), var(--green)); border-radius: 2px; transition: width 0.5s; }
+    .cleanup-btn { font-size: 9px; color: var(--orange); background: none; border: 1px solid var(--orange); border-radius: 3px; padding: 1px 6px; cursor: pointer; font-family: inherit; transition: all 0.2s; }
+    .cleanup-btn:hover { background: var(--orange); color: var(--bg); }
+    .zombie-sub { font-size: 9px; color: var(--orange); margin-top: 1px; }
+
+    /* Collapsed sidebar mini cards */
+    .collapsed .sc { padding: 6px; text-align: center; }
+    .collapsed .sc-id, .collapsed .sc-meta, .collapsed .sc-bar, .collapsed .zombie-sub, .collapsed .sc .x { display: none; }
+    .collapsed .sc::before { content: attr(data-pct); font-size: 9px; color: var(--subtext0); }
+
     @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
     @keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
     /* Main */
-    .main { padding: 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
-    .main h1 { font-size: 16px; display: flex; align-items: center; gap: 8px; }
-    .main h1 .task-badge { font-size: 11px; padding: 2px 8px; border-radius: 6px; background: var(--surface1); color: var(--subtext0); font-weight: 500; }
+    .main { padding: 20px 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+    .main h1 { font-size: 15px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .task-badge { font-size: 10px; padding: 2px 8px; border-radius: 6px; background: var(--surface1); color: var(--subtext0); font-weight: 500; }
 
-    /* Pipeline Flow */
-    .pipeline { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 20px 0; flex-wrap: wrap; }
-    .stage { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 12px 14px; border-radius: 12px; background: var(--surface0); border: 2px solid var(--surface1); min-width: 76px; transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); position: relative; }
-    .stage .emoji { font-size: 20px; line-height: 1; transition: transform 0.3s; }
-    .stage .name { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; }
-    .stage .agent { font-size: 9px; color: var(--subtext0); max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .stage .badge { font-size: 9px; font-weight: 600; padding: 2px 6px; border-radius: 4px; transition: all 0.3s; }
+    /* === S/U Snake Grid === */
+    .snake { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 8px 0; position: relative; }
+    .snake-row2 { display: contents; }
+    /* 轉角連接器 */
+    .snake-turn { grid-column: 4; display: flex; align-items: center; justify-content: center; color: var(--surface2); font-size: 16px; }
+    .snake-turn.done { color: var(--green); }
 
-    /* Stage 狀態 — 使用 agent 色彩 */
-    .stage.pass { border-color: var(--green); background: rgba(166,227,161,0.06); }
-    .stage.pass .badge { background: rgba(166,227,161,0.15); color: var(--green); }
-    .stage.pass .emoji { transform: scale(1.1); }
-    .stage.fail { border-color: var(--red); background: rgba(243,139,168,0.06); }
-    .stage.fail .badge { background: rgba(243,139,168,0.15); color: var(--red); }
-    .stage.active { border-color: var(--sc, var(--blue)); animation: stagePulse 2s ease-in-out infinite; background: color-mix(in srgb, var(--sc, var(--blue)) 6%, transparent); }
-    .stage.active .badge { background: color-mix(in srgb, var(--sc, var(--blue)) 15%, transparent); color: var(--sc, var(--blue)); }
-    .stage.active .emoji { animation: bounce 1s ease infinite; }
-    .stage.skipped { opacity: 0.25; border-style: dashed; }
-    .stage.pending { opacity: 0.45; }
-    .stage.next { border-color: color-mix(in srgb, var(--sc, var(--yellow)) 60%, transparent); opacity: 0.75; }
-    .connector { color: var(--surface2); font-size: 14px; margin: 0 2px; transition: color 0.5s; }
-    .connector.done { color: var(--green); }
-    .retry-badge { position: absolute; top: -8px; right: -8px; background: var(--orange); color: var(--bg); font-size: 9px; font-weight: 700; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+    /* Agent Card */
+    .ac { border-radius: 10px; background: var(--surface0); border: 2px solid var(--surface1); padding: 12px; display: flex; flex-direction: column; gap: 6px; transition: all 0.4s cubic-bezier(0.4,0,0.2,1); position: relative; min-height: 88px; }
+    .ac-top { display: flex; align-items: center; gap: 8px; }
+    .ac-emoji { font-size: 22px; line-height: 1; transition: transform 0.3s; }
+    .ac-info { flex: 1; min-width: 0; }
+    .ac-name { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; }
+    .ac-agent { font-size: 9px; color: var(--subtext0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ac-badge { font-size: 9px; font-weight: 600; padding: 2px 8px; border-radius: 4px; align-self: flex-start; transition: all 0.3s; }
+    .ac-retry { position: absolute; top: -6px; right: -6px; background: var(--orange); color: var(--bg); font-size: 9px; font-weight: 700; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; animation: popIn 0.3s cubic-bezier(0.175,0.885,0.32,1.275); }
 
-    @keyframes stagePulse {
-      0%, 100% { box-shadow: 0 0 8px color-mix(in srgb, var(--sc, var(--blue)) 25%, transparent); }
-      50% { box-shadow: 0 0 24px color-mix(in srgb, var(--sc, var(--blue)) 50%, transparent); }
+    /* Card 連接箭頭 */
+    .ac::after { content: '→'; position: absolute; right: -14px; top: 50%; transform: translateY(-50%); color: var(--surface2); font-size: 12px; z-index: 1; transition: color 0.4s; }
+    .ac.pass::after { color: var(--green); }
+    .ac:nth-child(4)::after, .ac:nth-child(8)::after { display: none; }
+    /* 第二排箭頭反轉 */
+    .snake-row2 .ac::after { content: '←'; left: -14px; right: auto; }
+    .snake-row2 .ac:nth-child(1)::after { display: none; }
+
+    /* Card States */
+    .ac.pass { border-color: var(--green); background: rgba(166,227,161,0.05); }
+    .ac.pass .ac-badge { background: rgba(166,227,161,0.15); color: var(--green); }
+    .ac.pass .ac-emoji { transform: scale(1.05); }
+    .ac.fail { border-color: var(--red); background: rgba(243,139,168,0.05); }
+    .ac.fail .ac-badge { background: rgba(243,139,168,0.15); color: var(--red); }
+    .ac.active { border-color: var(--sc, var(--blue)); animation: cardPulse 2s ease-in-out infinite; background: color-mix(in srgb, var(--sc, var(--blue)) 5%, transparent); }
+    .ac.active .ac-badge { background: color-mix(in srgb, var(--sc, var(--blue)) 15%, transparent); color: var(--sc, var(--blue)); }
+    .ac.active .ac-emoji { animation: bounce 1s ease infinite; }
+    .ac.skipped { opacity: 0.2; border-style: dashed; }
+    .ac.pending { opacity: 0.4; }
+    .ac.next { border-color: color-mix(in srgb, var(--sc, var(--yellow)) 50%, transparent); opacity: 0.7; }
+
+    @keyframes cardPulse {
+      0%,100% { box-shadow: 0 0 8px color-mix(in srgb, var(--sc, var(--blue)) 20%, transparent); }
+      50% { box-shadow: 0 0 20px color-mix(in srgb, var(--sc, var(--blue)) 40%, transparent); }
     }
     @keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
     @keyframes popIn { 0% { transform: scale(0); } 100% { transform: scale(1); } }
 
     /* Progress */
-    .progress { height: 4px; background: var(--surface1); border-radius: 2px; overflow: hidden; }
-    .progress-fill { height: 100%; background: linear-gradient(90deg, var(--blue), var(--green)); border-radius: 2px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
-
-    /* Celebration */
-    .celebrate { position: relative; }
-    .celebrate::after { content: '🎉'; position: absolute; right: -28px; top: 50%; transform: translateY(-50%); font-size: 18px; animation: celebratePop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+    .progress-bar { height: 5px; background: var(--surface1); border-radius: 3px; overflow: hidden; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, var(--blue), var(--green)); border-radius: 3px; transition: width 0.8s cubic-bezier(0.4,0,0.2,1); }
     .progress-fill.complete { background: linear-gradient(90deg, var(--green), var(--cyan), var(--green)); background-size: 200% 100%; animation: shimmer 2s linear infinite; }
+    .celebrate { position: relative; }
+    .celebrate::after { content: '🎉'; position: absolute; right: -24px; top: 50%; transform: translateY(-50%); font-size: 16px; animation: celebratePop 0.5s cubic-bezier(0.175,0.885,0.32,1.275); }
     @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     @keyframes celebratePop { 0% { transform: translateY(-50%) scale(0); } 100% { transform: translateY(-50%) scale(1); } }
 
-    /* Cards */
-    .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .card { background: var(--surface0); border-radius: 12px; padding: 14px 16px; border: 1px solid var(--surface1); transition: border-color 0.3s; }
+    /* 燈號摘要面板 */
+    .summary { background: var(--surface0); border-radius: 10px; padding: 14px 16px; border: 1px solid var(--surface1); }
+    .summary h3 { font-size: 11px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+    .light-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid rgba(69,71,90,0.3); }
+    .light-row:last-child { border-bottom: none; }
+    .light { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .light.pass { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .light.fail { background: var(--red); box-shadow: 0 0 6px var(--red); }
+    .light.skip { background: var(--surface2); }
+    .light-stage { font-weight: 600; min-width: 56px; }
+    .light-label { color: var(--subtext0); flex: 1; }
+    .light-verdict { font-weight: 600; }
+
+    /* Info Cards */
+    .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .card { background: var(--surface0); border-radius: 10px; padding: 12px 14px; border: 1px solid var(--surface1); transition: border-color 0.3s; }
     .card:hover { border-color: var(--surface2); }
-    .card h3 { font-size: 11px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-    .row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; }
+    .card h3 { font-size: 10px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+    .row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
     .row .label { color: var(--subtext0); }
     .row .value { font-weight: 600; }
 
     /* Timeline */
-    .timeline { background: var(--surface0); border-radius: 12px; padding: 14px 16px; border: 1px solid var(--surface1); flex: 1; min-height: 100px; }
-    .timeline h3 { font-size: 11px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-    .tl-item { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 12px; border-bottom: 1px solid rgba(69,71,90,0.4); animation: slideIn 0.3s ease; }
+    .timeline { background: var(--surface0); border-radius: 10px; padding: 12px 14px; border: 1px solid var(--surface1); flex: 1; min-height: 80px; }
+    .timeline h3 { font-size: 10px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+    .tl-item { display: flex; align-items: center; gap: 8px; padding: 4px 2px; font-size: 11px; border-bottom: 1px solid rgba(69,71,90,0.3); animation: slideIn 0.3s ease; }
     .tl-item:last-child { border-bottom: none; }
-    .tl-item:hover { background: rgba(69,71,90,0.2); border-radius: 4px; }
-    .tl-item .time { color: var(--overlay0); font-size: 10px; min-width: 56px; font-variant-numeric: tabular-nums; }
+    .tl-item:hover { background: rgba(69,71,90,0.15); border-radius: 4px; }
+    .tl-item .time { color: var(--overlay0); font-size: 9px; min-width: 52px; font-variant-numeric: tabular-nums; }
     .tl-item .msg { flex: 1; }
     .tl-item.pass .msg { color: var(--green); }
     .tl-item.fail .msg { color: var(--red); }
     .tl-item.active .msg { color: var(--blue); }
     @keyframes slideIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
 
+    /* Sort/Filter bar */
+    .filter-bar { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+    .filter-bar select { background: var(--surface0); color: var(--text); border: 1px solid var(--surface1); border-radius: 6px; padding: 3px 8px; font-size: 10px; font-family: inherit; cursor: pointer; }
+    .filter-bar select:hover { border-color: var(--surface2); }
+    .filter-bar label { font-size: 10px; color: var(--subtext0); }
+
     /* Empty */
     .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 12px; color: var(--subtext0); }
     .empty .icon { font-size: 56px; animation: float 3s ease-in-out infinite; }
-    .empty .hint { font-size: 13px; text-align: center; line-height: 1.8; }
-    .empty code { background: var(--surface0); padding: 2px 8px; border-radius: 4px; font-size: 12px; color: var(--text); }
+    .empty .hint { font-size: 12px; text-align: center; line-height: 1.8; }
+    .empty code { background: var(--surface0); padding: 2px 8px; border-radius: 4px; font-size: 11px; color: var(--text); }
     @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 
     /* Responsive */
     @media (max-width: 700px) {
-      .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-      .sidebar { max-height: 180px; border-right: none; border-bottom: 1px solid var(--surface1); flex-direction: row; flex-wrap: wrap; gap: 8px; padding: 12px; }
-      .session-card { min-width: 140px; flex: 1; }
+      .layout, .layout.collapsed { grid-template-columns: 1fr; grid-template-rows: auto 1fr; --sidebar-w: 1fr; }
+      .sidebar { max-height: 160px; border-right: none; border-bottom: 1px solid var(--surface1); }
+      .sb-body { flex-direction: row; flex-wrap: wrap; gap: 6px; overflow-x: auto; }
+      .sc { min-width: 130px; flex-shrink: 0; }
+      .snake { grid-template-columns: repeat(2, 1fr); }
       .cards { grid-template-columns: 1fr; }
     }
   </style>
@@ -139,7 +191,9 @@
     const html = htm.bind(h);
 
     // --- 常量 ---
-    const ALL_STAGES = ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'];
+    const ROW1 = ['PLAN', 'ARCH', 'DEV', 'REVIEW'];
+    const ROW2 = ['TEST', 'QA', 'E2E', 'DOCS'];
+    const ALL_STAGES = [...ROW1, ...ROW2];
     const SM = {
       PLAN:   { agent: 'planner',       color: '#cba6f7', emoji: '📋', label: '規劃' },
       ARCH:   { agent: 'architect',     color: '#89dceb', emoji: '🏛️', label: '架構' },
@@ -175,16 +229,12 @@
       if (!s?.lastTransition) return true;
       const age = Date.now() - new Date(s.lastTransition).getTime();
       const oneHour = 3600_000;
-      // 殭屍判定：超過 1 小時未活動 + 非完成狀態
       if (age > oneHour && pct(s) < 100 && !s.delegationActive) return true;
-      // 無 pipeline 無 taskType 且超過 30 分鐘
       if (!hasPipeline(s) && !s.taskType && age > oneHour / 2) return true;
       return false;
     }
     async function deleteSession(id) {
-      try {
-        await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      } catch { /* 忽略 */ }
+      try { await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }); } catch {}
     }
     function now() { return new Date().toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
     function elapsed(iso) {
@@ -195,15 +245,76 @@
       return `${Math.floor(d/3600)}h`;
     }
 
+    // --- Agent Card 元件 ---
+    function AgentCard({ stage, s }) {
+      const status = getStatus(stage, s);
+      const meta = SM[stage];
+      const retries = s.retries?.[stage] || 0;
+      const sev = s.stageResults?.[stage]?.severity;
+      return html`
+        <div class="ac ${status}" style="--sc:${meta.color}">
+          ${retries > 0 && html`<div class="ac-retry">${retries}</div>`}
+          <div class="ac-top">
+            <span class="ac-emoji">${meta.emoji}</span>
+            <div class="ac-info">
+              <div class="ac-name" style="${status === 'active' ? `color:${meta.color}` : ''}">${stage}</div>
+              <div class="ac-agent">${meta.agent}</div>
+            </div>
+          </div>
+          ${status === 'pass' && html`<span class="ac-badge">PASS</span>`}
+          ${status === 'fail' && html`<span class="ac-badge">${sev || 'FAIL'}</span>`}
+          ${status === 'active' && html`<span class="ac-badge">Working…</span>`}
+          ${status === 'next' && html`<span class="ac-badge">Next</span>`}
+          ${status === 'skipped' && html`<span class="ac-badge">Skip</span>`}
+        </div>
+      `;
+    }
+
+    // --- 燈號摘要元件 ---
+    function LightSummary({ s }) {
+      if (!s?.expectedStages?.length) return null;
+      return html`
+        <div class="summary">
+          <h3>🏁 Pipeline 完成摘要</h3>
+          ${ALL_STAGES.map(stage => {
+            const status = getStatus(stage, s);
+            if (status === 'skipped' && !s.expectedStages.includes(stage)) {
+              return html`
+                <div class="light-row">
+                  <span class="light skip"></span>
+                  <span class="light-stage">${stage}</span>
+                  <span class="light-label">${SM[stage].label}</span>
+                  <span class="light-verdict" style="color:var(--overlay0)">SKIP</span>
+                </div>`;
+            }
+            const r = s.stageResults?.[stage];
+            const verdict = r?.verdict || '—';
+            const retries = s.retries?.[stage] || 0;
+            return html`
+              <div class="light-row">
+                <span class="light ${verdict === 'PASS' ? 'pass' : verdict === 'FAIL' ? 'fail' : 'skip'}"></span>
+                <span class="light-stage">${stage}</span>
+                <span class="light-label">${SM[stage].label}</span>
+                <span class="light-verdict" style="color:${verdict === 'PASS' ? 'var(--green)' : verdict === 'FAIL' ? 'var(--red)' : 'var(--overlay0)'}">
+                  ${verdict}${retries > 0 ? ` (重試${retries})` : ''}
+                </span>
+              </div>`;
+          })}
+        </div>
+      `;
+    }
+
     // --- App ---
     function App() {
       const [sessions, setSessions] = useState({});
       const [active, setActive] = useState(null);
       const [conn, setConn] = useState(false);
       const [events, setEvents] = useState([]);
+      const [sideOpen, setSideOpen] = useState(true);
+      const [sort, setSort] = useState('recent');
       const prevRef = useRef({});
 
-      // 分組 session：pipeline / zombie / idle
+      // 分組 + 排序
       const { pipeline: pipeSessions, zombie: zombieSessions, idle: idleSessions } = useMemo(() => {
         const pipe = [], zombie = [], idle = [];
         for (const [id, s] of Object.entries(sessions)) {
@@ -211,87 +322,51 @@
           else if (hasPipeline(s)) pipe.push([id, s]);
           else idle.push([id, s]);
         }
-        pipe.sort((a, b) => new Date(b[1].lastTransition || 0) - new Date(a[1].lastTransition || 0));
+        const sortFn = sort === 'progress' ? (a, b) => pct(b[1]) - pct(a[1])
+          : sort === 'type' ? (a, b) => (a[1].taskType || '').localeCompare(b[1].taskType || '')
+          : (a, b) => new Date(b[1].lastTransition || 0) - new Date(a[1].lastTransition || 0);
+        pipe.sort(sortFn);
         return { pipeline: pipe, zombie, idle };
-      }, [sessions]);
+      }, [sessions, sort]);
 
-      // WebSocket（含指數退避 + 心跳）
+      // WebSocket（指數退避 + 心跳）
       useEffect(() => {
         let ws, rt, hb, retries = 0;
         function connect() {
           const p = location.protocol === 'https:' ? 'wss' : 'ws';
           ws = new WebSocket(`${p}://${location.host}/ws`);
-          ws.onopen = () => {
-            setConn(true);
-            retries = 0;
-            // 心跳：每 25 秒 ping 保持連線活躍
-            clearInterval(hb);
-            hb = setInterval(() => { try { ws.send('ping'); } catch {} }, 25000);
-          };
-          ws.onclose = () => {
-            setConn(false);
-            clearInterval(hb);
-            // 指數退避：300ms → 600ms → 1.2s → 2.4s → 最大 5s
-            const delay = Math.min(300 * Math.pow(2, retries), 5000);
-            retries++;
-            rt = setTimeout(connect, delay);
-          };
-          ws.onerror = () => {}; // onclose 會處理
-          ws.onmessage = e => {
-            if (e.data === 'pong') return;
-            const m = JSON.parse(e.data);
-            if (m.sessions) setSessions(m.sessions);
-          };
+          ws.onopen = () => { setConn(true); retries = 0; clearInterval(hb); hb = setInterval(() => { try { ws.send('ping'); } catch {} }, 25000); };
+          ws.onclose = () => { setConn(false); clearInterval(hb); rt = setTimeout(connect, Math.min(300 * Math.pow(2, retries++), 5000)); };
+          ws.onerror = () => {};
+          ws.onmessage = e => { if (e.data === 'pong') return; const m = JSON.parse(e.data); if (m.sessions) setSessions(m.sessions); };
         }
         connect();
         return () => { ws?.close(); clearTimeout(rt); clearInterval(hb); };
       }, []);
 
-      // 自動選擇 session（優先選有 pipeline 的）
+      // 自動選擇
       useEffect(() => {
         const sids = Object.keys(sessions);
         if (!sids.length) return;
         if (active && sessions[active]) return;
-        // 優先選有 pipeline 的 session
-        const pipeId = pipeSessions[0]?.[0];
-        setActive(pipeId || sids[sids.length - 1]);
+        setActive(pipeSessions[0]?.[0] || sids[sids.length - 1]);
       }, [sessions, pipeSessions]);
 
       // Timeline 追蹤
       useEffect(() => {
         if (!active || !sessions[active]) return;
-        const curr = sessions[active];
-        const prev = prevRef.current[active];
-        const t = now();
-
+        const curr = sessions[active], prev = prevRef.current[active], t = now();
         if (prev) {
-          const newA = (curr.completed || []).filter(a => !(prev.completed || []).includes(a));
-          for (const agent of newA) {
+          for (const agent of (curr.completed || []).filter(a => !(prev.completed || []).includes(a))) {
             const e = Object.entries(SM).find(([, m]) => m.agent === agent);
-            if (e) {
-              const [stage, meta] = e;
-              const v = curr.stageResults?.[stage]?.verdict;
-              const sev = curr.stageResults?.[stage]?.severity;
-              setEvents(ev => [{ time: t, text: `${meta.emoji} ${meta.label}（${agent}）→ ${v || '完成'}${sev ? ' [' + sev + ']' : ''}`, type: v?.toLowerCase() || 'info' }, ...ev]);
-            }
+            if (e) { const [stage, meta] = e; const v = curr.stageResults?.[stage]?.verdict; const sev = curr.stageResults?.[stage]?.severity;
+              setEvents(ev => [{ time: t, text: `${meta.emoji} ${meta.label}（${agent}）→ ${v || '完成'}${sev ? ' ['+sev+']' : ''}`, type: v?.toLowerCase() || 'info' }, ...ev]); }
           }
-          if (curr.delegationActive && !prev.delegationActive) {
-            const cur = getCurrent(curr);
-            if (cur && SM[cur]) {
-              setEvents(ev => [{ time: t, text: `${SM[cur].emoji} ${SM[cur].label}（${SM[cur].agent}）開始工作...`, type: 'active' }, ...ev]);
-            }
-          }
-          if (curr.taskType && !prev.taskType) {
-            setEvents(ev => [{ time: t, text: `🏷️ 任務分類：${curr.taskType}（${curr.expectedStages?.length || 0} 階段）`, type: 'info' }, ...ev]);
-          }
-          const newRetries = Object.keys(curr.retries || {}).filter(k => (curr.retries[k] || 0) > (prev.retries?.[k] || 0));
-          for (const stage of newRetries) {
+          if (curr.delegationActive && !prev.delegationActive) { const cur = getCurrent(curr); if (cur && SM[cur]) setEvents(ev => [{ time: t, text: `${SM[cur].emoji} ${SM[cur].label}（${SM[cur].agent}）開始工作...`, type: 'active' }, ...ev]); }
+          if (curr.taskType && !prev.taskType) setEvents(ev => [{ time: t, text: `🏷️ 任務分類：${curr.taskType}（${curr.expectedStages?.length || 0} 階段）`, type: 'info' }, ...ev]);
+          for (const stage of Object.keys(curr.retries || {}).filter(k => (curr.retries[k] || 0) > (prev.retries?.[k] || 0)))
             setEvents(ev => [{ time: t, text: `🔁 ${stage} 重試 #${curr.retries[stage]}`, type: 'fail' }, ...ev]);
-          }
-          // 偵測完成
-          if (pct(curr) === 100 && pct(prev) < 100) {
-            setEvents(ev => [{ time: t, text: `🎉 Pipeline 完成！所有階段通過`, type: 'pass' }, ...ev]);
-          }
+          if (pct(curr) === 100 && pct(prev) < 100) setEvents(ev => [{ time: t, text: `🎉 Pipeline 完成！所有階段通過`, type: 'pass' }, ...ev]);
         }
         prevRef.current[active] = JSON.parse(JSON.stringify(curr));
       }, [sessions, active]);
@@ -299,64 +374,71 @@
       const s = active ? sessions[active] : null;
       const progress = s ? pct(s) : 0;
       const isComplete = progress === 100 && hasPipeline(s);
+      const selectSession = id => { setActive(id); setEvents([]); prevRef.current = {}; };
 
-      function selectSession(id) {
-        setActive(id);
-        setEvents([]);
-        prevRef.current = {};
-      }
+      // 第二排反轉（右到左）
+      const row2Reversed = [...ROW2].reverse();
 
       return html`
-        <div class="layout">
+        <div class="layout ${sideOpen ? '' : 'collapsed'}">
           <!-- Sidebar -->
           <div class="sidebar">
-            <div class="conn"><span class="dot ${conn ? 'on' : 'off'}"></span>${conn ? '已連線' : '重新連線中…'}</div>
+            <div class="sb-top">
+              <button class="sb-toggle" onClick=${() => setSideOpen(!sideOpen)}>${sideOpen ? '◀' : '▶'}</button>
+              <div class="conn"><span class="dot ${conn ? 'on' : 'off'}"></span><span>${conn ? '已連線' : '重新連線中…'}</span></div>
+            </div>
+            <div class="sb-body">
+              ${sideOpen && html`
+                <div class="filter-bar">
+                  <label>排序</label>
+                  <select value=${sort} onChange=${e => setSort(e.target.value)}>
+                    <option value="recent">最近活動</option>
+                    <option value="progress">進度</option>
+                    <option value="type">類型</option>
+                  </select>
+                </div>
+              `}
 
-            ${pipeSessions.length > 0 && html`
-              <div class="sidebar-header">
-                <h2>Pipeline</h2>
-                <span class="count">${pipeSessions.length}</span>
-              </div>
-              ${pipeSessions.map(([id, ss]) => html`
-                <div class="session-card ${id === active ? 'active' : ''}" onClick=${() => selectSession(id)}>
-                  <button class="close-btn" onClick=${(e) => { e.stopPropagation(); deleteSession(id); }} title="關閉此 session">×</button>
-                  <div class="session-id">
-                    ${isLive(ss) && html`<span class="live-dot"></span>`}
-                    ${sid(id)}
+              ${pipeSessions.length > 0 && html`
+                <div class="group-hdr"><h2>Pipeline</h2><span class="count">${pipeSessions.length}</span></div>
+                ${pipeSessions.map(([id, ss]) => html`
+                  <div class="sc ${id === active ? 'active' : ''}" data-pct="${pct(ss)}%" onClick=${() => selectSession(id)}>
+                    <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
+                    <div class="sc-id">${isLive(ss) && html`<span class="live-dot"></span>`}${sid(id)}</div>
+                    <div class="sc-meta">${ss.taskType || '—'} · ${pct(ss)}% · ${elapsed(ss.lastTransition)}</div>
+                    <div class="sc-bar"><div class="sc-bar-fill" style="width:${pct(ss)}%"></div></div>
                   </div>
-                  <div class="session-meta">${ss.taskType || '—'} · ${pct(ss)}% · ${elapsed(ss.lastTransition)}</div>
-                  <div class="progress" style="margin-top:5px"><div class="progress-fill" style="width:${pct(ss)}%"></div></div>
-                </div>
-              `)}
-            `}
+                `)}
+              `}
 
-            ${idleSessions.length > 0 && html`
-              <div class="group-label">閒置 (${idleSessions.length})</div>
-              ${idleSessions.map(([id, ss]) => html`
-                <div class="session-card idle ${id === active ? 'active' : ''}" onClick=${() => selectSession(id)}>
-                  <button class="close-btn" onClick=${(e) => { e.stopPropagation(); deleteSession(id); }} title="關閉此 session">×</button>
-                  <div class="session-id">${sid(id)}</div>
-                  <div class="session-meta">${ss.taskType || '初始化'}</div>
-                </div>
-              `)}
-            `}
+              ${idleSessions.length > 0 && html`
+                <div class="group-sep">閒置 (${idleSessions.length})</div>
+                ${idleSessions.map(([id, ss]) => html`
+                  <div class="sc idle ${id === active ? 'active' : ''}" data-pct="—" onClick=${() => selectSession(id)}>
+                    <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
+                    <div class="sc-id">${sid(id)}</div>
+                    <div class="sc-meta">${ss.taskType || '初始化'}</div>
+                  </div>
+                `)}
+              `}
 
-            ${zombieSessions.length > 0 && html`
-              <div class="group-label" style="display:flex;align-items:center;justify-content:space-between">
-                <span>💀 殭屍 (${zombieSessions.length})</span>
-                <button class="cleanup-btn" onClick=${() => zombieSessions.forEach(([id]) => deleteSession(id))}>全部清理</button>
-              </div>
-              ${zombieSessions.map(([id, ss]) => html`
-                <div class="session-card zombie ${id === active ? 'active' : ''}" onClick=${() => selectSession(id)}>
-                  <button class="close-btn" onClick=${(e) => { e.stopPropagation(); deleteSession(id); }} title="關閉此 session">×</button>
-                  <div class="session-id">💀 ${sid(id)}</div>
-                  <div class="session-meta">${ss.taskType || '—'} · ${elapsed(ss.lastTransition)} 未活動</div>
-                  <div class="zombie-label">${hasPipeline(ss) ? `${pct(ss)}% 停滯` : '無 pipeline'}</div>
+              ${zombieSessions.length > 0 && html`
+                <div class="group-sep" style="display:flex;align-items:center;justify-content:space-between">
+                  <span>💀 殭屍 (${zombieSessions.length})</span>
+                  <button class="cleanup-btn" onClick=${() => zombieSessions.forEach(([id]) => deleteSession(id))}>全部清理</button>
                 </div>
-              `)}
-            `}
+                ${zombieSessions.map(([id, ss]) => html`
+                  <div class="sc zombie ${id === active ? 'active' : ''}" data-pct="💀" onClick=${() => selectSession(id)}>
+                    <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
+                    <div class="sc-id">💀 ${sid(id)}</div>
+                    <div class="sc-meta">${ss.taskType || '—'} · ${elapsed(ss.lastTransition)} 未活動</div>
+                    <div class="zombie-sub">${hasPipeline(ss) ? `${pct(ss)}% 停滯` : '無 pipeline'}</div>
+                  </div>
+                `)}
+              `}
 
-            ${!Object.keys(sessions).length && html`<div style="color:var(--subtext0);font-size:12px">無活躍 session</div>`}
+              ${!Object.keys(sessions).length && html`<div style="color:var(--subtext0);font-size:11px;padding:8px">無活躍 session</div>`}
+            </div>
           </div>
 
           <!-- Main -->
@@ -368,68 +450,52 @@
                 ${isComplete && html`<span style="margin-left:4px">🎉</span>`}
               </h1>
 
-              <!-- Pipeline Flow -->
-              <div class="pipeline">
-                ${ALL_STAGES.map((stage, i) => {
-                  const status = getStatus(stage, s);
-                  const meta = SM[stage];
-                  const retries = s.retries?.[stage] || 0;
-                  const prevDone = i === 0 || getStatus(ALL_STAGES[i - 1], s) === 'pass';
-                  return html`
-                    ${i > 0 && html`<span class="connector ${prevDone ? 'done' : ''}">→</span>`}
-                    <div class="stage ${status}" style="--sc:${meta.color}">
-                      ${retries > 0 && html`<div class="retry-badge">${retries}</div>`}
-                      <span class="emoji">${meta.emoji}</span>
-                      <span class="name" style="${status === 'active' ? `color:${meta.color}` : ''}">${stage}</span>
-                      <span class="agent">${meta.agent}</span>
-                      ${status === 'pass' && html`<span class="badge">PASS</span>`}
-                      ${status === 'fail' && html`<span class="badge">${s.stageResults?.[stage]?.severity || 'FAIL'}</span>`}
-                      ${status === 'active' && html`<span class="badge">Working...</span>`}
-                      ${status === 'next' && html`<span class="badge">Next</span>`}
-                      ${status === 'skipped' && html`<span class="badge">Skip</span>`}
-                    </div>
-                  `;
-                })}
+              <!-- S/U Snake Grid -->
+              <div class="snake">
+                ${ROW1.map(stage => html`<${AgentCard} stage=${stage} s=${s} />`)}
+                <div class="snake-turn ${getStatus('REVIEW', s) === 'pass' ? 'done' : ''}">↓</div>
+                <div class="snake-row2">
+                  ${row2Reversed.map(stage => html`<${AgentCard} stage=${stage} s=${s} />`)}
+                </div>
               </div>
 
               <!-- Progress -->
               <div class="${isComplete ? 'celebrate' : ''}" style="position:relative">
-                <div class="progress" style="height:6px;border-radius:3px">
-                  <div class="progress-fill ${isComplete ? 'complete' : ''}" style="width:${progress}%;border-radius:3px"></div>
+                <div class="progress-bar">
+                  <div class="progress-fill ${isComplete ? 'complete' : ''}" style="width:${progress}%"></div>
                 </div>
               </div>
 
-              <!-- Info Cards -->
-              <div class="cards">
-                <div class="card">
-                  <h3>🔧 環境</h3>
-                  <div class="row"><span class="label">語言</span><span class="value">${s.environment?.languages?.primary || '—'}</span></div>
-                  <div class="row"><span class="label">框架</span><span class="value">${s.environment?.framework ? s.environment.framework.name + ' ' + (s.environment.framework.version || '') : '—'}</span></div>
-                  <div class="row"><span class="label">套件管理</span><span class="value">${s.environment?.packageManager?.name || '—'}</span></div>
-                  <div class="row"><span class="label">Linter</span><span class="value">${s.environment?.tools?.linter || '—'}</span></div>
-                  <div class="row"><span class="label">Formatter</span><span class="value">${s.environment?.tools?.formatter || '—'}</span></div>
-                  <div class="row"><span class="label">測試框架</span><span class="value">${s.environment?.tools?.test || '—'}</span></div>
+              <!-- 完成燈號 or 資訊卡 -->
+              ${isComplete ? html`<${LightSummary} s=${s} />` : html`
+                <div class="cards">
+                  <div class="card">
+                    <h3>🔧 環境</h3>
+                    <div class="row"><span class="label">語言</span><span class="value">${s.environment?.languages?.primary || '—'}</span></div>
+                    <div class="row"><span class="label">框架</span><span class="value">${s.environment?.framework ? s.environment.framework.name + ' ' + (s.environment.framework.version || '') : '—'}</span></div>
+                    <div class="row"><span class="label">套件管理</span><span class="value">${s.environment?.packageManager?.name || '—'}</span></div>
+                    <div class="row"><span class="label">Linter</span><span class="value">${s.environment?.tools?.linter || '—'}</span></div>
+                    <div class="row"><span class="label">Formatter</span><span class="value">${s.environment?.tools?.formatter || '—'}</span></div>
+                    <div class="row"><span class="label">測試框架</span><span class="value">${s.environment?.tools?.test || '—'}</span></div>
+                  </div>
+                  <div class="card">
+                    <h3>📊 指標</h3>
+                    <div class="row"><span class="label">任務類型</span><span class="value">${s.taskType || '—'}</span></div>
+                    <div class="row"><span class="label">進度</span><span class="value">${progress}%</span></div>
+                    <div class="row"><span class="label">已完成</span><span class="value">${(s.completed || []).length} agents</span></div>
+                    <div class="row"><span class="label">重試次數</span><span class="value">${Object.values(s.retries || {}).reduce((a, b) => a + b, 0)}</span></div>
+                    <div class="row"><span class="label">委派中</span><span class="value">${s.delegationActive ? '⚡ Active' : '—'}</span></div>
+                    <div class="row"><span class="label">當前階段</span><span class="value">${getCurrent(s) || '—'}</span></div>
+                  </div>
                 </div>
-                <div class="card">
-                  <h3>📊 指標</h3>
-                  <div class="row"><span class="label">任務類型</span><span class="value">${s.taskType || '—'}</span></div>
-                  <div class="row"><span class="label">進度</span><span class="value" style="${isComplete ? 'color:var(--green)' : ''}">${progress}%${isComplete ? ' ✓' : ''}</span></div>
-                  <div class="row"><span class="label">已完成</span><span class="value">${(s.completed || []).length} agents</span></div>
-                  <div class="row"><span class="label">重試次數</span><span class="value">${Object.values(s.retries || {}).reduce((a, b) => a + b, 0)}</span></div>
-                  <div class="row"><span class="label">委派中</span><span class="value">${s.delegationActive ? '⚡ Active' : '—'}</span></div>
-                  <div class="row"><span class="label">當前階段</span><span class="value">${getCurrent(s) || (isComplete ? '✅ 完成' : '—')}</span></div>
-                </div>
-              </div>
+              `}
 
               <!-- Timeline -->
               <div class="timeline">
                 <h3>📋 Timeline</h3>
                 ${events.length ? events.slice(0, 30).map(ev => html`
-                  <div class="tl-item ${ev.type}">
-                    <span class="time">${ev.time}</span>
-                    <span class="msg">${ev.text}</span>
-                  </div>
-                `) : html`<div style="color:var(--subtext0);font-size:12px;padding:8px 0">等待 pipeline 啟動...</div>`}
+                  <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.text}</span></div>
+                `) : html`<div style="color:var(--subtext0);font-size:11px;padding:6px 0">等待 pipeline 啟動…</div>`}
               </div>
             ` : html`
               <div class="empty">
