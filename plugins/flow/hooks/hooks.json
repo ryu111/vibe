@@ -2,10 +2,15 @@
   "hooks": {
     "UserPromptSubmit": [
       {
-        "type": "command",
-        "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/task-classifier.js",
-        "timeout": 5,
-        "statusMessage": "分析任務類型..."
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/task-classifier.js",
+            "timeout": 5,
+            "statusMessage": "分析任務類型..."
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -35,7 +40,7 @@
     ],
     "PreCompact": [
       {
-        "matcher": null,
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -47,7 +52,7 @@
     ],
     "SubagentStop": [
       {
-        "matcher": null,
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -60,7 +65,7 @@
     ],
     "Stop": [
       {
-        "matcher": null,
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -71,7 +76,7 @@
         ]
       },
       {
-        "matcher": null,
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",

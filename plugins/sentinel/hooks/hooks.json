@@ -49,7 +49,7 @@
     ],
     "Stop": [
       {
-        "matcher": null,
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
