@@ -77,14 +77,29 @@
     .snake-turn.done { color: var(--green); }
 
     /* Agent Card */
-    .ac { border-radius: 10px; background: var(--surface0); border: 2px solid var(--surface1); padding: 12px; display: flex; flex-direction: column; gap: 6px; transition: all 0.4s cubic-bezier(0.4,0,0.2,1); position: relative; min-height: 88px; }
+    .ac { border-radius: 10px; background: var(--surface0); border: 2px solid var(--surface1); padding: 12px; display: flex; flex-direction: column; gap: 6px; transition: all 0.4s cubic-bezier(0.4,0,0.2,1); position: relative; min-height: 140px; }
     .ac-top { display: flex; align-items: center; gap: 8px; }
     .ac-emoji { font-size: 22px; line-height: 1; transition: transform 0.3s; }
     .ac-info { flex: 1; min-width: 0; }
     .ac-name { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; }
     .ac-agent { font-size: 9px; color: var(--subtext0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .ac-badge { font-size: 9px; font-weight: 600; padding: 2px 8px; border-radius: 4px; align-self: flex-start; transition: all 0.3s; }
+    .ac-badge { font-size: 9px; font-weight: 600; padding: 2px 8px; border-radius: 4px; transition: all 0.3s; flex-shrink: 0; }
     .ac-retry { position: absolute; top: -6px; right: -6px; background: var(--orange); color: var(--bg); font-size: 9px; font-weight: 700; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; animation: popIn 0.3s cubic-bezier(0.175,0.885,0.32,1.275); }
+
+    /* Card Todo Items */
+    .ac-todos { display: flex; flex-direction: column; gap: 3px; margin-top: 2px; }
+    .ac-todo { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--subtext0); padding: 2px 0; transition: all 0.3s; }
+    .ac-todo-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; transition: all 0.3s; }
+    .ac-todo.done .ac-todo-dot { background: var(--green); box-shadow: 0 0 4px var(--green); }
+    .ac-todo.done { color: var(--text); }
+    .ac-todo.fail .ac-todo-dot { background: var(--red); box-shadow: 0 0 4px var(--red); }
+    .ac-todo.fail { color: var(--red); }
+    .ac-todo.active .ac-todo-dot { background: var(--blue); box-shadow: 0 0 4px var(--blue); animation: todoPulse 1.5s ease infinite; }
+    .ac-todo.active { color: var(--blue); }
+    .ac-todo.pending .ac-todo-dot { background: var(--surface2); }
+    .ac-todo.skip .ac-todo-dot { background: var(--surface2); opacity: 0.4; }
+    .ac-todo.skip { opacity: 0.4; }
+    @keyframes todoPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
     /* Card 連接箭頭 */
     .ac::after { content: '→'; position: absolute; right: -14px; top: 50%; transform: translateY(-50%); color: var(--surface2); font-size: 12px; z-index: 1; transition: color 0.4s; }
@@ -195,14 +210,14 @@
     const ROW2 = ['TEST', 'QA', 'E2E', 'DOCS'];
     const ALL_STAGES = [...ROW1, ...ROW2];
     const SM = {
-      PLAN:   { agent: 'planner',       color: '#cba6f7', emoji: '📋', label: '規劃' },
-      ARCH:   { agent: 'architect',     color: '#89dceb', emoji: '🏛️', label: '架構' },
-      DEV:    { agent: 'developer',     color: '#f9e2af', emoji: '🏗️', label: '開發' },
-      REVIEW: { agent: 'code-reviewer', color: '#89b4fa', emoji: '🔍', label: '審查' },
-      TEST:   { agent: 'tester',        color: '#f5c2e7', emoji: '🧪', label: '測試' },
-      QA:     { agent: 'qa',            color: '#f9e2af', emoji: '✅', label: '驗證' },
-      E2E:    { agent: 'e2e-runner',    color: '#a6e3a1', emoji: '🌐', label: 'E2E' },
-      DOCS:   { agent: 'doc-updater',   color: '#cba6f7', emoji: '📝', label: '文件' },
+      PLAN:   { agent: 'planner',       color: '#cba6f7', emoji: '📋', label: '規劃', todos: ['分析需求', '定義範圍', '評估風險'] },
+      ARCH:   { agent: 'architect',     color: '#89dceb', emoji: '🏛️', label: '架構', todos: ['分析架構', '設計方案', '評估取捨'] },
+      DEV:    { agent: 'developer',     color: '#f9e2af', emoji: '🏗️', label: '開發', todos: ['撰寫程式碼', '建立測試', '整合模組'] },
+      REVIEW: { agent: 'code-reviewer', color: '#89b4fa', emoji: '🔍', label: '審查', todos: ['檢查正確性', '安全性評估', '程式碼品質'] },
+      TEST:   { agent: 'tester',        color: '#f5c2e7', emoji: '🧪', label: '測試', todos: ['撰寫測試', '執行測試', '覆蓋率分析'] },
+      QA:     { agent: 'qa',            color: '#f9e2af', emoji: '✅', label: '驗證', todos: ['啟動服務', 'API 驗證', '行為測試'] },
+      E2E:    { agent: 'e2e-runner',    color: '#a6e3a1', emoji: '🌐', label: 'E2E', todos: ['分析頁面', '建 Page Objects', '撰寫測試'] },
+      DOCS:   { agent: 'doc-updater',   color: '#cba6f7', emoji: '📝', label: '文件', todos: ['分析變更', '更新文件', '同步 README'] },
     };
 
     // --- 輔助函式 ---
@@ -251,6 +266,7 @@
       const meta = SM[stage];
       const retries = s.retries?.[stage] || 0;
       const sev = s.stageResults?.[stage]?.severity;
+      const todos = meta.todos || [];
       return html`
         <div class="ac ${status}" style="--sc:${meta.color}">
           ${retries > 0 && html`<div class="ac-retry">${retries}</div>`}
@@ -260,12 +276,22 @@
               <div class="ac-name" style="${status === 'active' ? `color:${meta.color}` : ''}">${stage}</div>
               <div class="ac-agent">${meta.agent}</div>
             </div>
+            ${status === 'pass' && html`<span class="ac-badge">PASS</span>`}
+            ${status === 'fail' && html`<span class="ac-badge">${sev || 'FAIL'}</span>`}
+            ${status === 'active' && html`<span class="ac-badge">Working…</span>`}
+            ${status === 'next' && html`<span class="ac-badge">Next</span>`}
+            ${status === 'skipped' && html`<span class="ac-badge">Skip</span>`}
           </div>
-          ${status === 'pass' && html`<span class="ac-badge">PASS</span>`}
-          ${status === 'fail' && html`<span class="ac-badge">${sev || 'FAIL'}</span>`}
-          ${status === 'active' && html`<span class="ac-badge">Working…</span>`}
-          ${status === 'next' && html`<span class="ac-badge">Next</span>`}
-          ${status === 'skipped' && html`<span class="ac-badge">Skip</span>`}
+          <div class="ac-todos">
+            ${todos.map((todo, i) => {
+              let ts = 'pending';
+              if (status === 'pass') ts = 'done';
+              else if (status === 'fail') ts = i < todos.length - 1 ? 'done' : 'fail';
+              else if (status === 'active') ts = i === 0 ? 'active' : 'pending';
+              else if (status === 'skipped') ts = 'skip';
+              return html`<div class="ac-todo ${ts}"><span class="ac-todo-dot"></span><span>${todo}</span></div>`;
+            })}
+          </div>
         </div>
       `;
     }
