@@ -75,8 +75,8 @@
     .snake { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 8px 0; position: relative; }
     .snake-row2 { display: contents; }
     /* 轉角連接器 */
-    .snake-turn { grid-column: 4; display: flex; align-items: center; justify-content: center; color: var(--surface2); font-size: 16px; }
-    .snake-turn.done { color: var(--green); }
+    .snake-turn { grid-column: 4; display: flex; align-items: center; justify-content: center; color: var(--overlay0); font-size: 20px; font-weight: 700; }
+    .snake-turn.done { color: var(--green); text-shadow: 0 0 8px rgba(166,227,161,0.4); }
 
     /* Agent Card */
     .ac { border-radius: 10px; background: var(--surface0); border: 2px solid var(--surface1); padding: 14px; display: flex; flex-direction: column; gap: 8px; transition: all 0.4s cubic-bezier(0.4,0,0.2,1); position: relative; min-height: 170px; }
@@ -104,11 +104,11 @@
     @keyframes todoPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
     /* Card 連接箭頭 */
-    .ac::after { content: '→'; position: absolute; right: -14px; top: 50%; transform: translateY(-50%); color: var(--surface2); font-size: 12px; z-index: 1; transition: color 0.4s; }
+    .ac::after { content: '▸'; position: absolute; right: -14px; top: 50%; transform: translateY(-50%); color: var(--overlay0); font-size: 16px; z-index: 1; transition: color 0.4s; font-weight: 700; }
     .ac.pass::after { color: var(--green); }
     .ac:nth-child(4)::after, .ac:nth-child(8)::after { display: none; }
     /* 第二排箭頭反轉 */
-    .snake-row2 .ac::after { content: '←'; left: -14px; right: auto; }
+    .snake-row2 .ac::after { content: '◂'; left: -14px; right: auto; }
     .snake-row2 .ac:nth-child(1)::after { display: none; }
 
     /* Card States */
@@ -211,7 +211,7 @@
 
     /* 工具列 */
     .toolbar { display: flex; align-items: center; gap: 6px; margin-left: auto; }
-    .tool-btn { background: var(--surface0); border: 1px solid var(--surface1); border-radius: 6px; padding: 3px 8px; font-size: 10px; color: var(--subtext0); cursor: pointer; font-family: inherit; transition: all 0.2s; display: flex; align-items: center; gap: 4px; }
+    .tool-btn { background: var(--surface0); border: 1px solid var(--surface1); border-radius: 6px; padding: 4px 10px; font-size: 12px; color: var(--subtext1); cursor: pointer; font-family: inherit; transition: all 0.2s; display: flex; align-items: center; gap: 5px; }
     .tool-btn:hover { border-color: var(--surface2); color: var(--text); background: var(--surface1); }
     .tool-btn.active { border-color: var(--blue); color: var(--blue); }
 
