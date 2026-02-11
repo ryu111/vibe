@@ -1,0 +1,9 @@
+{
+  "name": "evolve",
+  "version": "0.1.0",
+  "description": "知識進化 — instincts 聚類進化、文件偵測與同步",
+  "skills": ["./skills/"],
+  "agents": [
+    "./agents/doc-updater.md"
+  ]
+}
