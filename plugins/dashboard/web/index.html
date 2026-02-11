@@ -580,6 +580,7 @@
       const [focusCards, setFocusCards] = useState(false);
       const [tick, setTick] = useState(0);
       const [showConfetti, setShowConfetti] = useState(false);
+      const [zoom, setZoom] = useState(100);
       const prevRef = useRef({});
       const confettiShown = useRef(new Set());
 
@@ -632,10 +633,26 @@
         return () => { ws?.close(); clearTimeout(rt); clearInterval(hb); };
       }, []);
 
+      // 縮放控制 — 攔截 CMD+/CMD-/CMD+0，僅縮放頁面不影響 VSCode
+      useEffect(() => {
+        function onZoom(e) {
+          if (!(e.metaKey || e.ctrlKey)) return;
+          if (e.key === '=' || e.key === '+') { e.preventDefault(); e.stopPropagation(); setZoom(z => Math.min(200, z + 10)); return; }
+          if (e.key === '-') { e.preventDefault(); e.stopPropagation(); setZoom(z => Math.max(50, z - 10)); return; }
+          if (e.key === '0') { e.preventDefault(); e.stopPropagation(); setZoom(100); return; }
+        }
+        window.addEventListener('keydown', onZoom, true);
+        return () => window.removeEventListener('keydown', onZoom, true);
+      }, []);
+
+      // 套用縮放
+      useEffect(() => { document.documentElement.style.zoom = zoom + '%'; }, [zoom]);
+
       // 鍵盤快捷鍵
       useEffect(() => {
         function onKey(e) {
           if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+          if (e.metaKey || e.ctrlKey) return;
           const sids = [...pipeSessions, ...idleSessions, ...zombieSessions].map(([id]) => id);
           const idx = sids.indexOf(active);
           switch(e.key) {
@@ -646,7 +663,7 @@
             case 't': case 'T': setTlOpen(p => !p); showToast('T — Timeline 切換'); break;
             case 'p': case 'P': setTheme(t => t === 'default' ? 'pixel' : 'default'); showToast('P — 主題切換'); break;
             case 'c': case 'C': setFocusCards(p => !p); showToast('C — 卡片聚焦'); break;
-            case '?': showToast('↑↓ 切換 · S 側邊欄 · F 全螢幕 · C 卡片 · T Timeline · E 導出 · P 主題'); break;
+            case '?': showToast('↑↓ 切換 · S 側邊欄 · F 全螢幕 · C 卡片 · T Timeline · E 導出 · P 主題 · ⌘± 縮放'); break;
             case 'e': case 'E': if (s) { exportReport(s, active, events, 'md'); showToast('E — 導出 Markdown'); } break;
           }
         }
@@ -777,6 +794,10 @@
                   <button class="tool-btn" onClick=${() => exportReport(s, active, events, 'md')} title="導出 Markdown (E)">📄 MD</button>
                   <button class="tool-btn" onClick=${() => exportReport(s, active, events, 'json')} title="導出 JSON">{ } JSON</button>
                   <div class="toolbar-sep"></div>
+                  <button class="tool-btn" onClick=${() => setZoom(z => Math.max(50, z - 10))} title="縮小 (⌘-)">−</button>
+                  <button class="tool-btn" style="min-width:48px;justify-content:center;font-variant-numeric:tabular-nums" onClick=${() => setZoom(100)} title="重設縮放 (⌘0)">${zoom}%</button>
+                  <button class="tool-btn" onClick=${() => setZoom(z => Math.min(200, z + 10))} title="放大 (⌘+)">+</button>
+                  <div class="toolbar-sep"></div>
                   <div class="conn-indicator"><span class="dot ${conn ? 'on' : 'off'}"></span><span>${conn ? '已連線' : '連線中…'}</span></div>
                 </div>
               </h1>
@@ -837,7 +858,12 @@
               `}
             ` : html`
               <div class="empty">
-                <div style="position:absolute;top:12px;right:16px" class="conn-indicator"><span class="dot ${conn ? 'on' : 'off'}"></span><span>${conn ? '已連線' : '連線中…'}</span></div>
+                <div style="position:absolute;top:12px;right:16px;display:flex;align-items:center;gap:8px">
+                  <button class="tool-btn" onClick=${() => setZoom(z => Math.max(50, z - 10))}>−</button>
+                  <button class="tool-btn" style="min-width:48px;justify-content:center;font-variant-numeric:tabular-nums" onClick=${() => setZoom(100)}>${zoom}%</button>
+                  <button class="tool-btn" onClick=${() => setZoom(z => Math.min(200, z + 10))}>+</button>
+                  <div class="conn-indicator"><span class="dot ${conn ? 'on' : 'off'}"></span><span>${conn ? '已連線' : '連線中…'}</span></div>
+                </div>
                 <div class="icon">🎯</div>
                 <div style="font-size:18px;font-weight:600">Vibe Pipeline Dashboard</div>
                 <div class="hint">
