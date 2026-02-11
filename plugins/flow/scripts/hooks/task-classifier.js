@@ -41,7 +41,7 @@ function classify(prompt) {
   const p = prompt.toLowerCase();
 
   // 研究型：問題、探索、理解
-  if (/\?$|^(what|how|why|where|explain|show|list|find|search|看|查|找|說明|解釋|什麼|怎麼|為什麼|哪|告訴|描述|列出)/.test(p)) {
+  if (/[?？]$|^(what|how|why|where|explain|show|list|find|search)\b|看看|查看|找找|說明|解釋|什麼|怎麼|為什麼|哪裡|告訴|描述|列出|做什麼|是什麼|有哪些/.test(p)) {
     return 'research';
   }
   // TDD：明確要求

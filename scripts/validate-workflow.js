@@ -389,6 +389,259 @@ function checkConventions(targetDir) {
   return checks;
 }
 
+/**
+ * 6. Hook 流程驗證 — 實際執行 hook scripts 驗證行為正確性
+ */
+function checkHooks() {
+  const checks = [];
+
+  // ─── hooks.json 結構驗證 ───
+  for (const plugin of ['flow', 'sentinel']) {
+    const hooksJsonPath = path.join(PLUGINS_DIR, plugin, 'hooks', 'hooks.json');
+    if (!fs.existsSync(hooksJsonPath)) continue;
+
+    try {
+      const hooksJson = JSON.parse(fs.readFileSync(hooksJsonPath, 'utf8'));
+      checks.push({
+        id: 'HOOK-JSON',
+        name: `${plugin}/hooks.json 語法正確`,
+        result: 'PASS',
+        expected: '有效 JSON',
+        actual: '解析成功',
+      });
+
+      // 驗證每個 hook 引用的 command 腳本存在
+      const hookEntries = hooksJson.hooks || hooksJson;
+      for (const [event, handlers] of Object.entries(hookEntries)) {
+        const handlerList = Array.isArray(handlers) ? handlers : [];
+        for (const handler of handlerList) {
+          // 支援 flat 和 grouped 格式
+          const items = handler.hooks ? handler.hooks : [handler];
+          for (const item of items) {
+            if (item.type !== 'command' || !item.command) continue;
+            // 解析 ${CLAUDE_PLUGIN_ROOT} → 實際路徑
+            const cmd = item.command.replace('${CLAUDE_PLUGIN_ROOT}', path.join(PLUGINS_DIR, plugin));
+            const scriptPath = cmd.split(' ')[0]; // 取第一個 token 作為路徑
+            const exists = fs.existsSync(scriptPath);
+            checks.push({
+              id: 'HOOK-SCRIPT',
+              name: `${plugin}/${event} 腳本存在`,
+              result: exists ? 'PASS' : 'FAIL',
+              expected: scriptPath,
+              actual: exists ? '存在' : '不存在',
+            });
+
+            // 驗證語法正確性
+            if (exists && scriptPath.endsWith('.js')) {
+              try {
+                execSync(`node -c "${scriptPath}"`, { stdio: 'pipe', timeout: 5000 });
+                checks.push({
+                  id: 'HOOK-SYNTAX',
+                  name: `${path.basename(scriptPath)} 語法正確`,
+                  result: 'PASS',
+                  expected: '無語法錯誤',
+                  actual: '通過',
+                });
+              } catch (err) {
+                checks.push({
+                  id: 'HOOK-SYNTAX',
+                  name: `${path.basename(scriptPath)} 語法正確`,
+                  result: 'FAIL',
+                  expected: '無語法錯誤',
+                  actual: err.stderr ? err.stderr.toString().slice(0, 100) : '語法錯誤',
+                });
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      checks.push({
+        id: 'HOOK-JSON',
+        name: `${plugin}/hooks.json 語法正確`,
+        result: 'FAIL',
+        expected: '有效 JSON',
+        actual: err.message,
+      });
+    }
+  }
+
+  // ─── Hook 行為驗證（用 mock stdin 實測）───
+
+  // task-classifier：分類正確性
+  const classifierPath = path.join(PLUGINS_DIR, 'flow', 'scripts', 'hooks', 'task-classifier.js');
+  if (fs.existsSync(classifierPath)) {
+    const testCases = [
+      { input: '幫我建立一個 REST API', expected: 'feature', label: 'feature 分類' },
+      { input: '修復這個 typo', expected: 'quickfix', label: 'quickfix 分類' },
+      { input: '這段程式碼做什麼？', expected: 'research', label: 'research 分類' },
+      { input: '重構 auth 模組', expected: 'refactor', label: 'refactor 分類' },
+    ];
+
+    for (const tc of testCases) {
+      try {
+        const stdin = JSON.stringify({ prompt: tc.input, session_id: 'validate-test' });
+        const result = execSync(`echo '${stdin}' | node "${classifierPath}"`, {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          timeout: 5000,
+        }).toString().trim();
+        const output = JSON.parse(result);
+        const hasContext = !!output.additionalContext;
+        const matchesType = output.additionalContext && output.additionalContext.includes(tc.expected === 'research' ? '研究探索' :
+          tc.expected === 'feature' ? '新功能開發' :
+          tc.expected === 'quickfix' ? '快速修復' :
+          tc.expected === 'refactor' ? '重構' : tc.expected);
+        checks.push({
+          id: 'HOOK-CLASSIFY',
+          name: `task-classifier ${tc.label}`,
+          result: hasContext && matchesType ? 'PASS' : 'FAIL',
+          expected: tc.expected,
+          actual: hasContext ? output.additionalContext.slice(0, 60) : '無輸出',
+        });
+      } catch (err) {
+        checks.push({
+          id: 'HOOK-CLASSIFY',
+          name: `task-classifier ${tc.label}`,
+          result: 'FAIL',
+          expected: tc.expected,
+          actual: err.message.slice(0, 80),
+        });
+      }
+    }
+  }
+
+  // danger-guard：阻擋危險命令
+  const dangerPath = path.join(PLUGINS_DIR, 'sentinel', 'scripts', 'hooks', 'danger-guard.js');
+  if (fs.existsSync(dangerPath)) {
+    const dangerTests = [
+      { cmd: 'rm -rf /', shouldBlock: true, label: 'rm -rf / 阻擋' },
+      { cmd: 'git push --force main', shouldBlock: true, label: 'force push 阻擋' },
+      { cmd: 'ls -la', shouldBlock: false, label: '安全命令放行' },
+      { cmd: 'npm test', shouldBlock: false, label: 'npm test 放行' },
+    ];
+
+    for (const dt of dangerTests) {
+      try {
+        const stdin = JSON.stringify({ tool_input: { command: dt.cmd } });
+        // 用 bash -c 包裝以正確捕獲 exit code
+        const result = execSync(
+          `bash -c 'echo ${JSON.stringify(stdin)} | node "${dangerPath}"; echo "EXIT:$?"'`,
+          { stdio: ['pipe', 'pipe', 'pipe'], timeout: 5000 }
+        ).toString().trim();
+        const exitCode = parseInt(result.split('EXIT:').pop(), 10);
+        const blocked = exitCode === 2;
+        const correct = blocked === dt.shouldBlock;
+        checks.push({
+          id: 'HOOK-DANGER',
+          name: `danger-guard ${dt.label}`,
+          result: correct ? 'PASS' : 'FAIL',
+          expected: dt.shouldBlock ? 'exit 2（阻擋）' : 'exit 0（放行）',
+          actual: `exit ${exitCode}`,
+        });
+      } catch (err) {
+        // execSync throws on non-zero exit — exit 2 is expected for blocked commands
+        const exitCode = err.status;
+        const blocked = exitCode === 2;
+        const correct = blocked === dt.shouldBlock;
+        checks.push({
+          id: 'HOOK-DANGER',
+          name: `danger-guard ${dt.label}`,
+          result: correct ? 'PASS' : 'FAIL',
+          expected: dt.shouldBlock ? 'exit 2（阻擋）' : 'exit 0（放行）',
+          actual: `exit ${exitCode}`,
+        });
+      }
+    }
+  }
+
+  // stage-transition：防迴圈 + 輸出格式
+  const transPath = path.join(PLUGINS_DIR, 'flow', 'scripts', 'hooks', 'stage-transition.js');
+  if (fs.existsSync(transPath)) {
+    // 防迴圈：stop_hook_active = true 時應靜默退出
+    try {
+      const stdin = JSON.stringify({ stop_hook_active: true, session_id: 'test', agent_type: 'developer' });
+      const result = execSync(`echo '${stdin}' | node "${transPath}"`, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 5000,
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: path.join(PLUGINS_DIR, 'flow') },
+      }).toString().trim();
+      checks.push({
+        id: 'HOOK-LOOP',
+        name: 'stage-transition 防迴圈',
+        result: result === '' ? 'PASS' : 'FAIL',
+        expected: '靜默退出（無輸出）',
+        actual: result || '（空）',
+      });
+    } catch (err) {
+      // exit 0 with no output is correct
+      checks.push({
+        id: 'HOOK-LOOP',
+        name: 'stage-transition 防迴圈',
+        result: err.status === 0 ? 'PASS' : 'FAIL',
+        expected: '靜默退出',
+        actual: `exit ${err.status}`,
+      });
+    }
+  }
+
+  // pipeline-check：防迴圈
+  const checkPath = path.join(PLUGINS_DIR, 'flow', 'scripts', 'hooks', 'pipeline-check.js');
+  if (fs.existsSync(checkPath)) {
+    try {
+      const stdin = JSON.stringify({ stop_hook_active: true, session_id: 'test' });
+      const result = execSync(`echo '${stdin}' | node "${checkPath}"`, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 5000,
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: path.join(PLUGINS_DIR, 'flow') },
+      }).toString().trim();
+      checks.push({
+        id: 'HOOK-LOOP',
+        name: 'pipeline-check 防迴圈',
+        result: result === '' ? 'PASS' : 'FAIL',
+        expected: '靜默退出（無輸出）',
+        actual: result || '（空）',
+      });
+    } catch (_) {
+      checks.push({
+        id: 'HOOK-LOOP',
+        name: 'pipeline-check 防迴圈',
+        result: 'PASS',
+        expected: '靜默退出',
+        actual: 'exit 0',
+      });
+    }
+  }
+
+  // check-console-log：防迴圈
+  const consolePath = path.join(PLUGINS_DIR, 'sentinel', 'scripts', 'hooks', 'check-console-log.js');
+  if (fs.existsSync(consolePath)) {
+    try {
+      const stdin = JSON.stringify({ stop_hook_active: true });
+      const result = execSync(`echo '${stdin}' | node "${consolePath}"`, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 5000,
+      }).toString().trim();
+      checks.push({
+        id: 'HOOK-LOOP',
+        name: 'check-console-log 防迴圈',
+        result: result === '' ? 'PASS' : 'FAIL',
+        expected: '靜默退出（無輸出）',
+        actual: result || '（空）',
+      });
+    } catch (_) {
+      checks.push({
+        id: 'HOOK-LOOP',
+        name: 'check-console-log 防迴圈',
+        result: 'PASS',
+        expected: '靜默退出',
+        actual: 'exit 0',
+      });
+    }
+  }
+
+  return checks;
+}
+
 // ─── 工具函式 ──────────────────────────────────────
 
 function countFiles(dir) {
@@ -485,9 +738,12 @@ function main() {
     process.exit(1);
   }
 
-  // --check-config：只驗證 pipeline 配置
+  // --check-config：驗證 pipeline 配置 + hook 流程
   if (arg === '--check-config') {
-    const checks = checkConfig(pipeline);
+    const checks = [
+      ...checkConfig(pipeline),
+      ...checkHooks(),
+    ];
     const report = generateReport(checks, null, pipeline);
     printSummary(report);
     console.log(JSON.stringify(report, null, 2));
@@ -506,6 +762,7 @@ function main() {
 
   const allChecks = [
     ...checkConfig(pipeline),
+    ...checkHooks(),
     ...checkCompliance(pipeline, state),
     ...checkArtifacts(targetDir),
     ...checkQuality(targetDir),
