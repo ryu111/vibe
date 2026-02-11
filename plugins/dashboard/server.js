@@ -121,7 +121,9 @@ Bun.serve({
     close(ws) {
       clients.delete(ws);
     },
-    message() { /* 未來：client 指令 */ },
+    message(ws, msg) {
+      if (msg === 'ping') { try { ws.send('pong'); } catch {} }
+    },
   },
 });
 
