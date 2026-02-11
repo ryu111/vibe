@@ -310,6 +310,104 @@
     .pixel .confetti-piece { border-radius: 0 !important; }
     .pixel .ac::before { font-family: monospace; }
 
+    /* ======================= */
+    /* 🏢 像素辦公室模式      */
+    /* ======================= */
+    .pixel .office {
+      background: repeating-conic-gradient(#1a1a3e 0% 25%, #151535 0% 50%) 0 0 / 40px 40px;
+      border: 4px solid #55ff55; padding: 20px; position: relative; min-height: 420px;
+      box-shadow: 4px 4px 0 rgba(0,0,0,0.5) !important;
+    }
+    .pixel .office-wall-top { display: flex; justify-content: space-between; align-items: center; padding: 0 8px 16px; font-size: 8px; }
+    .pixel .office-row { display: flex; justify-content: center; align-items: center; gap: 12px; margin: 8px 0; }
+    .pixel .office-arrow { font-size: 16px; color: var(--surface2); font-family: monospace !important; min-width: 20px; text-align: center; transition: all 0.3s; }
+    .pixel .office-arrow.done { color: var(--green); text-shadow: 0 0 6px var(--green); }
+    .pixel .office-arrow.active { color: var(--blue); animation: pixelPulse 1s steps(2) infinite; }
+    .pixel .office-turn { display: flex; justify-content: flex-end; padding-right: 72px; margin: 4px 0; font-size: 16px; color: var(--surface2); font-family: monospace !important; }
+    .pixel .office-turn.done { color: var(--green); text-shadow: 0 0 6px var(--green); }
+    .pixel .office-turn.active { animation: pixelPulse 1s steps(2) infinite; }
+    .pixel .office-deco { display: flex; justify-content: space-between; align-items: flex-end; padding: 16px 8px 0; font-size: 8px; }
+
+    /* 工位 */
+    .pixel .ws { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 120px; position: relative; }
+    .pixel .ws-bubble { background: var(--text); color: var(--bg); font-size: 6px; padding: 4px 6px; border: 2px solid var(--overlay0); position: relative; max-width: 110px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 18px; }
+    .pixel .ws-bubble::after { content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 5px solid var(--overlay0); }
+    .pixel .ws-bubble.pass { background: var(--green); color: var(--bg); border-color: color-mix(in srgb, var(--green) 60%, #000); }
+    .pixel .ws-bubble.pass::after { border-top-color: color-mix(in srgb, var(--green) 60%, #000); }
+    .pixel .ws-bubble.fail { background: var(--red); color: var(--text); border-color: color-mix(in srgb, var(--red) 60%, #000); }
+    .pixel .ws-bubble.fail::after { border-top-color: color-mix(in srgb, var(--red) 60%, #000); }
+    .pixel .ws-bubble.next { background: var(--surface2); color: var(--subtext0); border-color: var(--overlay0); }
+    .pixel .ws-char { display: flex; flex-direction: column; align-items: center; position: relative; }
+    .pixel .ws-head { font-size: 20px; line-height: 1; z-index: 1; }
+    .pixel .ws-body { width: 20px; height: 16px; margin-top: -4px; border: 2px solid rgba(0,0,0,0.3); }
+    .pixel .ws-desk { display: flex; flex-direction: column; align-items: center; margin-top: 2px; }
+    .pixel .ws-screen { width: 28px; height: 20px; background: var(--bg); border: 2px solid var(--overlay0); position: relative; transition: all 0.3s; }
+    .pixel .ws-screen::after { content: ''; position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%); width: 12px; height: 4px; background: var(--overlay0); }
+    .pixel .ws-desk-top { width: 48px; height: 6px; background: #8B6914; border: 2px solid #6B4914; margin-top: 2px; }
+    .pixel .ws-label { font-size: 6px; color: var(--subtext0); text-align: center; margin-top: 4px; }
+    .pixel .ws-label-name { font-size: 5px; color: var(--overlay0); }
+    .pixel .ws-retry { position: absolute; top: -4px; right: -4px; background: var(--orange); color: var(--bg); font-size: 7px; font-weight: 700; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; z-index: 2; animation: popIn 0.3s cubic-bezier(0.175,0.885,0.32,1.275); }
+
+    /* Main Agent 巡視角色 */
+    .pixel .main-agent { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 1px; transition: left 0.8s ease-in-out, top 0.8s ease-in-out; z-index: 10; pointer-events: none; }
+    .pixel .main-agent .ma-bubble { background: var(--yellow); color: var(--bg); font-size: 5px; padding: 2px 5px; border: 2px solid color-mix(in srgb, var(--yellow) 60%, #000); white-space: nowrap; position: relative; }
+    .pixel .main-agent .ma-bubble::after { content: ''; position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 4px solid color-mix(in srgb, var(--yellow) 60%, #000); }
+    .pixel .main-agent .ma-head { font-size: 16px; line-height: 1; }
+    .pixel .main-agent .ma-body { width: 16px; height: 12px; margin-top: -3px; background: var(--yellow); border: 2px solid rgba(0,0,0,0.3); }
+    .pixel .main-agent .ma-label { font-size: 5px; color: var(--yellow); margin-top: 2px; }
+    .pixel .main-agent.walking .ma-head { animation: maWalk 0.4s steps(2) infinite; }
+    .pixel .main-agent.idle .ma-head { animation: wsIdle 2s steps(2) infinite; }
+    @keyframes maWalk { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px) rotate(-3deg); } }
+
+    /* 工位狀態 — active 打字搖晃 */
+    .pixel .ws.st-active .ws-head { animation: wsTyping 0.3s steps(2) infinite; }
+    .pixel .ws.st-active .ws-screen { background: color-mix(in srgb, var(--ac) 40%, #111); box-shadow: 0 0 8px var(--ac); animation: wsScreenPulse 1.5s steps(2) infinite; }
+    .pixel .ws.st-active::after { content: '✦'; position: absolute; top: 0; right: 8px; font-size: 8px; color: var(--yellow); animation: wsStar 1s steps(3) infinite; }
+    /* pass 慶祝跳動 */
+    .pixel .ws.st-pass .ws-char { animation: wsCelebrate 0.6s steps(2) infinite; }
+    .pixel .ws.st-pass .ws-screen { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    /* fail 抖動 + 冒煙 */
+    .pixel .ws.st-fail .ws-char { animation: wsFrustrated 0.3s steps(2) infinite; }
+    .pixel .ws.st-fail .ws-screen { background: var(--red); animation: wsScreenBlink 0.5s steps(1) infinite; }
+    .pixel .ws.st-fail::before { content: '~'; position: absolute; top: 8px; right: 12px; font-size: 12px; color: var(--surface2); animation: wsSmoke 1.5s steps(3) infinite; font-family: monospace !important; }
+    /* next 微呼吸 */
+    .pixel .ws.st-next .ws-head { animation: wsIdle 2s steps(2) infinite; }
+    .pixel .ws.st-next .ws-screen { background: var(--surface0); }
+    /* pending zzz */
+    .pixel .ws.st-pending { opacity: 0.4; }
+    .pixel .ws.st-pending .ws-screen { background: color-mix(in srgb, var(--bg) 80%, #000); }
+    .pixel .ws.st-pending::after { content: 'z z z'; position: absolute; top: -4px; right: 4px; font-size: 7px; color: var(--overlay0); animation: wsSleep 2s steps(3) infinite; font-family: monospace !important; }
+    /* skipped 灰階 */
+    .pixel .ws.st-skipped { opacity: 0.2; filter: grayscale(1); }
+    .pixel .ws.st-skipped .ws-screen { background: color-mix(in srgb, var(--bg) 80%, #000); }
+
+    @keyframes wsTyping { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px) rotate(2deg); } }
+    @keyframes wsCelebrate { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+    @keyframes wsFrustrated { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+    @keyframes wsIdle { 0%,100% { transform: scale(1); } 50% { transform: scale(1.02); } }
+    @keyframes wsSleep { 0% { opacity: 0.2; transform: translateY(0); } 50% { opacity: 0.8; transform: translateY(-4px); } 100% { opacity: 0.2; transform: translateY(-8px); } }
+    @keyframes wsStar { 0% { opacity: 0; transform: scale(0.5); } 50% { opacity: 1; transform: scale(1.2); } 100% { opacity: 0; transform: scale(0.5) translateY(-6px); } }
+    @keyframes wsSmoke { 0% { opacity: 0.6; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-10px); } }
+    @keyframes wsScreenPulse { 0%,100% { box-shadow: 0 0 4px var(--ac); } 50% { box-shadow: 0 0 12px var(--ac); } }
+    @keyframes wsScreenBlink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0.3; } }
+
+    /* 裝飾元素 */
+    .pixel .deco-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .pixel .deco-coffee { position: relative; font-size: 16px; }
+    .pixel .deco-coffee::after { content: '~'; position: absolute; top: -10px; left: 50%; font-size: 8px; color: var(--surface2); animation: wsSteam 2s steps(2) infinite; font-family: monospace !important; }
+    @keyframes wsSteam { 0%,100% { opacity: 0.3; transform: translateY(0); } 50% { opacity: 0.7; transform: translateY(-3px); } }
+    .pixel .deco-board { background: var(--surface0); border: 2px solid var(--surface1); padding: 4px 8px; font-size: 6px; min-width: 80px; text-align: center; }
+    .pixel .deco-board .bar { height: 4px; background: var(--surface1); margin-top: 3px; overflow: hidden; }
+    .pixel .deco-board .bar-fill { height: 100%; background: var(--green); transition: width 0.5s; }
+    .pixel .deco-window { width: 48px; height: 36px; background: linear-gradient(180deg, #0a0a2e 0%, #1a1a4e 100%); border: 3px solid var(--surface1); position: relative; overflow: hidden; }
+    .pixel .deco-star { position: absolute; color: #fff; font-size: 6px; animation: wsStarTwinkle 2s steps(2) infinite; }
+    @keyframes wsStarTwinkle { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
+    .pixel .deco-clock { font-size: 7px; color: var(--green); font-variant-numeric: tabular-nums; }
+
+    /* 辦公室 responsive */
+    @media (max-width: 1100px) { .pixel .ws { width: 100px; } .pixel .office-row { gap: 8px; } }
+    @media (max-width: 700px) { .pixel .office-row { flex-wrap: wrap; } .pixel .ws { width: 90px; } .pixel .office-arrow { display: none; } }
+
     /* Session 資源指標 */
     .sc-res { display: flex; gap: 8px; margin-top: 3px; font-size: 9px; color: var(--subtext0); }
     .sc-res-item { display: flex; align-items: center; gap: 3px; }
@@ -401,8 +499,9 @@
     function getStatus(stage, s) {
       if (!s?.expectedStages?.includes(stage)) return 'skipped';
       const cur = getCurrent(s);
-      if (stage === cur) return s.delegationActive ? 'active' : 'next';
       const r = s.stageResults?.[stage];
+      // 已完成的 stage 優先顯示結果（避免 currentStage 未清除時誤顯 next）
+      if (stage === cur && r?.verdict !== 'PASS') return s.delegationActive ? 'active' : 'next';
       if (r?.verdict === 'PASS') return 'pass';
       if (r?.verdict === 'FAIL') return 'fail';
       return 'pending';
@@ -433,6 +532,9 @@
       if (d < 3600) return `${Math.floor(d/60)}m`;
       return `${Math.floor(d/3600)}h`;
     }
+
+    // --- 像素辦公室：角色表情映射 ---
+    const EXPR = { active: '😤', pass: '😎', fail: '🤯', next: '🙂', pending: '😴', skipped: '👻' };
 
     // --- Agent Card 元件 ---
     function AgentCard({ stage, s, tick }) {
@@ -488,6 +590,128 @@
               ${tools && html`<span><span class="stat-icon">🔧</span>${tools} calls</span>`}
             </div>
           `}
+        </div>
+      `;
+    }
+
+    // --- Workstation 元件（像素辦公室工位）---
+    function Workstation({ stage, s, tick }) {
+      const status = getStatus(stage, s);
+      const meta = SM[stage];
+      const r = s.stageResults?.[stage];
+      const retries = s.retries?.[stage] || 0;
+      const todos = meta.todos || [];
+
+      // 氣泡框邏輯
+      let bubble = null;
+      if (status === 'active') {
+        const todoIndex = Math.floor(tick / 3) % todos.length;
+        const currentTodo = todos[todoIndex];
+        bubble = html`<div class="ws-bubble">${currentTodo}...</div>`;
+      } else if (status === 'pass') {
+        bubble = html`<div class="ws-bubble pass">Done!</div>`;
+      } else if (status === 'fail') {
+        const sev = r?.severity || 'FAIL';
+        bubble = html`<div class="ws-bubble fail">FAIL ${sev}</div>`;
+      } else if (status === 'next') {
+        bubble = html`<div class="ws-bubble next">...</div>`;
+      }
+
+      return html`
+        <div class="ws st-${status}" style="--ac:${meta.color}">
+          ${retries > 0 && html`<div class="ws-retry">${retries}</div>`}
+          ${bubble}
+          <div class="ws-char">
+            <div class="ws-head">${EXPR[status] || meta.emoji}</div>
+            <div class="ws-body" style="background:${meta.color}"></div>
+          </div>
+          <div class="ws-desk">
+            <div class="ws-screen"></div>
+            <div class="ws-desk-top"></div>
+          </div>
+          <div class="ws-label">${stage}<div class="ws-label-name">${meta.agent}</div></div>
+        </div>
+      `;
+    }
+
+    // --- OfficeView 元件（像素辦公室場景）---
+    // --- Main Agent 位置映射（%，相對 office 容器，偏左避免重疊工位）---
+    const MA_POS = {
+      PLAN:   { left: '11%', top: '22%' },
+      ARCH:   { left: '26%', top: '22%' },
+      DEV:    { left: '41%', top: '22%' },
+      REVIEW: { left: '56%', top: '22%' },
+      TEST:   { left: '56%', top: '52%' },
+      QA:     { left: '41%', top: '52%' },
+      E2E:    { left: '26%', top: '52%' },
+      DOCS:   { left: '11%', top: '52%' },
+    };
+    const MA_IDLE = { left: '4%', top: '5%' };
+
+    function OfficeView({ s, tick }) {
+      const arrowStatus = (fromStage) => {
+        const st = getStatus(fromStage, s);
+        return st === 'pass' ? 'done' : st === 'active' ? 'active' : '';
+      };
+      const progress = pct(s);
+      const r2 = [...ROW2].reverse();
+      const isComplete = progress === 100;
+
+      // Main Agent 巡視邏輯（完成後回門口）
+      const cur = getCurrent(s);
+      const isDelegating = s.delegationActive;
+      const maPos = isComplete ? MA_IDLE : (MA_POS[cur] || MA_IDLE);
+      const maBubble = isDelegating && cur ? `→ ${SM[cur]?.agent}` : isComplete ? '🎉 Done!' : null;
+      const maExpr = isDelegating ? '🏃' : isComplete ? '🥳' : '👔';
+
+      return html`
+        <div class="office">
+          <div class="office-wall-top">
+            <span>🚪 ENTRANCE</span>
+            <div class="deco-clock">${now()}</div>
+          </div>
+
+          <!-- Main Agent 巡視角色 -->
+          <div class="main-agent ${isDelegating ? 'walking' : 'idle'}" style="left:${maPos.left};top:${maPos.top}">
+            ${maBubble && html`<div class="ma-bubble">${maBubble}</div>`}
+            <div class="ma-head">${maExpr}</div>
+            <div class="ma-body"></div>
+            <div class="ma-label">MAIN</div>
+          </div>
+
+          <div class="office-row">
+            ${ROW1.map((stage, i) => html`
+              ${i > 0 && html`<div class="office-arrow ${arrowStatus(ROW1[i-1])}">→</div>`}
+              <${Workstation} stage=${stage} s=${s} tick=${tick} />
+            `)}
+            <div class="deco-item">
+              <div class="deco-coffee">☕</div>
+            </div>
+          </div>
+
+          <div class="office-turn ${arrowStatus('REVIEW')}">↓</div>
+
+          <div class="office-row">
+            ${r2.map((stage, i) => html`
+              ${i > 0 && html`<div class="office-arrow ${arrowStatus(r2[i])}">←</div>`}
+              <${Workstation} stage=${stage} s=${s} tick=${tick} />
+            `)}
+            <div class="deco-item">🌿</div>
+          </div>
+
+          <div class="office-deco">
+            <div class="deco-board">
+              <div>Progress</div>
+              <div class="bar"><div class="bar-fill" style="width:${progress}%"></div></div>
+              <div>${progress}%</div>
+            </div>
+            <div>📁</div>
+            <div class="deco-window">
+              <div class="deco-star" style="top:8px;left:6px">✦</div>
+              <div class="deco-star" style="top:16px;right:10px;animation-delay:0.5s">✦</div>
+              <div class="deco-star" style="bottom:10px;left:14px;animation-delay:1s">✦</div>
+            </div>
+          </div>
         </div>
       `;
     }
@@ -806,14 +1030,16 @@
                 </div>
               </h1>
 
-              <!-- S/U Snake Grid -->
-              <div class="snake">
-                ${ROW1.map(stage => html`<${AgentCard} stage=${stage} s=${s} tick=${tick} />`)}
-                <div class="snake-turn ${getStatus('REVIEW', s) === 'active' ? 'flowing' : getStatus('REVIEW', s) === 'pass' ? 'done' : ''}">↓</div>
-                <div class="snake-row2">
-                  ${row2Reversed.map(stage => html`<${AgentCard} stage=${stage} s=${s} tick=${tick} />`)}
+              <!-- S/U Snake Grid or Pixel Office -->
+              ${theme === 'pixel' ? html`<${OfficeView} s=${s} tick=${tick} />` : html`
+                <div class="snake">
+                  ${ROW1.map(stage => html`<${AgentCard} stage=${stage} s=${s} tick=${tick} />`)}
+                  <div class="snake-turn ${getStatus('REVIEW', s) === 'active' ? 'flowing' : getStatus('REVIEW', s) === 'pass' ? 'done' : ''}">↓</div>
+                  <div class="snake-row2">
+                    ${row2Reversed.map(stage => html`<${AgentCard} stage=${stage} s=${s} tick=${tick} />`)}
+                  </div>
                 </div>
-              </div>
+              `}
 
               <!-- Progress -->
               <div class="${isComplete ? 'celebrate' : ''}" style="position:relative">
