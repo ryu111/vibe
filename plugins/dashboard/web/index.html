@@ -253,8 +253,6 @@
     .pixel .main h1,
     .pixel .office-wall-top,
     .pixel .ws-label,
-    .pixel .ws-bubble,
-    .pixel .ma-bubble,
     .pixel .ma-label,
     .pixel .group-hdr h2,
     .pixel .card h3, .pixel .summary h3, .pixel .timeline h3,
@@ -278,24 +276,24 @@
     /* 字體尺寸（裝飾元素保持原 Press Start 2P 尺寸，內容文字加大） */
     .pixel .main h1 { font-size: 11px; }
     .pixel .ac-name { font-size: 10px; }
-    .pixel .ac-name .agent-abbr { font-size: 8px; }
-    .pixel .ac-badge { font-size: 8px; padding: 2px 4px; }
-    .pixel .ac-todo { font-size: 9px; }
+    .pixel .ac-name .agent-abbr { font-size: 10px; }
+    .pixel .ac-badge { font-size: 10px; padding: 2px 4px; }
+    .pixel .ac-todo { font-size: 10px; }
     .pixel .row { font-size: 10px; }
-    .pixel .card h3, .pixel .summary h3, .pixel .timeline h3 { font-size: 7px; }
+    .pixel .card h3, .pixel .summary h3, .pixel .timeline h3 { font-size: 10px; }
     .pixel .light-row { font-size: 10px; }
     .pixel .tl-item { font-size: 10px; }
-    .pixel .tl-item .time { font-size: 8px; }
-    .pixel .sc-id { font-size: 8px; }
-    .pixel .sc-meta { font-size: 9px; }
-    .pixel .task-badge { font-size: 9px; }
-    .pixel .conn-indicator { font-size: 9px; }
-    .pixel .tool-btn { font-size: 9px; }
-    .pixel .filter-bar select, .pixel .filter-bar label { font-size: 9px; }
-    .pixel .group-hdr h2 { font-size: 7px; }
-    .pixel .group-sep { font-size: 9px; }
-    .pixel .empty .hint { font-size: 8px; }
-    .pixel .kbd-toast { font-size: 9px; }
+    .pixel .tl-item .time { font-size: 10px; }
+    .pixel .sc-id { font-size: 10px; }
+    .pixel .sc-meta { font-size: 10px; }
+    .pixel .task-badge { font-size: 10px; }
+    .pixel .conn-indicator { font-size: 10px; }
+    .pixel .tool-btn { font-size: 10px; }
+    .pixel .filter-bar select, .pixel .filter-bar label { font-size: 10px; }
+    .pixel .group-hdr h2 { font-size: 10px; }
+    .pixel .group-sep { font-size: 10px; }
+    .pixel .empty .hint { font-size: 10px; }
+    .pixel .kbd-toast { font-size: 10px; }
 
     /* 像素進度條 — 方塊分段 */
     .pixel .progress-fill { background: var(--green) !important; animation: none !important; }
@@ -318,8 +316,8 @@
 
     /* 像素 — 新元素 */
     .pixel .sc-res-bar, .pixel .sc-res-fill { border-radius: 0 !important; }
-    .pixel .ac-stats { font-size: 8px; }
-    .pixel .sc-res { font-size: 8px; }
+    .pixel .ac-stats { font-size: 10px; }
+    .pixel .sc-res { font-size: 10px; }
     .pixel .confetti-piece { border-radius: 0 !important; }
     .pixel .ac::before { font-family: monospace; }
 
@@ -331,7 +329,7 @@
       border: 4px solid #55ff55; padding: 20px; position: relative; min-height: 420px;
       box-shadow: 4px 4px 0 rgba(0,0,0,0.5) !important;
     }
-    .pixel .office-wall-top { display: flex; justify-content: space-between; align-items: center; padding: 0 8px 16px; font-size: 8px; }
+    .pixel .office-wall-top { display: flex; justify-content: space-between; align-items: center; padding: 0 8px 16px; font-size: 10px; }
     .pixel .office-row { display: flex; justify-content: center; align-items: center; gap: 12px; margin: 8px 0; }
     .pixel .office-arrow { font-size: 16px; color: var(--surface2); font-family: monospace !important; min-width: 20px; text-align: center; transition: all 0.3s; position: relative; }
     .pixel .office-arrow.done { color: var(--green); text-shadow: 0 0 6px var(--green); }
@@ -340,43 +338,40 @@
     .pixel .office-turn { display: flex; justify-content: flex-end; padding-right: 72px; margin: 4px 0; font-size: 16px; color: var(--surface2); font-family: monospace !important; }
     .pixel .office-turn.done { color: var(--green); text-shadow: 0 0 6px var(--green); }
     .pixel .office-turn.active { animation: pixelPulse 1s steps(2) infinite; }
-    .pixel .office-deco { display: flex; justify-content: space-around; align-items: flex-end; padding: 16px 12px 4px; font-size: 8px; gap: 12px; }
+    .pixel .office-deco { display: flex; justify-content: space-around; align-items: flex-end; padding: 16px 12px 4px; font-size: 10px; gap: 12px; }
 
     /* 工位 */
     .pixel .ws { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 120px; position: relative; }
-    .pixel .ws-bubble { background: var(--text); color: var(--bg); font-size: 6px; padding: 4px 6px; border: 2px solid var(--overlay0); position: relative; max-width: 110px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 18px; }
+    .pixel .ws-bubble { background: var(--text); color: var(--bg); font-size: 10px; padding: 4px 6px; border: 2px solid var(--overlay0); position: relative; max-width: 120px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 18px; font-weight: 700; }
     .pixel .ws-bubble::after { content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 5px solid var(--overlay0); }
     .pixel .ws-bubble.pass { background: var(--green); color: var(--bg); border-color: color-mix(in srgb, var(--green) 60%, #000); }
     .pixel .ws-bubble.pass::after { border-top-color: color-mix(in srgb, var(--green) 60%, #000); }
     .pixel .ws-bubble.fail { background: var(--red); color: var(--text); border-color: color-mix(in srgb, var(--red) 60%, #000); }
     .pixel .ws-bubble.fail::after { border-top-color: color-mix(in srgb, var(--red) 60%, #000); }
-    .pixel .ws-bubble.next { background: var(--surface2); color: var(--subtext0); border-color: var(--overlay0); }
-    .pixel .ws-char { display: flex; flex-direction: column; align-items: center; position: relative; }
-    .pixel .ws-head { font-size: 20px; line-height: 1; z-index: 1; }
-    .pixel .ws-body { width: 20px; height: 16px; margin-top: -4px; border: 2px solid rgba(0,0,0,0.3); }
+    /* next 不再顯示 bubble，pending/skipped 無 bubble */
+    .pixel .ws-char { width: 21px; height: 30px; position: relative; z-index: 1; }
+    .pixel .ws-pixel { position: absolute; top: 0; left: 0; image-rendering: pixelated; }
     .pixel .ws-desk { display: flex; flex-direction: column; align-items: center; margin-top: 2px; }
     .pixel .ws-screen { width: 28px; height: 20px; background: var(--bg); border: 2px solid var(--overlay0); position: relative; transition: all 0.3s; }
     .pixel .ws-screen::after { content: ''; position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%); width: 12px; height: 4px; background: var(--overlay0); }
     .pixel .ws-desk-top { width: 48px; height: 6px; background: #8B6914; border: 2px solid #6B4914; margin-top: 2px; }
-    .pixel .ws-label { font-size: 6px; color: var(--subtext0); text-align: center; margin-top: 4px; }
-    .pixel .ws-label-name { font-size: 7px; color: var(--overlay0); font-family: monospace !important; }
-    .pixel .ws-retry { position: absolute; top: -4px; right: -4px; background: var(--orange); color: var(--bg); font-size: 7px; font-weight: 700; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; z-index: 2; animation: popIn 0.3s cubic-bezier(0.175,0.885,0.32,1.275); }
+    .pixel .ws-label { font-size: 10px; color: var(--subtext0); text-align: center; margin-top: 4px; }
+    .pixel .ws-label-name { font-size: 10px; color: var(--overlay0); font-family: monospace !important; }
+    .pixel .ws-retry { position: absolute; top: -4px; right: -4px; background: var(--orange); color: var(--bg); font-size: 10px; font-weight: 700; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; z-index: 2; animation: popIn 0.3s cubic-bezier(0.175,0.885,0.32,1.275); }
 
     /* Main Agent 巡視角色 */
-    .pixel .main-agent { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 1px; transition: left 0.8s ease-in-out, top 0.8s ease-in-out; z-index: 10; pointer-events: none; }
-    .pixel .main-agent .ma-bubble { background: var(--yellow); color: var(--bg); font-size: 5px; padding: 2px 5px; border: 2px solid color-mix(in srgb, var(--yellow) 60%, #000); white-space: nowrap; position: relative; }
+    .pixel .main-agent { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 1px; transition: left 0.8s ease-in-out, top 0.8s ease-in-out; z-index: 10; pointer-events: none; transform: translateX(-50%); }
+    .pixel .main-agent .ma-bubble { background: var(--yellow); color: var(--bg); font-size: 11px; font-weight: 700; padding: 4px 8px; border: 2px solid color-mix(in srgb, var(--yellow) 60%, #000); white-space: nowrap; position: relative; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
     .pixel .main-agent .ma-bubble::after { content: ''; position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 4px solid color-mix(in srgb, var(--yellow) 60%, #000); }
-    .pixel .main-agent .ma-head { font-size: 16px; line-height: 1; }
-    .pixel .main-agent .ma-body { width: 16px; height: 12px; margin-top: -3px; background: var(--yellow); border: 2px solid rgba(0,0,0,0.3); }
-    .pixel .main-agent .ma-label { font-size: 5px; color: var(--yellow); margin-top: 2px; }
-    .pixel .main-agent .ma-bubble { font-size: 5px; }
-    .pixel .main-agent.walking .ma-head { animation: maWalk 0.4s steps(2) infinite; }
-    .pixel .main-agent.idle .ma-head { animation: wsIdle 2s steps(2) infinite; }
+    .pixel .main-agent .ma-char { width: 21px; height: 30px; position: relative; }
+    .pixel .main-agent .ma-pixel { position: absolute; top: 0; left: 0; image-rendering: pixelated; }
+    .pixel .main-agent .ma-label { font-size: 10px; color: var(--yellow); margin-top: 2px; }
+    .pixel .main-agent.walking .ma-char { animation: maWalk 0.4s steps(2) infinite; }
+    .pixel .main-agent.idle .ma-char { animation: wsIdle 2s steps(2) infinite; }
     @keyframes maWalk { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px) rotate(-3deg); } }
 
     /* 工位狀態 — active 打字搖晃 */
-    .pixel .ws.st-active .ws-head { animation: wsTyping 0.3s steps(2) infinite; }
-    .pixel .ws.st-active .ws-body { animation: wsBodySway 0.6s steps(2) infinite; }
+    .pixel .ws.st-active .ws-char { animation: wsTyping 0.3s steps(2) infinite; }
     .pixel .ws.st-active .ws-screen { background: color-mix(in srgb, var(--ac) 40%, #111); box-shadow: 0 0 8px var(--ac); animation: wsScreenPulse 1.5s steps(2) infinite; }
     /* pass 慶祝跳動 */
     .pixel .ws.st-pass .ws-char { animation: wsCelebrate 0.8s steps(2) infinite; }
@@ -386,11 +381,11 @@
     .pixel .ws.st-fail .ws-screen { background: var(--red); animation: wsScreenBlink 0.5s steps(1) infinite; }
     .pixel .ws.st-fail .ws-screen::after { content: '╳'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.3); font-size: 14px; }
     /* next 微呼吸 */
-    .pixel .ws.st-next .ws-head { animation: wsIdle 2s steps(2) infinite; }
+    .pixel .ws.st-next .ws-char { animation: wsIdle 2s steps(2) infinite; }
     .pixel .ws.st-next .ws-screen { background: var(--surface0); }
     /* pending zzz + 頭部傾斜 */
     .pixel .ws.st-pending { opacity: 0.4; }
-    .pixel .ws.st-pending .ws-head { transform: rotate(-8deg); }
+    .pixel .ws.st-pending .ws-char { transform: rotate(-8deg); }
     .pixel .ws.st-pending .ws-screen { background: color-mix(in srgb, var(--bg) 80%, #000); }
     .pixel .ws.st-pending::after { content: 'z z z'; position: absolute; top: -4px; right: 4px; font-size: 7px; color: var(--overlay0); animation: wsSleep 2s steps(3) infinite; font-family: monospace !important; }
     /* skipped 灰階 */
@@ -401,7 +396,7 @@
     .pixel .ws.pinned { filter: brightness(1.15); z-index: 5; }
 
     @keyframes wsTyping { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px) rotate(2deg); } }
-    @keyframes wsBodySway { 0%,100% { transform: rotate(0); } 50% { transform: rotate(-2deg); } }
+    /* wsBodySway 已移除（角色不再有獨立 body 元素） */
     @keyframes wsCelebrate { 0%,100% { transform: translateY(0) rotate(0); } 30% { transform: translateY(-6px) rotate(-3deg); } 60% { transform: translateY(-2px) rotate(2deg); } }
     @keyframes wsFrustrated { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
     @keyframes wsIdle { 0%,100% { transform: scale(1); } 50% { transform: scale(1.02); } }
@@ -424,14 +419,14 @@
     .pixel .deco-plant { display: inline-block; font-size: 14px; animation: wsPlantSway 3s steps(2) infinite; transform-origin: bottom center; }
     @keyframes wsSteam { 0%,100% { opacity: 0.3; transform: translateY(0); } 50% { opacity: 0.7; transform: translateY(-4px); } }
     @keyframes wsPlantSway { 0%,100% { transform: rotate(0); } 50% { transform: rotate(3deg); } }
-    .pixel .deco-board { background: var(--surface0); border: 2px solid var(--surface1); padding: 4px 8px; font-size: 6px; min-width: 80px; text-align: center; }
+    .pixel .deco-board { background: var(--surface0); border: 2px solid var(--surface1); padding: 4px 8px; font-size: 10px; min-width: 80px; text-align: center; }
     .pixel .deco-board .bar { height: 4px; background: var(--surface1); margin-top: 3px; overflow: hidden; }
     .pixel .deco-board .bar-fill { height: 100%; background: var(--green); transition: width 0.5s; }
     .pixel .deco-window { width: 56px; height: 40px; background: linear-gradient(180deg, #060620 0%, #0e1040 50%, #1a1a4e 100%); border: 3px solid var(--surface1); position: relative; overflow: hidden; }
     .pixel .deco-window::before { content: '🌙'; position: absolute; top: 4px; right: 6px; font-size: 8px; opacity: 0.7; }
     .pixel .deco-star { position: absolute; color: #fff; animation: wsStarTwinkle 2s steps(2) infinite; }
     @keyframes wsStarTwinkle { 0%,100% { opacity: 0.2; } 50% { opacity: 1; } }
-    .pixel .deco-clock { font-size: 9px; color: var(--green); font-variant-numeric: tabular-nums; }
+    .pixel .deco-clock { font-size: 10px; color: var(--green); font-variant-numeric: tabular-nums; }
 
     /* ===== 辦公室模式加強 ===== */
 
@@ -494,7 +489,7 @@
     /* Hover 互動 — 工位發光 + tooltip */
     .pixel .ws { cursor: pointer; transition: filter 0.15s; }
     .pixel .ws:hover { filter: brightness(1.15); z-index: 5; }
-    .pixel .ws-tip { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: var(--surface0); border: 2px solid var(--surface1); padding: 4px 6px; font-size: 7px; color: var(--text); white-space: nowrap; z-index: 20; opacity: 0; pointer-events: none; transition: opacity 0.15s; box-shadow: 3px 3px 0 rgba(0,0,0,0.5); }
+    .pixel .ws-tip { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: var(--surface0); border: 2px solid var(--surface1); padding: 4px 6px; font-size: 10px; color: var(--text); white-space: nowrap; z-index: 20; opacity: 0; pointer-events: none; transition: opacity 0.15s; box-shadow: 3px 3px 0 rgba(0,0,0,0.5); }
     .pixel .ws:hover .ws-tip { opacity: 1; }
     .pixel .ws-tip::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 4px solid var(--surface1); }
     .pixel .ws-tip-row { display: flex; gap: 6px; padding: 1px 0; }
@@ -507,13 +502,15 @@
     /* 全螢幕像素模式 */
     .fullscreen .pixel .office { min-height: 480px; padding: 24px 32px; }
     .fullscreen .pixel .ws { width: 130px; }
-    .fullscreen .pixel .ws-head { font-size: 24px; }
+    .fullscreen .pixel .ws-char { width: 28px; height: 40px; transform: scale(1.3); transform-origin: center bottom; }
     .fullscreen .pixel .ws-screen { width: 34px; height: 24px; }
     .fullscreen .pixel .ws-desk-top { width: 56px; }
-    .fullscreen .pixel .ws-bubble { font-size: 7px; }
-    .fullscreen .pixel .ws-label { font-size: 7px; }
+    .fullscreen .pixel .ws-bubble { font-size: 12px; }
+    .fullscreen .pixel .ws-label { font-size: 11px; }
     .fullscreen .pixel .office-arrow { font-size: 20px; }
-    .fullscreen .pixel .main-agent .ma-head { font-size: 20px; }
+    .fullscreen .pixel .main-agent .ma-bubble { font-size: 12px; padding: 5px 10px; }
+    .fullscreen .pixel .main-agent .ma-char { transform: scale(1.3); transform-origin: center bottom; }
+    .fullscreen .pixel .main-agent .ma-label { font-size: 11px; }
 
     /* Session 資源指標 */
     .sc-res { display: flex; gap: 8px; margin-top: 3px; font-size: 9px; color: var(--subtext0); }
@@ -607,8 +604,10 @@
       if (!s?.expectedStages?.includes(stage)) return 'skipped';
       const cur = getCurrent(s);
       const r = s.stageResults?.[stage];
-      // 已完成的 stage 優先顯示結果（避免 currentStage 未清除時誤顯 next）
-      if (stage === cur && r?.verdict !== 'PASS') return s.delegationActive ? 'active' : 'next';
+      // 正在委派中 = active（覆蓋 retry 場景的舊 PASS 結果）
+      if (stage === cur && s.delegationActive) return 'active';
+      // 當前 stage 但未委派（等待開始或剛完成過渡中）
+      if (stage === cur && r?.verdict !== 'PASS') return 'next';
       if (r?.verdict === 'PASS') return 'pass';
       if (r?.verdict === 'FAIL') return 'fail';
       return 'pending';
@@ -640,7 +639,60 @@
       return `${Math.floor(d/3600)}h`;
     }
 
-    // --- 像素辦公室：角色表情映射 ---
+    // --- 像素辦公室：角色像素系統 ---
+    const PXS = 3; // 每個像素 3px × 3px
+    const SK = '#ffd8b4', EY = '#222', MO = '#c47a5a', LG = '#445';
+
+    // 角色像素網格（7 wide × 10 tall，字母映射到顏色）
+    const CHARS = {
+      planner:        ['..PPP..', '.PPPPP.', '.SESES.', '.SSSSS.', '..SMS..', '.BBBBB.', 'ABBBBBA', '..BBB..', '.LL.LL.', '.L...L.'],
+      architect:      ['..XXX..', 'XXXXXXX', '.SESES.', '.SSSSS.', '..SMS..', '.BBBBB.', 'ABBBBBA', '..BBB..', '.LL.LL.', '.L...L.'],
+      developer:      ['..HHH..', '.HHHHH.', '.SESES.', '.SSSSS.', '..SMS..', 'HBBBBBH', 'HBBBBBH', '..BBB..', '.LL.LL.', '.L...L.'],
+      'code-reviewer':['..HHH..', '.HHHHH.', '.GEGEG.', '.SSSSS.', '..SMS..', '.BBBBB.', 'ABBBBBA', '..BBB..', '.LL.LL.', '.L...L.'],
+      tester:         ['..HHH..', '.HHHHH.', '.SESES.', '.SSSSS.', '..SMS..', '.WWWWW.', 'WWBBBWW', '..WWW..', '.LL.LL.', '.L...L.'],
+      qa:             ['..CCC..', 'CCCCCCC', '.SESES.', '.SSSSS.', '..SMS..', '.BBBBB.', 'ABBBBBA', '..BBB..', '.LL.LL.', '.L...L.'],
+      'e2e-runner':   ['..HHH..', 'OHHHHHO', '.SESES.', '.SSSSS.', '..SMS..', '.BBBBB.', 'ABBBBBA', '..BBB..', '.LL.LL.', '.L...L.'],
+      'doc-updater':  ['..HHHX.', '.HHHHH.', '.SESES.', '.SSSSS.', '..SMS..', '.BBBBB.', 'ABBBBBA', '..BBB..', '.LL.LL.', '.L...L.'],
+    };
+    const CHAR_MAIN = ['.X.X.X.', '.XXXXX.', '.SESES.', '.SSSSS.', '..SMS..', '.GGGGG.', 'GGGGGGG', '..GGG..', '.LL.LL.', '.L...L.'];
+
+    // 各角色專屬調色盤（P/H/X/G/C/O/W = 配件，B = 衣服，A = 手臂）
+    const CHAR_PAL = {
+      planner:        { P: '#9370db', B: '#cba6f7', A: '#a888d0' },
+      architect:      { X: '#ffd700', B: '#89dceb', A: '#6bb8c6' },
+      developer:      { H: '#555', B: '#f9e2af', A: '#d4c090' },
+      'code-reviewer':{ H: '#667', G: '#5599ff', B: '#89b4fa', A: '#6b96d0' },
+      tester:         { H: '#d4739d', W: '#dde0f0', B: '#f5c2e7', A: '#d0a4c0' },
+      qa:             { C: '#bb9933', B: '#f9e2af', A: '#d4c090' },
+      'e2e-runner':   { H: '#556', O: '#333', B: '#a6e3a1', A: '#88c084' },
+      'doc-updater':  { H: '#8866bb', X: '#ffd700', B: '#cba6f7', A: '#a888d0' },
+    };
+    const PAL_MAIN = { X: '#ffd700', G: '#ffd700' };
+
+    // 表情覆蓋（改變 E=眼睛、M=嘴巴顏色）
+    const EXPR_PAL = {
+      active:  { E: EY, M: MO },
+      pass:    { E: SK, M: '#e88a6a' },
+      fail:    { E: '#ff4444', M: '#333' },
+      next:    { E: EY, M: MO },
+      pending: { E: '#e0c8a0', M: SK },
+      skipped: { E: '#888', M: '#888', S: '#999', L: '#666' },
+    };
+
+    // 網格 → CSS box-shadow
+    function charShadow(grid, agentPal, exprPal) {
+      const p = { S: SK, E: EY, M: MO, L: LG, ...agentPal, ...(exprPal || {}) };
+      const s = [];
+      for (let r = 0; r < grid.length; r++)
+        for (let c = 0; c < grid[r].length; c++) {
+          const ch = grid[r][c];
+          if (ch !== '.' && p[ch]) s.push(`${c * PXS}px ${r * PXS}px 0 0 ${p[ch]}`);
+        }
+      return s.join(',');
+    }
+    const CHAR_W = 7 * PXS, CHAR_H = 10 * PXS;
+
+    // EXPR fallback（AgentCard 仍用 emoji）
     const EXPR = { active: '😤', pass: '😎', fail: '🤯', next: '🙂', pending: '😴', skipped: '👻' };
 
     // --- Agent Card 元件 ---
@@ -723,17 +775,16 @@
         screenText = r?.severity || 'ERR';
       }
 
-      // 氣泡框邏輯
+      // 氣泡框邏輯 — 只有 active 的 agent 才「說話」，其他靜態狀態
       let bubble = null;
       if (status === 'active') {
-        const todoIndex = Math.floor(tick / 3) % todos.length;
-        bubble = html`<div class="ws-bubble">${todos[todoIndex]}...</div>`;
+        const todoIdx = Math.floor(tick / 3) % todos.length;
+        const replies = ['收到！', `正在${todos[todoIdx]}`, `${todos[todoIdx]}...`, '快好了...'];
+        bubble = html`<div class="ws-bubble">${replies[tick % replies.length]}</div>`;
       } else if (status === 'pass') {
         bubble = html`<div class="ws-bubble pass">Done!</div>`;
       } else if (status === 'fail') {
-        bubble = html`<div class="ws-bubble fail">FAIL ${r?.severity || ''}</div>`;
-      } else if (status === 'next') {
-        bubble = html`<div class="ws-bubble next">...</div>`;
+        bubble = html`<div class="ws-bubble fail">FAIL${r?.severity ? ' '+r.severity : ''}</div>`;
       }
 
       // Tooltip 詳情
@@ -760,8 +811,7 @@
           ${tip}
           ${bubble}
           <div class="ws-char">
-            <div class="ws-head">${EXPR[status] || meta.emoji}</div>
-            <div class="ws-body" style="background:${meta.color}"></div>
+            <div class="ws-pixel" style=${{ width: PXS+'px', height: PXS+'px', boxShadow: charShadow(CHARS[meta.agent], CHAR_PAL[meta.agent], EXPR_PAL[status]) }}></div>
           </div>
           <div class="ws-desk">
             <div class="ws-screen">
@@ -803,8 +853,28 @@
       const cur = getCurrent(s);
       const isDelegating = s.delegationActive;
       const maPos = isComplete ? MA_IDLE : (MA_POS[cur] || MA_IDLE);
-      const maBubble = isDelegating && cur ? `→ ${SM[cur]?.agent}` : isComplete ? '🎉 Done!' : null;
-      const maExpr = isDelegating ? '🏃' : isComplete ? '🥳' : '👔';
+
+      // Main Agent 對話台詞（根據狀態循環，營造指揮官交流感）
+      const maBubble = (() => {
+        if (isComplete) return ['🎉 收工！','完美的一天','大家辛苦了','全部 PASS！'][tick % 4];
+        if (!s?.expectedStages?.length) return ['等待任務...','☕ 先喝杯咖啡','...'][tick % 3];
+        const agent = cur ? SM[cur]?.agent : null;
+        if (isDelegating && agent) {
+          // 委派中：指令 ↔ 鼓勵 交替
+          const cmds = [`${agent}，開始！`,`交給你了`,`看你的`,`拜託了`];
+          const cheer = ['加油！','注意細節','不錯不錯...','繼續！','有進展嗎？'];
+          return tick % 3 === 0 ? cmds[Math.floor(tick/3) % cmds.length] : cheer[tick % cheer.length];
+        }
+        // 過渡中（剛完成 / 剛失敗）
+        const lastDone = [...(s.expectedStages||[])].reverse().find(st => s.stageResults?.[st]);
+        const lastR = lastDone ? s.stageResults[lastDone] : null;
+        if (lastR?.verdict === 'FAIL') return ['有問題！','回去修','需要重來','別急'][tick % 4];
+        if (lastR?.verdict === 'PASS') return ['漂亮！','下一位...','Nice！','繼續前進'][tick % 4];
+        return ['嗯...思考中','準備中...','讓我想想'][tick % 3];
+      })();
+
+      const maState = isDelegating ? 'active' : isComplete ? 'pass' : 'next';
+      const maShadow = charShadow(CHAR_MAIN, PAL_MAIN, EXPR_PAL[maState]);
 
       // 白板增強資訊
       const curAgent = cur ? SM[cur]?.agent : null;
@@ -821,9 +891,10 @@
 
           <!-- Main Agent 巡視角色 -->
           <div class="main-agent ${isDelegating ? 'walking' : 'idle'}" style="left:${maPos.left};top:${maPos.top}">
-            ${maBubble && html`<div class="ma-bubble">${maBubble}</div>`}
-            <div class="ma-head">${maExpr}</div>
-            <div class="ma-body"></div>
+            <div class="ma-bubble">${maBubble}</div>
+            <div class="ma-char">
+              <div class="ma-pixel" style=${{ width: PXS+'px', height: PXS+'px', boxShadow: maShadow }}></div>
+            </div>
             <div class="ma-label">MAIN</div>
           </div>
 
@@ -904,8 +975,8 @@
                 <span class="light ${verdict === 'PASS' ? 'pass' : verdict === 'FAIL' ? 'fail' : 'skip'}"></span>
                 <span class="light-stage">${stage}</span>
                 <span class="light-label">${SM[stage].label}</span>
-                ${r?.duration && html`<span style="font-size:9px;color:var(--subtext0);min-width:36px">${r.duration}s</span>`}
-                ${r?.toolCalls && html`<span style="font-size:9px;color:var(--subtext0);min-width:42px">🔧${r.toolCalls}</span>`}
+                ${r?.duration && html`<span style="font-size:10px;color:var(--subtext0);min-width:36px">${r.duration}s</span>`}
+                ${r?.toolCalls && html`<span style="font-size:10px;color:var(--subtext0);min-width:42px">🔧${r.toolCalls}</span>`}
                 <span class="light-verdict" style="color:${verdict === 'PASS' ? 'var(--green)' : verdict === 'FAIL' ? 'var(--red)' : 'var(--overlay0)'}">
                   ${verdict}${retries > 0 ? ` (重試${retries})` : ''}
                 </span>
