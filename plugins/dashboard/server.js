@@ -127,9 +127,14 @@ Bun.serve({
   },
 });
 
+// 取得區網 IP
+import { networkInterfaces } from 'os';
+const lanIP = Object.values(networkInterfaces()).flat().find(i => i.family === 'IPv4' && !i.internal)?.address;
+
 console.log(`\n  🎯 Vibe Pipeline Dashboard`);
 console.log(`  ─────────────────────────`);
 console.log(`  Local:   http://localhost:${PORT}`);
+if (lanIP) console.log(`  LAN:     http://${lanIP}:${PORT}`);
 console.log(`  WS:      ws://localhost:${PORT}/ws`);
 console.log(`  API:     http://localhost:${PORT}/api/sessions`);
 console.log(`  ─────────────────────────`);
