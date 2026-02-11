@@ -361,26 +361,33 @@
 
     /* 工位狀態 — active 打字搖晃 */
     .pixel .ws.st-active .ws-head { animation: wsTyping 0.3s steps(2) infinite; }
+    .pixel .ws.st-active .ws-body { animation: wsBodySway 0.6s steps(2) infinite; }
     .pixel .ws.st-active .ws-screen { background: color-mix(in srgb, var(--ac) 40%, #111); box-shadow: 0 0 8px var(--ac); animation: wsScreenPulse 1.5s steps(2) infinite; }
     /* pass 慶祝跳動 */
-    .pixel .ws.st-pass .ws-char { animation: wsCelebrate 0.6s steps(2) infinite; }
+    .pixel .ws.st-pass .ws-char { animation: wsCelebrate 0.8s steps(2) infinite; }
     .pixel .ws.st-pass .ws-screen { background: var(--green); box-shadow: 0 0 6px var(--green); }
     /* fail 抖動 + 冒煙 */
     .pixel .ws.st-fail .ws-char { animation: wsFrustrated 0.3s steps(2) infinite; }
     .pixel .ws.st-fail .ws-screen { background: var(--red); animation: wsScreenBlink 0.5s steps(1) infinite; }
+    .pixel .ws.st-fail .ws-screen::after { content: '╳'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.3); font-size: 14px; }
     /* next 微呼吸 */
     .pixel .ws.st-next .ws-head { animation: wsIdle 2s steps(2) infinite; }
     .pixel .ws.st-next .ws-screen { background: var(--surface0); }
-    /* pending zzz */
+    /* pending zzz + 頭部傾斜 */
     .pixel .ws.st-pending { opacity: 0.4; }
+    .pixel .ws.st-pending .ws-head { transform: rotate(-8deg); }
     .pixel .ws.st-pending .ws-screen { background: color-mix(in srgb, var(--bg) 80%, #000); }
     .pixel .ws.st-pending::after { content: 'z z z'; position: absolute; top: -4px; right: 4px; font-size: 7px; color: var(--overlay0); animation: wsSleep 2s steps(3) infinite; font-family: monospace !important; }
     /* skipped 灰階 */
     .pixel .ws.st-skipped { opacity: 0.2; filter: grayscale(1); }
     .pixel .ws.st-skipped .ws-screen { background: color-mix(in srgb, var(--bg) 80%, #000); }
+    /* 點擊固定 tooltip */
+    .pixel .ws.pinned .ws-tip { opacity: 1; }
+    .pixel .ws.pinned { filter: brightness(1.15); z-index: 5; }
 
     @keyframes wsTyping { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px) rotate(2deg); } }
-    @keyframes wsCelebrate { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+    @keyframes wsBodySway { 0%,100% { transform: rotate(0); } 50% { transform: rotate(-2deg); } }
+    @keyframes wsCelebrate { 0%,100% { transform: translateY(0) rotate(0); } 30% { transform: translateY(-6px) rotate(-3deg); } 60% { transform: translateY(-2px) rotate(2deg); } }
     @keyframes wsFrustrated { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
     @keyframes wsIdle { 0%,100% { transform: scale(1); } 50% { transform: scale(1.02); } }
     @keyframes wsSleep { 0% { opacity: 0.2; transform: translateY(0); } 50% { opacity: 0.8; transform: translateY(-4px); } 100% { opacity: 0.2; transform: translateY(-8px); } }
@@ -462,7 +469,7 @@
     .pixel .office-carpet { position: absolute; top: 28px; left: 3%; width: 10%; height: 8px; background: repeating-linear-gradient(90deg, var(--red) 0 4px, color-mix(in srgb, var(--red) 40%, #000) 4px 8px); opacity: 0.6; border: 1px solid color-mix(in srgb, var(--red) 30%, #000); }
 
     /* Hover 互動 — 工位發光 + tooltip */
-    .pixel .ws { cursor: default; transition: filter 0.15s; }
+    .pixel .ws { cursor: pointer; transition: filter 0.15s; }
     .pixel .ws:hover { filter: brightness(1.15); z-index: 5; }
     .pixel .ws-tip { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: var(--surface0); border: 2px solid var(--surface1); padding: 4px 6px; font-size: 5px; color: var(--text); white-space: nowrap; z-index: 20; opacity: 0; pointer-events: none; transition: opacity 0.15s; box-shadow: 3px 3px 0 rgba(0,0,0,0.5); }
     .pixel .ws:hover .ws-tip { opacity: 1; }
@@ -665,7 +672,7 @@
     const DESK_OBJ = { PLAN: '📌', ARCH: '📐', DEV: '☕', REVIEW: '🔎', TEST: '🧫', QA: '📊', E2E: '🖱️', DOCS: '✏️' };
 
     // --- Workstation 元件（像素辦公室工位）---
-    function Workstation({ stage, s, tick }) {
+    function Workstation({ stage, s, tick, pinnedWs, setPinnedWs }) {
       const status = getStatus(stage, s);
       const meta = SM[stage];
       const r = s.stageResults?.[stage];
@@ -709,8 +716,11 @@
         </div>
       `;
 
+      const pinned = pinnedWs === stage;
+      const onPin = (e) => { e.stopPropagation(); setPinnedWs(pinned ? null : stage); };
+
       return html`
-        <div class="ws st-${status}" style="--ac:${meta.color}">
+        <div class="ws st-${status} ${pinned ? 'pinned' : ''}" style="--ac:${meta.color}" onClick=${onPin}>
           ${retries > 0 && html`<div class="ws-retry">${retries}</div>`}
           <span class="ws-sparkle">✦</span><span class="ws-sparkle">✦</span><span class="ws-sparkle">✦</span>
           <span class="ws-smoke">~</span><span class="ws-smoke">~</span><span class="ws-smoke">~</span>
@@ -747,6 +757,7 @@
     const MA_IDLE = { left: '4%', top: '12%' };
 
     function OfficeView({ s, tick }) {
+      const [pinnedWs, setPinnedWs] = useState(null);
       const arrowStatus = (fromStage) => {
         const st = getStatus(fromStage, s);
         return st === 'pass' ? 'done' : st === 'active' ? 'active' : '';
@@ -768,7 +779,7 @@
       const stagesTotal = s.expectedStages?.length || 0;
 
       return html`
-        <div class="office">
+        <div class="office" onClick=${() => setPinnedWs(null)}>
           <div class="office-carpet"></div>
           <div class="office-wall-top">
             <span>🚪 ENTRANCE</span>
@@ -786,7 +797,7 @@
           <div class="office-row">
             ${ROW1.map((stage, i) => html`
               ${i > 0 && html`<div class="office-arrow ${arrowStatus(ROW1[i-1])}">→</div>`}
-              <${Workstation} stage=${stage} s=${s} tick=${tick} />
+              <${Workstation} stage=${stage} s=${s} tick=${tick} pinnedWs=${pinnedWs} setPinnedWs=${setPinnedWs} />
             `)}
             <div class="deco-item">
               <div class="deco-coffee">☕</div>
@@ -798,7 +809,7 @@
           <div class="office-row">
             ${r2.map((stage, i) => html`
               ${i > 0 && html`<div class="office-arrow ${arrowStatus(r2[i])}">←</div>`}
-              <${Workstation} stage=${stage} s=${s} tick=${tick} />
+              <${Workstation} stage=${stage} s=${s} tick=${tick} pinnedWs=${pinnedWs} setPinnedWs=${setPinnedWs} />
             `)}
             <div class="deco-item">🌿</div>
           </div>

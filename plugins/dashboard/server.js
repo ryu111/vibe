@@ -97,13 +97,13 @@ Bun.serve({
       const sid = decodeURIComponent(url.pathname.slice('/api/sessions/'.length));
       const fp = join(CLAUDE_DIR, `pipeline-state-${sid}.json`);
       try {
-        if (existsSync(fp)) {
-          unlinkSync(fp);
+        if (existsSync(fp)) unlinkSync(fp);
+        // 無論檔案是否存在，都清除記憶體中的 session
+        if (sessions[sid]) {
           delete sessions[sid];
           broadcast({ type: 'update', sessions });
-          return Response.json({ ok: true, deleted: sid });
         }
-        return Response.json({ ok: false, error: 'not found' }, { status: 404 });
+        return Response.json({ ok: true, deleted: sid });
       } catch (e) {
         return Response.json({ ok: false, error: e.message }, { status: 500 });
       }
