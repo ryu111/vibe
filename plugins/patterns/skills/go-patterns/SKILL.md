@@ -556,6 +556,3 @@ func fixed() []Result {
 }
 ```
 
----
-
-**使用建議**：此 skill 為參考型（Reference），會被自動載入到 Claude 的上下文中。在撰寫或審查 Go 程式碼時，Claude 會自動參考這些模式和檢查清單。
