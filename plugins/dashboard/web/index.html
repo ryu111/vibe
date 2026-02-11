@@ -280,14 +280,65 @@
     .pixel .sb-toggle { border-radius: 0 !important; }
     .pixel .sb-toggle:hover { background: var(--green) !important; color: var(--bg) !important; }
 
-    /* Responsive */
+    /* 像素 — 新元素 */
+    .pixel .sc-res-bar, .pixel .sc-res-fill { border-radius: 0 !important; }
+    .pixel .ac-stats { font-size: 6px; }
+    .pixel .sc-res { font-size: 6px; }
+    .pixel .confetti-piece { border-radius: 0 !important; }
+
+    /* Session 資源指標 */
+    .sc-res { display: flex; gap: 8px; margin-top: 3px; font-size: 9px; color: var(--subtext0); }
+    .sc-res-item { display: flex; align-items: center; gap: 3px; }
+    .sc-res-bar { width: 28px; height: 3px; background: var(--surface1); border-radius: 2px; overflow: hidden; }
+    .sc-res-fill { height: 100%; border-radius: 2px; transition: width 0.5s; }
+    .sc-res-fill.cpu { background: var(--cyan); }
+    .sc-res-fill.ram { background: var(--purple); }
+
+    /* 卡片統計列 */
+    .ac-stats { display: flex; gap: 10px; font-size: 9px; color: var(--subtext0); margin-top: auto; padding-top: 6px; border-top: 1px solid rgba(69,71,90,0.2); }
+    .ac-stats span { display: flex; align-items: center; gap: 3px; }
+    .ac-stats .stat-icon { font-size: 10px; }
+
+    /* 卡片入場動畫 */
+    .snake .ac { animation: cardEnter 0.5s ease-out backwards; }
+    .snake .ac:nth-child(1) { animation-delay: 0.05s; }
+    .snake .ac:nth-child(2) { animation-delay: 0.12s; }
+    .snake .ac:nth-child(3) { animation-delay: 0.19s; }
+    .snake .ac:nth-child(4) { animation-delay: 0.26s; }
+    .snake-row2 .ac:nth-child(1) { animation-delay: 0.36s; }
+    .snake-row2 .ac:nth-child(2) { animation-delay: 0.43s; }
+    .snake-row2 .ac:nth-child(3) { animation-delay: 0.5s; }
+    .snake-row2 .ac:nth-child(4) { animation-delay: 0.57s; }
+    @keyframes cardEnter { from { opacity: 0; transform: translateY(16px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+    /* Confetti 慶祝 */
+    .confetti-wrap { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 300; overflow: hidden; }
+    .confetti-piece { position: absolute; top: -10px; opacity: 0; border-radius: 2px; animation: confettiFall var(--dur, 3s) var(--delay, 0s) ease-out forwards; }
+    @keyframes confettiFall {
+      0% { transform: translateY(0) rotate(0deg) scale(1); opacity: 1; }
+      25% { transform: translateY(25vh) rotate(180deg) scale(0.9); opacity: 1; }
+      100% { transform: translateY(105vh) rotate(720deg) scale(0.3); opacity: 0; }
+    }
+
+    /* Responsive — 平板 */
+    @media (max-width: 1100px) {
+      .snake { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .snake-turn { grid-column: 2; }
+      .ac::after { display: none; }
+      .ac-stats { gap: 6px; }
+    }
+    /* Responsive — 手機 */
     @media (max-width: 700px) {
       .layout, .layout.collapsed { grid-template-columns: 1fr; grid-template-rows: auto 1fr; --sidebar-w: 1fr; }
       .sidebar { max-height: 160px; border-right: none; border-bottom: 1px solid var(--surface1); }
       .sb-body { flex-direction: row; flex-wrap: wrap; gap: 6px; overflow-x: auto; }
       .sc { min-width: 130px; flex-shrink: 0; }
-      .snake { grid-template-columns: repeat(2, 1fr); }
+      .snake { grid-template-columns: 1fr; }
+      .snake-turn { grid-column: 1; }
       .cards { grid-template-columns: 1fr; }
+      .main { padding: 12px; }
+      .main h1 { font-size: 13px; }
+      .toolbar { margin-left: 0; flex-wrap: wrap; }
     }
   </style>
 </head>
@@ -359,8 +410,11 @@
       const status = getStatus(stage, s);
       const meta = SM[stage];
       const retries = s.retries?.[stage] || 0;
-      const sev = s.stageResults?.[stage]?.severity;
+      const r = s.stageResults?.[stage];
+      const sev = r?.severity;
       const todos = meta.todos || [];
+      const dur = r?.duration;
+      const tools = r?.toolCalls;
       return html`
         <div class="ac ${status}" style="--sc:${meta.color}">
           ${retries > 0 && html`<div class="ac-retry">${retries}</div>`}
@@ -386,6 +440,12 @@
               return html`<div class="ac-todo ${ts}"><span class="ac-todo-dot"></span><span>${todo}</span></div>`;
             })}
           </div>
+          ${(dur || tools) && html`
+            <div class="ac-stats">
+              ${dur && html`<span><span class="stat-icon">⏱</span>${dur}s</span>`}
+              ${tools && html`<span><span class="stat-icon">🔧</span>${tools} calls</span>`}
+            </div>
+          `}
         </div>
       `;
     }
@@ -415,6 +475,8 @@
                 <span class="light ${verdict === 'PASS' ? 'pass' : verdict === 'FAIL' ? 'fail' : 'skip'}"></span>
                 <span class="light-stage">${stage}</span>
                 <span class="light-label">${SM[stage].label}</span>
+                ${r?.duration && html`<span style="font-size:9px;color:var(--subtext0);min-width:36px">${r.duration}s</span>`}
+                ${r?.toolCalls && html`<span style="font-size:9px;color:var(--subtext0);min-width:42px">🔧${r.toolCalls}</span>`}
                 <span class="light-verdict" style="color:${verdict === 'PASS' ? 'var(--green)' : verdict === 'FAIL' ? 'var(--red)' : 'var(--overlay0)'}">
                   ${verdict}${retries > 0 ? ` (重試${retries})` : ''}
                 </span>
@@ -422,6 +484,22 @@
           })}
         </div>
       `;
+    }
+
+    // --- Confetti 慶祝元件 ---
+    const CONFETTI_COLORS = ['#a6e3a1', '#89b4fa', '#f9e2af', '#f5c2e7', '#cba6f7', '#89dceb', '#fab387', '#f38ba8'];
+    function Confetti() {
+      const pieces = useMemo(() => Array.from({ length: 60 }, (_, i) => ({
+        left: Math.random() * 100,
+        delay: Math.random() * 1.5,
+        dur: 2.5 + Math.random() * 2,
+        color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+        w: 5 + Math.random() * 7,
+        h: 3 + Math.random() * 5,
+      })), []);
+      return html`<div class="confetti-wrap">
+        ${pieces.map(p => html`<div class="confetti-piece" style="left:${p.left}%;--delay:${p.delay}s;--dur:${p.dur}s;background:${p.color};width:${p.w}px;height:${p.h}px"></div>`)}
+      </div>`;
     }
 
     // --- 報告導出 ---
@@ -457,7 +535,10 @@
       const [fullscreen, setFullscreen] = useState(false);
       const [toast, setToast] = useState(null);
       const [theme, setTheme] = useState('default');
+      const [tick, setTick] = useState(0);
+      const [showConfetti, setShowConfetti] = useState(false);
       const prevRef = useRef({});
+      const confettiShown = useRef(new Set());
 
       // 分組 + 排序
       const { pipeline: pipeSessions, zombie: zombieSessions, idle: idleSessions } = useMemo(() => {
@@ -480,6 +561,18 @@
       const isComplete = progress === 100 && hasPipeline(s);
       const selectSession = id => { setActive(id); setEvents([]); prevRef.current = {}; };
       const row2Reversed = [...ROW2].reverse();
+
+      // 每秒 tick（驅動 elapsed 更新 + 資源刷新）
+      useEffect(() => { const id = setInterval(() => setTick(t => t + 1), 1000); return () => clearInterval(id); }, []);
+
+      // Confetti 觸發
+      useEffect(() => {
+        if (isComplete && active && !confettiShown.current.has(active)) {
+          confettiShown.current.add(active);
+          setShowConfetti(true);
+          setTimeout(() => setShowConfetti(false), 4000);
+        }
+      }, [isComplete, active]);
 
       // WebSocket（指數退避 + 心跳）
       useEffect(() => {
@@ -550,6 +643,8 @@
         <div class="${theme === 'pixel' ? 'pixel ' : ''}layout ${sideOpen && !fullscreen ? '' : fullscreen ? 'fullscreen' : 'collapsed'}"
           style="${theme === 'pixel' ? 'image-rendering:pixelated' : ''}"
         >
+          <!-- Confetti -->
+          ${showConfetti && html`<${Confetti} />`}
           <!-- 浮動連線燈號 -->
           <div class="conn-float"><span class="dot ${conn ? 'on' : 'off'}"></span><span>${conn ? '已連線' : '重新連線中…'}</span></div>
           <!-- Toast -->
@@ -577,8 +672,14 @@
                   <div class="sc ${id === active ? 'active' : ''}" data-pct="${pct(ss)}%" onClick=${() => selectSession(id)}>
                     <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
                     <div class="sc-id">${isLive(ss) && html`<span class="live-dot"></span>`}${sid(id)}</div>
-                    <div class="sc-meta">${ss.taskType || '—'} · ${pct(ss)}% · ${elapsed(ss.lastTransition)}</div>
+                    <div class="sc-meta">${ss.taskType || '—'} · ${pct(ss)}% · ${elapsed(ss.startedAt || ss.lastTransition)}</div>
                     <div class="sc-bar"><div class="sc-bar-fill" style="width:${pct(ss)}%"></div></div>
+                    ${ss.resources && html`
+                      <div class="sc-res">
+                        <div class="sc-res-item">CPU <div class="sc-res-bar"><div class="sc-res-fill cpu" style="width:${ss.resources.cpu || 0}%"></div></div> ${ss.resources.cpu || 0}%</div>
+                        <div class="sc-res-item">RAM <div class="sc-res-bar"><div class="sc-res-fill ram" style="width:${Math.min(100, (ss.resources.ram || 0) / 5.12)}%"></div></div> ${ss.resources.ram || 0}M</div>
+                      </div>
+                    `}
                   </div>
                 `)}
               `}

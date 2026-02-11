@@ -19,6 +19,16 @@ const STAGE_AGENTS = {
   REVIEW: 'code-reviewer', TEST: 'tester', QA: 'qa',
   E2E: 'e2e-runner', DOCS: 'doc-updater',
 };
+const STAGE_CPU = {
+  PLAN: [20, 40], ARCH: [15, 35], DEV: [55, 90],
+  REVIEW: [35, 65], TEST: [65, 95], QA: [45, 75],
+  E2E: [75, 95], DOCS: [10, 30],
+};
+const STAGE_TOOLS = {
+  PLAN: [5, 12], ARCH: [8, 18], DEV: [25, 55],
+  REVIEW: [15, 35], TEST: [20, 45], QA: [10, 25],
+  E2E: [15, 30], DOCS: [5, 12],
+};
 
 const state = {
   sessionId: SID,
@@ -32,11 +42,13 @@ const state = {
     tools: { linter: 'eslint', formatter: 'prettier', test: 'vitest', bundler: null },
   },
   lastTransition: new Date().toISOString(),
+  startedAt: new Date().toISOString(),
   taskType: null,
   delegationActive: false,
   stageResults: {},
   retries: {},
   currentStage: null,
+  resources: { cpu: 0, ram: 150 },
 };
 
 function save() {
@@ -51,18 +63,33 @@ process.on('SIGINT', () => {
 });
 
 async function doStage(stage, durationMs, verdict = 'PASS', severity = null) {
-  // 開始委派
+  const stageStart = Date.now();
   state.currentStage = stage;
   state.delegationActive = true;
+  const [cpuMin, cpuMax] = STAGE_CPU[stage] || [10, 50];
+  state.resources.cpu = Math.round(cpuMin + Math.random() * (cpuMax - cpuMin));
+  state.resources.ram = Math.min(512, state.resources.ram + Math.round(5 + Math.random() * 15));
   state.lastTransition = new Date().toISOString();
   save();
   console.log(`  🔄 ${stage} — ${STAGE_AGENTS[stage]} 工作中...`);
 
-  await sleep(durationMs);
+  // 分段 sleep + 資源波動
+  const chunks = Math.max(3, Math.ceil(durationMs / 600));
+  for (let i = 0; i < chunks; i++) {
+    await sleep(durationMs / chunks);
+    state.resources.cpu = Math.round(cpuMin + Math.random() * (cpuMax - cpuMin));
+    if (Math.random() > 0.6) state.resources.ram = Math.min(512, state.resources.ram + Math.round(Math.random() * 8));
+    state.lastTransition = new Date().toISOString();
+    save();
+  }
 
-  // 完成
+  const duration = parseFloat(((Date.now() - stageStart) / 1000).toFixed(1));
+  const [toolMin, toolMax] = STAGE_TOOLS[stage] || [5, 15];
+  const toolCalls = Math.round(toolMin + Math.random() * (toolMax - toolMin));
+
   state.delegationActive = false;
-  state.stageResults[stage] = { verdict, severity };
+  state.resources.cpu = Math.round(2 + Math.random() * 8);
+  state.stageResults[stage] = { verdict, severity, duration, toolCalls };
   if (!state.completed.includes(STAGE_AGENTS[stage])) {
     state.completed.push(STAGE_AGENTS[stage]);
   }
@@ -70,7 +97,7 @@ async function doStage(stage, durationMs, verdict = 'PASS', severity = null) {
   save();
 
   const icon = verdict === 'PASS' ? '✅' : '❌';
-  console.log(`  ${icon} ${stage} — ${verdict}${severity ? ` (${severity})` : ''}`);
+  console.log(`  ${icon} ${stage} — ${verdict}${severity ? ` (${severity})` : ''} [${duration}s, ${toolCalls} tools]`);
 }
 
 async function run() {
