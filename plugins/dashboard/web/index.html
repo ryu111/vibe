@@ -15,7 +15,7 @@
       --blue: #89b4fa; --green: #a6e3a1; --red: #f38ba8; --yellow: #f9e2af;
       --purple: #cba6f7; --cyan: #89dceb; --pink: #f5c2e7; --orange: #fab387;
     }
-    body { font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Menlo', monospace; background: var(--bg); color: var(--text); }
+    body { font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Menlo', monospace; background: var(--bg); color: var(--text); overflow: hidden; }
     .layout { display: grid; grid-template-columns: var(--sidebar-w, 230px) 1fr; height: 100vh; transition: grid-template-columns 0.3s ease; }
     .layout.collapsed { --sidebar-w: 52px; }
 
@@ -645,8 +645,12 @@
         return () => window.removeEventListener('keydown', onZoom, true);
       }, []);
 
-      // 套用縮放
-      useEffect(() => { document.documentElement.style.zoom = zoom + '%'; }, [zoom]);
+      // 套用縮放 — transform: scale() + 容器尺寸補償（填滿整個視窗）
+      const zoomStyle = useMemo(() => {
+        if (zoom === 100) return '';
+        const s = zoom / 100;
+        return `transform:scale(${s});transform-origin:0 0;width:${100/s}vw;height:${100/s}vh;`;
+      }, [zoom]);
 
       // 鍵盤快捷鍵
       useEffect(() => {
@@ -708,7 +712,7 @@
 
       return html`
         <div class="${theme === 'pixel' ? 'pixel ' : ''}${focusCards ? 'focus-cards ' : ''}layout ${sideOpen && !fullscreen ? '' : fullscreen ? 'fullscreen' : 'collapsed'}"
-          style="${theme === 'pixel' ? 'image-rendering:pixelated' : ''}"
+          style="${zoomStyle}${theme === 'pixel' ? 'image-rendering:pixelated' : ''}"
         >
           <!-- Confetti -->
           ${showConfetti && html`<${Confetti} />`}
