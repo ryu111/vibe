@@ -186,6 +186,32 @@
     .empty code { background: var(--surface0); padding: 2px 8px; border-radius: 4px; font-size: 11px; color: var(--text); }
     @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 
+    /* 浮動連線燈號（右下角） */
+    .conn-float { position: fixed; bottom: 12px; right: 12px; display: flex; align-items: center; gap: 6px; padding: 5px 10px; background: var(--surface0); border: 1px solid var(--surface1); border-radius: 20px; font-size: 10px; color: var(--subtext0); z-index: 100; transition: all 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+    .conn-float:hover { border-color: var(--surface2); }
+
+    /* 全螢幕模式 */
+    .layout.fullscreen { grid-template-columns: 1fr; }
+    .layout.fullscreen .sidebar { display: none; }
+    .layout.fullscreen .main { padding: 20px 40px; }
+
+    /* Timeline 收合 */
+    .timeline .tl-toggle { cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none; }
+    .timeline .tl-toggle:hover { color: var(--text); }
+    .timeline .tl-toggle .arrow { font-size: 8px; transition: transform 0.2s; }
+    .timeline.collapsed .tl-toggle .arrow { transform: rotate(-90deg); }
+    .timeline.collapsed .tl-items { display: none; }
+
+    /* 工具列 */
+    .toolbar { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+    .tool-btn { background: var(--surface0); border: 1px solid var(--surface1); border-radius: 6px; padding: 3px 8px; font-size: 10px; color: var(--subtext0); cursor: pointer; font-family: inherit; transition: all 0.2s; display: flex; align-items: center; gap: 4px; }
+    .tool-btn:hover { border-color: var(--surface2); color: var(--text); background: var(--surface1); }
+    .tool-btn.active { border-color: var(--blue); color: var(--blue); }
+
+    /* 快捷鍵提示 */
+    .kbd-toast { position: fixed; top: 12px; right: 12px; background: var(--surface0); border: 1px solid var(--surface1); border-radius: 8px; padding: 8px 14px; font-size: 10px; color: var(--subtext0); z-index: 200; animation: fadeInOut 2s ease forwards; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+    @keyframes fadeInOut { 0% { opacity: 0; transform: translateY(-8px); } 15% { opacity: 1; transform: translateY(0); } 85% { opacity: 1; } 100% { opacity: 0; } }
+
     /* Responsive */
     @media (max-width: 700px) {
       .layout, .layout.collapsed { grid-template-columns: 1fr; grid-template-rows: auto 1fr; --sidebar-w: 1fr; }
@@ -330,6 +356,27 @@
       `;
     }
 
+    // --- 報告導出 ---
+    function exportReport(s, active, events, format) {
+      if (!s) return;
+      const stages = ALL_STAGES.map(stage => {
+        const status = getStatus(stage, s);
+        const r = s.stageResults?.[stage];
+        return { stage, agent: SM[stage].agent, label: SM[stage].label, status, verdict: r?.verdict || (status === 'skipped' ? 'SKIP' : '—'), retries: s.retries?.[stage] || 0 };
+      });
+      if (format === 'json') {
+        const report = { sessionId: active, taskType: s.taskType, progress: pct(s) + '%', environment: s.environment, stages, timeline: events.slice(0, 50).map(e => ({ time: e.time, text: e.text, type: e.type })), exportedAt: new Date().toISOString() };
+        const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `pipeline-${active?.slice(0, 8) || 'report'}.json`; a.click();
+      } else {
+        const lines = [`# Pipeline Report\n`, `- **Session**: ${active}`, `- **Type**: ${s.taskType || '—'}`, `- **Progress**: ${pct(s)}%`, `- **Exported**: ${new Date().toISOString()}\n`, `## Stages\n`, `| Stage | Agent | Verdict | Retries |`, `|-------|-------|---------|---------|`];
+        for (const st of stages) lines.push(`| ${st.stage} | ${st.agent} | ${st.verdict} | ${st.retries} |`);
+        if (events.length) { lines.push(`\n## Timeline\n`); for (const ev of events.slice(0, 30)) lines.push(`- \`${ev.time}\` ${ev.text}`); }
+        const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `pipeline-${active?.slice(0, 8) || 'report'}.md`; a.click();
+      }
+    }
+
     // --- App ---
     function App() {
       const [sessions, setSessions] = useState({});
@@ -338,6 +385,9 @@
       const [events, setEvents] = useState([]);
       const [sideOpen, setSideOpen] = useState(true);
       const [sort, setSort] = useState('recent');
+      const [tlOpen, setTlOpen] = useState(true);
+      const [fullscreen, setFullscreen] = useState(false);
+      const [toast, setToast] = useState(null);
       const prevRef = useRef({});
 
       // 分組 + 排序
@@ -355,6 +405,13 @@
         return { pipeline: pipe, zombie, idle };
       }, [sessions, sort]);
 
+      // --- 計算值（必須在 useEffect 之前）---
+      const s = active ? sessions[active] : null;
+      const progress = s ? pct(s) : 0;
+      const isComplete = progress === 100 && hasPipeline(s);
+      const selectSession = id => { setActive(id); setEvents([]); prevRef.current = {}; };
+      const row2Reversed = [...ROW2].reverse();
+
       // WebSocket（指數退避 + 心跳）
       useEffect(() => {
         let ws, rt, hb, retries = 0;
@@ -369,6 +426,28 @@
         connect();
         return () => { ws?.close(); clearTimeout(rt); clearInterval(hb); };
       }, []);
+
+      // 鍵盤快捷鍵
+      useEffect(() => {
+        function onKey(e) {
+          if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+          const sids = [...pipeSessions, ...idleSessions, ...zombieSessions].map(([id]) => id);
+          const idx = sids.indexOf(active);
+          switch(e.key) {
+            case 'ArrowUp': case 'k': e.preventDefault(); if (idx > 0) selectSession(sids[idx - 1]); break;
+            case 'ArrowDown': case 'j': e.preventDefault(); if (idx < sids.length - 1) selectSession(sids[idx + 1]); break;
+            case 's': case 'S': setSideOpen(p => !p); showToast('S — 側邊欄切換'); break;
+            case 'f': case 'F': setFullscreen(p => !p); showToast('F — 全螢幕切換'); break;
+            case 't': case 'T': setTlOpen(p => !p); showToast('T — Timeline 切換'); break;
+            case '?': showToast('↑↓ 切換 · S 側邊欄 · F 全螢幕 · T Timeline · E 導出'); break;
+            case 'e': case 'E': if (s) { exportReport(s, active, events, 'md'); showToast('E — 導出 Markdown'); } break;
+          }
+        }
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [active, pipeSessions, idleSessions, zombieSessions, s, events]);
+
+      function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2000); }
 
       // 自動選擇
       useEffect(() => {
@@ -397,21 +476,16 @@
         prevRef.current[active] = JSON.parse(JSON.stringify(curr));
       }, [sessions, active]);
 
-      const s = active ? sessions[active] : null;
-      const progress = s ? pct(s) : 0;
-      const isComplete = progress === 100 && hasPipeline(s);
-      const selectSession = id => { setActive(id); setEvents([]); prevRef.current = {}; };
-
-      // 第二排反轉（右到左）
-      const row2Reversed = [...ROW2].reverse();
-
       return html`
-        <div class="layout ${sideOpen ? '' : 'collapsed'}">
+        <div class="layout ${sideOpen && !fullscreen ? '' : fullscreen ? 'fullscreen' : 'collapsed'}">
+          <!-- 浮動連線燈號 -->
+          <div class="conn-float"><span class="dot ${conn ? 'on' : 'off'}"></span><span>${conn ? '已連線' : '重新連線中…'}</span></div>
+          <!-- Toast -->
+          ${toast && html`<div class="kbd-toast">${toast}</div>`}
           <!-- Sidebar -->
           <div class="sidebar">
             <div class="sb-top">
               <button class="sb-toggle" onClick=${() => setSideOpen(!sideOpen)}>${sideOpen ? '◀' : '▶'}</button>
-              <div class="conn"><span class="dot ${conn ? 'on' : 'off'}"></span><span>${conn ? '已連線' : '重新連線中…'}</span></div>
             </div>
             <div class="sb-body">
               ${sideOpen && html`
@@ -474,6 +548,13 @@
                 🎯 Pipeline — ${sid(active)}
                 ${s.taskType && html`<span class="task-badge">${s.taskType}</span>`}
                 ${isComplete && html`<span style="margin-left:4px">🎉</span>`}
+                <div class="toolbar">
+                  <button class="tool-btn ${fullscreen ? 'active' : ''}" onClick=${() => setFullscreen(!fullscreen)} title="全螢幕 (F)">
+                    ${fullscreen ? '⊡' : '⊞'}
+                  </button>
+                  <button class="tool-btn" onClick=${() => exportReport(s, active, events, 'md')} title="導出 Markdown (E)">📄</button>
+                  <button class="tool-btn" onClick=${() => exportReport(s, active, events, 'json')} title="導出 JSON">{ }</button>
+                </div>
               </h1>
 
               <!-- S/U Snake Grid -->
@@ -517,11 +598,16 @@
               `}
 
               <!-- Timeline -->
-              <div class="timeline">
-                <h3>📋 Timeline</h3>
-                ${events.length ? events.slice(0, 30).map(ev => html`
-                  <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.text}</span></div>
-                `) : html`<div style="color:var(--subtext0);font-size:11px;padding:6px 0">等待 pipeline 啟動…</div>`}
+              <div class="timeline ${tlOpen ? '' : 'collapsed'}">
+                <h3 class="tl-toggle" onClick=${() => setTlOpen(!tlOpen)}>
+                  <span>📋 Timeline ${events.length ? `(${events.length})` : ''}</span>
+                  <span class="arrow">${tlOpen ? '▼' : '▶'}</span>
+                </h3>
+                <div class="tl-items">
+                  ${events.length ? events.slice(0, 30).map(ev => html`
+                    <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.text}</span></div>
+                  `) : html`<div style="color:var(--subtext0);font-size:11px;padding:6px 0">等待 pipeline 啟動…</div>`}
+                </div>
               </div>
             ` : html`
               <div class="empty">
