@@ -94,7 +94,7 @@
         "skills": ["notify", "notify-config"],
         "agents": [],
         "hooks": 2,
-        "scripts": 3
+        "scripts": 4
       }
     },
     "collab": {

@@ -51,3 +51,10 @@ Vibe 是 Claude Code marketplace（複數 plugins 容器），第一個 plugin �
 - **功能需驗證測試**：所有功能在完成前必須經過實際驗證測試，reference specs 以實測為準
 - **版號更新**：commit 涉及 plugin 變更時，必須同步更新該 plugin 的 `plugin.json` version（patch +1 = 修正/文件，minor +1 = 新功能/組件，major +1 = 破壞性變更）
 - 不確定時詢問，不猜測
+
+## AskUserQuestion 規則
+
+- **選項語言**：label 和 description 用繁體中文為主，技術術語（如 API、commit）保持英文
+- **描述清晰**：description 必須說明「會做什麼」，不能只是概念描述
+- **避免混語**：不要中英文夾雜（如「Commit 並推送」→「提交並推送」）
+- **actionable**：每個選項的結果要明確、可預期

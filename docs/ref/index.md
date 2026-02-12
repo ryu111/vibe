@@ -124,7 +124,7 @@ COLLAB   SessionStart: team-init      /sentinel:lint    手動 lint
 | 5 | **patterns** | 無 | 8S |
 | 6 | **evolve** | flow 可選 | 2S + 1A |
 | 7 | **dashboard** | forge ✅ | 1S + 1H + 2Sc |
-| 8 | **notify** | forge ✅ | 2S + 2H + 3Sc |
+| 8 | **notify** | forge ✅ | 2S + 2H + 4Sc |
 | 9 | **collab** | Agent Teams | 3S + 1H + 1Sc |
 
 > **flow 先於 sentinel**：規劃 → 寫碼 → 品質檢查，符合自然開發流程。
@@ -140,7 +140,7 @@ COLLAB   SessionStart: team-init      /sentinel:lint    手動 lint
 | 3 | patterns | [patterns.md](patterns.md) | 8 | 0 | 0 | 0 |
 | 4 | evolve | [evolve.md](evolve.md) | 2 | 1 | 0 | 0 |
 | 5 | dashboard | [dashboard.md](dashboard.md) | 1 | 0 | 1 | 2 |
-| 6 | notify | [notify.md](notify.md) | 2 | 0 | 2 | 3 |
+| 6 | notify | [notify.md](notify.md) | 2 | 0 | 2 | 4 |
 | 7 | collab | [collab.md](collab.md) | 3 | 0 | 1 | 1 |
 
 > **S** = Skill, **A** = Agent, **H** = Hook, **Sc** = Script
@@ -155,5 +155,5 @@ COLLAB   SessionStart: team-init      /sentinel:lint    手動 lint
 | **Skills** | 35 | 27 動態能力 + 8 知識庫（patterns） |
 | **Agents** | 10 | 跨 3 個 plugins |
 | **Hooks** | 18 | 自動觸發 |
-| **Scripts** | 31 | hook 腳本 + 共用函式庫 |
-| **合計** | 94 | 跨 8 個獨立安裝的 plugins |
+| **Scripts** | 32 | hook 腳本 + 共用函式庫 |
+| **合計** | 95 | 跨 8 個獨立安裝的 plugins |
