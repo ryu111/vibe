@@ -3,7 +3,10 @@
  * task-classifier.js — UserPromptSubmit hook
  *
  * 分析使用者 prompt，分類任務類型，更新 pipeline state 的 expectedStages。
- * 取代原本的 prompt hook — 因為 prompt hook 的自定義欄位不會被讀取。
+ * 支援中途重新分類（漸進式升級）：
+ *   - 升級（research → feature）：合併階段，注入委派規則
+ *   - 降級（feature → research）：阻擋，保持現有 pipeline 不中斷
+ *   - 同級：不重複注入
  */
 'use strict';
 const fs = require('fs');
@@ -31,6 +34,29 @@ const TYPE_LABELS = {
   refactor: '重構',
   test: '測試',
   tdd: 'TDD 開發',
+};
+
+// 任務類型優先級（越大 = pipeline 越完整）
+const TYPE_PRIORITY = {
+  research: 0,
+  quickfix: 1,
+  test: 2,
+  bugfix: 3,
+  refactor: 4,
+  tdd: 5,
+  feature: 6,
+};
+
+// 硬編碼 agent→stage 映射（零依賴，不 import pipeline-discovery）
+const AGENT_STAGE = {
+  'flow:planner': 'PLAN',
+  'flow:architect': 'ARCH',
+  'flow:developer': 'DEV',
+  'sentinel:code-reviewer': 'REVIEW',
+  'sentinel:tester': 'TEST',
+  'sentinel:qa': 'QA',
+  'sentinel:e2e-runner': 'E2E',
+  'evolve:doc-updater': 'DOCS',
 };
 
 /**
@@ -68,42 +94,141 @@ function classify(prompt) {
   return 'feature';
 }
 
+/**
+ * 判斷是否為升級（新類型的 pipeline 更大）
+ */
+function isUpgrade(oldType, newType) {
+  return (TYPE_PRIORITY[newType] || 0) > (TYPE_PRIORITY[oldType] || 0);
+}
+
+/**
+ * 計算已完成的 stages（從 state.completed agents 推導）
+ */
+function getCompletedStages(completedAgents) {
+  const stages = new Set();
+  for (const agent of (completedAgents || [])) {
+    const stage = AGENT_STAGE[agent];
+    if (stage) stages.add(stage);
+  }
+  return stages;
+}
+
+/**
+ * 初始分類輸出（首次分類）
+ */
+function outputInitialClassification(type, label, stages) {
+  if (stages.length > 0) {
+    const stageStr = stages.join(' → ');
+    const firstStage = stages[0];
+    console.log(JSON.stringify({
+      additionalContext: `⛔ [Pipeline 任務分類] 類型：${label}\n必要階段：${stageStr}\n🚫 你是管理者 — 禁止直接使用 Write/Edit 寫程式碼。立即使用 Task 工具委派 ${firstStage} 階段的 sub-agent。`,
+    }));
+  } else {
+    console.log(JSON.stringify({
+      additionalContext: `[任務分類] 類型：${label} — 無需 pipeline，直接回答。`,
+    }));
+  }
+}
+
+/**
+ * 升級輸出（中途升級到更大型 pipeline）
+ * 使用 systemMessage 強注入委派規則（因為 pipeline-init 不會重新觸發）
+ */
+function outputUpgrade(oldLabel, newLabel, remainingStages, skippedStages) {
+  if (remainingStages.length === 0) {
+    console.log(JSON.stringify({
+      additionalContext: `[Pipeline 升級] ${oldLabel} → ${newLabel} — 所有階段已完成。`,
+    }));
+    return;
+  }
+
+  const stageStr = remainingStages.join(' → ');
+  const firstStage = remainingStages[0];
+  const skipNote = skippedStages.length > 0
+    ? `\n⏭️ 已完成的階段自動跳過：${skippedStages.join('、')}`
+    : '';
+
+  // 升級時用 systemMessage（強）— 彌補 pipeline-init 不會重新觸發的問題
+  console.log(JSON.stringify({
+    systemMessage: `⛔ [Pipeline 升級] ${oldLabel} → ${newLabel}\n` +
+      `你**必須**切換到 Pipeline 管理者模式。\n` +
+      `剩餘階段：${stageStr}${skipNote}\n` +
+      `\n█ 絕對禁止 █\n` +
+      `- 🚫 禁止直接使用 Write/Edit 寫程式碼\n` +
+      `- 你的唯一職責：使用 Task/Skill 工具委派各階段給 sub-agent\n` +
+      `- 違反此規則的 Write/Edit 操作會被 dev-gate hook 硬阻擋（exit 2）\n` +
+      `\n立即使用 Task 工具委派 ${firstStage} 階段的 sub-agent。`,
+  }));
+}
+
 let input = '';
 process.stdin.on('data', d => input += d);
 process.stdin.on('end', () => {
   try {
     const data = JSON.parse(input);
-    // UserPromptSubmit stdin 可能有不同欄位名
     const prompt = data.prompt || data.user_prompt || data.content || '';
     const sessionId = data.session_id || 'unknown';
 
-    const type = classify(prompt);
-    const stages = STAGE_MAPS[type] || [];
-    const label = TYPE_LABELS[type] || type;
+    const newType = classify(prompt);
+    const newStages = STAGE_MAPS[newType] || [];
+    const newLabel = TYPE_LABELS[newType] || newType;
 
-    // 更新 pipeline state file 的 expectedStages
     const statePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
+
+    // 讀取現有 state
+    let state = null;
     if (fs.existsSync(statePath)) {
       try {
-        const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-        state.taskType = type;
-        state.expectedStages = stages;
-        fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+        state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
       } catch (_) {}
     }
 
-    // 輸出分類結果給主 agent
-    if (stages.length > 0) {
-      const stageStr = stages.join(' → ');
-      const firstStage = stages[0];
-      console.log(JSON.stringify({
-        additionalContext: `⛔ [Pipeline 任務分類] 類型：${label}\n必要階段：${stageStr}\n🚫 你是管理者 — 禁止直接使用 Write/Edit 寫程式碼。立即使用 Task 工具委派 ${firstStage} 階段的 sub-agent。`,
-      }));
-    } else {
-      console.log(JSON.stringify({
-        additionalContext: `[任務分類] 類型：${label} — 無需 pipeline，直接回答。`,
-      }));
+    // 無 state file 或無 taskType → 初始分類
+    if (!state || !state.taskType) {
+      if (state) {
+        state.taskType = newType;
+        state.expectedStages = newStages;
+        fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+      }
+      outputInitialClassification(newType, newLabel, newStages);
+      return;
     }
+
+    // ===== 已有 taskType → 重新分類邏輯 =====
+    const oldType = state.taskType;
+    const oldLabel = TYPE_LABELS[oldType] || oldType;
+
+    // 相同類型 → 不重複注入（避免每次 prompt 都觸發）
+    if (oldType === newType) {
+      return;
+    }
+
+    // 降級 → 阻擋，保持現有 pipeline 不中斷
+    if (!isUpgrade(oldType, newType)) {
+      return;
+    }
+
+    // ===== 升級！=====
+    const completedStages = getCompletedStages(state.completed);
+    const remainingStages = newStages.filter(s => !completedStages.has(s));
+    const skippedStages = newStages.filter(s => completedStages.has(s));
+
+    // 記錄重新分類歷史
+    if (!state.reclassifications) state.reclassifications = [];
+    state.reclassifications.push({
+      from: oldType,
+      to: newType,
+      at: new Date().toISOString(),
+      skippedStages,
+    });
+
+    // 更新 state
+    state.taskType = newType;
+    state.expectedStages = newStages;
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+
+    // 輸出升級指令
+    outputUpgrade(oldLabel, newLabel, remainingStages, skippedStages);
   } catch (err) {
     process.stderr.write(`task-classifier: ${err.message}\n`);
   }

@@ -244,35 +244,42 @@ memory: project
 
 ```json
 {
-  "matcher": null,
+  "matcher": "*",
   "hooks": [{
-    "type": "prompt",
-    "prompt": "Classify this user request into exactly one type.\n\nTypes:\n- research: read-only exploration, questions, understanding code\n- quickfix: trivial change (rename, color, typo) — 1-2 files\n- bugfix: fix specific broken behavior — needs verification\n- feature: new capability — needs planning, architecture, full pipeline\n- refactor: restructure existing code — needs architecture review\n- test: add or fix tests only\n- docs: documentation only\n- tdd: user explicitly requested TDD workflow\n\nStage mappings:\n- research: []\n- quickfix: [\"DEV\"]\n- bugfix: [\"DEV\", \"TEST\"]\n- feature: [\"PLAN\", \"ARCH\", \"DEV\", \"REVIEW\", \"TEST\", \"DOCS\"]\n- refactor: [\"ARCH\", \"DEV\", \"REVIEW\"]\n- test: [\"TEST\"]\n- docs: [\"DOCS\"]\n- tdd: [\"TEST\", \"DEV\", \"REVIEW\"]\n\nRespond with ONLY this JSON: {\"decision\":\"allow\",\"type\":\"...\",\"stages\":[...]}",
-    "model": "haiku",
-    "timeout": 10
+    "type": "command",
+    "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/task-classifier.js",
+    "timeout": 5
   }]
 }
 ```
 
-**強度：軟建議** — prompt hook 回應作為 `additionalContext` 注入，Claude 可自行判斷。
+**強度：初始分類為軟建議（additionalContext），升級為強指令（systemMessage）**
 
 **行為**：
-1. 每次使用者送出訊息時自動觸發（haiku，快速便宜）
-2. 分類結果作為 `additionalContext` 注入，Claude 看到分類建議
-3. Claude 結合完整對話 context 做最終決策 — **建議而非強制**
+1. 每次使用者送出訊息時觸發（keyword heuristic，零成本）
+2. 初始分類：結果作為 `additionalContext` 注入，告知 pipeline 階段
+3. **漸進式升級**（v0.3.3）：支援中途重新分類
+   - **升級**（如 research → feature）：注入 `systemMessage` 強制切換到管理者模式
+   - **降級**（如 feature → research）：靜默忽略，保護進行中的 pipeline
+   - **同級**：靜默忽略，避免重複注入
+4. 升級時自動跳過已完成的階段，記錄重新分類歷史
 
-**任務類型與 Pipeline 對應**：
+**任務類型優先級**（由低到高）：
 
-| 類型 | 啟動階段 | 典型場景 |
-|------|---------|---------|
-| research | — | 「這個 API 怎麼運作？」 |
-| quickfix | DEV | 「把按鈕顏色改成藍色」 |
-| bugfix | DEV → TEST | 「登入按鈕壞了」 |
-| feature | PLAN → ARCH → DEV → REVIEW → TEST → DOCS | 「加上用戶認證系統」 |
-| refactor | ARCH → DEV → REVIEW | 「把 auth 模組拆開」 |
-| test | TEST | 「這個模組沒有測試」 |
-| docs | DOCS | 「幫 API 寫文件」 |
-| tdd | TEST(RED) → DEV(GREEN) → REVIEW | 「用 TDD 寫這個功能」 |
+| 優先級 | 類型 | 啟動階段 | 典型場景 |
+|:------:|------|---------|---------|
+| 0 | research | — | 「這個 API 怎麼運作？」 |
+| 1 | quickfix | DEV | 「把按鈕顏色改成藍色」 |
+| 2 | test | TEST | 「這個模組沒有測試」 |
+| 3 | bugfix | DEV → TEST | 「登入按鈕壞了」 |
+| 4 | refactor | ARCH → DEV → REVIEW | 「把 auth 模組拆開」 |
+| 5 | tdd | TEST → DEV → REVIEW | 「用 TDD 寫這個功能」 |
+| 6 | feature | PLAN → ... → DOCS | 「加上用戶認證系統」 |
+
+**升級機制**：當新分類的優先級 > 當前 taskType → 觸發升級。升級時：
+- 寫入 `state.reclassifications[]` 記錄（from/to/timestamp/skippedStages）
+- 計算剩餘階段（排除 `state.completed` 中已完成的 agents 對應的 stages）
+- 注入 `systemMessage` 包含委派規則（因為 pipeline-init 不會重新觸發）
 
 ### 6.2 SessionStart: pipeline-init
 
