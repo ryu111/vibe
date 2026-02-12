@@ -395,8 +395,16 @@ function genDependencyGraph() {
       <h4 style="color:var(--purple)">可選增強</h4>
       <p><strong>evolve</strong> — 知識進化 + 文件<br>依賴 flow（可選）</p>
     </div>
+    <div class="dep-box dep-advanced">
+      <h4 style="color:var(--cyan)">即時監控</h4>
+      <p><strong>dashboard</strong> — Pipeline 儀表板<br>WebSocket 即時推播 · 獨立運作</p>
+    </div>
+    <div class="dep-box dep-core">
+      <h4 style="color:var(--green)">雙向通訊</h4>
+      <p><strong>notify</strong> — LINE / Telegram 整合<br>進度通知 · 遠端指令 · 雙向溝通</p>
+    </div>
     <div class="dep-box dep-external">
-      <h4 style="color:var(--orange)">進階（需 Agent Teams）</h4>
+      <h4 style="color:var(--orange)">待定（需 Agent Teams）</h4>
       <p><strong>collab</strong> — 多視角競爭分析<br>需 Agent Teams 環境變數</p>
     </div>
   </div>`;
@@ -507,6 +515,16 @@ function genFlowDiagram() {
           flow: ['解析錯誤', '最小修復', '驗證', '≤3 輪'],
         },
         {
+          name: 'qa',
+          color: 'var(--yellow)',
+          perm: 'writable',
+          permLabel: '可寫',
+          trigger: '/sentinel:qa',
+          model: 'sonnet · acceptEdits · 30t',
+          tools: ['Read', 'Bash', 'Grep', 'Glob', 'WebFetch', 'Write', 'Edit'],
+          flow: ['啟動應用', '呼叫 API', '驗證 CLI', '確認行為'],
+        },
+        {
           name: 'e2e-runner',
           color: 'var(--green)',
           perm: 'writable',
@@ -524,6 +542,7 @@ function genFlowDiagram() {
         { label: '/sentinel:format', auto: false },
         { label: '/sentinel:coverage', auto: false },
         { label: '/sentinel:verify', auto: false },
+        { label: '/sentinel:qa', auto: false },
       ],
     },
     {
@@ -726,12 +745,32 @@ function genFlowDiagram() {
       </div>
     </div>`);
 
-  // COLLAB — 任意階段可插入
+  // DASHBOARD — 即時監控
   parts.push(`
-    <div class="agent-human" style="border-color:var(--orange);border-style:dotted;background:rgba(240,136,62,0.04);margin-top:1rem">
+    <div class="agent-human" style="border-color:var(--cyan);border-style:dashed;background:rgba(57,210,192,0.04);margin-top:1rem">
+      <div class="agent-human-icon">📊</div>
+      <div>
+        <div class="agent-human-text"><strong style="color:var(--cyan)">DASHBOARD</strong> <span style="opacity:0.6;font-size:0.75rem">WebSocket · 全程即時監控</span></div>
+        <div class="agent-human-detail">/dashboard · 瀏覽器儀表板即時顯示 Pipeline 各階段進度與狀態</div>
+      </div>
+    </div>`);
+
+  // NOTIFY — 通訊整合
+  parts.push(`
+    <div class="agent-human" style="border-color:var(--green);border-style:dashed;background:rgba(63,185,80,0.04);margin-top:0.5rem">
+      <div class="agent-human-icon">💬</div>
+      <div>
+        <div class="agent-human-text"><strong style="color:var(--green)">NOTIFY</strong> <span style="opacity:0.6;font-size:0.75rem">LINE / Telegram · 雙向通訊</span></div>
+        <div class="agent-human-detail">/notify · 進度通知 · 完成回報 · 遠端指令 · 雙向溝通</div>
+      </div>
+    </div>`);
+
+  // COLLAB — 任意階段可插入（待定）
+  parts.push(`
+    <div class="agent-human" style="border-color:var(--text-muted);border-style:dotted;background:rgba(255,255,255,0.02);margin-top:0.5rem;opacity:0.6">
       <div class="agent-human-icon">⚔️</div>
       <div>
-        <div class="agent-human-text"><strong style="color:var(--orange)">COLLAB</strong> <span style="opacity:0.6;font-size:0.75rem">Agent Teams · 任意階段可插入</span></div>
+        <div class="agent-human-text"><strong style="color:var(--text-muted)">COLLAB</strong> <span style="opacity:0.6;font-size:0.75rem">待定 · Agent Teams</span></div>
         <div class="agent-human-detail">/collab:adversarial-plan · /collab:adversarial-review · /collab:adversarial-refactor</div>
       </div>
     </div>`);
@@ -851,25 +890,45 @@ function genAgentDetails() {
             { t: 'output', text: '修復完成', sub: '成功：已修檔案 · 失敗：需人工介入' },
           ],
         },
-        {
-          name: 'e2e-runner', color: 'var(--green)', perm: '可寫', permClass: 'writable',
-          model: 'sonnet', mode: 'acceptEdits', maxTurns: 30,
-          nodes: [
-            { t: 'input', text: '測試目標', sub: '/sentinel:e2e 觸發' },
-            { t: 'step', text: '分析頁面', sub: 'Read HTML/JSX · 識別互動元素' },
-            { t: 'step', text: '建 Page Objects', sub: '每頁一 class：Locators + Actions' },
-            { t: 'step', text: '撰寫測試 Spec', sub: '依 Page Object 模式組織' },
-            { t: 'loop', label: '≤3 輪', nodes: [
-              { t: 'step', text: '執行測試', sub: 'npx playwright test' },
-              { t: 'decision', text: '通過？', sub: 'Yes → 完成 · No → 除錯' },
-            ]},
-            { t: 'output', text: '通過的 E2E 測試', sub: 'Page Objects · Specs · 結果報告' },
-          ],
-        },
       ],
     },
     {
-      num: '⑥', label: 'DOCS', color: 'var(--green)',
+      num: '⑥', label: 'QA', color: 'var(--yellow)',
+      fallback: { icon: '↩', text: '行為不符預期', target: '③ DEV', detail: '修復後重新驗證' },
+      agents: [{
+        name: 'qa', color: 'var(--yellow)', perm: '可寫', permClass: 'writable',
+        model: 'sonnet', mode: 'acceptEdits', maxTurns: 30,
+        nodes: [
+          { t: 'input', text: '應用 + API', sub: '/sentinel:qa 觸發' },
+          { t: 'step', text: '啟動應用', sub: 'Bash → 啟動 server / 建構專案' },
+          { t: 'step', text: 'Smoke Test', sub: '健康檢查 · 基本端點回應正確' },
+          { t: 'step', text: 'API 驗證', sub: '呼叫 API · 驗證回應格式與內容' },
+          { t: 'step', text: 'CLI 驗證', sub: '執行 CLI 指令 · 確認輸出正確' },
+          { t: 'output', text: '行為驗證報告', sub: '通過項目 · 失敗項目 · 重現步驟' },
+        ],
+      }],
+    },
+    {
+      num: '⑦', label: 'E2E', color: 'var(--green)',
+      fallback: { icon: '↩', text: '使用者流程失敗', target: '③ DEV', detail: '修復後重新測試' },
+      agents: [{
+        name: 'e2e-runner', color: 'var(--green)', perm: '可寫', permClass: 'writable',
+        model: 'sonnet', mode: 'acceptEdits', maxTurns: 30,
+        nodes: [
+          { t: 'input', text: '測試目標', sub: '/sentinel:e2e 觸發' },
+          { t: 'step', text: '分析頁面', sub: 'Read HTML/JSX · 識別互動元素' },
+          { t: 'step', text: '建 Page Objects', sub: '每頁一 class：Locators + Actions' },
+          { t: 'step', text: '撰寫測試 Spec', sub: '依 Page Object 模式組織' },
+          { t: 'loop', label: '≤3 輪', nodes: [
+            { t: 'step', text: '執行測試', sub: 'npx playwright test' },
+            { t: 'decision', text: '通過？', sub: 'Yes → 完成 · No → 除錯' },
+          ]},
+          { t: 'output', text: '通過的 E2E 測試', sub: 'Page Objects · Specs · 結果報告' },
+        ],
+      }],
+    },
+    {
+      num: '⑧', label: 'DOCS', color: 'var(--green)',
       fallback: { icon: '⚠', text: '語意變更需人工確認', target: '開發者', detail: '審查建議後手動調整文件' },
       agents: [{
         name: 'doc-updater', color: 'var(--green)', perm: '可寫', permClass: 'writable',
