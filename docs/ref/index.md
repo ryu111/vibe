@@ -2,8 +2,8 @@
 
 > 8 個 plugin（forge + 7 新）的總流程、依賴關係，以及各文件索引。
 >
-> **此檔案由 `scripts/generate-dashboard.js` 自動產生，請勿手動編輯。**
-> 修改來源：`docs/plugin-specs.json`（數量）+ `scripts/generate-dashboard.js`（結構）
+> **此檔案由 `dashboard/scripts/generate.js` 自動產生，請勿手動編輯。**
+> 修改來源：`docs/plugin-specs.json`（數量）+ `dashboard/scripts/generate.js`（結構）
 
 ---
 

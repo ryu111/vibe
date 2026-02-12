@@ -4,6 +4,7 @@
  *
  * 用途：Stop hook 每次 Claude 回應完畢後自動執行
  * 行為：
+ *   0. 執行 sync-dashboard-data.js（更新 dashboard-meta.json）
  *   1. 執行 scan-progress.js（更新 progress.json）
  *   2. 執行 generate-dashboard.js（更新 dashboard.html）
  *   3. 偵測 dashboard.html 是否已在瀏覽器開啟
@@ -18,13 +19,25 @@ const path = require('path');
 const fs = require('fs');
 
 const ROOT = process.cwd();
-const DASHBOARD_PATH = path.join(ROOT, 'docs', 'dashboard.html');
+const DASHBOARD_PATH = path.join(ROOT, 'dashboard', 'dashboard.html');
 const DASHBOARD_URL = `file://${DASHBOARD_PATH}`;
+
+// ─── 步驟 0：同步 metadata ──────────────────────────
+
+try {
+  execFileSync('node', [path.join(ROOT, 'dashboard', 'scripts', 'sync-data.js')], {
+    cwd: ROOT,
+    stdio: 'pipe',
+    timeout: 8000,
+  });
+} catch (e) {
+  // 同步失敗不阻擋流程（generate-dashboard 可 fallback）
+}
 
 // ─── 步驟 1 & 2：掃描 + 生成 ─────────────────────
 
 try {
-  execFileSync('node', [path.join(ROOT, 'scripts', 'scan-progress.js')], {
+  execFileSync('node', [path.join(ROOT, 'dashboard', 'scripts', 'scan-progress.js')], {
     cwd: ROOT,
     stdio: 'pipe',
     timeout: 8000,
@@ -35,7 +48,7 @@ try {
 }
 
 try {
-  execFileSync('node', [path.join(ROOT, 'scripts', 'generate-dashboard.js')], {
+  execFileSync('node', [path.join(ROOT, 'dashboard', 'scripts', 'generate.js')], {
     cwd: ROOT,
     stdio: 'pipe',
     timeout: 8000,

@@ -1,0 +1,382 @@
+{
+  "dependencyGroups": [
+    {
+      "id": "independent",
+      "label": "獨立安裝",
+      "color": "var(--yellow)",
+      "class": "dep-independent",
+      "detail": "純知識庫，8 skills，無 hooks/agents"
+    },
+    {
+      "id": "core",
+      "label": "核心雙引擎",
+      "color": "var(--accent)",
+      "class": "dep-core",
+      "detail": "建議一起安裝<br>規劃 → 寫碼 → 品質檢查"
+    },
+    {
+      "id": "advanced",
+      "label": "可選增強",
+      "color": "var(--purple)",
+      "class": "dep-advanced",
+      "detail": "知識進化 + 文件<br>依賴 flow（可選）"
+    },
+    {
+      "id": "monitoring",
+      "label": "即時監控",
+      "color": "var(--cyan)",
+      "class": "dep-advanced",
+      "detail": "Pipeline 儀表板<br>WebSocket 即時推播 · 獨立運作"
+    },
+    {
+      "id": "communication",
+      "label": "雙向通訊",
+      "color": "var(--green)",
+      "class": "dep-core",
+      "detail": "LINE / Telegram 整合<br>進度通知 · 遠端指令 · 雙向溝通"
+    },
+    {
+      "id": "pending",
+      "label": "待定（需 Agent Teams）",
+      "color": "var(--orange)",
+      "class": "dep-external",
+      "detail": "多視角競爭分析<br>需 Agent Teams 環境變數"
+    }
+  ],
+
+  "taskRoutes": [
+    { "type": "research", "label": "研究探索", "stages": "—", "color": "var(--text-muted)" },
+    { "type": "quickfix", "label": "小改動", "stages": "DEV", "color": "var(--yellow)" },
+    { "type": "bugfix", "label": "修 Bug", "stages": "DEV → TEST", "color": "var(--orange)" },
+    { "type": "feature", "label": "新功能", "stages": "PLAN → ARCH → DEV → REVIEW → TEST → DOCS", "color": "var(--green)" },
+    { "type": "refactor", "label": "重構", "stages": "ARCH → DEV → REVIEW", "color": "var(--cyan)" },
+    { "type": "test", "label": "補測試", "stages": "TEST", "color": "var(--lime)" },
+    { "type": "docs", "label": "寫文件", "stages": "DOCS", "color": "var(--green)" },
+    { "type": "tdd", "label": "TDD", "stages": "TEST → DEV → REVIEW", "color": "var(--purple)" }
+  ],
+
+  "taskRoutesCompact": [
+    { "label": "研究探索", "stages": "—", "color": "var(--text-muted)" },
+    { "label": "小改動", "stages": "DEV", "color": "var(--yellow)" },
+    { "label": "修 Bug", "stages": "DEV → TEST", "color": "var(--orange)" },
+    { "label": "新功能", "stages": "全流程", "color": "var(--green)" },
+    { "label": "重構", "stages": "ARCH → DEV → REVIEW", "color": "var(--cyan)" },
+    { "label": "TDD", "stages": "TEST → DEV → REVIEW", "color": "var(--purple)" }
+  ],
+
+  "flowPhases": [
+    {
+      "name": "FLOW",
+      "color": "var(--accent)",
+      "desc": "規劃階段 — 唯讀分析，產出計畫與架構方案",
+      "agentNames": ["planner", "architect"],
+      "extraSteps": [
+        { "label": "SessionStart: pipeline-init", "auto": true },
+        { "label": "PreToolUse: suggest-compact", "auto": true },
+        { "label": "/flow:compact", "auto": false },
+        { "label": "/flow:checkpoint", "auto": false },
+        { "label": "/flow:env-detect", "auto": false }
+      ]
+    },
+    {
+      "name": "DEV",
+      "color": "var(--yellow)",
+      "desc": "實作階段 — 按計畫寫碼，自動 lint/format",
+      "agentNames": ["developer"],
+      "extraSteps": [
+        { "label": "PostToolUse: auto-lint", "auto": true },
+        { "label": "PostToolUse: auto-format", "auto": true },
+        { "label": "PostToolUse: test-check", "auto": true }
+      ]
+    },
+    {
+      "name": "SENTINEL",
+      "color": "var(--accent)",
+      "desc": "品質階段 — 審查、安全、修復、測試",
+      "agentNames": ["code-reviewer", "security-reviewer", "tester", "build-error-resolver", "qa", "e2e-runner"],
+      "extraSteps": [
+        { "label": "PreToolUse: danger-guard", "auto": true },
+        { "label": "Stop: console-log-check", "auto": true },
+        { "label": "/sentinel:lint", "auto": false },
+        { "label": "/sentinel:format", "auto": false },
+        { "label": "/sentinel:coverage", "auto": false },
+        { "label": "/sentinel:verify", "auto": false },
+        { "label": "/sentinel:qa", "auto": false }
+      ]
+    },
+    {
+      "name": "EVOLVE",
+      "color": "var(--purple)",
+      "desc": "文件階段 — 自動更新對應文件",
+      "agentNames": ["doc-updater"],
+      "extraSteps": [
+        { "label": "/evolve:evolve", "auto": false },
+        { "label": "/evolve:doc-sync", "auto": false }
+      ]
+    }
+  ],
+
+  "flowTransitions": [
+    { "arrow": "▼", "label": "計畫 + 架構方案 → 開始實作" },
+    { "arrow": "▼", "label": "程式碼就緒 → 品質檢查" },
+    { "arrow": "▼", "label": "品質通過 → 同步更新文件" }
+  ],
+
+  "supplementaryLayers": [
+    {
+      "name": "PATTERNS",
+      "insertAfter": "FLOW",
+      "icon": "📚",
+      "color": "var(--yellow)",
+      "borderStyle": "dashed",
+      "title": "PATTERNS",
+      "subtitle": "純知識庫 · 8 skills · 無 hooks/agents",
+      "detail": "coding-standards · frontend · backend · typescript · python · go · db · testing",
+      "connectorLabel": "計畫 + 架構方案就緒"
+    },
+    {
+      "name": "DASHBOARD",
+      "position": "bottom",
+      "icon": "📊",
+      "color": "var(--cyan)",
+      "borderStyle": "dashed",
+      "title": "DASHBOARD",
+      "subtitle": "WebSocket · 全程即時監控",
+      "detail": "/dashboard · 瀏覽器儀表板即時顯示 Pipeline 各階段進度與狀態"
+    },
+    {
+      "name": "NOTIFY",
+      "position": "bottom",
+      "icon": "💬",
+      "color": "var(--green)",
+      "borderStyle": "dashed",
+      "title": "NOTIFY",
+      "subtitle": "LINE / Telegram · 雙向通訊",
+      "detail": "/notify · 進度通知 · 完成回報 · 遠端指令 · 雙向溝通"
+    },
+    {
+      "name": "COLLAB",
+      "position": "bottom",
+      "icon": "⚔️",
+      "color": "var(--text-muted)",
+      "borderStyle": "dotted",
+      "opacity": 0.6,
+      "title": "COLLAB",
+      "subtitle": "待定 · Agent Teams",
+      "detail": "/collab:adversarial-plan · /collab:adversarial-review · /collab:adversarial-refactor"
+    }
+  ],
+
+  "guards": {
+    "flow": {
+      "icon": "🧭",
+      "title": "導引",
+      "type": "guide",
+      "hooks": ["pipeline-check Stop", "stage-transition SubagentStop"],
+      "desc": "確保走在正確的路上 — 遺漏 pipeline 階段時注入 systemMessage 建議下一步",
+      "mechanism": "systemMessage → 強建議"
+    },
+    "block": {
+      "icon": "🛡️",
+      "title": "守衛",
+      "type": "block",
+      "hooks": ["task-guard Stop hook"],
+      "desc": "不讓正確的路中斷 — TodoWrite 有未完成項目時，以 decision: \"block\" 絕對阻止結束",
+      "mechanism": "decision: \"block\" → 絕對阻擋（≤5 次）"
+    }
+  },
+
+  "guardsDetailed": {
+    "guide": {
+      "title": "🧭 導引 — 走在正確的路上",
+      "hookLabel": "<code>stage-transition</code> SubagentStop · <code>pipeline-check</code> Stop",
+      "nodes": [
+        { "t": "input", "text": "Stop / SubagentStop 觸發" },
+        { "t": "step", "text": "檢查 pipeline 狀態", "sub": "有遺漏階段？下一步是什麼？" },
+        { "t": "output", "text": "注入 systemMessage", "sub": "建議下一步 → Claude 自行決定是否遵循" }
+      ],
+      "mechanism": "目的：控制流程方向"
+    },
+    "block": {
+      "title": "🛡️ 守衛 — 不讓路中斷",
+      "hookLabel": "<code>task-guard</code> Stop hook · 絕對阻擋",
+      "nodes": [
+        { "t": "input", "text": "Claude 嘗試結束回合" },
+        { "t": "decision", "text": "TodoWrite 全部完成？", "sub": "已取消？超過 5 次？" },
+        { "t": "block", "text": "decision: \"block\"", "sub": "絕對阻止結束 → 強制繼續完成任務" }
+      ],
+      "mechanism": "目的：阻止流程中斷"
+    }
+  },
+
+  "agentWorkflows": {
+    "planner": {
+      "color": "var(--purple)",
+      "flowSteps": ["理解需求", "掃描專案", "識別影響", "拆解階段", "評估風險", "產出計畫"],
+      "detailedNodes": [
+        { "t": "input", "text": "使用者需求", "sub": "自然語言 · /flow:plan 觸發" },
+        { "t": "step", "text": "解析意圖", "sub": "釐清目標、範圍邊界、成功條件" },
+        { "t": "step", "text": "掃描專案", "sub": "Glob + Read → 目錄結構、關鍵檔案" },
+        { "t": "step", "text": "識別影響", "sub": "Grep → 依賴關係、匯入鏈、副作用" },
+        { "t": "step", "text": "拆解階段", "sub": "獨立階段 + 依賴順序 + 驗收條件" },
+        { "t": "step", "text": "評估風險", "sub": "技術風險 · 外部依賴 · 破壞範圍" },
+        { "t": "output", "text": "分階段實作計畫", "sub": "摘要 · 階段分解 · 風險 · 依賴圖" }
+      ]
+    },
+    "architect": {
+      "color": "var(--cyan)",
+      "flowSteps": ["掃描結構", "分析慣例", "識別邊界", "設計 2-3 方案", "目錄樹+介面+資料流"],
+      "detailedNodes": [
+        { "t": "input", "text": "計畫 + 需求", "sub": "/flow:architect 觸發" },
+        { "t": "step", "text": "掃描結構", "sub": "Glob → 目錄樹、檔案組織模式" },
+        { "t": "step", "text": "分析慣例", "sub": "Read + Grep → 命名、模式、框架用法" },
+        { "t": "step", "text": "識別邊界", "sub": "模組界限 · API 邊界 · 資料流向" },
+        { "t": "step", "text": "設計 2-3 方案", "sub": "每方案：優點 / 缺點 / 適用場景" },
+        { "t": "output", "text": "架構方案比較", "sub": "目錄樹 · 介面定義 · 資料流 · 取捨分析" }
+      ]
+    },
+    "developer": {
+      "color": "var(--yellow)",
+      "flowSteps": ["載入 PATTERNS", "按階段實作", "寫測試", "自動 hooks", "產出可運行程式碼"],
+      "detailedNodes": [
+        { "t": "input", "text": "計畫 + 架構方案", "sub": "planner + architect 產出" },
+        { "t": "step", "text": "載入 PATTERNS", "sub": "語言/框架模式庫 · coding-standards" },
+        { "t": "step", "text": "按階段實作", "sub": "依計畫逐階段寫碼 · 遵循架構慣例" },
+        { "t": "step", "text": "寫測試", "sub": "單元測試 + 整合測試 · TDD 可選" },
+        { "t": "step", "text": "自動 hooks 介入", "sub": "PostToolUse: auto-lint · auto-format" },
+        { "t": "decision", "text": "階段完成？", "sub": "Yes → 下一階段 · No → 繼續實作" },
+        { "t": "output", "text": "可運行的程式碼", "sub": "通過 lint + format · 含測試 · 準備審查" }
+      ]
+    },
+    "code-reviewer": {
+      "color": "var(--accent)",
+      "flowSteps": ["收集變更", "理解上下文", "逐項分析", "CRITICAL→LOW 報告"],
+      "detailedNodes": [
+        { "t": "input", "text": "程式碼變更", "sub": "git diff · /sentinel:review" },
+        { "t": "step", "text": "收集變更範圍", "sub": "Bash: git diff · Glob: 目標檔案" },
+        { "t": "step", "text": "理解上下文", "sub": "Read: 完整檔案 · Grep: 引用關係" },
+        { "t": "step", "text": "逐項分析", "sub": "正確性 · 安全性 · 效能 · 可維護性" },
+        { "t": "step", "text": "嚴重程度排序", "sub": "CRITICAL → HIGH → MEDIUM → LOW" },
+        { "t": "output", "text": "結構化審查報告", "sub": "每項：嚴重度 · 位置 · 問題 · 建議" }
+      ]
+    },
+    "security-reviewer": {
+      "color": "var(--red)",
+      "trigger": "/sentinel:security",
+      "flowSteps": ["識別攻擊面", "追蹤資料流", "OWASP Top 10", "修復建議"],
+      "detailedNodes": [
+        { "t": "input", "text": "程式碼 / API", "sub": "/sentinel:security" },
+        { "t": "step", "text": "識別攻擊面", "sub": "API · 表單 · 外部輸入 · 檔案上傳" },
+        { "t": "step", "text": "追蹤資料流", "sub": "輸入 → 處理 → 輸出 完整路徑" },
+        { "t": "step", "text": "OWASP Top 10", "sub": "注入 · 認證 · XSS · SSRF · 設定..." },
+        { "t": "step", "text": "檢查 Secrets", "sub": "硬編碼 credentials · API keys · JWT" },
+        { "t": "output", "text": "安全報告", "sub": "漏洞 · 攻擊場景 · 嚴重度 · 修復方案" }
+      ]
+    },
+    "tester": {
+      "color": "var(--lime)",
+      "flowSteps": ["分析程式碼", "邊界案例", "整合測試", "覆蓋率檢查"],
+      "detailedNodes": [
+        { "t": "input", "text": "程式碼 + 規格", "sub": "/sentinel:tdd 觸發" },
+        { "t": "step", "text": "分析程式碼行為", "sub": "Read + Grep → 公開介面、邊界條件" },
+        { "t": "step", "text": "設計測試案例", "sub": "邊界值 · 異常路徑 · 整合場景" },
+        { "t": "step", "text": "撰寫測試", "sub": "獨立視角 — 不看 developer 的測試邏輯" },
+        { "t": "step", "text": "執行 + 覆蓋率", "sub": "目標 80% · 關鍵路徑 100%" },
+        { "t": "output", "text": "獨立測試套件", "sub": "邊界案例 · 整合測試 · 覆蓋率報告" }
+      ]
+    },
+    "build-error-resolver": {
+      "color": "var(--orange)",
+      "trigger": "/sentinel:verify",
+      "flowSteps": ["解析錯誤", "最小修復", "驗證", "≤3 輪"],
+      "detailedNodes": [
+        { "t": "input", "text": "Build 錯誤", "sub": "/sentinel:verify 觸發" },
+        { "t": "step", "text": "解析錯誤", "sub": "分類：型別 · 語法 · 模組 · 設定" },
+        { "t": "step", "text": "定位問題", "sub": "Grep + Read → 錯誤來源" },
+        { "t": "loop", "label": "≤3 輪", "nodes": [
+          { "t": "step", "text": "最小修復", "sub": "只修錯誤，不重構不優化" },
+          { "t": "step", "text": "重新 Build", "sub": "Bash → 驗證修復結果" },
+          { "t": "decision", "text": "通過？", "sub": "Yes → 完成 · No → 下一輪" }
+        ]},
+        { "t": "output", "text": "修復完成", "sub": "成功：已修檔案 · 失敗：需人工介入" }
+      ]
+    },
+    "qa": {
+      "color": "var(--yellow)",
+      "flowSteps": ["啟動應用", "呼叫 API", "驗證 CLI", "確認行為"],
+      "detailedNodes": [
+        { "t": "input", "text": "應用 + API", "sub": "/sentinel:qa 觸發" },
+        { "t": "step", "text": "啟動應用", "sub": "Bash → 啟動 server / 建構專案" },
+        { "t": "step", "text": "Smoke Test", "sub": "健康檢查 · 基本端點回應正確" },
+        { "t": "step", "text": "API 驗證", "sub": "呼叫 API · 驗證回應格式與內容" },
+        { "t": "step", "text": "CLI 驗證", "sub": "執行 CLI 指令 · 確認輸出正確" },
+        { "t": "output", "text": "行為驗證報告", "sub": "通過項目 · 失敗項目 · 重現步驟" }
+      ]
+    },
+    "e2e-runner": {
+      "color": "var(--green)",
+      "flowSteps": ["分析頁面", "建 Page Objects", "撰寫測試", "執行", "除錯 ≤3 輪"],
+      "detailedNodes": [
+        { "t": "input", "text": "測試目標", "sub": "/sentinel:e2e 觸發" },
+        { "t": "step", "text": "分析頁面", "sub": "Read HTML/JSX · 識別互動元素" },
+        { "t": "step", "text": "建 Page Objects", "sub": "每頁一 class：Locators + Actions" },
+        { "t": "step", "text": "撰寫測試 Spec", "sub": "依 Page Object 模式組織" },
+        { "t": "loop", "label": "≤3 輪", "nodes": [
+          { "t": "step", "text": "執行測試", "sub": "npx playwright test" },
+          { "t": "decision", "text": "通過？", "sub": "Yes → 完成 · No → 除錯" }
+        ]},
+        { "t": "output", "text": "通過的 E2E 測試", "sub": "Page Objects · Specs · 結果報告" }
+      ]
+    },
+    "doc-updater": {
+      "color": "var(--green)",
+      "flowSteps": ["分析 git diff", "識別受影響文件", "機械變更自動更新", "語意變更產出建議"],
+      "detailedNodes": [
+        { "t": "input", "text": "Git diff", "sub": "/evolve:doc-sync 觸發" },
+        { "t": "step", "text": "分析變更", "sub": "Bash: git diff · 識別變更類型" },
+        { "t": "step", "text": "識別受影響文件", "sub": "Grep → 對應 .md / README / API docs" },
+        { "t": "decision", "text": "變更類型？", "sub": "機械性 vs 語意性" },
+        { "t": "branch", "left": { "label": "機械性", "detail": "重命名 · 移動 · 參數" },
+                          "right": { "label": "語意性", "detail": "邏輯 · 行為 · 新功能" } },
+        { "t": "step", "text": "機械性 → 自動更新", "sub": "Write/Edit 直接修改文件" },
+        { "t": "step", "text": "語意性 → 產出建議", "sub": "列出需人工確認的變更" },
+        { "t": "output", "text": "更新文件 + 建議", "sub": "已更新 · 待確認清單" }
+      ]
+    }
+  },
+
+  "stageConfig": {
+    "PLAN": { "color": "var(--purple)" },
+    "ARCH": { "color": "var(--cyan)" },
+    "DEV": { "color": "var(--yellow)" },
+    "REVIEW": {
+      "color": "var(--accent)",
+      "parallel": true,
+      "additionalAgents": ["security-reviewer"],
+      "fallback": { "icon": "↩", "text": "CRITICAL / HIGH 問題", "target": "③ DEV", "detail": "開發者修復後重新審查" }
+    },
+    "TEST": {
+      "color": "var(--orange)",
+      "additionalAgents": ["build-error-resolver"],
+      "fallback": { "icon": "↩", "text": "≤3 輪自動修復仍失敗", "target": "③ DEV", "detail": "需人工修復後重新測試" }
+    },
+    "QA": {
+      "color": "var(--yellow)",
+      "fallback": { "icon": "↩", "text": "行為不符預期", "target": "③ DEV", "detail": "修復後重新驗證" }
+    },
+    "E2E": {
+      "color": "var(--green)",
+      "fallback": { "icon": "↩", "text": "使用者流程失敗", "target": "③ DEV", "detail": "修復後重新測試" }
+    },
+    "DOCS": {
+      "color": "var(--green)",
+      "fallback": { "icon": "⚠", "text": "語意變更需人工確認", "target": "開發者", "detail": "審查建議後手動調整文件" }
+    }
+  },
+
+  "pipelineCompletion": {
+    "icon": "✅",
+    "title": "Pipeline 完成",
+    "detail": "所有任務完成 · task-guard 放行 · pipeline 狀態清除 · /flow:cancel 可手動取消"
+  }
+}

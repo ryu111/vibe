@@ -18,7 +18,7 @@ Pipeline 是 Vibe marketplace 的骨幹。以下變動都需要回來檢查此�
 | 新增/移除 plugin | 自動生效（動態發現），但需確認 `pipeline.json` 的 `provides` 欄位 |
 | 修改 agent 名稱 | 對應 plugin 的 `pipeline.json.provides` 宣告 |
 | 修改使用者可見文字 | 本文件 §5 + Claude 行為模式 |
-| 修改 dashboard | `scripts/generate-dashboard.js` 的 pipeline 視覺化 |
+| 修改 dashboard | `dashboard/scripts/generate.js` 的 pipeline 視覺化 |
 
 **連動清單**（改 pipeline 時需一併檢查）：
 
@@ -27,7 +27,7 @@ docs/ref/pipeline.md          ← 本文件（規格）
 docs/ref/flow.md              ← flow plugin 設計文件
 docs/ref/{plugin}.md          ← 受影響 plugin 的設計文件
 docs/plugin-specs.json         ← 數量統計
-scripts/generate-dashboard.js  ← pipeline 視覺化
+dashboard/scripts/generate.js  ← pipeline 視覺化
 plugins/flow/pipeline.json     ← stage 順序定義
 plugins/*/pipeline.json         ← 各 plugin 的 pipeline 宣告（provides 欄位）
 ```
@@ -597,7 +597,7 @@ Claude 收到 systemMessage 後會用自然語言向使用者報告。
 | 9 | `plugins/evolve/pipeline.json` | `provides` 欄位 |
 | 10 | `docs/ref/flow.md` | Skills 6、Hooks 7（移除 session）、Scripts 9（移除 session）、驗收 16 條 |
 | 11 | `docs/plugin-specs.json` | flow hooks 7、scripts 9；evolve hooks 0、scripts 0 |
-| 12 | `scripts/generate-dashboard.js` | Pipeline 視覺化同步更新 |
+| 12 | `dashboard/scripts/generate.js` | Pipeline 視覺化同步更新 |
 
 ### flow.md 具體更新
 

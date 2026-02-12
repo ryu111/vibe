@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * scan-progress.js — 掃描 plugins/ 目錄，產生 docs/progress.json
+ * scan-progress.js — 掃描 plugins/ 目錄，產生 dashboard/data/progress.json
  *
  * 用途：SessionEnd hook 自動執行
  * 行為：讀取 plugin-specs.json → 掃描實際目錄 → 比對完成度 → 寫入 progress.json
@@ -11,7 +11,7 @@ const path = require('path');
 
 const ROOT = process.cwd();
 const SPECS_PATH = path.join(ROOT, 'docs', 'plugin-specs.json');
-const PROGRESS_PATH = path.join(ROOT, 'docs', 'progress.json');
+const PROGRESS_PATH = path.join(ROOT, 'dashboard', 'data', 'progress.json');
 const PLUGINS_DIR = path.join(ROOT, 'plugins');
 
 // ─── 工具函式 ──────────────────────────────────

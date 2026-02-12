@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/refresh-dashboard.js",
+            "command": "node dashboard/scripts/refresh.js",
             "timeout": 15,
             "statusMessage": "更新 Dashboard..."
           }

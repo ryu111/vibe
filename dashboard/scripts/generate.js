@@ -3,7 +3,7 @@
  * generate-dashboard.js — 從 plugin-specs.json + progress.json 產生 dashboard.html
  *
  * 用途：SessionEnd hook 在 scan-progress.js 之後執行
- * 產出：docs/dashboard.html（自包含、深色主題、進度視覺化）
+ * 產出：dashboard/dashboard.html（自包含、深色主題、進度視覺化）
  */
 
 const fs = require('fs');
@@ -11,8 +11,10 @@ const path = require('path');
 
 const ROOT = process.cwd();
 const SPECS_PATH = path.join(ROOT, 'docs', 'plugin-specs.json');
-const PROGRESS_PATH = path.join(ROOT, 'docs', 'progress.json');
-const OUTPUT_PATH = path.join(ROOT, 'docs', 'dashboard.html');
+const PROGRESS_PATH = path.join(ROOT, 'dashboard', 'data', 'progress.json');
+const CONFIG_PATH = path.join(ROOT, 'dashboard', 'config.json');
+const META_PATH = path.join(ROOT, 'dashboard', 'data', 'meta.json');
+const OUTPUT_PATH = path.join(ROOT, 'dashboard', 'dashboard.html');
 const INDEX_PATH = path.join(ROOT, 'docs', 'ref', 'index.md');
 
 function loadJSON(p) {
@@ -380,215 +382,100 @@ function genPluginCards(specs, progress) {
     }).join('');
 }
 
-function genDependencyGraph() {
+// ─── 資料驅動輔助函式 ────────────────────────
+
+const colorToRgba = {
+  'var(--yellow)': 'rgba(210,153,34,0.04)',
+  'var(--cyan)': 'rgba(57,210,192,0.04)',
+  'var(--green)': 'rgba(63,185,80,0.04)',
+  'var(--accent)': 'rgba(88,166,255,0.04)',
+  'var(--purple)': 'rgba(137,87,229,0.06)',
+  'var(--red)': 'rgba(248,81,73,0.04)',
+  'var(--orange)': 'rgba(240,136,62,0.04)',
+  'var(--text-muted)': 'rgba(255,255,255,0.02)',
+};
+
+function buildFlowAgent(name, config, meta) {
+  const wf = config.agentWorkflows[name];
+  const ag = meta.agents[name];
+  if (!wf || !ag) return null;
+  const isPlan = ag.permissionMode === 'plan' || ag.permissionMode === 'default';
+  let trigger = wf.trigger;
+  if (!trigger) {
+    for (const [, prov] of Object.entries(meta.pipeline.stageProviders)) {
+      if (prov.agent === name && prov.skill) { trigger = prov.skill; break; }
+    }
+  }
+  if (!trigger) trigger = '自動（Main Agent 委派）';
+  return {
+    name,
+    color: wf.color,
+    perm: isPlan ? 'readonly' : 'writable',
+    permLabel: isPlan ? '唯讀' : '可寫',
+    trigger,
+    model: isPlan ? `${ag.model} · plan mode` : `${ag.model} · ${ag.permissionMode} · ${ag.maxTurns}t`,
+    tools: ag.tools,
+    flow: wf.flowSteps,
+  };
+}
+
+function buildDetailAgent(name, config, meta) {
+  const wf = config.agentWorkflows[name];
+  const ag = meta.agents[name];
+  if (!wf || !ag) return null;
+  const isPlan = ag.permissionMode === 'plan' || ag.permissionMode === 'default';
+  return {
+    name,
+    color: wf.color,
+    perm: isPlan ? '唯讀' : '可寫',
+    permClass: isPlan ? 'readonly' : 'writable',
+    model: ag.model,
+    mode: ag.permissionMode,
+    maxTurns: isPlan ? undefined : ag.maxTurns,
+    nodes: wf.detailedNodes,
+  };
+}
+
+function genDependencyGraph(specs, config) {
+  if (!config) return '';
+  const pluginsByGroup = {};
+  for (const [name, spec] of Object.entries(specs.plugins)) {
+    if (!spec.depGroup) continue;
+    if (!pluginsByGroup[spec.depGroup]) pluginsByGroup[spec.depGroup] = [];
+    pluginsByGroup[spec.depGroup].push({ name, order: spec.buildOrder });
+  }
+  for (const arr of Object.values(pluginsByGroup)) {
+    arr.sort((a, b) => a.order - b.order);
+  }
+  const boxes = config.dependencyGroups.map(g => {
+    const plugins = pluginsByGroup[g.id] || [];
+    const names = plugins.map(p => `<strong>${p.name}</strong>`).join(' + ');
+    return `
+    <div class="dep-box ${g.class}">
+      <h4 style="color:${g.color}">${g.label}</h4>
+      <p>${names} — ${g.detail}</p>
+    </div>`;
+  }).join('');
   return `
-  <div class="dep-grid">
-    <div class="dep-box dep-independent">
-      <h4 style="color:var(--yellow)">獨立安裝</h4>
-      <p><strong>patterns</strong> — 純知識庫，8 skills，無 hooks/agents</p>
-    </div>
-    <div class="dep-box dep-core">
-      <h4 style="color:var(--accent)">核心雙引擎</h4>
-      <p><strong>flow</strong> + <strong>sentinel</strong> — 建議一起安裝<br>規劃 → 寫碼 → 品質檢查</p>
-    </div>
-    <div class="dep-box dep-advanced">
-      <h4 style="color:var(--purple)">可選增強</h4>
-      <p><strong>evolve</strong> — 知識進化 + 文件<br>依賴 flow（可選）</p>
-    </div>
-    <div class="dep-box dep-advanced">
-      <h4 style="color:var(--cyan)">即時監控</h4>
-      <p><strong>dashboard</strong> — Pipeline 儀表板<br>WebSocket 即時推播 · 獨立運作</p>
-    </div>
-    <div class="dep-box dep-core">
-      <h4 style="color:var(--green)">雙向通訊</h4>
-      <p><strong>notify</strong> — LINE / Telegram 整合<br>進度通知 · 遠端指令 · 雙向溝通</p>
-    </div>
-    <div class="dep-box dep-external">
-      <h4 style="color:var(--orange)">待定（需 Agent Teams）</h4>
-      <p><strong>collab</strong> — 多視角競爭分析<br>需 Agent Teams 環境變數</p>
-    </div>
+  <div class="dep-grid">${boxes}
   </div>`;
 }
 
-function genFlowDiagram() {
-  // 階段定義
-  const phases = [
-    {
-      name: 'FLOW',
-      color: 'var(--accent)',
-      desc: '規劃階段 — 唯讀分析，產出計畫與架構方案',
-      agents: [
-        {
-          name: 'planner',
-          color: 'var(--purple)',
-          perm: 'readonly',
-          permLabel: '唯讀',
-          trigger: '/flow:plan',
-          model: 'opus · plan mode',
-          tools: ['Read', 'Grep', 'Glob'],
-          flow: ['理解需求', '掃描專案', '識別影響', '拆解階段', '評估風險', '產出計畫'],
-        },
-        {
-          name: 'architect',
-          color: 'var(--cyan)',
-          perm: 'readonly',
-          permLabel: '唯讀',
-          trigger: '/flow:architect',
-          model: 'opus · plan mode',
-          tools: ['Read', 'Grep', 'Glob'],
-          flow: ['掃描結構', '分析慣例', '識別邊界', '設計 2-3 方案', '目錄樹+介面+資料流'],
-        },
-      ],
-      extraSteps: [
-        { label: 'SessionStart: pipeline-init', auto: true },
-        { label: 'PreToolUse: suggest-compact', auto: true },
-        { label: '/flow:compact', auto: false },
-        { label: '/flow:checkpoint', auto: false },
-        { label: '/flow:env-detect', auto: false },
-      ],
-    },
-    {
-      name: 'DEV',
-      color: 'var(--yellow)',
-      desc: '實作階段 — 按計畫寫碼，自動 lint/format',
-      agents: [
-        {
-          name: 'developer',
-          color: 'var(--yellow)',
-          perm: 'writable',
-          permLabel: '可寫',
-          trigger: '自動（Main Agent 委派）',
-          model: 'sonnet · acceptEdits · 60t',
-          tools: ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob'],
-          flow: ['載入 PATTERNS', '按階段實作', '寫測試', '自動 hooks', '產出可運行程式碼'],
-        },
-      ],
-      extraSteps: [
-        { label: 'PostToolUse: auto-lint', auto: true },
-        { label: 'PostToolUse: auto-format', auto: true },
-        { label: 'PostToolUse: test-check', auto: true },
-      ],
-    },
-    {
-      name: 'SENTINEL',
-      color: 'var(--accent)',
-      desc: '品質階段 — 審查、安全、修復、測試',
-      agents: [
-        {
-          name: 'code-reviewer',
-          color: 'var(--accent)',
-          perm: 'readonly',
-          permLabel: '唯讀',
-          trigger: '/sentinel:review',
-          model: 'opus · plan mode',
-          tools: ['Read', 'Grep', 'Glob', 'Bash'],
-          flow: ['收集變更', '理解上下文', '逐項分析', 'CRITICAL→LOW 報告'],
-        },
-        {
-          name: 'security-reviewer',
-          color: 'var(--red)',
-          perm: 'readonly',
-          permLabel: '唯讀',
-          trigger: '/sentinel:security',
-          model: 'opus · plan mode',
-          tools: ['Read', 'Grep', 'Glob', 'Bash'],
-          flow: ['識別攻擊面', '追蹤資料流', 'OWASP Top 10', '修復建議'],
-        },
-        {
-          name: 'tester',
-          color: 'var(--lime)',
-          perm: 'writable',
-          permLabel: '可寫',
-          trigger: '/sentinel:tdd',
-          model: 'sonnet · acceptEdits · 30t',
-          tools: ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob'],
-          flow: ['分析程式碼', '邊界案例', '整合測試', '覆蓋率檢查'],
-        },
-        {
-          name: 'build-error-resolver',
-          color: 'var(--orange)',
-          perm: 'writable',
-          permLabel: '可寫',
-          trigger: '/sentinel:verify',
-          model: 'haiku · acceptEdits · 15t',
-          tools: ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob'],
-          flow: ['解析錯誤', '最小修復', '驗證', '≤3 輪'],
-        },
-        {
-          name: 'qa',
-          color: 'var(--yellow)',
-          perm: 'writable',
-          permLabel: '可寫',
-          trigger: '/sentinel:qa',
-          model: 'sonnet · acceptEdits · 30t',
-          tools: ['Read', 'Bash', 'Grep', 'Glob', 'WebFetch', 'Write', 'Edit'],
-          flow: ['啟動應用', '呼叫 API', '驗證 CLI', '確認行為'],
-        },
-        {
-          name: 'e2e-runner',
-          color: 'var(--green)',
-          perm: 'writable',
-          permLabel: '可寫',
-          trigger: '/sentinel:e2e',
-          model: 'sonnet · acceptEdits · 30t',
-          tools: ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob'],
-          flow: ['分析頁面', '建 Page Objects', '撰寫測試', '執行', '除錯 ≤3 輪'],
-        },
-      ],
-      extraSteps: [
-        { label: 'PreToolUse: danger-guard', auto: true },
-        { label: 'Stop: console-log-check', auto: true },
-        { label: '/sentinel:lint', auto: false },
-        { label: '/sentinel:format', auto: false },
-        { label: '/sentinel:coverage', auto: false },
-        { label: '/sentinel:verify', auto: false },
-        { label: '/sentinel:qa', auto: false },
-      ],
-    },
-    {
-      name: 'EVOLVE',
-      color: 'var(--purple)',
-      desc: '文件階段 — 自動更新對應文件',
-      agents: [
-        {
-          name: 'doc-updater',
-          color: 'var(--green)',
-          perm: 'writable',
-          permLabel: '可寫',
-          trigger: '/evolve:doc-sync',
-          model: 'haiku · acceptEdits · 30t',
-          tools: ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob'],
-          flow: ['分析 git diff', '識別受影響文件', '機械變更自動更新', '語意變更產出建議'],
-        },
-      ],
-      extraSteps: [
-        { label: '/evolve:evolve', auto: false },
-        { label: '/evolve:doc-sync', auto: false },
-      ],
-    },
-  ];
+function genFlowDiagram(config, meta) {
+  // 從 config + meta 建構階段資料
+  const phases = config.flowPhases.map(phase => ({
+    name: phase.name,
+    color: phase.color,
+    desc: phase.desc,
+    agents: phase.agentNames.map(n => buildFlowAgent(n, config, meta)).filter(Boolean),
+    extraSteps: phase.extraSteps,
+  }));
 
-  // 階段之間的過渡元素（phases 之間依序對應）
-  const transitions = [
-    // FLOW → DEV
-    {
-      type: 'connector',
-      arrow: '▼',
-      label: '計畫 + 架構方案 → 開始實作',
-    },
-    // DEV → SENTINEL
-    {
-      type: 'connector',
-      arrow: '▼',
-      label: '程式碼就緒 → 品質檢查',
-    },
-    // SENTINEL → EVOLVE
-    {
-      type: 'connector',
-      arrow: '▼',
-      label: '品質通過 → 同步更新文件',
-    },
-  ];
+  const transitions = config.flowTransitions.map(t => ({
+    type: 'connector',
+    arrow: t.arrow,
+    label: t.label,
+  }));
 
   function renderAgent(a) {
     const flowSteps = a.flow.map((s, i) =>
@@ -634,17 +521,8 @@ function genFlowDiagram() {
   // 組合：起點 → phase → transition → phase → transition → phase → 終點
   const parts = [];
 
-  // 任務類型路由表
-  const taskRoutes = [
-    { type: 'research', label: '研究探索', stages: '—', color: 'var(--text-muted)' },
-    { type: 'quickfix', label: '小改動', stages: 'DEV', color: 'var(--yellow)' },
-    { type: 'bugfix', label: '修 Bug', stages: 'DEV → TEST', color: 'var(--orange)' },
-    { type: 'feature', label: '新功能', stages: 'PLAN → ARCH → DEV → REVIEW → TEST → DOCS', color: 'var(--green)' },
-    { type: 'refactor', label: '重構', stages: 'ARCH → DEV → REVIEW', color: 'var(--cyan)' },
-    { type: 'test', label: '補測試', stages: 'TEST', color: 'var(--lime)' },
-    { type: 'docs', label: '寫文件', stages: 'DOCS', color: 'var(--green)' },
-    { type: 'tdd', label: 'TDD', stages: 'TEST → DEV → REVIEW', color: 'var(--purple)' },
-  ];
+  // 任務類型路由表（從 config 讀取）
+  const taskRoutes = config.taskRoutes;
 
   // 起點
   parts.push(`
@@ -695,19 +573,21 @@ function genFlowDiagram() {
       <div class="agent-cards">${agentCards}</div>${extraBlock}
     </div>`);
 
-    // PATTERNS 知識層 — 插在 FLOW 和 DEV 之間
-    if (phase.name === 'FLOW') {
+    // 補充層：insertAfter 或過渡箭頭
+    const insertLayer = config.supplementaryLayers.find(l => l.insertAfter === phase.name);
+    if (insertLayer) {
+      const bg = colorToRgba[insertLayer.color] || 'rgba(255,255,255,0.02)';
       parts.push(`
     <div class="agent-connector">
       <div class="agent-connector-arrow">▼</div>
-      <div class="agent-connector-label">計畫 + 架構方案就緒</div>
+      <div class="agent-connector-label">${insertLayer.connectorLabel}</div>
     </div>`);
       parts.push(`
-    <div class="agent-human" style="border-color:var(--yellow);border-style:dashed;background:rgba(210,153,34,0.04)">
-      <div class="agent-human-icon">📚</div>
+    <div class="agent-human" style="border-color:${insertLayer.color};border-style:${insertLayer.borderStyle};background:${bg}">
+      <div class="agent-human-icon">${insertLayer.icon}</div>
       <div>
-        <div class="agent-human-text"><strong style="color:var(--yellow)">PATTERNS</strong> <span style="opacity:0.6;font-size:0.75rem">純知識庫 · 8 skills · 無 hooks/agents</span></div>
-        <div class="agent-human-detail">coding-standards · frontend · backend · typescript · python · go · db · testing</div>
+        <div class="agent-human-text"><strong style="color:${insertLayer.color}">${insertLayer.title}</strong> <span style="opacity:0.6;font-size:0.75rem">${insertLayer.subtitle}</span></div>
+        <div class="agent-human-detail">${insertLayer.detail}</div>
       </div>
     </div>`);
     } else if (i < phases.length - 1) {
@@ -715,23 +595,24 @@ function genFlowDiagram() {
     }
   });
 
-  // 守衛層 — 導引 + 守衛
+  // 守衛層（從 config 讀取）
   parts.push(`<div class="agent-connector"><div class="agent-connector-arrow">▼</div></div>`);
+  const guardCards = Object.entries(config.guards).map(([, g]) => {
+    const hookHtml = g.hooks.map(h => {
+      const hp = h.split(' ');
+      return `<code>${hp[0]}</code> ${hp.slice(1).join(' ')}`;
+    }).join(' · ');
+    return `
+      <div class="guard-card ${g.type}">
+        <div class="guard-title">${g.icon} ${g.title}</div>
+        <div class="guard-hook">${hookHtml}</div>
+        <div class="guard-desc">${g.desc}</div>
+        <div class="guard-mechanism">${g.mechanism}</div>
+      </div>`;
+  }).join('');
   parts.push(`
     <div class="guard-section-title">Stop 事件防護 — 全程監控</div>
-    <div class="guard-layer">
-      <div class="guard-card guide">
-        <div class="guard-title">🧭 導引</div>
-        <div class="guard-hook"><code>pipeline-check</code> Stop · <code>stage-transition</code> SubagentStop</div>
-        <div class="guard-desc">確保走在正確的路上 — 遺漏 pipeline 階段時注入 systemMessage 建議下一步</div>
-        <div class="guard-mechanism">systemMessage → 強建議</div>
-      </div>
-      <div class="guard-card block">
-        <div class="guard-title">🛡️ 守衛</div>
-        <div class="guard-hook"><code>task-guard</code> Stop hook</div>
-        <div class="guard-desc">不讓正確的路中斷 — TodoWrite 有未完成項目時，以 decision: "block" 絕對阻止結束</div>
-        <div class="guard-mechanism">decision: "block" → 絕對阻擋（≤5 次）</div>
-      </div>
+    <div class="guard-layer">${guardCards}
     </div>`);
 
   // 終點
@@ -745,214 +626,57 @@ function genFlowDiagram() {
       </div>
     </div>`);
 
-  // DASHBOARD — 即時監控
-  parts.push(`
-    <div class="agent-human" style="border-color:var(--cyan);border-style:dashed;background:rgba(57,210,192,0.04);margin-top:1rem">
-      <div class="agent-human-icon">📊</div>
+  // 底部補充層（從 config 讀取）
+  const bottomLayers = config.supplementaryLayers.filter(l => l.position === 'bottom');
+  bottomLayers.forEach((layer, idx) => {
+    const bg = colorToRgba[layer.color] || 'rgba(255,255,255,0.02)';
+    const margin = idx === 0 ? 'margin-top:1rem' : 'margin-top:0.5rem';
+    const opacity = layer.opacity ? `;opacity:${layer.opacity}` : '';
+    parts.push(`
+    <div class="agent-human" style="border-color:${layer.color};border-style:${layer.borderStyle};background:${bg};${margin}${opacity}">
+      <div class="agent-human-icon">${layer.icon}</div>
       <div>
-        <div class="agent-human-text"><strong style="color:var(--cyan)">DASHBOARD</strong> <span style="opacity:0.6;font-size:0.75rem">WebSocket · 全程即時監控</span></div>
-        <div class="agent-human-detail">/dashboard · 瀏覽器儀表板即時顯示 Pipeline 各階段進度與狀態</div>
+        <div class="agent-human-text"><strong style="color:${layer.color}">${layer.title}</strong> <span style="opacity:0.6;font-size:0.75rem">${layer.subtitle}</span></div>
+        <div class="agent-human-detail">${layer.detail}</div>
       </div>
     </div>`);
-
-  // NOTIFY — 通訊整合
-  parts.push(`
-    <div class="agent-human" style="border-color:var(--green);border-style:dashed;background:rgba(63,185,80,0.04);margin-top:0.5rem">
-      <div class="agent-human-icon">💬</div>
-      <div>
-        <div class="agent-human-text"><strong style="color:var(--green)">NOTIFY</strong> <span style="opacity:0.6;font-size:0.75rem">LINE / Telegram · 雙向通訊</span></div>
-        <div class="agent-human-detail">/notify · 進度通知 · 完成回報 · 遠端指令 · 雙向溝通</div>
-      </div>
-    </div>`);
-
-  // COLLAB — 任意階段可插入（待定）
-  parts.push(`
-    <div class="agent-human" style="border-color:var(--text-muted);border-style:dotted;background:rgba(255,255,255,0.02);margin-top:0.5rem;opacity:0.6">
-      <div class="agent-human-icon">⚔️</div>
-      <div>
-        <div class="agent-human-text"><strong style="color:var(--text-muted)">COLLAB</strong> <span style="opacity:0.6;font-size:0.75rem">待定 · Agent Teams</span></div>
-        <div class="agent-human-detail">/collab:adversarial-plan · /collab:adversarial-review · /collab:adversarial-refactor</div>
-      </div>
-    </div>`);
+  });
 
   return `<div class="agent-workflow">${parts.join('')}</div>`;
 }
 
-function genAgentDetails() {
-  // Pipeline 階段定義
-  const stages = [
-    {
-      num: '①', label: 'PLAN', color: 'var(--purple)',
-      agents: [{
-        name: 'planner', color: 'var(--purple)', perm: '唯讀', permClass: 'readonly',
-        model: 'opus', mode: 'plan',
-        nodes: [
-          { t: 'input', text: '使用者需求', sub: '自然語言 · /flow:plan 觸發' },
-          { t: 'step', text: '解析意圖', sub: '釐清目標、範圍邊界、成功條件' },
-          { t: 'step', text: '掃描專案', sub: 'Glob + Read → 目錄結構、關鍵檔案' },
-          { t: 'step', text: '識別影響', sub: 'Grep → 依賴關係、匯入鏈、副作用' },
-          { t: 'step', text: '拆解階段', sub: '獨立階段 + 依賴順序 + 驗收條件' },
-          { t: 'step', text: '評估風險', sub: '技術風險 · 外部依賴 · 破壞範圍' },
-          { t: 'output', text: '分階段實作計畫', sub: '摘要 · 階段分解 · 風險 · 依賴圖' },
-        ],
-      }],
-    },
-    {
-      num: '②', label: 'ARCH', color: 'var(--cyan)',
-      agents: [{
-        name: 'architect', color: 'var(--cyan)', perm: '唯讀', permClass: 'readonly',
-        model: 'opus', mode: 'plan',
-        nodes: [
-          { t: 'input', text: '計畫 + 需求', sub: '/flow:architect 觸發' },
-          { t: 'step', text: '掃描結構', sub: 'Glob → 目錄樹、檔案組織模式' },
-          { t: 'step', text: '分析慣例', sub: 'Read + Grep → 命名、模式、框架用法' },
-          { t: 'step', text: '識別邊界', sub: '模組界限 · API 邊界 · 資料流向' },
-          { t: 'step', text: '設計 2-3 方案', sub: '每方案：優點 / 缺點 / 適用場景' },
-          { t: 'output', text: '架構方案比較', sub: '目錄樹 · 介面定義 · 資料流 · 取捨分析' },
-        ],
-      }],
-    },
-    {
-      num: '③', label: 'DEV', color: 'var(--yellow)',
-      agents: [{
-        name: 'developer', color: 'var(--yellow)', perm: '可寫', permClass: 'writable',
-        model: 'sonnet', mode: 'acceptEdits', maxTurns: 60,
-        nodes: [
-          { t: 'input', text: '計畫 + 架構方案', sub: 'planner + architect 產出' },
-          { t: 'step', text: '載入 PATTERNS', sub: '語言/框架模式庫 · coding-standards' },
-          { t: 'step', text: '按階段實作', sub: '依計畫逐階段寫碼 · 遵循架構慣例' },
-          { t: 'step', text: '寫測試', sub: '單元測試 + 整合測試 · TDD 可選' },
-          { t: 'step', text: '自動 hooks 介入', sub: 'PostToolUse: auto-lint · auto-format' },
-          { t: 'decision', text: '階段完成？', sub: 'Yes → 下一階段 · No → 繼續實作' },
-          { t: 'output', text: '可運行的程式碼', sub: '通過 lint + format · 含測試 · 準備審查' },
-        ],
-      }],
-    },
-    {
-      num: '④', label: 'REVIEW', color: 'var(--accent)',
-      parallel: true,
-      fallback: { icon: '↩', text: 'CRITICAL / HIGH 問題', target: '③ DEV', detail: '開發者修復後重新審查' },
-      agents: [
-        {
-          name: 'code-reviewer', color: 'var(--accent)', perm: '唯讀', permClass: 'readonly',
-          model: 'opus', mode: 'plan',
-          nodes: [
-            { t: 'input', text: '程式碼變更', sub: 'git diff · /sentinel:review' },
-            { t: 'step', text: '收集變更範圍', sub: 'Bash: git diff · Glob: 目標檔案' },
-            { t: 'step', text: '理解上下文', sub: 'Read: 完整檔案 · Grep: 引用關係' },
-            { t: 'step', text: '逐項分析', sub: '正確性 · 安全性 · 效能 · 可維護性' },
-            { t: 'step', text: '嚴重程度排序', sub: 'CRITICAL → HIGH → MEDIUM → LOW' },
-            { t: 'output', text: '結構化審查報告', sub: '每項：嚴重度 · 位置 · 問題 · 建議' },
-          ],
-        },
-        {
-          name: 'security-reviewer', color: 'var(--red)', perm: '唯讀', permClass: 'readonly',
-          model: 'opus', mode: 'plan',
-          nodes: [
-            { t: 'input', text: '程式碼 / API', sub: '/sentinel:security' },
-            { t: 'step', text: '識別攻擊面', sub: 'API · 表單 · 外部輸入 · 檔案上傳' },
-            { t: 'step', text: '追蹤資料流', sub: '輸入 → 處理 → 輸出 完整路徑' },
-            { t: 'step', text: 'OWASP Top 10', sub: '注入 · 認證 · XSS · SSRF · 設定...' },
-            { t: 'step', text: '檢查 Secrets', sub: '硬編碼 credentials · API keys · JWT' },
-            { t: 'output', text: '安全報告', sub: '漏洞 · 攻擊場景 · 嚴重度 · 修復方案' },
-          ],
-        },
-      ],
-    },
-    {
-      num: '⑤', label: 'TEST', color: 'var(--orange)',
-      fallback: { icon: '↩', text: '≤3 輪自動修復仍失敗', target: '③ DEV', detail: '需人工修復後重新測試' },
-      agents: [
-        {
-          name: 'tester', color: 'var(--lime)', perm: '可寫', permClass: 'writable',
-          model: 'sonnet', mode: 'acceptEdits', maxTurns: 30,
-          nodes: [
-            { t: 'input', text: '程式碼 + 規格', sub: '/sentinel:tdd 觸發' },
-            { t: 'step', text: '分析程式碼行為', sub: 'Read + Grep → 公開介面、邊界條件' },
-            { t: 'step', text: '設計測試案例', sub: '邊界值 · 異常路徑 · 整合場景' },
-            { t: 'step', text: '撰寫測試', sub: '獨立視角 — 不看 developer 的測試邏輯' },
-            { t: 'step', text: '執行 + 覆蓋率', sub: '目標 80% · 關鍵路徑 100%' },
-            { t: 'output', text: '獨立測試套件', sub: '邊界案例 · 整合測試 · 覆蓋率報告' },
-          ],
-        },
-        {
-          name: 'build-error-resolver', color: 'var(--orange)', perm: '可寫', permClass: 'writable',
-          model: 'haiku', mode: 'acceptEdits', maxTurns: 15,
-          nodes: [
-            { t: 'input', text: 'Build 錯誤', sub: '/sentinel:verify 觸發' },
-            { t: 'step', text: '解析錯誤', sub: '分類：型別 · 語法 · 模組 · 設定' },
-            { t: 'step', text: '定位問題', sub: 'Grep + Read → 錯誤來源' },
-            { t: 'loop', label: '≤3 輪', nodes: [
-              { t: 'step', text: '最小修復', sub: '只修錯誤，不重構不優化' },
-              { t: 'step', text: '重新 Build', sub: 'Bash → 驗證修復結果' },
-              { t: 'decision', text: '通過？', sub: 'Yes → 完成 · No → 下一輪' },
-            ]},
-            { t: 'output', text: '修復完成', sub: '成功：已修檔案 · 失敗：需人工介入' },
-          ],
-        },
-      ],
-    },
-    {
-      num: '⑥', label: 'QA', color: 'var(--yellow)',
-      fallback: { icon: '↩', text: '行為不符預期', target: '③ DEV', detail: '修復後重新驗證' },
-      agents: [{
-        name: 'qa', color: 'var(--yellow)', perm: '可寫', permClass: 'writable',
-        model: 'sonnet', mode: 'acceptEdits', maxTurns: 30,
-        nodes: [
-          { t: 'input', text: '應用 + API', sub: '/sentinel:qa 觸發' },
-          { t: 'step', text: '啟動應用', sub: 'Bash → 啟動 server / 建構專案' },
-          { t: 'step', text: 'Smoke Test', sub: '健康檢查 · 基本端點回應正確' },
-          { t: 'step', text: 'API 驗證', sub: '呼叫 API · 驗證回應格式與內容' },
-          { t: 'step', text: 'CLI 驗證', sub: '執行 CLI 指令 · 確認輸出正確' },
-          { t: 'output', text: '行為驗證報告', sub: '通過項目 · 失敗項目 · 重現步驟' },
-        ],
-      }],
-    },
-    {
-      num: '⑦', label: 'E2E', color: 'var(--green)',
-      fallback: { icon: '↩', text: '使用者流程失敗', target: '③ DEV', detail: '修復後重新測試' },
-      agents: [{
-        name: 'e2e-runner', color: 'var(--green)', perm: '可寫', permClass: 'writable',
-        model: 'sonnet', mode: 'acceptEdits', maxTurns: 30,
-        nodes: [
-          { t: 'input', text: '測試目標', sub: '/sentinel:e2e 觸發' },
-          { t: 'step', text: '分析頁面', sub: 'Read HTML/JSX · 識別互動元素' },
-          { t: 'step', text: '建 Page Objects', sub: '每頁一 class：Locators + Actions' },
-          { t: 'step', text: '撰寫測試 Spec', sub: '依 Page Object 模式組織' },
-          { t: 'loop', label: '≤3 輪', nodes: [
-            { t: 'step', text: '執行測試', sub: 'npx playwright test' },
-            { t: 'decision', text: '通過？', sub: 'Yes → 完成 · No → 除錯' },
-          ]},
-          { t: 'output', text: '通過的 E2E 測試', sub: 'Page Objects · Specs · 結果報告' },
-        ],
-      }],
-    },
-    {
-      num: '⑧', label: 'DOCS', color: 'var(--green)',
-      fallback: { icon: '⚠', text: '語意變更需人工確認', target: '開發者', detail: '審查建議後手動調整文件' },
-      agents: [{
-        name: 'doc-updater', color: 'var(--green)', perm: '可寫', permClass: 'writable',
-        model: 'haiku', mode: 'acceptEdits', maxTurns: 30,
-        nodes: [
-          { t: 'input', text: 'Git diff', sub: '/evolve:doc-sync 觸發' },
-          { t: 'step', text: '分析變更', sub: 'Bash: git diff · 識別變更類型' },
-          { t: 'step', text: '識別受影響文件', sub: 'Grep → 對應 .md / README / API docs' },
-          { t: 'decision', text: '變更類型？', sub: '機械性 vs 語意性' },
-          { t: 'branch', left: { label: '機械性', detail: '重命名 · 移動 · 參數' },
-                          right: { label: '語意性', detail: '邏輯 · 行為 · 新功能' } },
-          { t: 'step', text: '機械性 → 自動更新', sub: 'Write/Edit 直接修改文件' },
-          { t: 'step', text: '語意性 → 產出建議', sub: '列出需人工確認的變更' },
-          { t: 'output', text: '更新文件 + 建議', sub: '已更新 · 待確認清單' },
-        ],
-      }],
-    },
-  ];
+function genAgentDetails(config, meta) {
+  // 從 config + meta 建構 pipeline 階段資料
+  const nums = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'];
+  const stages = meta.pipeline.stages.map((stage, i) => {
+    const sc = config.stageConfig[stage] || {};
+    const provider = meta.pipeline.stageProviders[stage];
+    const agents = [];
+    if (provider) agents.push(buildDetailAgent(provider.agent, config, meta));
+    if (sc.additionalAgents) {
+      for (const name of sc.additionalAgents) {
+        agents.push(buildDetailAgent(name, config, meta));
+      }
+    }
+    return {
+      num: nums[i],
+      label: stage,
+      color: sc.color || 'var(--border)',
+      parallel: sc.parallel || false,
+      fallback: sc.fallback || null,
+      agents: agents.filter(Boolean),
+    };
+  });
 
   // 渲染單一節點
   function renderNode(n) {
     if (n.t === 'loop') {
       const inner = n.nodes.map(renderNode).join('');
       return `<div class="pipe-loop"><div class="pipe-loop-label">🔄 ${n.label}</div>${inner}</div>`;
+    }
+    if (n.t === 'block') {
+      return `<div class="pipe-node" style="color:var(--red)"><div class="pipe-node-dot" style="background:var(--red)"></div>
+        <div><span class="pipe-node-text" style="color:var(--red)">${n.text}</span> <span class="pipe-node-sub">${n.sub}</span></div></div>`;
     }
     if (n.t === 'branch') {
       return `<div class="pipe-branch">
@@ -1059,15 +783,8 @@ function genAgentDetails() {
     </div>
   </div>`);
 
-  // 任務分類器
-  const routeData = [
-    { label: '研究探索', stages: '—', color: 'var(--text-muted)' },
-    { label: '小改動', stages: 'DEV', color: 'var(--yellow)' },
-    { label: '修 Bug', stages: 'DEV → TEST', color: 'var(--orange)' },
-    { label: '新功能', stages: '全流程', color: 'var(--green)' },
-    { label: '重構', stages: 'ARCH → DEV → REVIEW', color: 'var(--cyan)' },
-    { label: 'TDD', stages: 'TEST → DEV → REVIEW', color: 'var(--purple)' },
-  ];
+  // 任務分類器（從 config 讀取）
+  const routeData = config.taskRoutesCompact;
   const routeChips = routeData.map(r =>
     `<span style="display:inline-block;padding:0.15rem 0.45rem;border-radius:4px;font-size:0.68rem;font-weight:600;color:${r.color};border:1px solid ${r.color};opacity:0.8;white-space:nowrap">${r.label} → ${r.stages}</span>`
   ).join(' ');
@@ -1130,50 +847,44 @@ function genAgentDetails() {
     </div>
   </div>`);
 
-  // Stop Hook 雙層防護
+  // Stop Hook 雙層防護（從 config 讀取）
   parts.push(`<div class="pipe-connector"><div class="pipe-connector-arrow">▼</div></div>`);
+  const gdCards = Object.entries(config.guardsDetailed).map(([key, gd]) => {
+    const nodesHtml = gd.nodes.map(n => {
+      if (n.t === 'block') {
+        return `<div class="pipe-node" style="color:var(--red)"><div class="pipe-node-dot" style="background:var(--red)"></div>
+            <div><span class="pipe-node-text" style="color:var(--red)">${n.text}</span> <span class="pipe-node-sub">${n.sub}</span></div></div>`;
+      }
+      return `<div class="pipe-node ${n.t}"><div class="pipe-node-dot ${n.t}"></div>
+            <div><span class="pipe-node-text">${n.text}</span>${n.sub ? ` <span class="pipe-node-sub">${n.sub}</span>` : ''}</div></div>`;
+    }).join('\n          ');
+    return `
+      <div class="guard-card ${key}">
+        <div class="guard-title">${gd.title}</div>
+        <div class="guard-hook">${gd.hookLabel}</div>
+        <div style="margin:0.5rem 0">
+          ${nodesHtml}
+        </div>
+        <div class="guard-mechanism">${gd.mechanism}</div>
+      </div>`;
+  }).join('');
   parts.push(`<div class="guard-wrapper">
     <div class="guard-wrapper-label">🔒 STOP 事件防護</div>
     <div style="font-size:0.78rem;color:var(--text-muted);text-align:center;margin-bottom:0.8rem">
       Claude 每次嘗試結束回合時觸發 — 兩層機制，意義不同
     </div>
-    <div class="guard-layer" style="max-width:none">
-      <div class="guard-card guide">
-        <div class="guard-title">🧭 導引 — 走在正確的路上</div>
-        <div class="guard-hook"><code>stage-transition</code> SubagentStop · <code>pipeline-check</code> Stop</div>
-        <div style="margin:0.5rem 0">
-          <div class="pipe-node input"><div class="pipe-node-dot input"></div>
-            <div><span class="pipe-node-text">Stop / SubagentStop 觸發</span></div></div>
-          <div class="pipe-node step"><div class="pipe-node-dot step"></div>
-            <div><span class="pipe-node-text">檢查 pipeline 狀態</span> <span class="pipe-node-sub">有遺漏階段？下一步是什麼？</span></div></div>
-          <div class="pipe-node output"><div class="pipe-node-dot output"></div>
-            <div><span class="pipe-node-text">注入 systemMessage</span> <span class="pipe-node-sub">建議下一步 → Claude 自行決定是否遵循</span></div></div>
-        </div>
-        <div class="guard-mechanism">目的：控制流程方向</div>
-      </div>
-      <div class="guard-card block">
-        <div class="guard-title">🛡️ 守衛 — 不讓路中斷</div>
-        <div class="guard-hook"><code>task-guard</code> Stop hook · 絕對阻擋</div>
-        <div style="margin:0.5rem 0">
-          <div class="pipe-node input"><div class="pipe-node-dot input"></div>
-            <div><span class="pipe-node-text">Claude 嘗試結束回合</span></div></div>
-          <div class="pipe-node decision"><div class="pipe-node-dot decision"></div>
-            <div><span class="pipe-node-text">TodoWrite 全部完成？</span> <span class="pipe-node-sub">已取消？超過 5 次？</span></div></div>
-          <div class="pipe-node" style="color:var(--red)"><div class="pipe-node-dot" style="background:var(--red)"></div>
-            <div><span class="pipe-node-text" style="color:var(--red)">decision: "block"</span> <span class="pipe-node-sub">絕對阻止結束 → 強制繼續完成任務</span></div></div>
-        </div>
-        <div class="guard-mechanism">目的：阻止流程中斷</div>
-      </div>
+    <div class="guard-layer" style="max-width:none">${gdCards}
     </div>
   </div>`);
 
-  // 完成
+  // 完成（從 config 讀取）
+  const pc = config.pipelineCompletion;
   parts.push(`<div class="pipe-connector"><div class="pipe-connector-arrow">▼</div></div>`);
   parts.push(`<div class="pipe-main-agent" style="border-color:var(--green);background:rgba(63,185,80,0.04)">
-    <div class="pipe-main-agent-icon">✅</div>
+    <div class="pipe-main-agent-icon">${pc.icon}</div>
     <div>
-      <div class="pipe-main-agent-title" style="color:var(--green)">Pipeline 完成</div>
-      <div class="pipe-main-agent-detail">所有任務完成 · task-guard 放行 · pipeline 狀態清除 · /flow:cancel 可手動取消</div>
+      <div class="pipe-main-agent-title" style="color:var(--green)">${pc.title}</div>
+      <div class="pipe-main-agent-detail">${pc.detail}</div>
     </div>
   </div>`);
 
@@ -1183,6 +894,9 @@ function genAgentDetails() {
 // ─── 組合 HTML ─────────────────────────────────
 
 function generate(specs, progress) {
+  const config = fs.existsSync(CONFIG_PATH) ? loadJSON(CONFIG_PATH) : null;
+  const meta = fs.existsSync(META_PATH) ? loadJSON(META_PATH) : null;
+
   const ts = new Date(progress.timestamp).toLocaleString('zh-TW', {
     timeZone: 'Asia/Taipei',
     year: 'numeric', month: '2-digit', day: '2-digit',
@@ -1228,17 +942,17 @@ function generate(specs, progress) {
 
 <!-- 開發流程 -->
 <h2>開發流程</h2>
-${genFlowDiagram()}
+${genFlowDiagram(config, meta)}
 
 <!-- 依賴關係 -->
 <h2>依賴關係</h2>
-${genDependencyGraph()}
+${genDependencyGraph(specs, config)}
 
 
 
 <!-- Agent 詳細流程 -->
 <h2>Agent 詳細流程</h2>
-${genAgentDetails()}
+${genAgentDetails(config, meta)}
 
 <!-- Plugin 詳情 -->
 <h2>Plugin 詳情</h2>
@@ -1248,7 +962,7 @@ ${genAgentDetails()}
 
 <div class="footer">
   Vibe Marketplace v0.2.0 — ${progress.overall.totalActual}/${progress.overall.totalExpected} 組件完成
-  · 由 <code>scripts/generate-dashboard.js</code> 自動產生
+  · 由 <code>dashboard/scripts/generate.js</code> 自動產生
 </div>
 
 </body>
@@ -1303,8 +1017,8 @@ function generateIndex(specs) {
 
 > ${pluginCount} 個 plugin（forge + ${newCount} 新）的總流程、依賴關係，以及各文件索引。
 >
-> **此檔案由 \`scripts/generate-dashboard.js\` 自動產生，請勿手動編輯。**
-> 修改來源：\`docs/plugin-specs.json\`（數量）+ \`scripts/generate-dashboard.js\`（結構）
+> **此檔案由 \`dashboard/scripts/generate.js\` 自動產生，請勿手動編輯。**
+> 修改來源：\`docs/plugin-specs.json\`（數量）+ \`dashboard/scripts/generate.js\`（結構）
 
 ---
 
@@ -1469,7 +1183,7 @@ function main() {
   const specs = loadJSON(SPECS_PATH);
   const progress = loadJSON(PROGRESS_PATH);
   fs.writeFileSync(OUTPUT_PATH, generate(specs, progress));
-  console.log(`Dashboard 已更新：docs/dashboard.html`);
+  console.log(`Dashboard 已更新：dashboard/dashboard.html`);
 }
 
 main();

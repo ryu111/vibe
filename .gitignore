@@ -6,8 +6,9 @@
 .claude/projects/
 
 # 自動產生的檔案（由 hook 重建）
-docs/progress.json
-docs/dashboard.html
+dashboard/data/progress.json
+dashboard/dashboard.html
+dashboard/data/meta.json
 
 # Node
 node_modules/

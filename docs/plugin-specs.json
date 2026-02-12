@@ -18,6 +18,7 @@
       "priority": "high",
       "category": "workflow",
       "buildOrder": 1,
+      "depGroup": "core",
       "tags": ["planning", "architecture", "compact", "pipeline", "checkpoint"],
       "expected": {
         "skills": ["plan", "architect", "compact", "checkpoint", "env-detect", "cancel"],
@@ -31,6 +32,7 @@
       "priority": "high",
       "category": "quality",
       "buildOrder": 2,
+      "depGroup": "core",
       "tags": ["lint", "format", "review", "security", "tdd", "e2e", "testing"],
       "expected": {
         "skills": ["review", "lint", "format", "security", "tdd", "e2e", "qa", "coverage", "verify"],
@@ -44,6 +46,7 @@
       "priority": "medium",
       "category": "knowledge",
       "buildOrder": 3,
+      "depGroup": "independent",
       "tags": ["coding-standards", "design-patterns", "best-practices"],
       "expected": {
         "skills": ["coding-standards", "frontend-patterns", "backend-patterns", "db-patterns", "typescript-patterns", "python-patterns", "go-patterns", "testing-patterns"],
@@ -57,6 +60,7 @@
       "priority": "low",
       "category": "intelligence",
       "buildOrder": 4,
+      "depGroup": "advanced",
       "tags": ["evolution", "instincts", "docs"],
       "expected": {
         "skills": ["evolve", "doc-sync"],
@@ -70,6 +74,7 @@
       "priority": "low",
       "category": "monitoring",
       "buildOrder": 5,
+      "depGroup": "monitoring",
       "tags": ["visualization", "monitoring", "websocket"],
       "expected": {
         "skills": ["dashboard"],
@@ -83,6 +88,7 @@
       "priority": "high",
       "category": "communication",
       "buildOrder": 6,
+      "depGroup": "communication",
       "tags": ["line", "telegram", "notification", "bidirectional", "messaging"],
       "expected": {
         "skills": ["notify", "notify-config"],
@@ -96,6 +102,7 @@
       "priority": "pending",
       "category": "collaboration",
       "buildOrder": 7,
+      "depGroup": "pending",
       "tags": ["agent-teams", "adversarial", "competitive-analysis"],
       "expected": {
         "skills": ["adversarial-plan", "adversarial-review", "adversarial-refactor"],
