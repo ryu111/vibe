@@ -349,12 +349,12 @@
     .pixel .ws-bubble.fail { background: var(--red); color: var(--text); border-color: color-mix(in srgb, var(--red) 60%, #000); }
     .pixel .ws-bubble.fail::after { border-top-color: color-mix(in srgb, var(--red) 60%, #000); }
     /* next 不再顯示 bubble，pending/skipped 無 bubble */
-    .pixel .ws-char { width: 21px; height: 30px; position: relative; z-index: 1; }
+    .pixel .ws-char { width: 28px; height: 40px; position: relative; z-index: 1; }
     .pixel .ws-pixel { position: absolute; top: 0; left: 0; image-rendering: pixelated; }
     .pixel .ws-desk { display: flex; flex-direction: column; align-items: center; margin-top: 2px; }
-    .pixel .ws-screen { width: 28px; height: 20px; background: var(--bg); border: 2px solid var(--overlay0); position: relative; transition: all 0.3s; }
-    .pixel .ws-screen::after { content: ''; position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%); width: 12px; height: 4px; background: var(--overlay0); }
-    .pixel .ws-desk-top { width: 48px; height: 6px; background: #8B6914; border: 2px solid #6B4914; margin-top: 2px; }
+    .pixel .ws-screen { width: 34px; height: 24px; background: var(--bg); border: 2px solid var(--overlay0); position: relative; transition: all 0.3s; }
+    .pixel .ws-screen::after { content: ''; position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%); width: 14px; height: 5px; background: var(--overlay0); }
+    .pixel .ws-desk-top { width: 56px; height: 7px; background: #8B6914; border: 2px solid #6B4914; margin-top: 2px; }
     .pixel .ws-label { font-size: 10px; color: var(--subtext0); text-align: center; margin-top: 4px; }
     .pixel .ws-label-name { font-size: 10px; color: var(--overlay0); font-family: monospace !important; }
     .pixel .ws-retry { position: absolute; top: -4px; right: -4px; background: var(--orange); color: var(--bg); font-size: 10px; font-weight: 700; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; z-index: 2; animation: popIn 0.3s cubic-bezier(0.175,0.885,0.32,1.275); }
@@ -363,7 +363,7 @@
     .pixel .main-agent { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 1px; transition: left 0.8s ease-in-out, top 0.8s ease-in-out; z-index: 10; pointer-events: none; transform: translateX(-50%); }
     .pixel .main-agent .ma-bubble { background: var(--yellow); color: var(--bg); font-size: 11px; font-weight: 700; padding: 4px 8px; border: 2px solid color-mix(in srgb, var(--yellow) 60%, #000); white-space: nowrap; position: relative; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
     .pixel .main-agent .ma-bubble::after { content: ''; position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 4px solid color-mix(in srgb, var(--yellow) 60%, #000); }
-    .pixel .main-agent .ma-char { width: 21px; height: 30px; position: relative; }
+    .pixel .main-agent .ma-char { width: 28px; height: 40px; position: relative; }
     .pixel .main-agent .ma-pixel { position: absolute; top: 0; left: 0; image-rendering: pixelated; }
     .pixel .main-agent .ma-label { font-size: 10px; color: var(--yellow); margin-top: 2px; }
     .pixel .main-agent.walking .ma-char { animation: maWalk 0.4s steps(2) infinite; }
@@ -389,8 +389,11 @@
     .pixel .ws.st-pending .ws-screen { background: color-mix(in srgb, var(--bg) 80%, #000); }
     .pixel .ws.st-pending::after { content: 'z z z'; position: absolute; top: -4px; right: 4px; font-size: 7px; color: var(--overlay0); animation: wsSleep 2s steps(3) infinite; font-family: monospace !important; }
     /* skipped 灰階 */
-    .pixel .ws.st-skipped { opacity: 0.2; filter: grayscale(1); }
+    .pixel .ws.st-skipped { opacity: 0.45; filter: grayscale(0.6); }
     .pixel .ws.st-skipped .ws-screen { background: color-mix(in srgb, var(--bg) 80%, #000); }
+    .pixel .ws.st-skipped .ws-screen::before { content: 'OFF'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--overlay0); font-size: 8px; font-weight: 700; letter-spacing: 1px; z-index: 1; }
+    .pixel .ws.st-skipped .ws-char { opacity: 0.5; }
+    .pixel .ws.st-skipped .ws-desk-top { opacity: 0.6; }
     /* 點擊固定 tooltip */
     .pixel .ws.pinned .ws-tip { opacity: 1; }
     .pixel .ws.pinned { filter: brightness(1.15); z-index: 5; }
@@ -405,6 +408,15 @@
     @keyframes wsSmoke { 0% { opacity: 0.6; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-10px); } }
     @keyframes wsScreenPulse { 0%,100% { box-shadow: 0 0 4px var(--ac); } 50% { box-shadow: 0 0 12px var(--ac); } }
     @keyframes wsScreenBlink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0.3; } }
+
+    /* 完成慶祝 — 全部 PASS 後角色歡呼 */
+    .pixel .office.complete .ws.st-pass .ws-char { animation: wsParty 1.2s ease-in-out infinite; }
+    .pixel .office.complete .ws.st-pass::after { content: '🎉'; position: absolute; top: -8px; left: 50%; transform: translateX(-50%); font-size: 12px; animation: wsPartyPop 2s steps(3) infinite; pointer-events: none; z-index: 3; }
+    .pixel .office.complete .ws.st-pass:nth-child(odd)::after { content: '🎊'; animation-delay: 0.5s; }
+    .pixel .office.complete .ws.st-pass:nth-child(3n)::after { content: '✨'; animation-delay: 1s; }
+    .pixel .office.complete .main-agent .ma-char { animation: wsParty 1s ease-in-out infinite !important; }
+    @keyframes wsParty { 0%,100% { transform: translateY(0) rotate(0); } 25% { transform: translateY(-8px) rotate(-5deg); } 50% { transform: translateY(-3px) rotate(3deg); } 75% { transform: translateY(-6px) rotate(-2deg); } }
+    @keyframes wsPartyPop { 0% { opacity: 0; transform: translateX(-50%) translateY(0) scale(0.5); } 20% { opacity: 1; transform: translateX(-50%) translateY(-6px) scale(1.1); } 40% { opacity: 1; transform: translateX(-50%) translateY(-10px) scale(1); } 100% { opacity: 0; transform: translateX(-50%) translateY(-16px) scale(0.6); } }
 
     /* active 工位發光環 */
     .pixel .ws.st-active { filter: brightness(1.1); }
@@ -502,9 +514,9 @@
     /* 全螢幕像素模式 */
     .fullscreen .pixel .office { min-height: 480px; padding: 24px 32px; }
     .fullscreen .pixel .ws { width: 130px; }
-    .fullscreen .pixel .ws-char { width: 28px; height: 40px; transform: scale(1.3); transform-origin: center bottom; }
-    .fullscreen .pixel .ws-screen { width: 34px; height: 24px; }
-    .fullscreen .pixel .ws-desk-top { width: 56px; }
+    .fullscreen .pixel .ws-char { transform: scale(1.25); transform-origin: center bottom; }
+    .fullscreen .pixel .ws-screen { width: 40px; height: 28px; }
+    .fullscreen .pixel .ws-desk-top { width: 64px; }
     .fullscreen .pixel .ws-bubble { font-size: 12px; }
     .fullscreen .pixel .ws-label { font-size: 11px; }
     .fullscreen .pixel .office-arrow { font-size: 20px; }
@@ -640,7 +652,7 @@
     }
 
     // --- 像素辦公室：角色像素系統 ---
-    const PXS = 3; // 每個像素 3px × 3px
+    const PXS = 4; // 每個像素 4px × 4px（放大角色可見度）
     const SK = '#ffd8b4', EY = '#222', MO = '#c47a5a', LG = '#445';
 
     // 角色像素網格（7 wide × 10 tall，字母映射到顏色）
@@ -882,7 +894,7 @@
       const stagesTotal = s.expectedStages?.length || 0;
 
       return html`
-        <div class="office" onClick=${() => setPinnedWs(null)}>
+        <div class="office${isComplete ? ' complete' : ''}" onClick=${() => setPinnedWs(null)}>
           <div class="office-carpet"></div>
           <div class="office-wall-top">
             <span>🚪 ENTRANCE</span>
