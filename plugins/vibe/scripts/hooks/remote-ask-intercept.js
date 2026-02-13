@@ -16,6 +16,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const PENDING_FILE = path.join(CLAUDE_DIR, 'remote-ask-pending.json');
@@ -82,7 +83,8 @@ async function main() {
   let tg;
   try {
     tg = require(path.join(pluginRoot, 'scripts', 'lib', 'remote', 'telegram.js'));
-  } catch (_) {
+  } catch (err) {
+    hookLogger.error('remote-ask-intercept', err);
     process.exit(0);
   }
 
@@ -101,7 +103,9 @@ async function main() {
       creds.token, creds.chatId, notify.text, keyboard, null
     );
     messageId = result && result.message_id;
-  } catch (_) {}
+  } catch (err) {
+    hookLogger.error('remote-ask-intercept', err);
+  }
 
   // 寫 pending state — daemon 偵測後可用按鈕或數字回覆
   fs.writeFileSync(PENDING_FILE, JSON.stringify({
@@ -120,4 +124,4 @@ async function main() {
   // 立即放行 TUI — 不阻擋、不等待
 }
 
-main().catch(() => process.exit(0));
+main().catch((err) => { hookLogger.error('remote-ask-intercept', err); process.exit(0); });

@@ -8,6 +8,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 
 async function main() {
   let input = '';
@@ -36,7 +37,9 @@ async function main() {
 
   try {
     await sendMessage(creds.token, creds.chatId, `\u{1F464} ${text}`);
-  } catch (_) {}
+  } catch (err) {
+    hookLogger.error('remote-prompt-forward', err);
+  }
 }
 
-main().catch(() => process.exit(0));
+main().catch((err) => { hookLogger.error('remote-prompt-forward', err); process.exit(0); });

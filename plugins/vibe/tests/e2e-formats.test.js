@@ -110,6 +110,12 @@ module.exports = {
     path.join(mockScriptsLib, 'registry.js')
   );
 
+  // 複製 hook-logger.js（hook 腳本共用依賴）
+  fs.copyFileSync(
+    path.join(SCRIPTS_DIR, 'lib', 'hook-logger.js'),
+    path.join(mockScriptsLib, 'hook-logger.js')
+  );
+
   // 複製目標 hook 腳本
   const srcHook = path.join(SCRIPTS_DIR, 'hooks', scriptName);
   const destHook = path.join(mockScriptsHooks, scriptName);
