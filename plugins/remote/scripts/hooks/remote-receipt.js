@@ -77,7 +77,7 @@ async function main() {
   const { parseLastAssistantTurn } = require(
     path.join(pluginRoot, 'scripts', 'lib', 'transcript.js')
   );
-  const turn = parseLastAssistantTurn(transcriptPath, { maxTextLen: 500, toolStats: true });
+  const turn = parseLastAssistantTurn(transcriptPath, { maxTextLen: 150, toolStats: true });
 
   // 至少要有文字或工具才發送
   if (!turn.text && !turn.tools) process.exit(0);
