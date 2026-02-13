@@ -4,6 +4,8 @@
  *
  * 功能 A：/say 已讀回條 — 有 say-pending → editMessageText ✅ 完成
  * 功能 B：回合摘要通知 — 無 say-pending → 解析 transcript → 發送動作摘要
+ *   - 🤖 Claude 的文字回應（有文字時才發）
+ *   - 📋 回合動作：工具統計一行摘要（有工具時才發）
  */
 'use strict';
 const fs = require('fs');
@@ -68,17 +70,34 @@ async function main() {
     if (Date.now() - last.t < THROTTLE_MS) process.exit(0);
   } catch (_) {}
 
-  // 解析 transcript 取得最近一個回合的工具呼叫
+  // 解析 transcript 取得最近一個回合的文字 + 工具統計
   const transcriptPath = data.transcript_path;
   if (!transcriptPath || !fs.existsSync(transcriptPath)) process.exit(0);
 
-  const summary = parseTurnSummary(transcriptPath);
-  if (!summary) process.exit(0);
+  const { parseLastAssistantTurn } = require(
+    path.join(pluginRoot, 'scripts', 'lib', 'transcript.js')
+  );
+  const turn = parseLastAssistantTurn(transcriptPath, { maxTextLen: 500, toolStats: true });
 
-  // 發送摘要
-  try {
-    await sendMessage(creds.token, creds.chatId, summary, null);
-  } catch (_) {}
+  // 至少要有文字或工具才發送
+  if (!turn.text && !turn.tools) process.exit(0);
+
+  // 訊息 1：Claude 的文字回應
+  if (turn.text) {
+    try {
+      await sendMessage(creds.token, creds.chatId, `\u{1F916} ${turn.text}`, null);
+    } catch (_) {}
+  }
+
+  // 訊息 2：工具統計一行摘要
+  if (turn.tools) {
+    const line = formatToolLine(turn.tools);
+    if (line) {
+      try {
+        await sendMessage(creds.token, creds.chatId, `\u{1F4CB} \u56DE\u5408\u52D5\u4F5C\uFF1A${line}`, null);
+      } catch (_) {}
+    }
+  }
 
   // 更新節流時間戳
   try {
@@ -87,123 +106,22 @@ async function main() {
 }
 
 /**
- * 從 transcript JSONL 解析最近回合的工具呼叫，產出摘要文字
+ * 工具統計壓縮為一行：📝×2 ✏️×3 ⚡×1 🤖×2 🔍×5 📖×3
  */
-function parseTurnSummary(transcriptPath) {
-  let lines;
-  try {
-    // 只讀最後 64KB（約最近幾個回合），避免讀取整個 session
-    const stat = fs.statSync(transcriptPath);
-    const readSize = Math.min(stat.size, 65536);
-    const buf = Buffer.alloc(readSize);
-    const fd = fs.openSync(transcriptPath, 'r');
-    fs.readSync(fd, buf, 0, readSize, stat.size - readSize);
-    fs.closeSync(fd);
-    lines = buf.toString('utf8').trim().split('\n');
-    // 第一行可能被截斷，丟棄
-    if (stat.size > readSize) lines.shift();
-  } catch (_) {
-    return null;
-  }
-
-  // 從尾部往回讀，找最近一個 assistant turn 的工具呼叫
-  const files = { edited: new Set(), created: new Set() };
-  let bashCount = 0;
-  let bashCmds = [];
-  let taskCount = 0;
-  let searchCount = 0;
-  let readCount = 0;
-  let foundAssistant = false;
-
-  for (let i = lines.length - 1; i >= 0; i--) {
-    let entry;
-    try { entry = JSON.parse(lines[i]); } catch (_) { continue; }
-
-    // 遇到 user/human turn → 停止（只看最後一個 assistant 回合）
-    if (entry.type === 'human' || entry.role === 'user') {
-      if (foundAssistant) break;
-      continue;
-    }
-
-    // assistant turn 的 content
-    if (entry.type === 'assistant' || entry.role === 'assistant') {
-      foundAssistant = true;
-      const content = entry.message?.content || entry.content || [];
-      if (!Array.isArray(content)) continue;
-
-      for (const block of content) {
-        if (block.type !== 'tool_use') continue;
-        const name = block.name;
-        const input = block.input || {};
-
-        if (name === 'Write') {
-          files.created.add(shortenPath(input.file_path));
-        } else if (name === 'Edit') {
-          files.edited.add(shortenPath(input.file_path));
-        } else if (name === 'Bash') {
-          bashCount++;
-          const cmd = (input.command || '').split(/\s*&&\s*/)[0].trim();
-          if (cmd) bashCmds.push(cmd.length > 40 ? cmd.slice(0, 37) + '...' : cmd);
-        } else if (name === 'Task') {
-          taskCount++;
-        } else if (name === 'Grep' || name === 'Glob') {
-          searchCount++;
-        } else if (name === 'Read') {
-          readCount++;
-        }
-      }
-    }
-  }
-
-  // 組裝摘要
+function formatToolLine(tools) {
+  const map = [
+    ['write', '\u{1F4DD}'],
+    ['edit', '\u270F\uFE0F'],
+    ['bash', '\u26A1'],
+    ['task', '\u{1F916}'],
+    ['search', '\u{1F50D}'],
+    ['read', '\u{1F4D6}'],
+  ];
   const parts = [];
-
-  const editedFiles = [...files.edited].filter(f => !files.created.has(f));
-  if (files.created.size > 0) {
-    parts.push(`\u{1F4DD} \u5EFA\u7ACB ${files.created.size} \u500B\u6A94\u6848`);
-    for (const f of files.created) parts.push(`  \u00B7 ${f}`);
+  for (const [key, emoji] of map) {
+    if (tools[key] > 0) parts.push(`${emoji}\u00D7${tools[key]}`);
   }
-  if (editedFiles.length > 0) {
-    parts.push(`\u270F\uFE0F \u7DE8\u8F2F ${editedFiles.length} \u500B\u6A94\u6848`);
-    for (const f of editedFiles) parts.push(`  \u00B7 ${f}`);
-  }
-  if (bashCount > 0) {
-    parts.push(`\u26A1 \u57F7\u884C ${bashCount} \u500B\u547D\u4EE4`);
-    for (const c of bashCmds.slice(0, 3)) parts.push(`  \u00B7 ${c}`);
-  }
-  if (taskCount > 0) {
-    parts.push(`\u{1F916} \u59D4\u6D3E ${taskCount} \u500B sub-agent`);
-  }
-  if (searchCount > 0) {
-    parts.push(`\u{1F50D} \u641C\u5C0B ${searchCount} \u6B21`);
-  }
-  if (readCount > 0) {
-    parts.push(`\u{1F4D6} \u8B80\u53D6 ${readCount} \u500B\u6A94\u6848`);
-  }
-
-  // 沒有任何動作（純文字回覆）
-  if (parts.length === 0) {
-    parts.push('\u{1F4AC} \u6587\u5B57\u56DE\u8986');
-  }
-
-  return `\u{1F4CB} \u56DE\u5408\u5B8C\u6210\n\n${parts.join('\n')}`;
-}
-
-/**
- * 縮短路徑：去掉常見前綴，只保留有意義的部分
- */
-function shortenPath(filePath) {
-  if (!filePath) return '(unknown)';
-  // 去掉 home 目錄前綴
-  const home = os.homedir();
-  let p = filePath;
-  if (p.startsWith(home)) p = '~' + p.slice(home.length);
-  // 去掉常見工作目錄前綴，只保留最後 2-3 層
-  const segments = p.split('/').filter(Boolean);
-  if (segments.length > 3) {
-    return segments.slice(-3).join('/');
-  }
-  return p;
+  return parts.length > 0 ? parts.join(' ') : null;
 }
 
 main().catch(() => process.exit(0));
