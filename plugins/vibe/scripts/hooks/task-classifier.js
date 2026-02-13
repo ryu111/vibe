@@ -77,7 +77,7 @@ function classify(prompt) {
     return 'refactor';
   }
   // 功能開發：明確的功能建設意圖（正向匹配）
-  if (/implement|develop|build.*feature|新增功能|建立.*功能|實作|開發.*功能|加入.*功能|新的.*(api|endpoint|component|頁面|模組|plugin)|整合.*系統/.test(p)) {
+  if (/implement|develop|build.*feature|新增功能|建立.*(?:功能|api|rest|endpoint|server|service|database|服務|系統|模組|元件|頁面|app|應用|專案|component|module)|實作|開發.*功能|加入.*功能|新的.*(api|endpoint|component|頁面|模組|plugin)|整合.*系統/.test(p)) {
     return 'feature';
   }
   // 快速修復：簡單改動

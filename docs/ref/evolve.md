@@ -187,8 +187,10 @@ memory: project
 
 ## 6. 目錄結構
 
+> 已併入統一 `vibe` plugin，以下為 evolve 模組相關檔案。
+
 ```
-plugins/evolve/
+plugins/vibe/
 ├── .claude-plugin/
 │   └── plugin.json
 ├── pipeline.json

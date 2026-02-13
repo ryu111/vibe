@@ -369,8 +369,10 @@ description: {一句話描述}
 
 ## 6. 目錄結構
 
+> 已併入統一 `vibe` plugin，以下為 patterns 模組相關檔案。
+
 ```
-plugins/patterns/
+plugins/vibe/
 ├── .claude-plugin/
 │   └── plugin.json
 └── skills/

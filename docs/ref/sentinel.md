@@ -476,8 +476,10 @@ memory: project
 
 ## 8. 目錄結構
 
+> 已併入統一 `vibe` plugin，以下為 sentinel 模組相關檔案。
+
 ```
-plugins/sentinel/
+plugins/vibe/
 ├── .claude-plugin/
 │   └── plugin.json
 ├── skills/

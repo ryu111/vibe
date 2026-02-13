@@ -25,25 +25,26 @@ const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 // ─── Pipeline 發現（專案層級版，不依賴 CLAUDE_PLUGIN_ROOT）─────
 
 function discoverPipelineLocal() {
-  // 讀取 flow 的 stage 定義
-  const flowPipelinePath = path.join(PLUGINS_DIR, 'flow', 'pipeline.json');
-  if (!fs.existsSync(flowPipelinePath)) {
-    return { stageOrder: [], stageLabels: {}, stageMap: {}, agentToStage: {} };
-  }
-
-  const flowConfig = JSON.parse(fs.readFileSync(flowPipelinePath, 'utf8'));
+  // 動態掃描所有 plugin 的 pipeline.json
+  let stageOrder = [];
+  let stageLabels = {};
   const stageMap = {};
   const agentToStage = {};
 
-  // 掃描所有 plugin 的 pipeline.json
   for (const dir of fs.readdirSync(PLUGINS_DIR)) {
     const pipePath = path.join(PLUGINS_DIR, dir, 'pipeline.json');
     if (!fs.existsSync(pipePath)) continue;
 
     try {
       const config = JSON.parse(fs.readFileSync(pipePath, 'utf8'));
-      if (!config.provides) continue;
 
+      // 有 stages 欄位的作為主定義（只取第一個）
+      if (config.stages && stageOrder.length === 0) {
+        stageOrder = config.stages;
+        stageLabels = config.stageLabels || {};
+      }
+
+      if (!config.provides) continue;
       for (const [stage, info] of Object.entries(config.provides)) {
         stageMap[stage] = { ...info, plugin: dir };
         if (info.agent) agentToStage[info.agent] = stage;
@@ -51,12 +52,7 @@ function discoverPipelineLocal() {
     } catch (_) {}
   }
 
-  return {
-    stageOrder: flowConfig.stages || [],
-    stageLabels: flowConfig.stageLabels || {},
-    stageMap,
-    agentToStage,
-  };
+  return { stageOrder, stageLabels, stageMap, agentToStage };
 }
 
 // ─── State File 操作 ──────────────────────────────
@@ -395,10 +391,12 @@ function checkConventions(targetDir) {
 function checkHooks() {
   const checks = [];
 
-  // ─── hooks.json 結構驗證 ───
-  for (const plugin of ['flow', 'sentinel']) {
+  // ─── hooks.json 結構驗證（動態掃描所有含 hooks.json 的 plugin）───
+  const hookPlugins = fs.readdirSync(PLUGINS_DIR).filter(d =>
+    fs.existsSync(path.join(PLUGINS_DIR, d, 'hooks', 'hooks.json'))
+  );
+  for (const plugin of hookPlugins) {
     const hooksJsonPath = path.join(PLUGINS_DIR, plugin, 'hooks', 'hooks.json');
-    if (!fs.existsSync(hooksJsonPath)) continue;
 
     try {
       const hooksJson = JSON.parse(fs.readFileSync(hooksJsonPath, 'utf8'));
@@ -469,7 +467,7 @@ function checkHooks() {
   // ─── Hook 行為驗證（用 mock stdin 實測）───
 
   // task-classifier：分類正確性
-  const classifierPath = path.join(PLUGINS_DIR, 'flow', 'scripts', 'hooks', 'task-classifier.js');
+  const classifierPath = path.join(PLUGINS_DIR, 'vibe', 'scripts', 'hooks', 'task-classifier.js');
   if (fs.existsSync(classifierPath)) {
     const testCases = [
       { input: '幫我建立一個 REST API', expected: 'feature', label: 'feature 分類' },
@@ -486,17 +484,27 @@ function checkHooks() {
           timeout: 5000,
         }).toString().trim();
         const output = JSON.parse(result);
-        const hasContext = !!output.additionalContext;
-        const matchesType = output.additionalContext && output.additionalContext.includes(tc.expected === 'research' ? '研究探索' :
-          tc.expected === 'feature' ? '新功能開發' :
-          tc.expected === 'quickfix' ? '快速修復' :
-          tc.expected === 'refactor' ? '重構' : tc.expected);
+        // FULL_PIPELINE_TYPES (feature/refactor/tdd) 輸出 systemMessage（含 pipeline 規則）
+        // 其他類型輸出 additionalContext（含類型標籤）
+        const fullPipelineTypes = { feature: 'PLAN', refactor: 'ARCH', tdd: 'TEST' };
+        const typeLabels = { research: '研究探索', quickfix: '快速修復', bugfix: '修復 Bug', test: '測試' };
+        let hasResponse, matchesType, actualText;
+        if (fullPipelineTypes[tc.expected]) {
+          // 驗證有 systemMessage + 包含預期的第一階段
+          hasResponse = !!output.systemMessage;
+          matchesType = hasResponse && output.systemMessage.includes(fullPipelineTypes[tc.expected]);
+          actualText = hasResponse ? `systemMessage 含 ${fullPipelineTypes[tc.expected]}` : '無 systemMessage';
+        } else {
+          hasResponse = !!output.additionalContext;
+          matchesType = hasResponse && output.additionalContext.includes(typeLabels[tc.expected] || tc.expected);
+          actualText = hasResponse ? output.additionalContext.slice(0, 60) : '無輸出';
+        }
         checks.push({
           id: 'HOOK-CLASSIFY',
           name: `task-classifier ${tc.label}`,
-          result: hasContext && matchesType ? 'PASS' : 'FAIL',
+          result: hasResponse && matchesType ? 'PASS' : 'FAIL',
           expected: tc.expected,
-          actual: hasContext ? output.additionalContext.slice(0, 60) : '無輸出',
+          actual: actualText,
         });
       } catch (err) {
         checks.push({
@@ -511,7 +519,7 @@ function checkHooks() {
   }
 
   // danger-guard：阻擋危險命令
-  const dangerPath = path.join(PLUGINS_DIR, 'sentinel', 'scripts', 'hooks', 'danger-guard.js');
+  const dangerPath = path.join(PLUGINS_DIR, 'vibe', 'scripts', 'hooks', 'danger-guard.js');
   if (fs.existsSync(dangerPath)) {
     const dangerTests = [
       { cmd: 'rm -rf /', shouldBlock: true, label: 'rm -rf / 阻擋' },
@@ -555,9 +563,9 @@ function checkHooks() {
   }
 
   // stage-transition：防迴圈 + 輸出格式 + 智慧回退
-  const transPath = path.join(PLUGINS_DIR, 'flow', 'scripts', 'hooks', 'stage-transition.js');
+  const transPath = path.join(PLUGINS_DIR, 'vibe', 'scripts', 'hooks', 'stage-transition.js');
   if (fs.existsSync(transPath)) {
-    const transEnv = { ...process.env, CLAUDE_PLUGIN_ROOT: path.join(PLUGINS_DIR, 'flow') };
+    const transEnv = { ...process.env, CLAUDE_PLUGIN_ROOT: path.join(PLUGINS_DIR, 'vibe') };
 
     // 防迴圈：stop_hook_active = true 時應靜默退出
     try {
@@ -783,7 +791,7 @@ function checkHooks() {
     // ─── Agent Verdict 標記驗證 ───
     const verdictAgents = ['code-reviewer', 'tester', 'qa', 'e2e-runner'];
     for (const agent of verdictAgents) {
-      const agentPath = path.join(PLUGINS_DIR, 'sentinel', 'agents', `${agent}.md`);
+      const agentPath = path.join(PLUGINS_DIR, 'vibe', 'agents', `${agent}.md`);
       if (!fs.existsSync(agentPath)) continue;
       const content = fs.readFileSync(agentPath, 'utf8');
       const hasVerdict = content.includes('PIPELINE_VERDICT');
@@ -800,14 +808,14 @@ function checkHooks() {
   }
 
   // pipeline-check：防迴圈
-  const checkPath = path.join(PLUGINS_DIR, 'flow', 'scripts', 'hooks', 'pipeline-check.js');
+  const checkPath = path.join(PLUGINS_DIR, 'vibe', 'scripts', 'hooks', 'pipeline-check.js');
   if (fs.existsSync(checkPath)) {
     try {
       const stdin = JSON.stringify({ stop_hook_active: true, session_id: 'test' });
       const result = execSync(`echo '${stdin}' | node "${checkPath}"`, {
         stdio: ['pipe', 'pipe', 'pipe'],
         timeout: 5000,
-        env: { ...process.env, CLAUDE_PLUGIN_ROOT: path.join(PLUGINS_DIR, 'flow') },
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: path.join(PLUGINS_DIR, 'vibe') },
       }).toString().trim();
       checks.push({
         id: 'HOOK-LOOP',
@@ -828,7 +836,7 @@ function checkHooks() {
   }
 
   // check-console-log：防迴圈
-  const consolePath = path.join(PLUGINS_DIR, 'sentinel', 'scripts', 'hooks', 'check-console-log.js');
+  const consolePath = path.join(PLUGINS_DIR, 'vibe', 'scripts', 'hooks', 'check-console-log.js');
   if (fs.existsSync(consolePath)) {
     try {
       const stdin = JSON.stringify({ stop_hook_active: true });
@@ -949,7 +957,7 @@ function main() {
   const pipeline = discoverPipelineLocal();
 
   if (pipeline.stageOrder.length === 0) {
-    process.stderr.write('錯誤：找不到 plugins/flow/pipeline.json\n');
+    process.stderr.write('錯誤：找不到任何 plugin 的 pipeline.json（需含 stages 欄位）\n');
     process.exit(1);
   }
 

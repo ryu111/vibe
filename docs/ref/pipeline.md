@@ -28,8 +28,7 @@ docs/ref/flow.md              ← flow plugin 設計文件
 docs/ref/{plugin}.md          ← 受影響 plugin 的設計文件
 docs/plugin-specs.json         ← 數量統計
 dashboard/scripts/generate.js  ← pipeline 視覺化
-plugins/flow/pipeline.json     ← stage 順序定義
-plugins/*/pipeline.json         ← 各 plugin 的 pipeline 宣告（provides 欄位）
+plugins/vibe/pipeline.json     ← stage 順序 + provides 統一定義
 ```
 
 ---
@@ -100,12 +99,12 @@ plugins/*/pipeline.json         ← 各 plugin 的 pipeline 宣告（provides �
 
 ---
 
-## 3. 跨 Plugin 解耦方案
+## 3. 統一 Pipeline 定義
 
-### 3.1 flow 擁有 pipeline 順序（靜態，幾乎不需更新）
+### 3.1 統一 pipeline.json（所有 stages + provides 集中在一個檔案）
 
 ```json
-// plugins/flow/pipeline.json
+// plugins/vibe/pipeline.json
 {
   "stages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "QA", "E2E", "DOCS"],
   "stageLabels": {
@@ -119,59 +118,25 @@ plugins/*/pipeline.json         ← 各 plugin 的 pipeline 宣告（provides �
     "DOCS": "文件整理"
   },
   "provides": {
-    "PLAN": { "agent": "planner",   "skill": "/vibe:plan" },
-    "ARCH": { "agent": "architect",  "skill": "/vibe:architect" },
-    "DEV":  { "agent": "developer",  "skill": null }
+    "PLAN":   { "agent": "planner",        "skill": "/vibe:plan" },
+    "ARCH":   { "agent": "architect",      "skill": "/vibe:architect" },
+    "DEV":    { "agent": "developer",      "skill": null },
+    "REVIEW": { "agent": "code-reviewer",  "skill": "/vibe:review" },
+    "TEST":   { "agent": "tester",         "skill": "/vibe:tdd" },
+    "QA":     { "agent": "qa",             "skill": "/vibe:qa" },
+    "E2E":    { "agent": "e2e-runner",     "skill": "/vibe:e2e" },
+    "DOCS":   { "agent": "doc-updater",    "skill": "/vibe:doc-sync" }
   }
 }
 ```
 
-> flow 的 `pipeline.json` 同時包含全域定義（`stages` + `stageLabels`）和自身提供的 stages（`provides`）。其他 plugin 只需 `provides` 欄位。只有在**新增全新的 pipeline stage** 時才需要修改 `stages`。
+> 所有 stage 定義（`stages` + `stageLabels`）和 agent 映射（`provides`）統一在 `plugins/vibe/pipeline.json`。只有在**新增全新的 pipeline stage** 時才需要修改 `stages`。
 
-### 3.2 各 plugin 自行宣告 pipeline 位置
-
-在 plugin 根目錄放置 `pipeline.json`，透過 `provides` 欄位宣告此 plugin 提供的 pipeline stages：
+### 3.2 pipeline.json 設計原則
 
 > **重要**：pipeline 資料放在獨立的 `pipeline.json` 而非 `plugin.json`，因為 Claude Code 的 `plugin.json` schema 嚴格驗證，不允許自定義欄位（Unrecognized key 錯誤）。
 
-**flow**（`plugins/flow/pipeline.json`）：
-
-```json
-{
-  "stages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "QA", "E2E", "DOCS"],
-  "stageLabels": { ... },
-  "provides": {
-    "PLAN": { "agent": "planner",   "skill": "/vibe:plan" },
-    "ARCH": { "agent": "architect",  "skill": "/vibe:architect" },
-    "DEV":  { "agent": "developer",  "skill": null }
-  }
-}
-```
-
-**sentinel**（`plugins/sentinel/pipeline.json`）：
-
-```json
-{
-  "provides": {
-    "REVIEW": { "agent": "code-reviewer",  "skill": "/vibe:review" },
-    "TEST":   { "agent": "tester",          "skill": "/vibe:tdd" },
-    "QA":     { "agent": "qa",              "skill": "/vibe:qa" },
-    "E2E":    { "agent": "e2e-runner",      "skill": "/vibe:e2e" }
-  }
-}
-```
-
-**evolve**（`plugins/evolve/pipeline.json`）：
-
-```json
-{
-  "provides": {
-    "DOCS": { "agent": "doc-updater",  "skill": "/vibe:doc-sync" }
-  }
-}
-```
-
-> flow 的 `pipeline.json` 同時包含 `stages`（順序）和 `provides`（自己提供的 stages）。其他 plugin 只需 `provides` 欄位。
+`pipeline-discovery.js` 仍支援動態掃描多 plugin 的 `pipeline.json`，確保未來擴展性（如新增獨立 plugin 可宣告自己的 `provides`）。
 
 ### 3.3 Runtime 動態發現邏輯
 
@@ -580,21 +545,19 @@ Claude 收到 systemMessage 後會用自然語言向使用者報告。
 
 | 優先 | 檔案 | 說明 |
 |:----:|------|------|
-| 1 | `plugins/flow/pipeline.json` | Stage 順序定義 |
-| 2 | `plugins/flow/scripts/lib/pipeline-discovery.js` | 共用掃描邏輯（§3.3） |
-| 3 | `plugins/flow/scripts/hooks/stage-transition.js` | SubagentStop hook（§4.3） |
-| 4 | `plugins/flow/scripts/hooks/pipeline-check.js` | Stop hook（§4.4） |
-| 5 | `plugins/flow/scripts/hooks/task-guard.js` | Stop hook — 任務鎖定（§4.5） |
+| 1 | `plugins/vibe/pipeline.json` | Stage 順序 + provides 統一定義 |
+| 2 | `plugins/vibe/scripts/lib/pipeline-discovery.js` | 共用掃描邏輯（§3.3） |
+| 3 | `plugins/vibe/scripts/hooks/stage-transition.js` | SubagentStop hook（§4.3） |
+| 4 | `plugins/vibe/scripts/hooks/pipeline-check.js` | Stop hook（§4.4） |
+| 5 | `plugins/vibe/scripts/hooks/task-guard.js` | Stop hook — 任務鎖定（§4.5） |
 
 ### 修改
 
 | 優先 | 檔案 | 變動 |
 |:----:|------|------|
-| 5 | `plugins/flow/scripts/hooks/pipeline-init.js` | 環境偵測 + pipeline-rules 注入（§4.2） |
-| 6 | `plugins/flow/hooks/hooks.json` | 新增 SubagentStop、Stop 兩個 hook 定義 |
-| 7 | `plugins/flow/pipeline.json` | `provides` 欄位（flow 同時有 `stages`） |
-| 8 | `plugins/sentinel/pipeline.json` | `provides` 欄位 |
-| 9 | `plugins/evolve/pipeline.json` | `provides` 欄位 |
+| 5 | `plugins/vibe/scripts/hooks/pipeline-init.js` | 環境偵測 + pipeline-rules 注入（§4.2） |
+| 6 | `plugins/vibe/hooks/hooks.json` | 統一 20 hooks 定義 |
+| 7 | `plugins/vibe/pipeline.json` | 所有 stages + provides |
 | 10 | `docs/ref/flow.md` | Skills 6、Hooks 7（移除 session）、Scripts 9（移除 session）、驗收 16 條 |
 | 11 | `docs/plugin-specs.json` | flow hooks 7、scripts 9；evolve hooks 0、scripts 0 |
 | 12 | `dashboard/scripts/generate.js` | Pipeline 視覺化同步更新 |

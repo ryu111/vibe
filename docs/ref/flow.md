@@ -517,8 +517,10 @@ Stop 觸發
 
 ## 8. 目錄結構
 
+> 已併入統一 `vibe` plugin，以下為 flow 模組相關檔案。
+
 ```
-plugins/flow/
+plugins/vibe/
 ├── .claude-plugin/
 │   └── plugin.json
 ├── pipeline.json                    ← Stage 順序定義
