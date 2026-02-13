@@ -27,9 +27,14 @@ arguments: $ARGUMENTS
 
 - **單選**：每個選項一個 inline button，點選即回答
 - **多選**：☐/☑ toggle 按鈕 + 「確認」按鈕
-- **超時回退**：55 秒無回應 → 回退到終端 TUI 操作
+- **無時限等待**：不限回覆時間，有空就回
 
-回答後 Claude 收到 systemMessage 繼續工作，不需回到終端。
+| 場景 | 處理方式 |
+|------|----------|
+| 55 秒內回覆 | Hook 直接透過 systemMessage 注入答案 |
+| 55 秒後回覆 | Daemon 透過 tmux send-keys 注入答案 |
+
+回答後 Claude 收到答案繼續工作，不需回到終端。
 
 ## 指令
 

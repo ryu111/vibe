@@ -241,12 +241,21 @@ Hook 讀到 response
 - `~/.claude/remote-ask-pending.json` — hook 寫、daemon 讀（含 messageId/questions/selections）
 - `~/.claude/remote-ask-response.json` — daemon 寫、hook 讀（含 selectedLabels）
 
+**無時限等待**：使用者可以隨時回覆，不受 hook timeout 限制。
+
+| 場景 | 處理方式 |
+|------|----------|
+| 55 秒內回覆 | Hook 直接透過 `systemMessage` 注入答案 |
+| 55 秒後回覆 | Daemon 透過 tmux send-keys 注入答案 |
+
+Hook timeout 60 秒是 ECC 硬限制，但 hook 超時後設定 `hookTimedOut: true`，daemon 偵測此旗標後改用 tmux send-keys 注入答案，實現無限等待。
+
 **特性**：
 - Hook 直接發送 Telegram 訊息（避免 30s long polling 延遲）
-- 55 秒超時回退到正常 TUI（`continue: true`）
+- 無時限等待：hook 55s 內處理 + daemon tmux 注入雙軌機制
 - 多選模式：☐/☑ toggle + editMessageReplyMarkup 即時更新
 - `continue: false` + `systemMessage` 阻止 TUI 顯示，答案注入 Claude context
-- 無 credentials → 靜默放行（`continue: true`）
+- 無 credentials → 靜默放行（正常 TUI 顯示）
 
 ---
 
@@ -260,6 +269,7 @@ Hook 讀到 response
 | 自動啟動 | SessionStart hook → remote-autostart.js |
 | 手動控制 | `/remote start\|stop\|status` |
 | 優雅關閉 | SIGTERM/SIGINT → 清理 PID → exit 0 |
+| 防衝突 | 啟動時 `pgrep -f bot.js` 清理殘留孤兒進程 |
 | 錯誤恢復 | polling 失敗 → 5s 後重試 |
 
 ---
@@ -280,7 +290,7 @@ Hook 讀到 response
 | 互動式選單 | PreToolUse hook + inline keyboard | 攔截 AskUserQuestion，Telegram 直接回答 |
 | 選單發送者 | Hook 直接發（非 daemon） | 避免 30s long polling 延遲 |
 | callback 接收者 | Daemon（bot.js） | 已有 polling 機制，不重複 |
-| 超時策略 | 55s 後 `continue: true` | 回退到正常 TUI，不阻塞 Claude |
+| 超時策略 | 無時限（hook 55s + daemon tmux 注入） | 使用者有空就回，不受 hook timeout 限制 |
 
 ---
 
