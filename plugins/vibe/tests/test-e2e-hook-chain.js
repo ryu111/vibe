@@ -1,0 +1,715 @@
+#!/usr/bin/env node
+/**
+ * test-e2e-hook-chain.js — Hook 鏈端到端整合測試
+ *
+ * 模擬完整 pipeline 生命週期，驗證 hook 間的 state 傳遞：
+ *   Scenario A: Trivial 任務 → 不鎖 pipeline → dev-gate 放行
+ *   Scenario B: Feature 任務 → 鎖 pipeline → dev-gate 阻擋 → delegation 放行 → stage-transition 前進
+ *   Scenario C: Cancel 逃生 → 重設 state → dev-gate 放行
+ *   Scenario D: Reclassification 升級 → quickfix → feature
+ *   Scenario E: Console.log 過濾 → hook 腳本排除
+ *
+ * 執行：node plugins/vibe/tests/test-e2e-hook-chain.js
+ */
+'use strict';
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const assert = require('assert');
+const { execSync } = require('child_process');
+
+const PLUGIN_ROOT = path.join(__dirname, '..');
+const CLAUDE_DIR = path.join(os.homedir(), '.claude');
+const HOOKS_DIR = path.join(PLUGIN_ROOT, 'scripts', 'hooks');
+
+let passed = 0;
+let failed = 0;
+
+function test(name, fn) {
+  try {
+    fn();
+    passed++;
+    console.log(`  ✅ ${name}`);
+  } catch (err) {
+    failed++;
+    console.log(`  ❌ ${name}`);
+    console.log(`     ${err.message}`);
+  }
+}
+
+// ─── 輔助函式 ─────────────────────────────
+
+/**
+ * 初始化 pipeline state（模擬 pipeline-init hook）
+ */
+function initState(sessionId, overrides = {}) {
+  const state = {
+    initialized: true,
+    completed: [],
+    expectedStages: [],
+    stageResults: {},
+    retries: {},
+    delegationActive: false,
+    pipelineEnforced: false,
+    ...overrides,
+  };
+  const p = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
+  fs.writeFileSync(p, JSON.stringify(state, null, 2));
+  return p;
+}
+
+/**
+ * 讀取 state file
+ */
+function readState(sessionId) {
+  const p = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * 清理 state file
+ */
+function cleanState(sessionId) {
+  const p = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
+  try { fs.unlinkSync(p); } catch (_) {}
+}
+
+/**
+ * 執行 hook 腳本
+ * @returns {{ exitCode: number, stdout: string, stderr: string, json: object|null }}
+ */
+function runHook(hookName, stdinData) {
+  const hookPath = path.join(HOOKS_DIR, `${hookName}.js`);
+  try {
+    const stdout = execSync(
+      `echo '${JSON.stringify(stdinData).replace(/'/g, "'\\''")}' | node "${hookPath}"`,
+      {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 5000,
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT },
+      }
+    );
+    const out = stdout.toString().trim();
+    let json = null;
+    if (out) {
+      try { json = JSON.parse(out); } catch (_) {}
+    }
+    return { exitCode: 0, stdout: out, stderr: '', json };
+  } catch (err) {
+    const out = (err.stdout || '').toString().trim();
+    let json = null;
+    if (out) {
+      try { json = JSON.parse(out); } catch (_) {}
+    }
+    return {
+      exitCode: err.status || 1,
+      stdout: out,
+      stderr: (err.stderr || '').toString(),
+      json,
+    };
+  }
+}
+
+/**
+ * 執行 hook 腳本（帶額外環境變數）
+ */
+function runHookWithEnv(hookName, stdinData, extraEnv) {
+  const hookPath = path.join(HOOKS_DIR, `${hookName}.js`);
+  try {
+    const stdout = execSync(
+      `echo '${JSON.stringify(stdinData).replace(/'/g, "'\\''")}' | node "${hookPath}"`,
+      {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 5000,
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, ...extraEnv },
+      }
+    );
+    const out = stdout.toString().trim();
+    let json = null;
+    if (out) {
+      try { json = JSON.parse(out); } catch (_) {}
+    }
+    return { exitCode: 0, stdout: out, stderr: '', json };
+  } catch (err) {
+    const out = (err.stdout || '').toString().trim();
+    let json = null;
+    if (out) {
+      try { json = JSON.parse(out); } catch (_) {}
+    }
+    return {
+      exitCode: err.status || 1,
+      stdout: out,
+      stderr: (err.stderr || '').toString(),
+      json,
+    };
+  }
+}
+
+// ═══════════════════════════════════════════════
+console.log('\n🔗 Scenario A: Trivial 任務 → 不鎖 pipeline → dev-gate 放行');
+console.log('═'.repeat(55));
+// ═══════════════════════════════════════════════
+
+(() => {
+  const sid = 'e2e-trivial-1';
+  try {
+    // Step 1: pipeline-init 初始化 state
+    initState(sid);
+
+    // Step 2: task-classifier 分類 trivial 任務
+    const classifyResult = runHook('task-classifier', {
+      session_id: sid,
+      prompt: '建立一個簡單的 hello world HTTP server',
+    });
+
+    test('A1: task-classifier 分類 trivial 為 quickfix', () => {
+      const state = readState(sid);
+      assert.strictEqual(state.taskType, 'quickfix');
+    });
+
+    test('A2: pipelineEnforced 不被啟動', () => {
+      const state = readState(sid);
+      assert.strictEqual(state.pipelineEnforced, false);
+    });
+
+    test('A3: expectedStages 僅含 DEV', () => {
+      const state = readState(sid);
+      assert.deepStrictEqual(state.expectedStages, ['DEV']);
+    });
+
+    test('A4: task-classifier 輸出 additionalContext（非 systemMessage）', () => {
+      assert.strictEqual(classifyResult.exitCode, 0);
+      assert.ok(classifyResult.json);
+      assert.ok(classifyResult.json.additionalContext, '應有 additionalContext');
+      assert.strictEqual(classifyResult.json.systemMessage, undefined, '不應有 systemMessage');
+    });
+
+    // Step 3: dev-gate 應放行（pipelineEnforced=false）
+    const gateResult = runHook('dev-gate', {
+      session_id: sid,
+      tool_name: 'Write',
+      tool_input: { file_path: 'src/app.js' },
+    });
+
+    test('A5: dev-gate 放行 trivial 任務的 Write', () => {
+      assert.strictEqual(gateResult.exitCode, 0);
+    });
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
+console.log('\n🔗 Scenario B: Feature 任務 → 完整 pipeline 生命週期');
+console.log('═'.repeat(55));
+// ═══════════════════════════════════════════════
+
+(() => {
+  const sid = 'e2e-feature-1';
+  try {
+    // Step 1: 初始化
+    initState(sid);
+
+    // Step 2: task-classifier 分類 feature 任務
+    const classifyResult = runHook('task-classifier', {
+      session_id: sid,
+      prompt: '建立完整的 REST API server，包含使用者認證',
+    });
+
+    test('B1: task-classifier 分類為 feature', () => {
+      const state = readState(sid);
+      assert.strictEqual(state.taskType, 'feature');
+    });
+
+    test('B2: pipelineEnforced 啟動', () => {
+      const state = readState(sid);
+      assert.strictEqual(state.pipelineEnforced, true);
+    });
+
+    test('B3: expectedStages 含完整 8 階段', () => {
+      const state = readState(sid);
+      assert.strictEqual(state.expectedStages.length, 8);
+      assert.strictEqual(state.expectedStages[0], 'PLAN');
+      assert.strictEqual(state.expectedStages[7], 'DOCS');
+    });
+
+    test('B4: task-classifier 輸出 systemMessage（pipeline 規則）', () => {
+      assert.ok(classifyResult.json);
+      assert.ok(classifyResult.json.systemMessage, '應有 systemMessage');
+      assert.ok(classifyResult.json.systemMessage.includes('⛔'));
+      assert.ok(classifyResult.json.systemMessage.includes('禁止'));
+    });
+
+    // Step 3: dev-gate 應阻擋 Main Agent 的 Write
+    const gateBlock = runHook('dev-gate', {
+      session_id: sid,
+      tool_name: 'Write',
+      tool_input: { file_path: 'src/app.js' },
+    });
+
+    test('B5: dev-gate 阻擋 Main Agent 直接 Write', () => {
+      assert.strictEqual(gateBlock.exitCode, 2);
+      assert.ok(gateBlock.stderr.includes('⛔'));
+    });
+
+    // Step 4: delegation-tracker 設定 delegationActive
+    runHook('delegation-tracker', {
+      session_id: sid,
+      tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:planner' },
+    });
+
+    test('B6: delegation-tracker 設定 delegationActive=true', () => {
+      const state = readState(sid);
+      assert.strictEqual(state.delegationActive, true);
+    });
+
+    // Step 5: dev-gate 放行 sub-agent 的 Write
+    const gateAllow = runHook('dev-gate', {
+      session_id: sid,
+      tool_name: 'Write',
+      tool_input: { file_path: 'src/app.js' },
+    });
+
+    test('B7: dev-gate 放行（delegationActive=true）', () => {
+      assert.strictEqual(gateAllow.exitCode, 0);
+    });
+
+    // Step 6: stage-transition（planner 完成）
+    const transResult = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:planner',
+      stop_hook_active: false,
+    });
+
+    test('B8: stage-transition 記錄 planner 完成', () => {
+      const state = readState(sid);
+      assert.ok(state.completed.includes('vibe:planner'));
+    });
+
+    test('B9: stage-transition 重設 delegationActive=false', () => {
+      const state = readState(sid);
+      assert.strictEqual(state.delegationActive, false);
+    });
+
+    test('B10: stage-transition 指示下一階段 ARCH', () => {
+      assert.ok(transResult.json);
+      assert.ok(transResult.json.systemMessage);
+      assert.ok(transResult.json.systemMessage.includes('architect'));
+    });
+
+    // Step 7: dev-gate 再次阻擋（delegation 已重設）
+    const gateBlock2 = runHook('dev-gate', {
+      session_id: sid,
+      tool_name: 'Edit',
+      tool_input: { file_path: 'src/component.tsx' },
+    });
+
+    test('B11: dev-gate 再次阻擋（delegation 已重設）', () => {
+      assert.strictEqual(gateBlock2.exitCode, 2);
+    });
+
+    // Step 8: 模擬完成所有階段直到 pipeline-check
+    // 補齊其餘 agent 完成紀錄
+    const state = readState(sid);
+    state.completed = [
+      'vibe:planner', 'vibe:architect', 'vibe:developer',
+      'vibe:code-reviewer', 'vibe:tester', 'vibe:qa',
+      'vibe:e2e-runner', 'vibe:doc-updater',
+    ];
+    fs.writeFileSync(
+      path.join(CLAUDE_DIR, `pipeline-state-${sid}.json`),
+      JSON.stringify(state, null, 2)
+    );
+
+    // pipeline-check 應該報告全部完成
+    const checkResult = runHook('pipeline-check', {
+      session_id: sid,
+      stop_hook_active: false,
+    });
+
+    test('B12: pipeline-check 全部完成後清理 state file', () => {
+      // pipeline-check 完成時刪除 state file
+      assert.strictEqual(checkResult.exitCode, 0);
+      const afterState = readState(sid);
+      assert.strictEqual(afterState, null, 'state file 應已刪除');
+    });
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
+console.log('\n🔗 Scenario C: Cancel 逃生口');
+console.log('═'.repeat(55));
+// ═══════════════════════════════════════════════
+
+(() => {
+  const sid = 'e2e-cancel-1';
+  try {
+    // Step 1: 模擬進行中的 feature pipeline
+    initState(sid, {
+      taskType: 'feature',
+      pipelineEnforced: true,
+      delegationActive: false,
+      completed: ['vibe:planner'],
+      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    });
+
+    // Step 2: dev-gate 阻擋
+    const gateBlock = runHook('dev-gate', {
+      session_id: sid,
+      tool_name: 'Write',
+      tool_input: { file_path: 'src/app.js' },
+    });
+
+    test('C1: 取消前 dev-gate 阻擋', () => {
+      assert.strictEqual(gateBlock.exitCode, 2);
+    });
+
+    // Step 3: 模擬 /vibe:cancel（重設 pipeline flags）
+    const state = readState(sid);
+    state.pipelineEnforced = false;
+    state.delegationActive = false;
+    fs.writeFileSync(
+      path.join(CLAUDE_DIR, `pipeline-state-${sid}.json`),
+      JSON.stringify(state, null, 2)
+    );
+
+    // Step 4: dev-gate 放行
+    const gateAllow = runHook('dev-gate', {
+      session_id: sid,
+      tool_name: 'Write',
+      tool_input: { file_path: 'src/app.js' },
+    });
+
+    test('C2: cancel 後 dev-gate 放行', () => {
+      assert.strictEqual(gateAllow.exitCode, 0);
+    });
+
+    // Step 5: 驗證歷史記錄保留
+    test('C3: cancel 後完成記錄保留', () => {
+      const finalState = readState(sid);
+      assert.ok(finalState.completed.includes('vibe:planner'));
+      assert.strictEqual(finalState.expectedStages.length, 8);
+    });
+
+    // Step 6: pipeline-check 也不再檢查（pipelineEnforced=false）
+    const checkResult = runHook('pipeline-check', {
+      session_id: sid,
+      stop_hook_active: false,
+    });
+
+    test('C4: cancel 後 pipeline-check 不再提醒', () => {
+      assert.strictEqual(checkResult.exitCode, 0);
+      // 不應有 systemMessage（因為 pipelineEnforced=false）
+      if (checkResult.json) {
+        assert.strictEqual(checkResult.json.systemMessage, undefined);
+      }
+    });
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
+console.log('\n🔗 Scenario D: 任務升級（quickfix → feature）');
+console.log('═'.repeat(55));
+// ═══════════════════════════════════════════════
+
+(() => {
+  const sid = 'e2e-upgrade-1';
+  try {
+    // Step 1: 初始化 + 首次分類為 quickfix
+    initState(sid);
+    runHook('task-classifier', {
+      session_id: sid,
+      prompt: '改一下按鈕顏色',
+    });
+
+    test('D1: 初始分類為 quickfix', () => {
+      const state = readState(sid);
+      assert.strictEqual(state.taskType, 'quickfix');
+      assert.strictEqual(state.pipelineEnforced, false);
+    });
+
+    // Step 2: 第二次 prompt 升級為 feature
+    const upgradeResult = runHook('task-classifier', {
+      session_id: sid,
+      prompt: '建立完整的使用者認證系統',
+    });
+
+    test('D2: 升級為 feature', () => {
+      const state = readState(sid);
+      assert.strictEqual(state.taskType, 'feature');
+      assert.strictEqual(state.pipelineEnforced, true);
+    });
+
+    test('D3: 升級後有 reclassifications 記錄', () => {
+      const state = readState(sid);
+      assert.ok(state.reclassifications);
+      assert.strictEqual(state.reclassifications.length, 1);
+      assert.strictEqual(state.reclassifications[0].from, 'quickfix');
+      assert.strictEqual(state.reclassifications[0].to, 'feature');
+    });
+
+    test('D4: 升級輸出 systemMessage', () => {
+      assert.ok(upgradeResult.json);
+      assert.ok(upgradeResult.json.systemMessage);
+      assert.ok(upgradeResult.json.systemMessage.includes('Pipeline 升級'));
+    });
+
+    // Step 3: dev-gate 此時應阻擋
+    const gateResult = runHook('dev-gate', {
+      session_id: sid,
+      tool_name: 'Write',
+      tool_input: { file_path: 'src/app.js' },
+    });
+
+    test('D5: 升級後 dev-gate 阻擋', () => {
+      assert.strictEqual(gateResult.exitCode, 2);
+    });
+
+    // Step 4: 降級應被忽略
+    runHook('task-classifier', {
+      session_id: sid,
+      prompt: '查看一下測試狀態',
+    });
+
+    test('D6: 降級（feature → research）被忽略', () => {
+      const state = readState(sid);
+      assert.strictEqual(state.taskType, 'feature', '維持 feature 不降級');
+    });
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
+console.log('\n🔗 Scenario E: Stage-transition 回退機制');
+console.log('═'.repeat(55));
+// ═══════════════════════════════════════════════
+
+(() => {
+  const sid = 'e2e-retry-1';
+  try {
+    // 建立到 REVIEW 階段的 state
+    initState(sid, {
+      taskType: 'feature',
+      pipelineEnforced: true,
+      delegationActive: false,
+      completed: ['vibe:planner', 'vibe:architect', 'vibe:developer'],
+      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    });
+
+    // 模擬 code-reviewer 完成但無 verdict
+    const transResult = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:code-reviewer',
+      stop_hook_active: false,
+    });
+
+    test('E1: 無 verdict 時正常前進（不回退）', () => {
+      assert.ok(transResult.json);
+      assert.ok(transResult.json.systemMessage);
+      // 應指示下一個 stage（TEST）
+      assert.ok(
+        transResult.json.systemMessage.includes('tester') ||
+        transResult.json.systemMessage.includes('TEST'),
+        '應指示 TEST 階段'
+      );
+    });
+
+    test('E2: code-reviewer 記錄為完成', () => {
+      const state = readState(sid);
+      assert.ok(state.completed.includes('vibe:code-reviewer'));
+    });
+
+    test('E3: stageResults 記錄 UNKNOWN', () => {
+      const state = readState(sid);
+      assert.strictEqual(state.stageResults.REVIEW.verdict, 'UNKNOWN');
+    });
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
+console.log('\n🔗 Scenario F: Pipeline-check 遺漏偵測');
+console.log('═'.repeat(55));
+// ═══════════════════════════════════════════════
+
+(() => {
+  const sid = 'e2e-check-1';
+  try {
+    // 只完成 PLAN 和 ARCH
+    initState(sid, {
+      taskType: 'feature',
+      pipelineEnforced: true,
+      completed: ['vibe:planner', 'vibe:architect'],
+      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    });
+
+    const checkResult = runHook('pipeline-check', {
+      session_id: sid,
+      stop_hook_active: false,
+    });
+
+    test('F1: 偵測到遺漏階段', () => {
+      assert.ok(checkResult.json);
+      assert.ok(checkResult.json.systemMessage);
+      assert.ok(checkResult.json.systemMessage.includes('Pipeline 未完成'));
+    });
+
+    test('F2: 遺漏提示包含 namespaced agent', () => {
+      const msg = checkResult.json.systemMessage;
+      assert.ok(msg.includes('vibe:developer') || msg.includes('developer'));
+    });
+
+    test('F3: continue=true（不阻止回合結束，僅提醒）', () => {
+      assert.strictEqual(checkResult.json.continue, true);
+    });
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
+console.log('\n🔗 Scenario G: dev-gate 非程式碼檔案放行（pipeline 啟動中）');
+console.log('═'.repeat(55));
+// ═══════════════════════════════════════════════
+
+(() => {
+  const sid = 'e2e-noncode-1';
+  try {
+    initState(sid, {
+      taskType: 'feature',
+      pipelineEnforced: true,
+      delegationActive: false,
+    });
+
+    const exts = [
+      { file: 'README.md', ext: '.md' },
+      { file: 'package.json', ext: '.json' },
+      { file: '.github/workflows/ci.yml', ext: '.yml' },
+      { file: 'styles/main.css', ext: '.css' },
+      { file: 'index.html', ext: '.html' },
+    ];
+
+    for (const { file, ext } of exts) {
+      const result = runHook('dev-gate', {
+        session_id: sid,
+        tool_name: 'Write',
+        tool_input: { file_path: file },
+      });
+
+      test(`G: 放行非程式碼檔案 ${ext} (${file})`, () => {
+        assert.strictEqual(result.exitCode, 0);
+      });
+    }
+
+    // 程式碼檔案應阻擋
+    const codeExts = ['src/app.js', 'src/index.ts', 'src/App.tsx', 'main.py', 'main.go'];
+    for (const file of codeExts) {
+      const result = runHook('dev-gate', {
+        session_id: sid,
+        tool_name: 'Write',
+        tool_input: { file_path: file },
+      });
+
+      test(`G: 阻擋程式碼檔案 ${path.extname(file)} (${file})`, () => {
+        assert.strictEqual(result.exitCode, 2);
+      });
+    }
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
+console.log('\n🔗 Scenario H: 完整 lifecycle（classify → delegate → transition × 3）');
+console.log('═'.repeat(55));
+// ═══════════════════════════════════════════════
+
+(() => {
+  const sid = 'e2e-lifecycle-1';
+  try {
+    // Step 1: 初始化 + 分類
+    initState(sid);
+    runHook('task-classifier', {
+      session_id: sid,
+      prompt: '實作使用者認證系統',
+    });
+
+    test('H1: 分類為 feature + pipeline 啟動', () => {
+      const state = readState(sid);
+      assert.strictEqual(state.taskType, 'feature');
+      assert.strictEqual(state.pipelineEnforced, true);
+    });
+
+    // Step 2-4: 模擬 3 個 agent 的 delegate → complete 循環
+    const agents = [
+      { type: 'vibe:planner', nextKeyword: 'architect' },
+      { type: 'vibe:architect', nextKeyword: 'developer' },
+      { type: 'vibe:developer', nextKeyword: 'REVIEW' },  // skill-based: /vibe:review
+    ];
+
+    for (const { type, nextKeyword } of agents) {
+      // delegation-tracker
+      runHook('delegation-tracker', {
+        session_id: sid,
+        tool_name: 'Task',
+        tool_input: { subagent_type: type },
+      });
+
+      const stateAfterDelegate = readState(sid);
+      test(`H: ${type} delegation → delegationActive=true`, () => {
+        assert.strictEqual(stateAfterDelegate.delegationActive, true);
+      });
+
+      // stage-transition
+      const trans = runHook('stage-transition', {
+        session_id: sid,
+        agent_type: type,
+        stop_hook_active: false,
+      });
+
+      const stateAfterTrans = readState(sid);
+      test(`H: ${type} complete → delegationActive=false`, () => {
+        assert.strictEqual(stateAfterTrans.delegationActive, false);
+      });
+
+      test(`H: ${type} complete → 指示 ${nextKeyword}`, () => {
+        assert.ok(trans.json.systemMessage.includes(nextKeyword));
+      });
+    }
+
+    // 驗證最終 completed 列表
+    test('H: 3 個 agent 全部記錄在 completed', () => {
+      const state = readState(sid);
+      assert.ok(state.completed.includes('vibe:planner'));
+      assert.ok(state.completed.includes('vibe:architect'));
+      assert.ok(state.completed.includes('vibe:developer'));
+      assert.strictEqual(state.completed.length, 3);
+    });
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
+// 結果輸出
+// ═══════════════════════════════════════════════
+
+console.log('\n' + '='.repeat(55));
+console.log(`結果：${passed} 通過 / ${failed} 失敗 / ${passed + failed} 總計`);
+if (failed > 0) {
+  console.log('❌ 有測試失敗\n');
+  process.exit(1);
+} else {
+  console.log('✅ 全部通過\n');
+}
