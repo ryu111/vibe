@@ -1,6 +1,6 @@
 # vibe — 統一開發工作流 Plugin
 
-> **版本**：1.0.3
+> **版本**：1.0.4
 > **定位**：全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制
 > **架構**：6 個功能模組合併為單一 plugin，共用 registry.js 統一 metadata
 
@@ -48,7 +48,7 @@ vibe 是 Vibe marketplace 的核心 plugin，合併了 6 個功能模組：
 | 3 | `context-status` | Flow | Context 狀態查詢 — 使用量追蹤 + 壓縮建議 |
 | 4 | `checkpoint` | Flow | 工作檢查點 — 建立/列出/恢復 |
 | 5 | `env-detect` | Flow | 環境偵測 — 語言/框架/PM/工具 |
-| 6 | `cancel` | Flow | 取消任務鎖定 — 解除 task-guard |
+| 6 | `cancel` | Flow | 取消鎖定 — 解除 task-guard + 退出 pipeline 模式 |
 | 7 | `review` | Sentinel | 程式碼審查 — 按嚴重程度排序 |
 | 8 | `lint` | Sentinel | 靜態分析 — ESLint / Ruff / golangci-lint |
 | 9 | `format` | Sentinel | 格式化 — Prettier / Ruff format / gofmt |
@@ -194,10 +194,10 @@ PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
 
 偵測順序（PM）：env var → 專案設定 → package.json → lock file → 全域設定 → fallback。
 
-#### cancel — 取消任務鎖定
+#### cancel — 取消鎖定 + 退出 pipeline
 
-設定 state file `cancelled: true` → 下次 Stop hook 放行。
-使用場景：Claude 卡住、中途放棄、安全閥之外的手動逃生門。
+處理兩種鎖定：(1) task-guard：設定 `cancelled: true` → 放行結束；(2) pipeline：重設 `pipelineEnforced=false` + `delegationActive=false` → 允許直接 Write/Edit。
+使用場景：task-classifier 誤分類、Claude 卡住、中途切換手動模式。
 
 ### Agents 設計
 
@@ -212,6 +212,10 @@ PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
 #### task-classifier（UserPromptSubmit）
 
 **漸進式升級**：keyword heuristic 分類（7 類型），初始為 `additionalContext`（軟），升級為 `systemMessage`（強）。
+
+**分類順序**（先匹配先贏）：research → **trivial** → tdd → test → refactor → feature → quickfix → bugfix → default quickfix。
+
+**Trivial 偵測**（v1.0.4）：hello world、poc、prototype、scaffold、boilerplate、練習用等明確簡單任務 → `quickfix`，不觸發完整 pipeline。
 
 **任務類型優先級**（由低到高）：
 
@@ -374,7 +378,7 @@ regex 匹配 8 個危險模式（rm -rf /、DROP TABLE 等），exit 2 硬阻擋
 #### check-console-log（Stop）
 
 git diff 偵測殘留 console.log/debugger，透過 systemMessage 提醒。
-必須有 `stop_hook_active` 防無限迴圈。
+必須有 `stop_hook_active` 防無限迴圈。排除 `scripts/hooks/` 路徑和 `hook-logger.js`（v1.0.4 修正：hook 通訊機制的 console.log 不是 debug 殘留）。
 
 ---
 
@@ -675,7 +679,7 @@ plugins/vibe/
 ```json
 {
   "name": "vibe",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制",
   "skills": ["./skills/"],
   "agents": [
