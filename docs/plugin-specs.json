@@ -93,8 +93,8 @@
       "expected": {
         "skills": ["remote", "remote-config"],
         "agents": [],
-        "hooks": 2,
-        "scripts": 4
+        "hooks": 3,
+        "scripts": 5
       }
     },
     "collab": {

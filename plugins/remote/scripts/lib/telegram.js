@@ -139,6 +139,23 @@ function getUpdates(token, offset, timeout) {
 }
 
 /**
+ * 編輯已發送的訊息
+ * @param {string} token
+ * @param {string} chatId
+ * @param {number} messageId — 要編輯的訊息 ID
+ * @param {string} text — 新文字內容
+ * @returns {Promise<object>}
+ */
+function editMessageText(token, chatId, messageId, text) {
+  return apiCall(token, 'editMessageText', {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+    parse_mode: 'Markdown',
+  });
+}
+
+/**
  * 驗證 Bot Token 有效性
  * @param {string} token
  * @returns {Promise<object>} — Bot 資訊
@@ -147,4 +164,4 @@ function getMe(token) {
   return apiCall(token, 'getMe', {});
 }
 
-module.exports = { getCredentials, sendMessage, getUpdates, getMe };
+module.exports = { getCredentials, sendMessage, editMessageText, getUpdates, getMe };

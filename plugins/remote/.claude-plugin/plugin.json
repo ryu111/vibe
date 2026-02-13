@@ -1,6 +1,6 @@
 {
   "name": "remote",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Telegram 遠端控制 — Pipeline 進度推播、狀態查詢、tmux 遠端操作",
   "skills": [
     "./skills/"

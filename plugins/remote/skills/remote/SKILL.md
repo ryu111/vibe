@@ -10,6 +10,17 @@ arguments: $ARGUMENTS
 
 管理 Telegram bot daemon 的生命週期和遠端控制功能。
 
+## 已讀回條（自動）
+
+透過 `/say` 或直接傳送文字到 Claude Code 時，bot 會自動追蹤處理狀態：
+
+| 階段 | 顯示 | 觸發機制 |
+|------|------|----------|
+| 已傳送 | `✓ 已傳送` | tmux send-keys 成功（立即） |
+| 完成 | `✅ 完成` | Stop hook 偵測到 Claude 回合結束 |
+
+兩階段共用同一則訊息（editMessageText 就地更新），不會產生多餘通知。
+
 ## 指令
 
 | 子指令 | 說明 |

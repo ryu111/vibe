@@ -60,21 +60,23 @@ bot.js daemon (long polling) ← Telegram Bot API ←────── 使用�
 | `remote` | 主控 — start/stop/status/send/test |
 | `remote-config` | 設定教學 — show/verify/guide |
 
-### Hooks（2 個）
+### Hooks（3 個）
 
 | 事件 | Matcher | Script | 說明 |
 |------|---------|--------|------|
 | SessionStart | `startup\|resume` | `remote-autostart.js` | 自動啟動 bot daemon |
 | SubagentStop | `*` | `remote-sender.js` | Pipeline stage 完成推播 |
+| Stop | `*` | `remote-receipt.js` | /say 已讀回條（✓→✅） |
 
-### Scripts（4 個）
+### Scripts（5 個）
 
 | 名稱 | 類型 | 說明 |
 |------|------|------|
 | `remote-autostart.js` | hook | SessionStart: 偵測 → 啟動 daemon |
 | `remote-sender.js` | hook | SubagentStop: 讀 state → 推播 Telegram |
+| `remote-receipt.js` | hook | Stop: 讀 pending → editMessageText ✅ |
 | `bot-manager.js` | lib | Daemon 生命週期（isRunning/start/stop/getState） |
-| `telegram.js` | lib | Telegram Bot API 封裝（sendMessage/getUpdates/getMe） |
+| `telegram.js` | lib | Telegram Bot API 封裝（sendMessage/editMessageText/getUpdates/getMe） |
 
 ### 其他
 
@@ -195,6 +197,25 @@ tmux send-keys -t {pane} Enter
 - `/say` 前綴與查詢指令明確區隔
 - 所有 `/say` 指令記錄到 `~/.claude/remote-bot.log`
 
+### 已讀回條 + 完成偵測
+
+`/say` 發送後自動追蹤 Claude Code 的處理狀態，使用 Hook 精確偵測：
+
+```
+使用者：「幫我加登入頁面」
+
+  ✓ 已傳送          ← sendKeys 成功（立即）+ 寫 state file
+  ✅ 完成            ← Stop hook 偵測到回合結束 → editMessageText
+```
+
+**機制**：bot.js 發送後寫入 `~/.claude/remote-say-pending.json`（含 messageId）。Claude Code 回合結束時 Stop hook（`remote-receipt.js`）讀取 state file → `editMessageText` 更新為 ✅ → 刪除 state file。
+
+**特性**：
+- Hook-based 精確偵測（非 polling），零資源消耗
+- State file 10 分鐘過期自動清理
+- 無 pending → hook 靜默退出（exit 0）
+- `stop_hook_active` 防迴圈保護
+
 ---
 
 ## 8. Daemon 生命週期
@@ -222,6 +243,8 @@ tmux send-keys -t {pane} Enter
 | 遠端控制 | tmux send-keys | 直接注入同一 session |
 | 認證缺失 | 靜默跳過 | graceful degradation |
 | PID 管理 | 全域 | Daemon 跨 session 共享 |
+| 完成偵測 | Stop hook + state file | 精確、零 polling 消耗 |
+| 狀態更新 | editMessageText | 同一訊息就地更新、不洗版 |
 
 ---
 

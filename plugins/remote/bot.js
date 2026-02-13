@@ -23,6 +23,9 @@ const LOG_FILE = path.join(CLAUDE_DIR, 'remote-bot.log');
 const RETRY_DELAY = 5000;
 const START_TIME = Date.now();
 
+// 已讀回條 state file（Stop hook 讀取後 editMessageText）
+const SAY_PENDING_FILE = path.join(CLAUDE_DIR, 'remote-say-pending.json');
+
 // Agent → Stage 映射（與 remote-sender.js 同步）
 const AGENT_STAGE = {
   planner: 'PLAN',
@@ -239,11 +242,18 @@ async function handleSay(token, chatId, text) {
 
   try {
     sendKeys(pane, text);
-    // 記錄到 log
     appendLog(`/say: ${text}`);
-    return sendMessage(token, chatId, `\u2705 \u5DF2\u50B3\u9001\u5230 Claude Code\uFF08pane: ${pane}\uFF09`);
+    // 送出「✓ 已傳送」並寫 state file，Stop hook 會 editMessageText 為 ✅ 完成
+    const msg = await sendMessage(token, chatId, '\u2713 \u5DF2\u50B3\u9001');
+    try {
+      fs.writeFileSync(SAY_PENDING_FILE, JSON.stringify({
+        messageId: msg.message_id,
+        chatId,
+        sentAt: Date.now(),
+      }));
+    } catch (_) {}
   } catch (err) {
-    cachedPane = null; // 清除快取，下次重新偵測
+    cachedPane = null;
     return sendMessage(token, chatId, `\u274C tmux \u50B3\u9001\u5931\u6557\uFF1A${err.message}`);
   }
 }
