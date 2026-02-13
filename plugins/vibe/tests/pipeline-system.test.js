@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * test-pipeline-system.js — Pipeline 系統整合測試
+ * pipeline-system.test.js — Pipeline 系統整合測試
  *
  * 測試重點：
  * 1. pipeline-discovery.js 雙格式 agent 映射（短名 + namespaced）
  * 2. stage-transition.js namespaced 輸出（前進 + 回退場景）
  * 3. pipeline-check.js namespaced 提示（遺漏階段檢查）
  *
- * 執行：node plugins/vibe/tests/test-pipeline-system.js
+ * 執行：bun test plugins/vibe/tests/pipeline-system.test.js
  */
 'use strict';
 const fs = require('fs');

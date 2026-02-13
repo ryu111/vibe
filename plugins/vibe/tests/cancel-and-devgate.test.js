@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * test-cancel-and-devgate.js — 測試 cancel 操作的 state 重設 + dev-gate 放行驗證
+ * cancel-and-devgate.test.js — 測試 cancel 操作的 state 重設 + dev-gate 放行驗證
  *
  * Part 1: 模擬 cancel 操作（重設 pipelineEnforced/delegationActive flag）
  * Part 2: 驗證 dev-gate.js 在不同 state 條件下的行為（放行 vs 阻擋）
  *
- * 執行：node plugins/vibe/tests/test-cancel-and-devgate.js
+ * 執行：bun test plugins/vibe/tests/cancel-and-devgate.test.js
  */
 'use strict';
 const fs = require('fs');

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * test-classifier-and-console-filter.js — 單元測試
+ * classifier-and-console-filter.test.js — 單元測試
  *
  * Part 1: task-classifier classify() 函數邏輯
  * Part 2: check-console-log 檔案過濾 regex
  *
- * 執行：node plugins/vibe/tests/test-classifier-and-console-filter.js
+ * 執行：bun test plugins/vibe/tests/classifier-and-console-filter.test.js
  */
 'use strict';
 const assert = require('assert');

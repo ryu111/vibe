@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * test-e2e-hook-chain.js — Hook 鏈端到端整合測試
+ * e2e-hook-chain.test.js — Hook 鏈端到端整合測試
  *
  * 模擬完整 pipeline 生命週期，驗證 hook 間的 state 傳遞：
  *   Scenario A: Trivial 任務 → 不鎖 pipeline → dev-gate 放行
@@ -9,7 +9,7 @@
  *   Scenario D: Reclassification 升級 → quickfix → feature
  *   Scenario E: Console.log 過濾 → hook 腳本排除
  *
- * 執行：node plugins/vibe/tests/test-e2e-hook-chain.js
+ * 執行：bun test plugins/vibe/tests/e2e-hook-chain.test.js
  */
 'use strict';
 const fs = require('fs');
