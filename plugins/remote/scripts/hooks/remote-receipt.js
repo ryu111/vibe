@@ -77,27 +77,23 @@ async function main() {
   const { parseLastAssistantTurn } = require(
     path.join(pluginRoot, 'scripts', 'lib', 'transcript.js')
   );
-  const turn = parseLastAssistantTurn(transcriptPath, { maxTextLen: 150, toolStats: true });
+  const turn = parseLastAssistantTurn(transcriptPath, { toolStats: true });
 
   // 至少要有文字或工具才發送
   if (!turn.text && !turn.tools) process.exit(0);
 
-  // 訊息 1：Claude 的文字回應
-  if (turn.text) {
-    try {
-      await sendMessage(creds.token, creds.chatId, `\u{1F916} ${turn.text}`, null);
-    } catch (_) {}
-  }
-
-  // 訊息 2：工具統計一行摘要
+  // 合併為一行：📋 回合：🤖回應 📝×2 ✏️×3 ⚡×1
+  const parts = [];
+  if (turn.text) parts.push('\u{1F916}\u56DE\u61C9');
   if (turn.tools) {
     const line = formatToolLine(turn.tools);
-    if (line) {
-      try {
-        await sendMessage(creds.token, creds.chatId, `\u{1F4CB} \u56DE\u5408\u52D5\u4F5C\uFF1A${line}`, null);
-      } catch (_) {}
-    }
+    if (line) parts.push(line);
   }
+  if (parts.length === 0) process.exit(0);
+
+  try {
+    await sendMessage(creds.token, creds.chatId, `\u{1F4CB} \u56DE\u5408\uFF1A${parts.join(' ')}`, null);
+  } catch (_) {}
 
   // 更新節流時間戳
   try {

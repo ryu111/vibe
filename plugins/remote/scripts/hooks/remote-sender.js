@@ -57,7 +57,7 @@ function buildProgressBar(completedStages, stageResults, expectedStages) {
       return `${display.emoji}${icon}`;
     }
     return `${display.emoji}\u2B1C`;
-  }).join(' ');
+  }).join(' \u2192 ');
 }
 
 /**
