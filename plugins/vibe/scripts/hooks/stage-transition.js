@@ -12,6 +12,7 @@ const path = require('path');
 const os = require('os');
 
 const { discoverPipeline, findNextStage } = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-discovery.js'));
+const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 
 // 智慧回退配置
 const MAX_RETRIES = parseInt(process.env.CLAUDE_PIPELINE_MAX_RETRIES || '3', 10);
@@ -270,6 +271,6 @@ ${method}${stageContext}${skipNote}
       systemMessage: message,
     }));
   } catch (err) {
-    process.stderr.write(`stage-transition: ${err.message}\n`);
+    hookLogger.error('stage-transition', err);
   }
 });

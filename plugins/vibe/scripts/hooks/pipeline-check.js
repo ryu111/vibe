@@ -11,6 +11,7 @@ const path = require('path');
 const os = require('os');
 
 const { discoverPipeline } = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-discovery.js'));
+const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
@@ -94,6 +95,6 @@ process.stdin.on('end', () => {
       systemMessage: `🚫 [Pipeline 未完成] 以下階段尚未執行：${missingLabels}\n已完成：${completedStr}\n\n你必須先完成這些階段：\n${missingHints}\n\n如果使用者明確要求跳過，請告知使用者跳過了哪些階段及其風險。`,
     }));
   } catch (err) {
-    process.stderr.write(`pipeline-check: ${err.message}\n`);
+    hookLogger.error('pipeline-check', err);
   }
 });

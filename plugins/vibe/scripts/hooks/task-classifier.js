@@ -52,6 +52,7 @@ const TYPE_PRIORITY = {
 const FULL_PIPELINE_TYPES = ['feature', 'refactor', 'tdd'];
 
 const { NAMESPACED_AGENT_TO_STAGE } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
+const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 
 /**
  * 關鍵字分類 — V2 保守預設（quickfix），feature 需正向匹配
@@ -290,6 +291,6 @@ process.stdin.on('end', () => {
       }));
     }
   } catch (err) {
-    process.stderr.write(`task-classifier: ${err.message}\n`);
+    hookLogger.error('task-classifier', err);
   }
 });

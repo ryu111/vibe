@@ -6,6 +6,8 @@
  * 強度：硬阻擋（exit 2 + stderr）。
  */
 "use strict";
+const path = require("path");
+const hookLogger = require(path.join(__dirname, "..", "lib", "hook-logger.js"));
 
 const DANGER_PATTERNS = [
   {
@@ -50,6 +52,6 @@ process.stdin.on("end", () => {
 
     // 安全，靜默放行
   } catch (err) {
-    process.stderr.write(`danger-guard: ${err.message}\n`);
+    hookLogger.error('danger-guard', err);
   }
 });

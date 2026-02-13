@@ -7,6 +7,7 @@
 'use strict';
 const path = require('path');
 const { reset } = require(path.join(__dirname, '..', 'lib', 'flow', 'counter.js'));
+const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 
 let input = '';
 process.stdin.on('data', d => input += d);
@@ -17,7 +18,7 @@ process.stdin.on('end', () => {
 
     // 重設計數器
     reset(sessionId);
-  } catch (_) {
-    // 靜默失敗
+  } catch (err) {
+    hookLogger.error('log-compact', err);
   }
 });

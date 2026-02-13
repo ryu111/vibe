@@ -8,6 +8,7 @@
 'use strict';
 const path = require('path');
 const { increment } = require(path.join(__dirname, '..', 'lib', 'flow', 'counter.js'));
+const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 
 let input = '';
 process.stdin.on('data', d => input += d);
@@ -19,11 +20,11 @@ process.stdin.on('end', () => {
     const result = increment(sessionId);
 
     if (result.shouldRemind && result.message) {
-      // 透過 stderr 輸出提醒（不阻擋工具執行）
-      process.stderr.write(result.message + '\n');
+      // systemMessage 注入建議（不阻擋工具執行）
+      console.log(JSON.stringify({ systemMessage: result.message }));
     }
-  } catch (_) {
-    // 靜默失敗
+  } catch (err) {
+    hookLogger.error('suggest-compact', err);
   }
   // 不輸出 JSON → 不干涉工具執行
 });

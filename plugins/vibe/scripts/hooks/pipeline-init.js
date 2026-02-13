@@ -14,6 +14,7 @@ const os = require('os');
 const { discoverPipeline } = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-discovery.js'));
 const { detect } = require(path.join(__dirname, '..', 'lib', 'flow', 'env-detector.js'));
 const { reset: resetCounter } = require(path.join(__dirname, '..', 'lib', 'flow', 'counter.js'));
+const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
@@ -83,7 +84,6 @@ process.stdin.on('end', () => {
       console.log(JSON.stringify({ additionalContext: `[環境] ${envParts.join(' · ')}` }));
     }
   } catch (err) {
-    // 靜默失敗，不阻擋 session 啟動
-    process.stderr.write(`pipeline-init: ${err.message}\n`);
+    hookLogger.error('pipeline-init', err);
   }
 });

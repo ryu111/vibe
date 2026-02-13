@@ -23,6 +23,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
 // 非程式碼副檔名（允許直接編輯）
@@ -87,7 +88,7 @@ process.stdin.on('end', () => {
     );
     process.exit(2);
   } catch (err) {
-    // 解析錯誤 → 靜默放行，不阻擋正常操作
-    process.exit(0);
+    // 解析錯誤 → 放行，不阻擋正常操作
+    hookLogger.error('dev-gate', err);
   }
 });

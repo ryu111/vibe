@@ -14,6 +14,7 @@ const langMap = require(path.join(__dirname, "..", "lib", "sentinel", "lang-map.
 const toolDetector = require(
   path.join(__dirname, "..", "lib", "sentinel", "tool-detector.js"),
 );
+const hookLogger = require(path.join(__dirname, "..", "lib", "hook-logger.js"));
 
 let input = "";
 process.stdin.on("data", (d) => (input += d));
@@ -54,9 +55,9 @@ process.stdin.on("end", () => {
     try {
       execSync(fmtCmd, { stdio: "pipe", timeout: 8000 });
     } catch (err) {
-      process.stderr.write(`auto-format: ${err.message}\n`);
+      hookLogger.error('auto-format', err);
     }
   } catch (err) {
-    process.stderr.write(`auto-format: ${err.message}\n`);
+    hookLogger.error('auto-format', err);
   }
 });

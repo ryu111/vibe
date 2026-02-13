@@ -14,6 +14,7 @@ const langMap = require(path.join(__dirname, "..", "lib", "sentinel", "lang-map.
 const toolDetector = require(
   path.join(__dirname, "..", "lib", "sentinel", "tool-detector.js"),
 );
+const hookLogger = require(path.join(__dirname, "..", "lib", "hook-logger.js"));
 
 let input = "";
 process.stdin.on("data", (d) => (input += d));
@@ -61,6 +62,6 @@ process.stdin.on("end", () => {
 
     // lint 通過，靜默退出
   } catch (err) {
-    process.stderr.write(`auto-lint: ${err.message}\n`);
+    hookLogger.error('auto-lint', err);
   }
 });

@@ -8,6 +8,7 @@
 'use strict';
 const path = require('path');
 const { isRunning, start, getState, getLanIP, PORT } = require(path.join(__dirname, '..', 'lib', 'dashboard', 'server-manager.js'));
+const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 
 let input = '';
 process.stdin.on('data', d => input += d);
@@ -45,6 +46,6 @@ process.stdin.on('end', async () => {
       }));
     }
   } catch (err) {
-    process.stderr.write(`dashboard-autostart: ${err.message}\n`);
+    hookLogger.error('dashboard-autostart', err);
   }
 });

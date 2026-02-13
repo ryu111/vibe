@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
 let input = '';
@@ -35,6 +36,6 @@ process.stdin.on('end', () => {
 
     process.exit(0); // 永遠放行 Task
   } catch (err) {
-    process.exit(0);
+    hookLogger.error('delegation-tracker', err);
   }
 });

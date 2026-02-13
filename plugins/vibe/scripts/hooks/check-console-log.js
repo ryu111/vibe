@@ -7,6 +7,8 @@
  */
 "use strict";
 const { execSync } = require("child_process");
+const path = require("path");
+const hookLogger = require(path.join(__dirname, "..", "lib", "hook-logger.js"));
 
 let input = "";
 process.stdin.on("data", (d) => (input += d));
@@ -73,6 +75,6 @@ process.stdin.on("end", () => {
       }),
     );
   } catch (err) {
-    process.stderr.write(`check-console-log: ${err.message}\n`);
+    hookLogger.error('check-console-log', err);
   }
 });

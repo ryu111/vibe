@@ -9,6 +9,7 @@
 const path = require('path');
 const { getCredentials } = require(path.join(__dirname, '..', 'lib', 'remote', 'telegram.js'));
 const { isRunning, start, getState } = require(path.join(__dirname, '..', 'lib', 'remote', 'bot-manager.js'));
+const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 
 let input = '';
 process.stdin.on('data', d => input += d);
@@ -42,6 +43,6 @@ process.stdin.on('end', async () => {
       }));
     }
   } catch (err) {
-    process.stderr.write(`remote-autostart: ${err.message}\n`);
+    hookLogger.error('remote-autostart', err);
   }
 });

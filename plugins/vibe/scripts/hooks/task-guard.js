@@ -15,6 +15,7 @@ const os = require('os');
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const MAX_BLOCKS_DEFAULT = 5;
 const MAX_BLOCKS = parseInt(process.env.CLAUDE_TASK_GUARD_MAX_BLOCKS || MAX_BLOCKS_DEFAULT, 10);
+const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 
 let input = '';
 process.stdin.on('data', d => input += d);
@@ -86,8 +87,11 @@ process.stdin.on('end', () => {
 
     // 6. 安全閥
     if (state.blockCount >= (state.maxBlocks || MAX_BLOCKS)) {
-      process.stderr.write(`task-guard: 已達到最大阻擋次數（${state.blockCount}），強制放行。\n`);
       cleanup(statePath);
+      console.log(JSON.stringify({
+        continue: true,
+        systemMessage: `⚠️ task-guard：已達到最大阻擋次數（${state.blockCount}），強制放行。`,
+      }));
       process.exit(0);
     }
 
@@ -117,8 +121,7 @@ process.stdin.on('end', () => {
       systemMessage: `⛔ 任務尚未完成（第 ${state.blockCount}/${state.maxBlocks || MAX_BLOCKS} 次阻擋）\n\n未完成項目：\n${todoList}\n\n請繼續完成以上項目。如果確實無法繼續，請告知使用者原因。`,
     }));
   } catch (err) {
-    // 錯誤時不阻擋
-    process.stderr.write(`task-guard: ${err.message}\n`);
+    hookLogger.error('task-guard', err);
   }
 });
 

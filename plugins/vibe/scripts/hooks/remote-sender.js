@@ -14,6 +14,7 @@ const os = require('os');
 const { getCredentials, sendMessage } = require(path.join(__dirname, '..', 'lib', 'remote', 'telegram.js'));
 const { parseLastAssistantTurn } = require(path.join(__dirname, '..', 'lib', 'remote', 'transcript.js'));
 const { STAGES, STAGE_ORDER, AGENT_TO_STAGE } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
+const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
@@ -162,8 +163,7 @@ process.stdin.on('end', async () => {
 
     await sendMessage(creds.token, creds.chatId, text);
   } catch (err) {
-    // 靜默退出，不影響主流程
-    process.stderr.write(`remote-sender: ${err.message}\n`);
+    hookLogger.error('remote-sender', err);
   }
 });
 
