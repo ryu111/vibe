@@ -21,6 +21,16 @@ arguments: $ARGUMENTS
 
 兩階段共用同一則訊息（editMessageText 就地更新），不會產生多餘通知。
 
+## 互動式選單（自動）
+
+當 Claude Code 顯示 AskUserQuestion（單選/多選）時，PreToolUse hook 自動將選項發送到 Telegram：
+
+- **單選**：每個選項一個 inline button，點選即回答
+- **多選**：☐/☑ toggle 按鈕 + 「確認」按鈕
+- **超時回退**：55 秒無回應 → 回退到終端 TUI 操作
+
+回答後 Claude 收到 systemMessage 繼續工作，不需回到終端。
+
 ## 指令
 
 | 子指令 | 說明 |

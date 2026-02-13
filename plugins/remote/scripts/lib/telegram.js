@@ -134,7 +134,7 @@ function getUpdates(token, offset, timeout) {
   return apiCall(token, 'getUpdates', {
     offset,
     timeout,
-    allowed_updates: ['message'],
+    allowed_updates: ['message', 'callback_query'],
   }, (timeout + 5) * 1000); // HTTP timeout 略大於 long polling timeout
 }
 
@@ -156,6 +156,52 @@ function editMessageText(token, chatId, messageId, text) {
 }
 
 /**
+ * 發送帶有 inline keyboard 的訊息
+ * @param {string} token
+ * @param {string} chatId
+ * @param {string} text — 支援 Markdown
+ * @param {Array<Array<{text: string, callback_data: string}>>} keyboard — inline_keyboard 按鈕陣列
+ * @returns {Promise<object>}
+ */
+function sendMessageWithKeyboard(token, chatId, text, keyboard) {
+  return apiCall(token, 'sendMessage', {
+    chat_id: chatId,
+    text,
+    parse_mode: 'Markdown',
+    reply_markup: { inline_keyboard: keyboard },
+  });
+}
+
+/**
+ * 回應 callback query（點選 inline button 後必須呼叫）
+ * @param {string} token
+ * @param {string} callbackQueryId
+ * @param {string} [text] — 可選的提示文字（toast 通知）
+ * @returns {Promise<object>}
+ */
+function answerCallbackQuery(token, callbackQueryId, text) {
+  const body = { callback_query_id: callbackQueryId };
+  if (text) body.text = text;
+  return apiCall(token, 'answerCallbackQuery', body);
+}
+
+/**
+ * 更新訊息的 inline keyboard（多選 toggle 用）
+ * @param {string} token
+ * @param {string} chatId
+ * @param {number} messageId
+ * @param {Array<Array<{text: string, callback_data: string}>>} keyboard
+ * @returns {Promise<object>}
+ */
+function editMessageReplyMarkup(token, chatId, messageId, keyboard) {
+  return apiCall(token, 'editMessageReplyMarkup', {
+    chat_id: chatId,
+    message_id: messageId,
+    reply_markup: { inline_keyboard: keyboard },
+  });
+}
+
+/**
  * 驗證 Bot Token 有效性
  * @param {string} token
  * @returns {Promise<object>} — Bot 資訊
@@ -164,4 +210,8 @@ function getMe(token) {
   return apiCall(token, 'getMe', {});
 }
 
-module.exports = { getCredentials, sendMessage, editMessageText, getUpdates, getMe };
+module.exports = {
+  getCredentials, sendMessage, editMessageText,
+  sendMessageWithKeyboard, answerCallbackQuery, editMessageReplyMarkup,
+  getUpdates, getMe,
+};

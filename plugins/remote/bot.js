@@ -15,7 +15,11 @@ const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
 
-const { getCredentials, sendMessage, getUpdates } = require(path.join(__dirname, 'scripts', 'lib', 'telegram.js'));
+const {
+  getCredentials, sendMessage, editMessageText,
+  answerCallbackQuery, editMessageReplyMarkup,
+  getUpdates,
+} = require(path.join(__dirname, 'scripts', 'lib', 'telegram.js'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const PID_FILE = path.join(CLAUDE_DIR, 'remote-bot.pid');
@@ -25,6 +29,10 @@ const START_TIME = Date.now();
 
 // 已讀回條 state file（Stop hook 讀取後 editMessageText）
 const SAY_PENDING_FILE = path.join(CLAUDE_DIR, 'remote-say-pending.json');
+
+// AskUserQuestion 互動式選單 state files（hook 寫 pending，daemon 寫 response）
+const ASK_PENDING_FILE = path.join(CLAUDE_DIR, 'remote-ask-pending.json');
+const ASK_RESPONSE_FILE = path.join(CLAUDE_DIR, 'remote-ask-response.json');
 
 // Agent → Stage 映射（與 remote-sender.js 同步）
 const AGENT_STAGE = {
@@ -268,6 +276,133 @@ async function handleTmux(token, chatId) {
   return sendMessage(token, chatId, '\u274C tmux \u672A\u9023\u7DDA\n\u8ACB\u5728 tmux \u5167\u555F\u52D5 Claude Code');
 }
 
+// ─── AskUserQuestion callback 處理 ──────────────
+
+/**
+ * 處理 Telegram inline keyboard 的 callback_query
+ * 與 remote-ask-intercept.js hook 協調：
+ * - hook 寫 pending file + 發送 inline keyboard
+ * - daemon 收到 callback → 更新 pending / 寫 response file
+ */
+async function handleCallbackQuery(token, chatId, callbackQuery) {
+  const cbId = callbackQuery.id;
+  const data = callbackQuery.data || '';
+  const cbMsg = callbackQuery.message;
+
+  // 只處理 ask| 前綴的 callback
+  if (!data.startsWith('ask|')) {
+    try { await answerCallbackQuery(token, cbId); } catch (_) {}
+    return;
+  }
+
+  // 讀取 pending state
+  let pending;
+  try {
+    pending = JSON.parse(fs.readFileSync(ASK_PENDING_FILE, 'utf8'));
+  } catch (_) {
+    try { await answerCallbackQuery(token, cbId, '\u274C \u5DF2\u904E\u671F'); } catch (_) {}
+    return;
+  }
+
+  // 驗證 messageId
+  if (cbMsg && cbMsg.message_id !== pending.messageId) {
+    try { await answerCallbackQuery(token, cbId, '\u274C \u8A0A\u606F\u4E0D\u5339\u914D'); } catch (_) {}
+    return;
+  }
+
+  const action = data.slice(4); // 去掉 "ask|" 前綴
+  const questions = pending.questions || [];
+  const qIdx = pending.questionIndex || 0;
+  const q = questions[qIdx];
+  if (!q || !q.options) {
+    try { await answerCallbackQuery(token, cbId); } catch (_) {}
+    return;
+  }
+
+  if (pending.multiSelect) {
+    // ─── 多選模式 ───
+    if (action === 'confirm') {
+      // 確認選擇 → 寫 response file
+      const selectedLabels = q.options
+        .filter((_, i) => pending.selections[i])
+        .map(o => o.label);
+
+      if (selectedLabels.length === 0) {
+        try { await answerCallbackQuery(token, cbId, '\u8ACB\u81F3\u5C11\u9078\u64C7\u4E00\u9805'); } catch (_) {}
+        return;
+      }
+
+      // 寫 response
+      fs.writeFileSync(ASK_RESPONSE_FILE, JSON.stringify({
+        questionIndex: qIdx,
+        selectedLabels,
+        answeredAt: Date.now(),
+      }));
+
+      // 更新 Telegram 訊息為已回答狀態
+      const labelStr = selectedLabels.join(', ');
+      try {
+        await editMessageText(token, chatId, pending.messageId,
+          `\u{1F4CB} *${q.question || q.header || '\u8ACB\u9078\u64C7'}*\n\u2192 \u9078\u64C7\uFF1A${labelStr} \u2705`);
+      } catch (_) {}
+
+      // 清理 pending
+      try { fs.unlinkSync(ASK_PENDING_FILE); } catch (_) {}
+      try { await answerCallbackQuery(token, cbId, '\u2705 \u5DF2\u78BA\u8A8D'); } catch (_) {}
+    } else {
+      // toggle 選項
+      const idx = parseInt(action, 10);
+      if (isNaN(idx) || idx < 0 || idx >= q.options.length) {
+        try { await answerCallbackQuery(token, cbId); } catch (_) {}
+        return;
+      }
+
+      pending.selections[idx] = !pending.selections[idx];
+
+      // 更新 pending file
+      fs.writeFileSync(ASK_PENDING_FILE, JSON.stringify(pending));
+
+      // 更新 keyboard 顯示 ☑/☐
+      const keyboard = q.options.map((opt, i) => [{
+        text: `${pending.selections[i] ? '\u2611' : '\u2610'} ${opt.label}`,
+        callback_data: `ask|${i}`,
+      }]);
+      keyboard.push([{ text: '\u2714 \u78BA\u8A8D', callback_data: 'ask|confirm' }]);
+
+      try {
+        await editMessageReplyMarkup(token, chatId, pending.messageId, keyboard);
+      } catch (_) {}
+      try { await answerCallbackQuery(token, cbId); } catch (_) {}
+    }
+  } else {
+    // ─── 單選模式 ───
+    const idx = parseInt(action, 10);
+    if (isNaN(idx) || idx < 0 || idx >= q.options.length) {
+      try { await answerCallbackQuery(token, cbId); } catch (_) {}
+      return;
+    }
+
+    const selected = q.options[idx];
+
+    // 寫 response
+    fs.writeFileSync(ASK_RESPONSE_FILE, JSON.stringify({
+      questionIndex: qIdx,
+      selectedLabels: [selected.label],
+      answeredAt: Date.now(),
+    }));
+
+    // 更新 Telegram 訊息為已回答狀態
+    try {
+      await editMessageText(token, chatId, pending.messageId,
+        `\u{1F4CB} *${q.question || q.header || '\u8ACB\u9078\u64C7'}*\n\u2192 \u9078\u64C7\uFF1A${selected.label} \u2705`);
+    } catch (_) {}
+
+    // 清理 pending
+    try { fs.unlinkSync(ASK_PENDING_FILE); } catch (_) {}
+    try { await answerCallbackQuery(token, cbId, `\u2705 ${selected.label}`); } catch (_) {}
+  }
+}
+
 // ─── Log ───────────────────────────────────────
 
 function appendLog(message) {
@@ -312,6 +447,20 @@ async function main() {
 
       for (const update of updates) {
         offset = update.update_id + 1;
+
+        // 處理 inline keyboard callback（AskUserQuestion 互動式選單）
+        if (update.callback_query) {
+          const cb = update.callback_query;
+          const cbChatId = cb.message && cb.message.chat && String(cb.message.chat.id);
+          appendLog(`callback: ${cb.data}`);
+          if (cbChatId === String(creds.chatId)) {
+            await handleCallbackQuery(creds.token, creds.chatId, cb);
+          } else {
+            try { await answerCallbackQuery(creds.token, cb.id); } catch (_) {}
+          }
+          continue;
+        }
+
         const msg = update.message;
         if (!msg || !msg.text) continue;
 

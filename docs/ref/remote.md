@@ -60,23 +60,25 @@ bot.js daemon (long polling) ← Telegram Bot API ←────── 使用�
 | `remote` | 主控 — start/stop/status/send/test |
 | `remote-config` | 設定教學 — show/verify/guide |
 
-### Hooks（3 個）
+### Hooks（4 個）
 
 | 事件 | Matcher | Script | 說明 |
 |------|---------|--------|------|
+| PreToolUse | `AskUserQuestion` | `remote-ask-intercept.js` | 互動式選單（攔截 → Telegram inline keyboard） |
 | SessionStart | `startup\|resume` | `remote-autostart.js` | 自動啟動 bot daemon |
 | SubagentStop | `*` | `remote-sender.js` | Pipeline stage 完成推播 |
 | Stop | `*` | `remote-receipt.js` | /say 已讀回條（✓→✅） |
 
-### Scripts（5 個）
+### Scripts（6 個）
 
 | 名稱 | 類型 | 說明 |
 |------|------|------|
+| `remote-ask-intercept.js` | hook | PreToolUse: 攔截 AskUserQuestion → Telegram inline keyboard |
 | `remote-autostart.js` | hook | SessionStart: 偵測 → 啟動 daemon |
 | `remote-sender.js` | hook | SubagentStop: 讀 state → 推播 Telegram |
 | `remote-receipt.js` | hook | Stop: 讀 pending → editMessageText ✅ |
 | `bot-manager.js` | lib | Daemon 生命週期（isRunning/start/stop/getState） |
-| `telegram.js` | lib | Telegram Bot API 封裝（sendMessage/editMessageText/getUpdates/getMe） |
+| `telegram.js` | lib | Telegram Bot API 封裝（sendMessage/editMessageText/sendMessageWithKeyboard/answerCallbackQuery/editMessageReplyMarkup/getUpdates/getMe） |
 
 ### 其他
 
@@ -216,6 +218,36 @@ tmux send-keys -t {pane} Enter
 - 無 pending → hook 靜默退出（exit 0）
 - `stop_hook_active` 防迴圈保護
 
+### 互動式選單（AskUserQuestion → Telegram）
+
+當 Claude 呼叫 AskUserQuestion 時，PreToolUse hook 攔截並將選項發送到 Telegram：
+
+```
+Claude: AskUserQuestion({questions, options})
+    ↓ PreToolUse hook
+remote-ask-intercept.js
+    ↓ 讀取 tool_input → Telegram sendMessageWithKeyboard
+    ↓ 寫 remote-ask-pending.json → 輪詢 remote-ask-response.json
+    ↓
+bot.js daemon
+    ↓ callback_query → answerCallbackQuery
+    ↓ 單選：直接寫 response｜多選：toggle ☑/☐ → 確認後寫 response
+    ↓
+Hook 讀到 response
+    ↓ { continue: false, systemMessage: "使用者選擇了：..." }
+```
+
+**State Files**：
+- `~/.claude/remote-ask-pending.json` — hook 寫、daemon 讀（含 messageId/questions/selections）
+- `~/.claude/remote-ask-response.json` — daemon 寫、hook 讀（含 selectedLabels）
+
+**特性**：
+- Hook 直接發送 Telegram 訊息（避免 30s long polling 延遲）
+- 55 秒超時回退到正常 TUI（`continue: true`）
+- 多選模式：☐/☑ toggle + editMessageReplyMarkup 即時更新
+- `continue: false` + `systemMessage` 阻止 TUI 顯示，答案注入 Claude context
+- 無 credentials → 靜默放行（`continue: true`）
+
 ---
 
 ## 8. Daemon 生命週期
@@ -245,6 +277,10 @@ tmux send-keys -t {pane} Enter
 | PID 管理 | 全域 | Daemon 跨 session 共享 |
 | 完成偵測 | Stop hook + state file | 精確、零 polling 消耗 |
 | 狀態更新 | editMessageText | 同一訊息就地更新、不洗版 |
+| 互動式選單 | PreToolUse hook + inline keyboard | 攔截 AskUserQuestion，Telegram 直接回答 |
+| 選單發送者 | Hook 直接發（非 daemon） | 避免 30s long polling 延遲 |
+| callback 接收者 | Daemon（bot.js） | 已有 polling 機制，不重複 |
+| 超時策略 | 55s 後 `continue: true` | 回退到正常 TUI，不阻塞 Claude |
 
 ---
 

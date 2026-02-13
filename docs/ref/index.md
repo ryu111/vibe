@@ -78,18 +78,18 @@ SENTINEL PostToolUse: test-check      /sentinel:tdd     TDD 工作流
 SENTINEL PreToolUse: danger-guard     /sentinel:e2e     E2E 測試
 SENTINEL Stop: console-log-check      /sentinel:coverage 覆蓋率
 DASH     SessionStart: autostart      /sentinel:lint    手動 lint
-REMOTE   SessionStart: autostart      /sentinel:format  手動格式化
-REMOTE   SubagentStop: sender         /sentinel:verify  綜合驗證
-REMOTE   Stop: receipt               /evolve:evolve    知識進化
-COLLAB   SessionStart: team-init      /evolve:doc-sync  文件同步
-                                      /dashboard:dashboard 儀表板控管
+REMOTE   PreToolUse: ask-intercept    /sentinel:format  手動格式化
+REMOTE   SessionStart: autostart      /sentinel:verify  綜合驗證
+REMOTE   SubagentStop: sender         /evolve:evolve    知識進化
+REMOTE   Stop: receipt               /evolve:doc-sync  文件同步
+COLLAB   SessionStart: team-init      /dashboard:dashboard 儀表板控管
                                       /remote           通知控管
                                       /remote-config    通知設定
                                       /collab:adversarial-plan  競爭規劃
                                       /collab:adversarial-review 對抗審查
                                       /collab:adversarial-refactor 競爭重構
 
-自動: 19 hooks                         手動: 27 skills（+ patterns 8 知識 skills）
+自動: 20 hooks                         手動: 27 skills（+ patterns 8 知識 skills）
 跨 session 記憶：claude-mem（獨立 plugin，非依賴）
 ```
 
@@ -139,7 +139,7 @@ COLLAB   SessionStart: team-init      /evolve:doc-sync  文件同步
 | 5 | **patterns** | 無 | 8S |
 | 6 | **evolve** | flow 可選 | 2S + 1A |
 | 7 | **dashboard** | forge ✅ | 1S + 1H + 2Sc |
-| 8 | **remote** | forge ✅ | 2S + 3H + 5Sc |
+| 8 | **remote** | forge ✅ | 2S + 4H + 6Sc |
 | 9 | **collab** | Agent Teams | 3S + 1H + 1Sc |
 
 > **flow 先於 sentinel**：規劃 → 寫碼 → 品質檢查，符合自然開發流程。
@@ -155,7 +155,7 @@ COLLAB   SessionStart: team-init      /evolve:doc-sync  文件同步
 | 3 | patterns | [patterns.md](patterns.md) | 8 | 0 | 0 | 0 |
 | 4 | evolve | [evolve.md](evolve.md) | 2 | 1 | 0 | 0 |
 | 5 | dashboard | [dashboard.md](dashboard.md) | 1 | 0 | 1 | 2 |
-| 6 | remote | [remote.md](remote.md) | 2 | 0 | 3 | 5 |
+| 6 | remote | [remote.md](remote.md) | 2 | 0 | 4 | 6 |
 | 7 | collab | [collab.md](collab.md) | 3 | 0 | 1 | 1 |
 
 > **S** = Skill, **A** = Agent, **H** = Hook, **Sc** = Script
@@ -169,6 +169,6 @@ COLLAB   SessionStart: team-init      /evolve:doc-sync  文件同步
 | **Plugins** | 8 | forge ✅ + 1 新 |
 | **Skills** | 35 | 27 動態能力 + 8 知識庫（patterns） |
 | **Agents** | 10 | 跨 3 個 plugins |
-| **Hooks** | 19 | 自動觸發 |
-| **Scripts** | 33 | hook 腳本 + 共用函式庫 |
-| **合計** | 97 | 跨 8 個獨立安裝的 plugins |
+| **Hooks** | 20 | 自動觸發 |
+| **Scripts** | 34 | hook 腳本 + 共用函式庫 |
+| **合計** | 99 | 跨 8 個獨立安裝的 plugins |
