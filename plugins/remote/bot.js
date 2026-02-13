@@ -341,12 +341,9 @@ function sendAskMultiAnswer(pane, sortedIndices, optionCount) {
     sendKey(pane, String(idx + 1));
     sleep(100);
   }
-  // 移動到 Submit（從當前位置 0 → 經過所有選項 + Other）
-  // Submit 位置 = optionCount + 1
-  for (let i = 0; i < optionCount + 1; i++) {
-    sendKey(pane, 'Down');
-    sleep(50);
-  }
+  // Tab 跳到 Submit 區段（不用 Down 逐項導航）
+  sleep(100);
+  sendKey(pane, 'Tab');
   sleep(100);
   sendKey(pane, 'Enter');
   // 多選有兩步確認：Submit → Review 畫面 → Submit answers
