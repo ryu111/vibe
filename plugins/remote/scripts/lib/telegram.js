@@ -114,12 +114,10 @@ function apiCall(token, method, body, timeout) {
  * @param {string} text — 支援 Markdown
  * @returns {Promise<object>}
  */
-function sendMessage(token, chatId, text) {
-  return apiCall(token, 'sendMessage', {
-    chat_id: chatId,
-    text,
-    parse_mode: 'Markdown',
-  });
+function sendMessage(token, chatId, text, parseMode = 'Markdown') {
+  const body = { chat_id: chatId, text };
+  if (parseMode) body.parse_mode = parseMode;
+  return apiCall(token, 'sendMessage', body);
 }
 
 /**
@@ -144,15 +142,13 @@ function getUpdates(token, offset, timeout) {
  * @param {string} chatId
  * @param {number} messageId — 要編輯的訊息 ID
  * @param {string} text — 新文字內容
+ * @param {string|null} [parseMode='Markdown'] — 解析模式（null = 純文字）
  * @returns {Promise<object>}
  */
-function editMessageText(token, chatId, messageId, text) {
-  return apiCall(token, 'editMessageText', {
-    chat_id: chatId,
-    message_id: messageId,
-    text,
-    parse_mode: 'Markdown',
-  });
+function editMessageText(token, chatId, messageId, text, parseMode = 'Markdown') {
+  const body = { chat_id: chatId, message_id: messageId, text };
+  if (parseMode) body.parse_mode = parseMode;
+  return apiCall(token, 'editMessageText', body);
 }
 
 /**

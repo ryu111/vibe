@@ -77,7 +77,7 @@ async function main() {
 
   // 發送摘要
   try {
-    await sendMessage(creds.token, creds.chatId, summary);
+    await sendMessage(creds.token, creds.chatId, summary, null);
   } catch (_) {}
 
   // 更新節流時間戳
@@ -92,8 +92,16 @@ async function main() {
 function parseTurnSummary(transcriptPath) {
   let lines;
   try {
-    const content = fs.readFileSync(transcriptPath, 'utf8');
-    lines = content.trim().split('\n');
+    // 只讀最後 64KB（約最近幾個回合），避免讀取整個 session
+    const stat = fs.statSync(transcriptPath);
+    const readSize = Math.min(stat.size, 65536);
+    const buf = Buffer.alloc(readSize);
+    const fd = fs.openSync(transcriptPath, 'r');
+    fs.readSync(fd, buf, 0, readSize, stat.size - readSize);
+    fs.closeSync(fd);
+    lines = buf.toString('utf8').trim().split('\n');
+    // 第一行可能被截斷，丟棄
+    if (stat.size > readSize) lines.shift();
   } catch (_) {
     return null;
   }
@@ -161,7 +169,7 @@ function parseTurnSummary(transcriptPath) {
   }
   if (bashCount > 0) {
     parts.push(`\u26A1 \u57F7\u884C ${bashCount} \u500B\u547D\u4EE4`);
-    for (const c of bashCmds.slice(0, 3)) parts.push(`  \u00B7 \`${c}\``);
+    for (const c of bashCmds.slice(0, 3)) parts.push(`  \u00B7 ${c}`);
   }
   if (taskCount > 0) {
     parts.push(`\u{1F916} \u59D4\u6D3E ${taskCount} \u500B sub-agent`);

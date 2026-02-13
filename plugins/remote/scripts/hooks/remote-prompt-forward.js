@@ -15,7 +15,7 @@ async function main() {
   let data = {};
   try { data = JSON.parse(input); } catch (_) {}
 
-  const prompt = data.user_prompt;
+  const prompt = data.prompt;
   if (!prompt || !prompt.trim()) process.exit(0);
 
   // 載入 telegram.js

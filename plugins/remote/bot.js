@@ -350,29 +350,18 @@ async function handleCallbackQuery(token, chatId, callbackQuery) {
         return;
       }
 
-      // 寫 response（hook 可能還在 polling）
-      fs.writeFileSync(ASK_RESPONSE_FILE, JSON.stringify({
-        questionIndex: qIdx,
-        selectedLabels,
-        answeredAt: Date.now(),
-      }));
-
-      // 更新 Telegram 訊息：顯示完整選項清單 + 已選標記
+      // 更新 Telegram 訊息：顯示選擇結果（純文字避免 Markdown 解析錯誤）
       const header = q.question || q.header || '請選擇';
-      let confirmText = `\u2705 *${header}*\n`;
+      let confirmText = `\u2705 ${header}\n`;
       for (let i = 0; i < q.options.length; i++) {
         const opt = q.options[i];
         const mark = pending.selections[i] ? '\u2705' : '\u00B7';
         confirmText += `\n${mark} ${opt.label}`;
       }
+      confirmText += '\n\n\u{1F449} \u8ACB\u5728\u7D42\u7AEF\u78BA\u8A8D';
       try {
-        await editMessageText(token, chatId, pending.messageId, confirmText);
+        await editMessageText(token, chatId, pending.messageId, confirmText, null);
       } catch (_) {}
-
-      // hook 已超時 → tmux 注入答案
-      if (pending.hookTimedOut) {
-        injectAnswerViaTmux(selectedLabels);
-      }
 
       // 清理 pending
       try { fs.unlinkSync(ASK_PENDING_FILE); } catch (_) {}
@@ -412,29 +401,18 @@ async function handleCallbackQuery(token, chatId, callbackQuery) {
 
     const selected = q.options[idx];
 
-    // 寫 response
-    fs.writeFileSync(ASK_RESPONSE_FILE, JSON.stringify({
-      questionIndex: qIdx,
-      selectedLabels: [selected.label],
-      answeredAt: Date.now(),
-    }));
-
-    // 更新 Telegram 訊息：顯示完整選項清單 + 已選標記
+    // 更新 Telegram 訊息：顯示選擇結果（純文字避免 Markdown 解析錯誤）
     const header = q.question || q.header || '請選擇';
-    let confirmText = `\u2705 *${header}*\n`;
+    let confirmText = `\u2705 ${header}\n`;
     for (let i = 0; i < q.options.length; i++) {
       const opt = q.options[i];
       const mark = i === idx ? '\u2705' : '\u00B7';
       confirmText += `\n${mark} ${opt.label}`;
     }
+    confirmText += '\n\n\u{1F449} \u8ACB\u5728\u7D42\u7AEF\u78BA\u8A8D';
     try {
-      await editMessageText(token, chatId, pending.messageId, confirmText);
+      await editMessageText(token, chatId, pending.messageId, confirmText, null);
     } catch (_) {}
-
-    // hook 已超時 → tmux 注入答案
-    if (pending.hookTimedOut) {
-      injectAnswerViaTmux([selected.label]);
-    }
 
     // 清理 pending
     try { fs.unlinkSync(ASK_PENDING_FILE); } catch (_) {}

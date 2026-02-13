@@ -9,11 +9,13 @@
 
 ## 1. 概述
 
-remote 是 Vibe marketplace 的遠端控制 plugin。三大功能軸：
+remote 是 Vibe marketplace 的遠端控制 plugin。五大功能軸：
 
 1. **推播** — Pipeline stage 完成 → Telegram 通知（使用者手機收到進度）
 2. **查詢** — 從 Telegram 查詢 /status /stages → 讀 state files 直接回覆
 3. **遠端控制** — `/say <訊息>` → tmux send-keys → 注入到同一個 Claude Code session
+4. **對話同步** — UserPromptSubmit → 使用者輸入轉發 + Stop → 回合摘要通知
+5. **互動通知** — AskUserQuestion → Telegram inline keyboard（非阻擋，通知用途）
 
 ### 架構概覽
 
@@ -60,23 +62,25 @@ bot.js daemon (long polling) ← Telegram Bot API ←────── 使用�
 | `remote` | 主控 — start/stop/status/send/test |
 | `remote-config` | 設定教學 — show/verify/guide |
 
-### Hooks（4 個）
+### Hooks（5 個）
 
 | 事件 | Matcher | Script | 說明 |
 |------|---------|--------|------|
-| PreToolUse | `AskUserQuestion` | `remote-ask-intercept.js` | 互動式選單（攔截 → Telegram inline keyboard） |
+| PreToolUse | `AskUserQuestion` | `remote-ask-intercept.js` | 互動通知（非阻擋，轉發到 Telegram inline keyboard） |
+| UserPromptSubmit | `*` | `remote-prompt-forward.js` | 使用者輸入轉發到 Telegram |
 | SessionStart | `startup\|resume` | `remote-autostart.js` | 自動啟動 bot daemon |
 | SubagentStop | `*` | `remote-sender.js` | Pipeline stage 完成推播 |
-| Stop | `*` | `remote-receipt.js` | /say 已讀回條（✓→✅） |
+| Stop | `*` | `remote-receipt.js` | /say 已讀回條 + 回合摘要通知 |
 
-### Scripts（6 個）
+### Scripts（7 個）
 
 | 名稱 | 類型 | 說明 |
 |------|------|------|
-| `remote-ask-intercept.js` | hook | PreToolUse: 攔截 AskUserQuestion → Telegram inline keyboard |
+| `remote-ask-intercept.js` | hook | PreToolUse: 非阻擋轉發 AskUserQuestion → Telegram inline keyboard |
+| `remote-prompt-forward.js` | hook | UserPromptSubmit: 使用者輸入轉發到 Telegram |
 | `remote-autostart.js` | hook | SessionStart: 偵測 → 啟動 daemon |
 | `remote-sender.js` | hook | SubagentStop: 讀 state → 推播 Telegram |
-| `remote-receipt.js` | hook | Stop: 讀 pending → editMessageText ✅ |
+| `remote-receipt.js` | hook | Stop: /say 已讀回條 + 回合摘要通知 |
 | `bot-manager.js` | lib | Daemon 生命週期（isRunning/start/stop/getState） |
 | `telegram.js` | lib | Telegram Bot API 封裝（sendMessage/editMessageText/sendMessageWithKeyboard/answerCallbackQuery/editMessageReplyMarkup/getUpdates/getMe） |
 
@@ -220,42 +224,66 @@ tmux send-keys -t {pane} Enter
 
 ### 互動式選單（AskUserQuestion → Telegram）
 
-當 Claude 呼叫 AskUserQuestion 時，PreToolUse hook 攔截並將選項發送到 Telegram：
+當 Claude 呼叫 AskUserQuestion 時，PreToolUse hook 將選項同步到 Telegram（非阻擋）：
 
 ```
 Claude: AskUserQuestion({questions, options})
     ↓ PreToolUse hook
 remote-ask-intercept.js
     ↓ 讀取 tool_input → Telegram sendMessageWithKeyboard
-    ↓ 寫 remote-ask-pending.json → 輪詢 remote-ask-response.json
+    ↓ 寫 remote-ask-pending.json → 立即放行 TUI（exit 0）
     ↓
-bot.js daemon
-    ↓ callback_query → answerCallbackQuery
-    ↓ 單選：直接寫 response｜多選：toggle ☑/☐ → 確認後寫 response
-    ↓
-Hook 讀到 response
-    ↓ { continue: false, systemMessage: "使用者選擇了：..." }
+TUI 正常顯示          bot.js daemon
+  ↓                      ↓ callback_query → answerCallbackQuery
+使用者在終端回答        ↓ 更新 Telegram 訊息顯示選擇結果
+  ↓                      ↓ 「👉 請在終端確認」
+正常流程
 ```
 
-**State Files**：
+**非阻擋模式**：Hook 發送 Telegram 後立即放行（`exit 0`），TUI 正常顯示。Telegram 定位為**通知**（讓使用者在手機上看到問題），實際回答在終端。
+
+**State File**：
 - `~/.claude/remote-ask-pending.json` — hook 寫、daemon 讀（含 messageId/questions/selections）
-- `~/.claude/remote-ask-response.json` — daemon 寫、hook 讀（含 selectedLabels）
-
-**無時限等待**：使用者可以隨時回覆，不受 hook timeout 限制。
-
-| 場景 | 處理方式 |
-|------|----------|
-| 55 秒內回覆 | Hook 直接透過 `systemMessage` 注入答案 |
-| 55 秒後回覆 | Daemon 透過 tmux send-keys 注入答案 |
-
-Hook timeout 60 秒是 ECC 硬限制，但 hook 超時後設定 `hookTimedOut: true`，daemon 偵測此旗標後改用 tmux send-keys 注入答案，實現無限等待。
 
 **特性**：
-- Hook 直接發送 Telegram 訊息（避免 30s long polling 延遲）
-- 無時限等待：hook 55s 內處理 + daemon tmux 注入雙軌機制
-- 多選模式：☐/☑ toggle + editMessageReplyMarkup 即時更新
-- `continue: false` + `systemMessage` 阻止 TUI 顯示，答案注入 Claude context
+- Hook 直接發送 Telegram 訊息（非阻擋，不等待回覆）
+- TUI 和 Telegram 同時顯示，使用者在終端回答
+- 多選模式：Telegram 上 ☐/☑ toggle + editMessageReplyMarkup 即時更新
+- Telegram 選擇後顯示結果 +「請在終端確認」提示
 - 無 credentials → 靜默放行（正常 TUI 顯示）
+
+### 回合摘要通知
+
+Stop hook 解析 transcript 最近一個回合的工具呼叫，產出動作摘要推播到 Telegram：
+
+```
+📋 回合完成
+
+✏️ 編輯 2 個檔案
+  · plugins/remote/bot.js
+  · scripts/hooks/remote-receipt.js
+⚡ 執行 3 個命令
+  · rsync -a --delete ...
+🔍 搜尋 1 次
+```
+
+**特性**：
+- 只讀 transcript 最後 64KB（避免整個 session）
+- 節流 10 秒（避免連續回合轟炸）
+- 純文字發送（無 Markdown parse mode，避免特殊字元造成解析錯誤）
+- 無動作（純文字回覆）→ 顯示「💬 文字回覆」
+
+### 使用者輸入轉發
+
+UserPromptSubmit hook 將使用者輸入同步到 Telegram：
+
+```
+👤 幫我加一個新功能：用戶登入頁面
+```
+
+**特性**：
+- 純旁路轉發，不阻擋、不修改 prompt
+- 過長 prompt 截斷至 3900 字元（Telegram 訊息上限 4096）
 
 ---
 
@@ -290,7 +318,9 @@ Hook timeout 60 秒是 ECC 硬限制，但 hook 超時後設定 `hookTimedOut: t
 | 互動式選單 | PreToolUse hook + inline keyboard | 攔截 AskUserQuestion，Telegram 直接回答 |
 | 選單發送者 | Hook 直接發（非 daemon） | 避免 30s long polling 延遲 |
 | callback 接收者 | Daemon（bot.js） | 已有 polling 機制，不重複 |
-| 超時策略 | 無時限（hook 55s + daemon tmux 注入） | 使用者有空就回，不受 hook timeout 限制 |
+| AskUserQuestion 策略 | 非阻擋（Telegram 通知 + TUI 正常顯示） | TUI 不接受 tmux 注入，Telegram 作為通知用 |
+| 回合摘要 | Stop hook + transcript 解析 | 即時知道 Claude 做了什麼 |
+| 輸入轉發 | UserPromptSubmit hook | 手機同步看到完整對話流 |
 
 ---
 

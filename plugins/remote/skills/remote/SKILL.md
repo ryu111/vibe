@@ -21,20 +21,15 @@ arguments: $ARGUMENTS
 
 兩階段共用同一則訊息（editMessageText 就地更新），不會產生多餘通知。
 
-## 互動式選單（自動）
+## 對話同步（自動）
 
-當 Claude Code 顯示 AskUserQuestion（單選/多選）時，PreToolUse hook 自動將選項發送到 Telegram：
+所有對話活動自動同步到 Telegram：
 
-- **單選**：每個選項一個 inline button，點選即回答
-- **多選**：☐/☑ toggle 按鈕 + 「確認」按鈕
-- **無時限等待**：不限回覆時間，有空就回
+- **使用者輸入** → `👤 訊息內容`（UserPromptSubmit hook）
+- **回合摘要** → `📋 回合完成` + 動作清單（Stop hook）
+- **AskUserQuestion** → Telegram inline keyboard 通知（非阻擋，TUI 正常顯示）
 
-| 場景 | 處理方式 |
-|------|----------|
-| 55 秒內回覆 | Hook 直接透過 systemMessage 注入答案 |
-| 55 秒後回覆 | Daemon 透過 tmux send-keys 注入答案 |
-
-回答後 Claude 收到答案繼續工作，不需回到終端。
+AskUserQuestion 在 Telegram 上可以點選標記偏好，但**實際回答在終端**。Telegram 定位是「讓你在手機上看到問題」。
 
 ## 指令
 
