@@ -122,18 +122,26 @@ function scanSessions() {
 
 async function handleStatus(token, chatId) {
   const sessions = scanSessions();
-  if (sessions.length === 0) {
+
+  // 過濾：只顯示有 pipeline（expectedStages > 0）的 session
+  const activeSessions = sessions.filter(s =>
+    s.expectedStages && s.expectedStages.length > 0
+  );
+
+  if (activeSessions.length === 0) {
     return sendMessage(token, chatId, '\u{1F4AD} \u7121\u6D3B\u8E8D\u7684 Pipeline session');
   }
 
-  const lines = sessions.map(s => {
+  const lines = activeSessions.map(s => {
     const sid = s.id.slice(0, 8);
     const completed = (s.completed || []).map(a => {
       const short = a.includes(':') ? a.split(':')[1] : a;
       return AGENT_STAGE[short];
     }).filter(Boolean);
-    const expected = s.expectedStages || Object.values(AGENT_STAGE);
-    const progress = Math.round((completed.length / expected.length) * 100);
+    const expected = s.expectedStages;
+    const progress = expected.length > 0
+      ? Math.round((completed.length / expected.length) * 100)
+      : 0;
     const taskType = s.taskType || 'unknown';
     return `\`${sid}\` ${taskType} ${progress}%`;
   });
