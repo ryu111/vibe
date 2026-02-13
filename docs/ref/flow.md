@@ -1,7 +1,7 @@
 # flow — 開發工作流
 
 > **優先級**：高（第二個建構）
-> **定位**：開發工作流 — 規劃、架構、compact、pipeline 管理、環境偵測
+> **定位**：開發工作流 — 規劃、架構、context 管理、pipeline 管理、環境偵測
 > **合併自**：原 flow + 原 session（session 持久化已移交 claude-mem）
 > **ECC 對應**：planner/architect agents + suggest-compact hook + /plan /checkpoint commands
 
@@ -36,7 +36,7 @@ Session 持久化（跨 session context）已移交 **claude-mem**（獨立 plug
 |------|------|
 | `plan` | 功能規劃 — 需求分析 + 分階段計畫 |
 | `architect` | 架構設計 — 程式碼庫分析 + 多方案比較 |
-| `compact` | 策略性壓縮 — context 管理 + compact 建議 |
+| `context-status` | Context 狀態查詢 — 使用量追蹤 + 壓縮建議 |
 | `checkpoint` | 工作檢查點 — 建立/列出/恢復 checkpoint |
 | `env-detect` | 環境偵測 — 語言/框架/PM/工具 偵測 |
 | `cancel` | 取消任務鎖定 — 手動解除 task-guard，允許退出 |
@@ -97,11 +97,11 @@ description: 架構設計 — 分析程式碼庫，提出 2-3 個方案比較優
 
 **UX 流程**：掃描結構 → architect agent 分析 → 展示多方案（目錄樹 + 介面 + 資料流）→ 使用者選擇
 
-### 4.3 compact — 策略性壓縮
+### 4.3 context-status — Context 狀態查詢
 
 ```yaml
-name: compact
-description: 策略性壓縮 — 追蹤 context 使用量，在邏輯邊界建議 compact。
+name: context-status
+description: Context 狀態查詢 — 追蹤 context 使用量，在邏輯邊界建議壓縮。
 ```
 
 **ECC 機制**：50 calls 閾值，每 25 calls 提醒，在邏輯邊界建議（非機械提醒）。
@@ -527,7 +527,7 @@ plugins/flow/
 │   │   └── SKILL.md
 │   ├── architect/
 │   │   └── SKILL.md
-│   ├── compact/
+│   ├── context-status/
 │   │   └── SKILL.md
 │   ├── checkpoint/
 │   │   └── SKILL.md
@@ -592,8 +592,8 @@ plugins/flow/
 ```json
 {
   "name": "flow",
-  "version": "0.3.2",
-  "description": "開發工作流 — 規劃、架構、compact、pipeline 管理、環境偵測",
+  "version": "0.3.4",
+  "description": "開發工作流 — 規劃、架構、context 管理、pipeline 管理、環境偵測",
   "skills": ["./skills/"],
   "agents": [
     "./agents/planner.md",

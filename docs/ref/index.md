@@ -57,7 +57,7 @@
 ─────────────────────────            ─────────────────────────────
 FLOW     SessionStart: pipeline-init  /flow:plan       功能規劃
 FLOW     PreToolUse: suggest-compact  /flow:architect  架構設計
-FLOW     PreCompact: log-compact      /flow:compact    手動壓縮
+FLOW     PreCompact: log-compact      /flow:context-status  Context 狀態
 FLOW     SubagentStop: stage-trans.   /flow:checkpoint 建立檢查點
 FLOW     Stop: pipeline-check         /flow:env-detect 環境偵測
 FLOW     Stop: task-guard             /flow:cancel     取消鎖定

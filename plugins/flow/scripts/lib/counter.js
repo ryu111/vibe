@@ -54,7 +54,7 @@ function increment(sessionId) {
     if (state.count - state.lastRemind >= REMIND_INTERVAL) {
       shouldRemind = true;
       state.lastRemind = state.count;
-      message = `Context 使用量偏高（${state.count} tool calls）。建議在適當的邏輯邊界使用 /flow:compact 或 /compact 壓縮 context。`;
+      message = `Context 使用量偏高（${state.count} tool calls）。建議在適當的邏輯邊界使用 /flow:context-status 查看狀態，或 /compact 壓縮 context。`;
     }
   }
 

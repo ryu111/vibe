@@ -1,6 +1,6 @@
 ---
-name: compact
-description: 策略性壓縮 — 追蹤 context 使用量，在邏輯邊界執行 compact。顯示當前 tool call 計數和建議。觸發詞：compact、壓縮、context。
+name: context-status
+description: Context 狀態查詢 — 追蹤 context 使用量，在邏輯邊界建議壓縮。顯示當前 tool call 計數和建議。觸發詞：context-status、context、狀態。
 argument-hint: "[可選：描述當前進度以保留在 compact 摘要中]"
 allowed-tools: Read, Bash
 ---

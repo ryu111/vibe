@@ -640,7 +640,7 @@ Claude 收到 systemMessage 後會用自然語言向使用者報告。
 ```json
 "flow": {
   "expected": {
-    "skills": ["plan", "architect", "compact", "checkpoint", "env-detect", "cancel"],
+    "skills": ["plan", "architect", "context-status", "checkpoint", "env-detect", "cancel"],
     "hooks": 7,
     "scripts": 9
   }

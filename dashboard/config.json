@@ -73,7 +73,7 @@
       "extraSteps": [
         { "label": "SessionStart: pipeline-init", "auto": true },
         { "label": "PreToolUse: suggest-compact", "auto": true },
-        { "label": "/flow:compact", "auto": false },
+        { "label": "/flow:context-status", "auto": false },
         { "label": "/flow:checkpoint", "auto": false },
         { "label": "/flow:env-detect", "auto": false }
       ]
