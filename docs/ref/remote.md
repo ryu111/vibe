@@ -222,7 +222,7 @@ tmux send-keys -t {pane} Enter
 - 無 pending → hook 靜默退出（exit 0）
 - `stop_hook_active` 防迴圈保護
 
-### 互動式選單（AskUserQuestion → Telegram）
+### 互動通知 + 遠端選擇（AskUserQuestion → Telegram）
 
 當 Claude 呼叫 AskUserQuestion 時，PreToolUse hook 將選項同步到 Telegram（非阻擋）：
 
@@ -230,26 +230,58 @@ tmux send-keys -t {pane} Enter
 Claude: AskUserQuestion({questions, options})
     ↓ PreToolUse hook
 remote-ask-intercept.js
-    ↓ 讀取 tool_input → Telegram sendMessageWithKeyboard
+    ↓ 讀取 tool_input → 純文字通知（附選項編號）
     ↓ 寫 remote-ask-pending.json → 立即放行 TUI（exit 0）
     ↓
-TUI 正常顯示          bot.js daemon
-  ↓                      ↓ callback_query → answerCallbackQuery
-使用者在終端回答        ↓ 更新 Telegram 訊息顯示選擇結果
-  ↓                      ↓ 「👉 請在終端確認」
-正常流程
+TUI 正常顯示                  bot.js daemon
+  ↓                              ↓ 收到數字回覆（如 "2"）
+  ↓                              ↓ checkAskPending → 匹配 pending
+使用者在終端操作                ↓ sendAskAnswer → tmux Down×N + Enter
+  或                            ↓ TUI 自動選中對應選項
+Telegram 遠端選擇 ────────→ 完成
 ```
 
-**非阻擋模式**：Hook 發送 Telegram 後立即放行（`exit 0`），TUI 正常顯示。Telegram 定位為**通知**（讓使用者在手機上看到問題），實際回答在終端。
+**雙通道回答**：TUI 和 Telegram 都能回答，誰先操作用誰的。
+
+**Telegram 通知格式**：
+```
+📋 下一步想做什麼？
+
+1. 推送到 remote — git push + marketplace sync
+2. 測試成功 — 確認全部功能正常
+3. 還有問題 — 需要繼續調整
+
+👉 回覆數字即可選擇，或在終端操作
+```
+
+**tmux 鍵盤操作**：daemon 收到數字後，用 tmux send-keys 發送 key name（非 literal text）操控 TUI：
+
+| 模式 | 操作 | tmux 按鍵序列 |
+|------|------|---------------|
+| 單選 | 選第 N 項 | `Down`×(N-1) + `Enter` |
+| 多選 | 勾選多項 + 提交 | `Space` toggle × M + `Down` 到 Submit + `Enter` × 2 |
+
+**多選 TUI 布局**（5 個位置層級）：
+```
+☐ 選項 1         ← 0
+☐ 選項 2         ← 1
+☐ ...            ← ...
+☐ 選項 N         ← N-1
+  Other           ← N（自由輸入）
+  Submit          ← N+1（第一次 Enter）
+  Cancel          ← N+2
+  → Review 畫面  ← 第二次 Enter 確認
+```
 
 **State File**：
-- `~/.claude/remote-ask-pending.json` — hook 寫、daemon 讀（含 messageId/questions/selections）
+- `~/.claude/remote-ask-pending.json` — hook 寫、daemon 讀（含 questions/optionCount/multiSelect）
 
 **特性**：
-- Hook 直接發送 Telegram 訊息（非阻擋，不等待回覆）
-- TUI 和 Telegram 同時顯示，使用者在終端回答
-- 多選模式：Telegram 上 ☐/☑ toggle + editMessageReplyMarkup 即時更新
-- Telegram 選擇後顯示結果 +「請在終端確認」提示
+- 純文字通知（附選項編號，不用 inline keyboard）
+- 單選/多選都支援 Telegram 數字回覆遠端選擇（`2` 或 `1 3` / `1,3`）
+- 分步送出按鍵 + 延遲（50ms 移動 / 100ms toggle / 300ms 確認）避免掉鍵
+- 多選 double submit：Submit → 300ms → 第二次 Enter（Review 確認）
+- Pending 5 分鐘過期自動清理
 - 無 credentials → 靜默放行（正常 TUI 顯示）
 
 ### 回合摘要通知

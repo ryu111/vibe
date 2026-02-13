@@ -329,29 +329,21 @@ function sleep(ms) {
 
 /**
  * 透過 tmux 鍵盤操作回答多選 AskUserQuestion
- * 多選 TUI：Space/Enter 都是 toggle，Submit 在選項列表底部
- * 流程：toggle 目標選項 → 移動到 Submit → Enter
+ * TUI 支援數字鍵直接 toggle 對應選項（1→選項1, 2→選項2...）
+ * 流程：數字鍵 toggle × N → Down 到 Submit → Enter × 2
  * @param {string} pane — tmux pane ID
  * @param {number[]} sortedIndices — 0-based 已排序選項索引
  * @param {number} optionCount — 總選項數（用於計算 Submit 位置）
  */
 function sendAskMultiAnswer(pane, sortedIndices, optionCount) {
-  let pos = 0;
+  // 用數字鍵直接 toggle（1-based）
   for (const idx of sortedIndices) {
-    const moves = idx - pos;
-    for (let i = 0; i < moves; i++) {
-      sendKey(pane, 'Down');
-      sleep(50);
-    }
-    // Space toggle（不用 Enter，因為 Enter 也是 toggle）
-    sendKey(pane, 'Space');
+    sendKey(pane, String(idx + 1));
     sleep(100);
-    pos = idx;
   }
-  // 移動到 Submit（選項 → Other → Submit）
-  // Submit 位置 = optionCount + 1（Other 在 optionCount，Submit 在 +1）
-  const movesToSubmit = optionCount + 1 - pos;
-  for (let i = 0; i < movesToSubmit; i++) {
+  // 移動到 Submit（從當前位置 0 → 經過所有選項 + Other）
+  // Submit 位置 = optionCount + 1
+  for (let i = 0; i < optionCount + 1; i++) {
     sendKey(pane, 'Down');
     sleep(50);
   }

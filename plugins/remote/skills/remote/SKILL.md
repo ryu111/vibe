@@ -27,9 +27,9 @@ arguments: $ARGUMENTS
 
 - **使用者輸入** → `👤 訊息內容`（UserPromptSubmit hook）
 - **回合摘要** → `📋 回合完成` + 動作清單（Stop hook）
-- **AskUserQuestion** → Telegram inline keyboard 通知（非阻擋，TUI 正常顯示）
+- **AskUserQuestion** → Telegram 純文字通知 + 遠端數字選擇（非阻擋）
 
-AskUserQuestion 在 Telegram 上可以點選標記偏好，但**實際回答在終端**。Telegram 定位是「讓你在手機上看到問題」。
+AskUserQuestion 在 Telegram 上以純文字顯示選項編號。回覆數字即可遠端選擇（單選 `2`、多選 `1 3`），也可在終端操作。
 
 ## 指令
 
