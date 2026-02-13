@@ -64,14 +64,14 @@ const AGENT_STAGE = {
 };
 
 /**
- * 關鍵字分類 — V1 用 heuristic，足夠精確
+ * 關鍵字分類 — V2 保守預設（quickfix），feature 需正向匹配
  */
 function classify(prompt) {
-  if (!prompt) return 'feature';
+  if (!prompt) return 'quickfix';
   const p = prompt.toLowerCase();
 
   // 研究型：問題、探索、理解
-  if (/[?？]$|^(what|how|why|where|explain|show|list|find|search)\b|看看|查看|找找|說明|解釋|什麼|怎麼|為什麼|哪裡|告訴|描述|列出|做什麼|是什麼|有哪些/.test(p)) {
+  if (/[?？]$|^(what|how|why|where|explain|show|list|find|search)\b|看看|查看|找找|說明|解釋|什麼|怎麼|為什麼|哪裡|告訴|描述|列出|做什麼|是什麼|有哪些|出問題|是不是/.test(p)) {
     return 'research';
   }
   // TDD：明確要求
@@ -86,6 +86,10 @@ function classify(prompt) {
   if (/refactor|restructure|重構|重寫|重新設計|改架構/.test(p)) {
     return 'refactor';
   }
+  // 功能開發：明確的功能建設意圖（正向匹配）
+  if (/implement|develop|build.*feature|新增功能|建立.*功能|實作|開發.*功能|加入.*功能|新的.*(api|endpoint|component|頁面|模組|plugin)|整合.*系統/.test(p)) {
+    return 'feature';
+  }
   // 快速修復：簡單改動
   if (/fix.*typo|rename|change.*name|update.*text|改名|修.*typo|換.*名|改.*顏色|改.*文字/.test(p)) {
     return 'quickfix';
@@ -94,8 +98,8 @@ function classify(prompt) {
   if (/fix|bug|修(復|正)|debug|壞了|出錯|不work|不能/.test(p)) {
     return 'bugfix';
   }
-  // 預設：功能開發（完整 pipeline）
-  return 'feature';
+  // 預設：quickfix（保守 — 僅 DEV 階段，不鎖定 pipeline 模式）
+  return 'quickfix';
 }
 
 /**
