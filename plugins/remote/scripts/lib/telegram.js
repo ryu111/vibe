@@ -159,13 +159,14 @@ function editMessageText(token, chatId, messageId, text, parseMode = 'Markdown')
  * @param {Array<Array<{text: string, callback_data: string}>>} keyboard — inline_keyboard 按鈕陣列
  * @returns {Promise<object>}
  */
-function sendMessageWithKeyboard(token, chatId, text, keyboard) {
-  return apiCall(token, 'sendMessage', {
+function sendMessageWithKeyboard(token, chatId, text, keyboard, parseMode = 'Markdown') {
+  const body = {
     chat_id: chatId,
     text,
-    parse_mode: 'Markdown',
     reply_markup: { inline_keyboard: keyboard },
-  });
+  };
+  if (parseMode) body.parse_mode = parseMode;
+  return apiCall(token, 'sendMessage', body);
 }
 
 /**

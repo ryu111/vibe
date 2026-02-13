@@ -17,7 +17,7 @@ const { execSync } = require('child_process');
 
 const {
   getCredentials, sendMessage, editMessageText,
-  answerCallbackQuery, editMessageReplyMarkup,
+  sendMessageWithKeyboard, answerCallbackQuery, editMessageReplyMarkup,
   getUpdates,
 } = require(path.join(__dirname, 'scripts', 'lib', 'telegram.js'));
 
@@ -132,16 +132,22 @@ function sendKeys(pane, text) {
 }
 
 /**
- * 透過 tmux 鍵盤操作回答單選 AskUserQuestion
- * TUI 用上下鍵導航、Enter 確認 — 用 key name 而非 literal text
+ * 透過 tmux 鍵盤操作導航單選 AskUserQuestion
+ * TUI 用上下鍵導航 — 不自動 Enter（由 ok 確認觸發）
  * @param {string} pane — tmux pane ID
  * @param {number} optionIndex — 0-based 選項索引
  */
-function sendAskAnswer(pane, optionIndex) {
+function sendAskNavigate(pane, optionIndex) {
   for (let i = 0; i < optionIndex; i++) {
     sendKey(pane, 'Down');
     sleep(50);
   }
+}
+
+/**
+ * 單選確認：Enter
+ */
+function sendAskConfirmSingle(pane) {
   sendKey(pane, 'Enter');
 }
 
@@ -307,7 +313,27 @@ function checkAskPending(text) {
     try { fs.unlinkSync(ASK_PENDING_FILE); } catch (_) {}
     return null;
   }
-  // 解析數字（支援 "2"、"1 3"、"1,3"、"1、3"）
+
+  const trimmed = text.trim().toLowerCase();
+
+  // 等待確認狀態 → 偵測 ok/確認
+  if (pending.waitingConfirm) {
+    if (/^(ok|確認|submit|yes|y)$/i.test(trimmed)) {
+      return { pending, confirm: true };
+    }
+    // 多選等待確認期間，數字仍可調整選擇
+    if (pending.multiSelect) {
+      const nums = text.split(/[\s,、]+/).map(s => parseInt(s, 10)).filter(n => !isNaN(n));
+      if (nums.length > 0) {
+        const max = pending.optionCount || 0;
+        const indices = [...new Set(nums)].filter(n => n >= 1 && n <= max).map(n => n - 1).sort((a, b) => a - b);
+        if (indices.length > 0) return { pending, indices, adjustToggle: true };
+      }
+    }
+    return null;
+  }
+
+  // 正常狀態 → 解析數字（支援 "2"、"1 3"、"1,3"、"1、3"）
   const nums = text.split(/[\s,、]+/).map(s => parseInt(s, 10)).filter(n => !isNaN(n));
   if (nums.length === 0) return null;
   const max = pending.optionCount || 0;
@@ -328,31 +354,55 @@ function sleep(ms) {
 }
 
 /**
- * 透過 tmux 鍵盤操作回答多選 AskUserQuestion
+ * 透過 tmux 鍵盤操作 toggle 多選 AskUserQuestion
  * TUI 支援數字鍵直接 toggle 對應選項（1→選項1, 2→選項2...）
- * 流程：數字鍵 toggle × N → Down 到 Submit → Enter × 2
+ * 只 toggle，不提交 — 由 ok 確認觸發
  * @param {string} pane — tmux pane ID
  * @param {number[]} sortedIndices — 0-based 已排序選項索引
- * @param {number} optionCount — 總選項數（用於計算 Submit 位置）
  */
-function sendAskMultiAnswer(pane, sortedIndices, optionCount) {
-  // 用數字鍵直接 toggle（1-based）
+function sendAskToggle(pane, sortedIndices) {
   for (const idx of sortedIndices) {
     sendKey(pane, String(idx + 1));
     sleep(100);
   }
-  // Tab 跳到 Submit 區段（不用 Down 逐項導航）
+}
+
+/**
+ * 多選確認：Tab 跳 Submit → Enter × 2（double submit）
+ */
+function sendAskConfirmMulti(pane) {
   sleep(100);
   sendKey(pane, 'Tab');
   sleep(100);
   sendKey(pane, 'Enter');
-  // 多選有兩步確認：Submit → Review 畫面 → Submit answers
   sleep(300);
   sendKey(pane, 'Enter');
 }
 
 /**
- * 處理 AskUserQuestion 的 Telegram 回覆 — 透過 tmux 鍵盤操作選擇選項
+ * 組裝題目通知文字（用於多題推進時發送下一題）
+ */
+function buildQuestionText(questions, idx) {
+  const q = questions[idx];
+  if (!q || !q.options) return null;
+  let text = `\u{1F4CB} ${q.question || q.header || '\u8ACB\u9078\u64C7'}`;
+  text += '\n';
+  for (let i = 0; i < q.options.length; i++) {
+    const opt = q.options[i];
+    text += `\n${i + 1}. ${opt.label}`;
+    if (opt.description) text += ` \u2014 ${opt.description}`;
+  }
+  if (q.multiSelect) {
+    text += '\n\n\u{1F449} \u56DE\u8986\u6578\u5B57\u52FE\u9078\uFF0C\u8F38\u5165 ok \u78BA\u8A8D';
+  } else {
+    text += '\n\n\u{1F449} \u56DE\u8986\u6578\u5B57\u9078\u64C7\uFF0C\u8F38\u5165 ok \u78BA\u8A8D';
+  }
+  return text;
+}
+
+/**
+ * 處理 AskUserQuestion 的 Telegram 數字回覆 — 選擇/toggle 但不提交
+ * 統一兩步流程：數字 → 選擇 → ok → 確認
  */
 async function handleAskAnswer(token, chatId, indices, pending) {
   const pane = cachedPane || detectPane();
@@ -361,65 +411,193 @@ async function handleAskAnswer(token, chatId, indices, pending) {
   }
   cachedPane = pane;
 
-  const q = (pending.questions || [])[pending.questionIndex || 0];
+  const qIdx = pending.questionIndex || 0;
+  const q = (pending.questions || [])[qIdx];
   const labels = indices.map(i =>
     q && q.options && q.options[i] ? q.options[i].label : `\u9078\u9805 ${i + 1}`
   );
 
   try {
     if (pending.multiSelect) {
-      sendAskMultiAnswer(pane, indices, pending.optionCount || 0);
+      // 多選：toggle（不提交），等 ok 確認
+      sendAskToggle(pane, indices);
+      appendLog(`ask-toggle: Q${qIdx + 1} [${indices}] (${labels.join(', ')})`);
+      const updated = { ...pending, waitingConfirm: true };
+      fs.writeFileSync(ASK_PENDING_FILE, JSON.stringify(updated));
+      await sendMessage(token, chatId,
+        `\u2705 \u5DF2\u52FE\u9078\uFF1A${labels.join(', ')}\n\n\u{1F449} \u8F38\u5165 ok \u78BA\u8A8D\uFF0C\u6216\u5728\u7D42\u7AEF\u64CD\u4F5C`,
+        null);
     } else {
-      sendAskAnswer(pane, indices[0]);
+      // 單選：直接導航 + Enter 一步完成
+      sendAskNavigate(pane, indices[0]);
+      sendAskConfirmSingle(pane);
+      appendLog(`ask-answer: Q${qIdx + 1} [${indices[0]}] ${labels[0]}`);
+
+      const total = pending.totalQuestions || 1;
+      const isLast = qIdx >= total - 1;
+
+      if (isLast) {
+        try { fs.unlinkSync(ASK_PENDING_FILE); } catch (_) {}
+        await sendMessage(token, chatId, `\u2705 \u5DF2\u9078\u64C7\uFF1A${labels[0]}`, null);
+      } else {
+        // 非最後一題：推進到下一題
+        await advanceToNextQuestion(token, chatId, pending, qIdx, labels[0]);
+      }
     }
-    appendLog(`ask-answer: [${indices}] (${labels.join(', ')})`);
-    // 清理 pending
-    try { fs.unlinkSync(ASK_PENDING_FILE); } catch (_) {}
-    await sendMessage(token, chatId, `\u2705 \u5DF2\u9078\u64C7\uFF1A${labels.join(', ')}`, null);
   } catch (err) {
     cachedPane = null;
     return sendMessage(token, chatId, `\u274C \u64CD\u4F5C\u5931\u6557\uFF1A${err.message}`, null);
   }
 }
 
-// ─── AskUserQuestion callback 處理 ──────────────
-
 /**
- * 當 hook 已超時（hookTimedOut=true），透過 tmux send-keys 注入答案
- * @param {string[]} labels — 選擇的 label 列表
+ * 推進到下一題 — 更新 pending + 發新通知（帶 keyboard）
  */
-function injectAnswerViaTmux(labels) {
-  const pane = cachedPane || detectPane();
-  if (!pane) return;
-  cachedPane = pane;
+async function advanceToNextQuestion(token, chatId, pending, qIdx, answeredLabel) {
+  const nextIdx = qIdx + 1;
+  const nextQ = (pending.questions || [])[nextIdx];
+  const nextMulti = nextQ ? nextQ.multiSelect === true : false;
+  const nextCount = nextQ && nextQ.options ? nextQ.options.length : 0;
 
-  const labelStr = labels.join(', ');
-  const answer = `\u4F7F\u7528\u8005\u900F\u904E Telegram \u9078\u64C7\u4E86\uFF1A${labelStr}`;
-  try {
-    sendKeys(pane, answer);
-    appendLog(`tmux inject: ${answer}`);
-  } catch (_) {}
+  // 清除當前 keyboard
+  if (pending.messageId) {
+    try { await editMessageReplyMarkup(token, chatId, pending.messageId, []); } catch (_) {}
+  }
+
+  await sendMessage(token, chatId, `\u2705 Q${qIdx + 1}: ${answeredLabel}`, null);
+
+  // 發送下一題通知（帶 keyboard）
+  const nextText = buildQuestionText(pending.questions, nextIdx);
+  let newMessageId = null;
+  if (nextText && nextQ) {
+    try {
+      const keyboard = buildKeyboard(nextQ);
+      const result = await sendMessageWithKeyboard(token, chatId, nextText, keyboard, null);
+      newMessageId = result && result.message_id;
+    } catch (_) {
+      await sendMessage(token, chatId, nextText, null);
+    }
+  }
+
+  const updated = {
+    ...pending,
+    questionIndex: nextIdx,
+    multiSelect: nextMulti,
+    optionCount: nextCount,
+    selections: nextMulti ? new Array(nextCount).fill(false) : undefined,
+    selectedIndex: undefined,
+    messageId: newMessageId || null,
+    waitingConfirm: false,
+  };
+  fs.writeFileSync(ASK_PENDING_FILE, JSON.stringify(updated));
 }
 
 /**
+ * 建構 inline keyboard（多題推進時用）
+ */
+function buildKeyboard(q) {
+  if (q.multiSelect) {
+    const keyboard = q.options.map((opt, i) => [{
+      text: `\u2610 ${opt.label}`,
+      callback_data: `ask|${i}`,
+    }]);
+    keyboard.push([{ text: '\u2714 \u78BA\u8A8D', callback_data: 'ask|confirm' }]);
+    return keyboard;
+  } else {
+    return q.options.map((opt, i) => [{
+      text: opt.label,
+      callback_data: `ask|${i}`,
+    }]);
+  }
+}
+
+/**
+ * 處理 ok 確認 — 提交當前題目，多題時推進到下一題
+ */
+async function handleAskConfirm(token, chatId, pending) {
+  const pane = cachedPane || detectPane();
+  if (!pane) {
+    return sendMessage(token, chatId, '\u274C tmux \u672A\u9023\u7DDA', null);
+  }
+  cachedPane = pane;
+
+  const qIdx = pending.questionIndex || 0;
+  const total = pending.totalQuestions || 1;
+  const isLast = qIdx >= total - 1;
+
+  try {
+    if (pending.multiSelect) {
+      sendAskConfirmMulti(pane);
+    } else {
+      sendAskConfirmSingle(pane);
+    }
+    appendLog(`ask-confirm: Q${qIdx + 1}/${total}${isLast ? ' (final)' : ''}`);
+
+    // 清除當前訊息的 keyboard
+    if (pending.messageId) {
+      try { await editMessageReplyMarkup(token, chatId, pending.messageId, []); } catch (_) {}
+    }
+
+    if (isLast) {
+      // 最後一題 → 清理 pending
+      try { fs.unlinkSync(ASK_PENDING_FILE); } catch (_) {}
+      await sendMessage(token, chatId, '\u2705 \u5DF2\u78BA\u8A8D\u63D0\u4EA4', null);
+    } else {
+      // 非最後一題 → 推進到下一題 + 發帶 keyboard 的通知
+      const nextIdx = qIdx + 1;
+      const nextQ = (pending.questions || [])[nextIdx];
+      const nextMulti = nextQ ? nextQ.multiSelect === true : false;
+      const nextCount = nextQ && nextQ.options ? nextQ.options.length : 0;
+
+      await sendMessage(token, chatId, `\u2705 Q${qIdx + 1} \u5DF2\u78BA\u8A8D`, null);
+
+      // 發送下一題通知（帶 inline keyboard）
+      const nextText = buildQuestionText(pending.questions, nextIdx);
+      let newMessageId = null;
+      if (nextText && nextQ) {
+        try {
+          const keyboard = buildKeyboard(nextQ);
+          const result = await sendMessageWithKeyboard(token, chatId, nextText, keyboard, null);
+          newMessageId = result && result.message_id;
+        } catch (_) {
+          // fallback 純文字
+          await sendMessage(token, chatId, nextText, null);
+        }
+      }
+
+      const updated = {
+        ...pending,
+        questionIndex: nextIdx,
+        multiSelect: nextMulti,
+        optionCount: nextCount,
+        selections: nextMulti ? new Array(nextCount).fill(false) : undefined,
+        selectedIndex: undefined,
+        messageId: newMessageId || null,
+        waitingConfirm: false,
+      };
+      fs.writeFileSync(ASK_PENDING_FILE, JSON.stringify(updated));
+    }
+  } catch (err) {
+    cachedPane = null;
+    return sendMessage(token, chatId, `\u274C \u78BA\u8A8D\u5931\u6557\uFF1A${err.message}`, null);
+  }
+}
+
+// ─── AskUserQuestion callback 處理 ──────────────
+
+/**
  * 處理 Telegram inline keyboard 的 callback_query
- * 與 remote-ask-intercept.js hook 協調：
- * - hook 寫 pending file + 發送 inline keyboard
- * - daemon 收到 callback → 更新 pending / 寫 response file
- * - 若 hook 已超時（hookTimedOut）→ 額外透過 tmux send-keys 注入答案
+ * 按鈕點擊 = 等同數字回覆，統一兩步流程：選擇 → ok 確認
  */
 async function handleCallbackQuery(token, chatId, callbackQuery) {
   const cbId = callbackQuery.id;
   const data = callbackQuery.data || '';
-  const cbMsg = callbackQuery.message;
 
-  // 只處理 ask| 前綴的 callback
   if (!data.startsWith('ask|')) {
     try { await answerCallbackQuery(token, cbId); } catch (_) {}
     return;
   }
 
-  // 讀取 pending state
   let pending;
   try {
     pending = JSON.parse(fs.readFileSync(ASK_PENDING_FILE, 'utf8'));
@@ -428,101 +606,88 @@ async function handleCallbackQuery(token, chatId, callbackQuery) {
     return;
   }
 
-  // 驗證 messageId
-  if (cbMsg && cbMsg.message_id !== pending.messageId) {
-    try { await answerCallbackQuery(token, cbId, '\u274C \u8A0A\u606F\u4E0D\u5339\u914D'); } catch (_) {}
-    return;
-  }
-
-  const action = data.slice(4); // 去掉 "ask|" 前綴
-  const questions = pending.questions || [];
+  const action = data.slice(4);
   const qIdx = pending.questionIndex || 0;
-  const q = questions[qIdx];
+  const q = (pending.questions || [])[qIdx];
   if (!q || !q.options) {
     try { await answerCallbackQuery(token, cbId); } catch (_) {}
     return;
   }
 
-  if (pending.multiSelect) {
-    // ─── 多選模式 ───
-    if (action === 'confirm') {
-      // 確認選擇 → 寫 response file
-      const selectedLabels = q.options
-        .filter((_, i) => pending.selections[i])
-        .map(o => o.label);
-
-      if (selectedLabels.length === 0) {
-        try { await answerCallbackQuery(token, cbId, '\u8ACB\u81F3\u5C11\u9078\u64C7\u4E00\u9805'); } catch (_) {}
-        return;
-      }
-
-      // 更新 Telegram 訊息：顯示選擇結果（純文字避免 Markdown 解析錯誤）
-      const header = q.question || q.header || '請選擇';
-      let confirmText = `\u2705 ${header}\n`;
-      for (let i = 0; i < q.options.length; i++) {
-        const opt = q.options[i];
-        const mark = pending.selections[i] ? '\u2705' : '\u00B7';
-        confirmText += `\n${mark} ${opt.label}`;
-      }
-      confirmText += '\n\n\u{1F449} \u8ACB\u5728\u7D42\u7AEF\u78BA\u8A8D';
-      try {
-        await editMessageText(token, chatId, pending.messageId, confirmText, null);
-      } catch (_) {}
-
-      // 清理 pending
-      try { fs.unlinkSync(ASK_PENDING_FILE); } catch (_) {}
-      try { await answerCallbackQuery(token, cbId, '\u2705 \u5DF2\u78BA\u8A8D'); } catch (_) {}
-    } else {
-      // toggle 選項
-      const idx = parseInt(action, 10);
-      if (isNaN(idx) || idx < 0 || idx >= q.options.length) {
-        try { await answerCallbackQuery(token, cbId); } catch (_) {}
-        return;
-      }
-
-      pending.selections[idx] = !pending.selections[idx];
-
-      // 更新 pending file
-      fs.writeFileSync(ASK_PENDING_FILE, JSON.stringify(pending));
-
-      // 更新 keyboard 顯示 ☑/☐
-      const keyboard = q.options.map((opt, i) => [{
-        text: `${pending.selections[i] ? '\u2611' : '\u2610'} ${opt.label}`,
-        callback_data: `ask|${i}`,
-      }]);
-      keyboard.push([{ text: '\u2714 \u78BA\u8A8D', callback_data: 'ask|confirm' }]);
-
-      try {
-        await editMessageReplyMarkup(token, chatId, pending.messageId, keyboard);
-      } catch (_) {}
-      try { await answerCallbackQuery(token, cbId); } catch (_) {}
-    }
-  } else {
-    // ─── 單選模式 ───
-    const idx = parseInt(action, 10);
-    if (isNaN(idx) || idx < 0 || idx >= q.options.length) {
-      try { await answerCallbackQuery(token, cbId); } catch (_) {}
+  // ─── ok 確認按鈕 ───
+  if (action === 'confirm') {
+    if (!pending.waitingConfirm) {
+      try { await answerCallbackQuery(token, cbId, '\u8ACB\u5148\u9078\u64C7\u9078\u9805'); } catch (_) {}
       return;
     }
-
-    const selected = q.options[idx];
-
-    // 更新 Telegram 訊息：顯示選擇結果（純文字避免 Markdown 解析錯誤）
-    const header = q.question || q.header || '請選擇';
-    let confirmText = `\u2705 ${header}\n`;
-    for (let i = 0; i < q.options.length; i++) {
-      const opt = q.options[i];
-      const mark = i === idx ? '\u2705' : '\u00B7';
-      confirmText += `\n${mark} ${opt.label}`;
+    // 清除 keyboard
+    if (pending.messageId) {
+      try { await editMessageReplyMarkup(token, chatId, pending.messageId, []); } catch (_) {}
     }
-    confirmText += '\n\n\u{1F449} \u8ACB\u5728\u7D42\u7AEF\u78BA\u8A8D';
-    try {
-      await editMessageText(token, chatId, pending.messageId, confirmText, null);
-    } catch (_) {}
+    await handleAskConfirm(token, chatId, pending);
+    try { await answerCallbackQuery(token, cbId, '\u2705'); } catch (_) {}
+    return;
+  }
 
-    // 清理 pending
-    try { fs.unlinkSync(ASK_PENDING_FILE); } catch (_) {}
-    try { await answerCallbackQuery(token, cbId, `\u2705 ${selected.label}`); } catch (_) {}
+  // ─── 選項按鈕 ───
+  const idx = parseInt(action, 10);
+  if (isNaN(idx) || idx < 0 || idx >= q.options.length) {
+    try { await answerCallbackQuery(token, cbId); } catch (_) {}
+    return;
+  }
+
+  const pane = cachedPane || detectPane();
+  if (!pane) {
+    try { await answerCallbackQuery(token, cbId, '\u274C tmux \u672A\u9023\u7DDA'); } catch (_) {}
+    return;
+  }
+  cachedPane = pane;
+
+  if (pending.multiSelect) {
+    // 多選：toggle + 更新 keyboard
+    sendAskToggle(pane, [idx]);
+    pending.selections = pending.selections || new Array(q.options.length).fill(false);
+    pending.selections[idx] = !pending.selections[idx];
+    pending.waitingConfirm = true;
+    fs.writeFileSync(ASK_PENDING_FILE, JSON.stringify(pending));
+
+    const keyboard = q.options.map((opt, i) => [{
+      text: `${pending.selections[i] ? '\u2611' : '\u2610'} ${opt.label}`,
+      callback_data: `ask|${i}`,
+    }]);
+    keyboard.push([{ text: '\u2714 \u78BA\u8A8D', callback_data: 'ask|confirm' }]);
+    try {
+      await editMessageReplyMarkup(token, chatId, pending.messageId, keyboard);
+    } catch (_) {}
+    try { await answerCallbackQuery(token, cbId); } catch (_) {}
+    appendLog(`cb-toggle: Q${qIdx + 1} [${idx}] ${q.options[idx].label}`);
+  } else {
+    // 單選：直接導航 + Enter 一步完成
+    sendAskNavigate(pane, idx);
+    sendAskConfirmSingle(pane);
+    appendLog(`cb-answer: Q${qIdx + 1} [${idx}] ${q.options[idx].label}`);
+
+    const total = pending.totalQuestions || 1;
+    const isLast = qIdx >= total - 1;
+    const label = q.options[idx].label;
+
+    // 更新原始訊息：顯示結果 + 移除 keyboard
+    if (pending.messageId) {
+      const header = q.question || q.header || '';
+      const resultText = `\u{1F4CB} ${header}\n\n\u2705 \u5DF2\u9078\u64C7\uFF1A${label}`;
+      try {
+        await editMessageText(token, chatId, pending.messageId, resultText, null);
+      } catch (_) {
+        try { await editMessageReplyMarkup(token, chatId, pending.messageId, []); } catch (_) {}
+      }
+    }
+
+    if (isLast) {
+      try { fs.unlinkSync(ASK_PENDING_FILE); } catch (_) {}
+    } else {
+      await advanceToNextQuestion(token, chatId, pending, qIdx, label);
+    }
+    try { await answerCallbackQuery(token, cbId, `\u2705 ${label}`); } catch (_) {}
   }
 }
 
@@ -645,10 +810,30 @@ async function main() {
           default:
             // 非指令訊息
             if (!text.startsWith('/')) {
-              // 先檢查是否有 pending AskUserQuestion → 數字回覆觸發鍵盤操作
+              // 先檢查是否有 pending AskUserQuestion
               const askMatch = checkAskPending(text);
               if (askMatch) {
-                await handleAskAnswer(creds.token, creds.chatId, askMatch.indices, askMatch.pending);
+                if (askMatch.confirm) {
+                  // ok 確認 → 提交 / 推進下一題
+                  await handleAskConfirm(creds.token, creds.chatId, askMatch.pending);
+                } else if (askMatch.adjustToggle) {
+                  // 等待確認期間調整多選
+                  const p = cachedPane || detectPane();
+                  if (p) {
+                    cachedPane = p;
+                    sendAskToggle(p, askMatch.indices);
+                    const q = (askMatch.pending.questions || [])[askMatch.pending.questionIndex || 0];
+                    const labels = askMatch.indices.map(i =>
+                      q && q.options && q.options[i] ? q.options[i].label : `\u9078\u9805 ${i + 1}`
+                    );
+                    await sendMessage(creds.token, creds.chatId,
+                      `\u{1F504} \u5DF2\u5207\u63DB\uFF1A${labels.join(', ')}\n\n\u{1F449} \u8F38\u5165 ok \u78BA\u8A8D`,
+                      null);
+                  }
+                } else {
+                  // 數字回覆 → 選擇/toggle
+                  await handleAskAnswer(creds.token, creds.chatId, askMatch.indices, askMatch.pending);
+                }
               } else {
                 await handleSay(creds.token, creds.chatId, text);
               }

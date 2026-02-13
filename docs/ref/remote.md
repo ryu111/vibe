@@ -15,7 +15,7 @@ remote 是 Vibe marketplace 的遠端控制 plugin。五大功能軸：
 2. **查詢** — 從 Telegram 查詢 /status /stages → 讀 state files 直接回覆
 3. **遠端控制** — `/say <訊息>` → tmux send-keys → 注入到同一個 Claude Code session
 4. **對話同步** — UserPromptSubmit → 使用者輸入轉發 + Stop → 回合摘要通知
-5. **互動通知** — AskUserQuestion → Telegram inline keyboard（非阻擋，通知用途）
+5. **互動選單** — AskUserQuestion → Telegram inline keyboard + 數字回覆（非阻擋，遠端選擇）
 
 ### 架構概覽
 
@@ -66,7 +66,7 @@ bot.js daemon (long polling) ← Telegram Bot API ←────── 使用�
 
 | 事件 | Matcher | Script | 說明 |
 |------|---------|--------|------|
-| PreToolUse | `AskUserQuestion` | `remote-ask-intercept.js` | 互動通知（非阻擋，轉發到 Telegram inline keyboard） |
+| PreToolUse | `AskUserQuestion` | `remote-ask-intercept.js` | 互動通知（非阻擋，inline keyboard + 遠端選擇） |
 | UserPromptSubmit | `*` | `remote-prompt-forward.js` | 使用者輸入轉發到 Telegram |
 | SessionStart | `startup\|resume` | `remote-autostart.js` | 自動啟動 bot daemon |
 | SubagentStop | `*` | `remote-sender.js` | Pipeline stage 完成推播 |
@@ -76,7 +76,7 @@ bot.js daemon (long polling) ← Telegram Bot API ←────── 使用�
 
 | 名稱 | 類型 | 說明 |
 |------|------|------|
-| `remote-ask-intercept.js` | hook | PreToolUse: 非阻擋轉發 AskUserQuestion → Telegram inline keyboard |
+| `remote-ask-intercept.js` | hook | PreToolUse: 非阻擋轉發 AskUserQuestion → inline keyboard 通知 + pending file |
 | `remote-prompt-forward.js` | hook | UserPromptSubmit: 使用者輸入轉發到 Telegram |
 | `remote-autostart.js` | hook | SessionStart: 偵測 → 啟動 daemon |
 | `remote-sender.js` | hook | SubagentStop: 讀 state → 推播 Telegram |
@@ -224,26 +224,28 @@ tmux send-keys -t {pane} Enter
 
 ### 互動通知 + 遠端選擇（AskUserQuestion → Telegram）
 
-當 Claude 呼叫 AskUserQuestion 時，PreToolUse hook 將選項同步到 Telegram（非阻擋）：
+當 Claude 呼叫 AskUserQuestion 時，PreToolUse hook 將選項同步到 Telegram（非阻擋），支援 inline keyboard 按鈕和數字回覆兩種操作方式：
 
 ```
 Claude: AskUserQuestion({questions, options})
     ↓ PreToolUse hook
 remote-ask-intercept.js
-    ↓ 讀取 tool_input → 純文字通知（附選項編號）
-    ↓ 寫 remote-ask-pending.json → 立即放行 TUI（exit 0）
+    ↓ 讀取 tool_input → inline keyboard 通知（附選項編號 + 按鈕）
+    ↓ 寫 remote-ask-pending.json（含 messageId）→ 立即放行 TUI（exit 0）
     ↓
 TUI 正常顯示                  bot.js daemon
-  ↓                              ↓ 收到數字回覆（如 "2"）
+  ↓                              ↓ 收到 callback_query 或數字回覆
   ↓                              ↓ checkAskPending → 匹配 pending
-使用者在終端操作                ↓ sendAskAnswer → tmux Down×N + Enter
-  或                            ↓ TUI 自動選中對應選項
-Telegram 遠端選擇 ────────→ 完成
+使用者在終端操作                ↓ tmux send-keys 操控 TUI
+  或                            ↓ 單選：一步完成 / 多選：toggle + ok 確認
+Telegram 遠端選擇 ────────→ 完成（editMessageText 顯示結果）
 ```
 
 **雙通道回答**：TUI 和 Telegram 都能回答，誰先操作用誰的。
 
-**Telegram 通知格式**：
+**Telegram 通知格式**（附 inline keyboard）：
+
+單選：
 ```
 📋 下一步想做什麼？
 
@@ -251,15 +253,50 @@ Telegram 遠端選擇 ────────→ 完成
 2. 測試成功 — 確認全部功能正常
 3. 還有問題 — 需要繼續調整
 
-👉 回覆數字即可選擇，或在終端操作
+👉 點按鈕或回覆數字即可選擇
+
+[推送到 remote]
+[測試成功]
+[還有問題]
 ```
 
-**tmux 鍵盤操作**：daemon 收到數字後，用 tmux send-keys 發送 key name（非 literal text）操控 TUI：
+多選：
+```
+📋 選擇要啟用的功能：
+
+1. 功能 A — 說明
+2. 功能 B — 說明
+3. 功能 C — 說明
+
+👉 點按鈕或數字勾選，輸入 ok 確認
+
+[☐ 功能 A]
+[☐ 功能 B]
+[☐ 功能 C]
+[✓ 確認]
+```
+
+**選擇後結果顯示**（editMessageText 取代原訊息 + 移除 keyboard）：
+```
+📋 下一步想做什麼？
+
+✅ 已選擇：測試成功
+```
+
+**操作方式**：
+
+| 輸入方式 | 單選 | 多選 |
+|----------|------|------|
+| Inline 按鈕 | 一步完成（按 = 選 + 確認） | toggle ☑/☐ → 按「確認」按鈕 |
+| 數字回覆 | 一步完成（`2` → 選第 2 項） | `1 3` toggle → `ok` 確認 |
+
+**tmux 鍵盤操作**：daemon 收到選擇後，用 tmux send-keys 發送 key name（非 literal text）操控 TUI：
 
 | 模式 | 操作 | tmux 按鍵序列 |
 |------|------|---------------|
-| 單選 | 選第 N 項 | `Down`×(N-1) + `Enter` |
-| 多選 | 勾選多項 + 提交 | `Space` toggle × M + `Down` 到 Submit + `Enter` × 2 |
+| 單選 | 選第 N 項 | `Down`×(N-1) + `Enter`（一步完成） |
+| 多選 toggle | 勾選第 M 項 | 數字鍵 `M`（TUI 自動 toggle） |
+| 多選確認 | 提交選擇 | `Tab` 跳 Submit + `Enter` × 2（double submit） |
 
 **多選 TUI 布局**（5 個位置層級）：
 ```
@@ -273,14 +310,23 @@ Telegram 遠端選擇 ────────→ 完成
   → Review 畫面  ← 第二次 Enter 確認
 ```
 
+**多題支援**：AskUserQuestion 可包含多個問題（`questions` 陣列）。每題自動推進：
+- 單選答完 → 自動推進到下一題（發新 keyboard 通知）
+- 多選確認後 → 自動推進到下一題
+- 最後一題完成 → 清理 pending
+
 **State File**：
-- `~/.claude/remote-ask-pending.json` — hook 寫、daemon 讀（含 questions/optionCount/multiSelect）
+- `~/.claude/remote-ask-pending.json` — hook 寫、daemon 讀
+  - 含 `questions`/`optionCount`/`multiSelect`/`messageId`/`questionIndex`/`totalQuestions`/`selections`/`waitingConfirm`
 
 **特性**：
-- 純文字通知（附選項編號，不用 inline keyboard）
-- 單選/多選都支援 Telegram 數字回覆遠端選擇（`2` 或 `1 3` / `1,3`）
-- 分步送出按鍵 + 延遲（50ms 移動 / 100ms toggle / 300ms 確認）避免掉鍵
-- 多選 double submit：Submit → 300ms → 第二次 Enter（Review 確認）
+- Inline keyboard 按鈕 + 數字回覆雙模式
+- 單選一步完成（按鈕或數字 → 立即確認），多選兩步（toggle → ok 確認）
+- Callback query 和文字回覆共用同一套 tmux 操控邏輯
+- 按鈕選擇後 editMessageText 就地更新結果（不洗版）
+- 多選 toggle 後即時更新 keyboard 按鈕狀態（☑/☐）
+- 分步送出按鍵 + 延遲（50ms 移動 / 100ms toggle / 100ms Tab）避免掉鍵
+- 多題自動推進（每題發新 keyboard 通知）
 - Pending 5 分鐘過期自動清理
 - 無 credentials → 靜默放行（正常 TUI 顯示）
 
@@ -347,10 +393,8 @@ UserPromptSubmit hook 將使用者輸入同步到 Telegram：
 | PID 管理 | 全域 | Daemon 跨 session 共享 |
 | 完成偵測 | Stop hook + state file | 精確、零 polling 消耗 |
 | 狀態更新 | editMessageText | 同一訊息就地更新、不洗版 |
-| 互動式選單 | PreToolUse hook + inline keyboard | 攔截 AskUserQuestion，Telegram 直接回答 |
-| 選單發送者 | Hook 直接發（非 daemon） | 避免 30s long polling 延遲 |
-| callback 接收者 | Daemon（bot.js） | 已有 polling 機制，不重複 |
-| AskUserQuestion 策略 | 非阻擋（Telegram 通知 + TUI 正常顯示） | TUI 不接受 tmux 注入，Telegram 作為通知用 |
+| 互動通知 | PreToolUse hook + inline keyboard | 攔截 AskUserQuestion，按鈕 + 數字雙模式遠端選擇 |
+| AskUserQuestion 策略 | 非阻擋（inline keyboard + tmux 鍵盤操作） | 按鈕直覺操作、數字快捷回覆、TUI 正常顯示 |
 | 回合摘要 | Stop hook + transcript 解析 | 即時知道 Claude 做了什麼 |
 | 輸入轉發 | UserPromptSubmit hook | 手機同步看到完整對話流 |
 
