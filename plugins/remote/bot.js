@@ -132,16 +132,17 @@ function sendKeys(pane, text) {
 }
 
 /**
- * 透過 tmux 鍵盤操作回答 AskUserQuestion
+ * 透過 tmux 鍵盤操作回答單選 AskUserQuestion
  * TUI 用上下鍵導航、Enter 確認 — 用 key name 而非 literal text
  * @param {string} pane — tmux pane ID
  * @param {number} optionIndex — 0-based 選項索引
  */
 function sendAskAnswer(pane, optionIndex) {
   for (let i = 0; i < optionIndex; i++) {
-    execSync(`tmux send-keys -t ${pane} Down`, { timeout: 2000 });
+    sendKey(pane, 'Down');
+    sleep(50);
   }
-  execSync(`tmux send-keys -t ${pane} Enter`, { timeout: 2000 });
+  sendKey(pane, 'Enter');
 }
 
 // ─── 指令處理 ──────────────────────────────────
@@ -290,8 +291,9 @@ async function handleTmux(token, chatId) {
 }
 
 /**
- * 檢查是否有 pending AskUserQuestion
- * @returns {{ pending: object, optionIndex: number } | null}
+ * 檢查是否有 pending AskUserQuestion，解析數字選擇
+ * 支援單數字 "2" 和多數字 "1 3" / "1,3" / "1、3"
+ * @returns {{ pending: object, indices: number[] } | null}
  */
 function checkAskPending(text) {
   let pending;
@@ -305,16 +307,62 @@ function checkAskPending(text) {
     try { fs.unlinkSync(ASK_PENDING_FILE); } catch (_) {}
     return null;
   }
-  // 解析數字選擇（1-based → 0-based）
-  const num = parseInt(text, 10);
-  if (isNaN(num) || num < 1 || num > (pending.optionCount || 0)) return null;
-  return { pending, optionIndex: num - 1 };
+  // 解析數字（支援 "2"、"1 3"、"1,3"、"1、3"）
+  const nums = text.split(/[\s,、]+/).map(s => parseInt(s, 10)).filter(n => !isNaN(n));
+  if (nums.length === 0) return null;
+  const max = pending.optionCount || 0;
+  const indices = [...new Set(nums)].filter(n => n >= 1 && n <= max).map(n => n - 1).sort((a, b) => a - b);
+  if (indices.length === 0) return null;
+  return { pending, indices };
+}
+
+/**
+ * 送出 tmux 按鍵，分步送出避免 TUI 掉鍵
+ */
+function sendKey(pane, key) {
+  execSync(`tmux send-keys -t ${pane} ${key}`, { timeout: 2000 });
+}
+
+function sleep(ms) {
+  execSync(`sleep ${ms / 1000}`);
+}
+
+/**
+ * 透過 tmux 鍵盤操作回答多選 AskUserQuestion
+ * 多選 TUI：Space/Enter 都是 toggle，Submit 在選項列表底部
+ * 流程：toggle 目標選項 → 移動到 Submit → Enter
+ * @param {string} pane — tmux pane ID
+ * @param {number[]} sortedIndices — 0-based 已排序選項索引
+ * @param {number} optionCount — 總選項數（用於計算 Submit 位置）
+ */
+function sendAskMultiAnswer(pane, sortedIndices, optionCount) {
+  let pos = 0;
+  for (const idx of sortedIndices) {
+    const moves = idx - pos;
+    for (let i = 0; i < moves; i++) {
+      sendKey(pane, 'Down');
+      sleep(50);
+    }
+    // Space toggle（不用 Enter，因為 Enter 也是 toggle）
+    sendKey(pane, 'Space');
+    sleep(100);
+    pos = idx;
+  }
+  // 移動到 Submit（選項 → Other → Submit）
+  // Submit 位置 = optionCount + 1（Other 在 optionCount，Submit 在 +1）
+  const movesToSubmit = optionCount + 1 - pos;
+  for (let i = 0; i < movesToSubmit; i++) {
+    sendKey(pane, 'Down');
+    sleep(50);
+  }
+  sleep(100);
+  sendKey(pane, 'Enter');
 }
 
 /**
  * 處理 AskUserQuestion 的 Telegram 回覆 — 透過 tmux 鍵盤操作選擇選項
  */
-async function handleAskAnswer(token, chatId, optionIndex, pending) {
+async function handleAskAnswer(token, chatId, indices, pending) {
   const pane = cachedPane || detectPane();
   if (!pane) {
     return sendMessage(token, chatId, '\u274C tmux \u672A\u9023\u7DDA', null);
@@ -322,16 +370,20 @@ async function handleAskAnswer(token, chatId, optionIndex, pending) {
   cachedPane = pane;
 
   const q = (pending.questions || [])[pending.questionIndex || 0];
-  const label = q && q.options && q.options[optionIndex]
-    ? q.options[optionIndex].label
-    : `\u9078\u9805 ${optionIndex + 1}`;
+  const labels = indices.map(i =>
+    q && q.options && q.options[i] ? q.options[i].label : `\u9078\u9805 ${i + 1}`
+  );
 
   try {
-    sendAskAnswer(pane, optionIndex);
-    appendLog(`ask-answer: ${optionIndex} (${label})`);
+    if (pending.multiSelect) {
+      sendAskMultiAnswer(pane, indices, pending.optionCount || 0);
+    } else {
+      sendAskAnswer(pane, indices[0]);
+    }
+    appendLog(`ask-answer: [${indices}] (${labels.join(', ')})`);
     // 清理 pending
     try { fs.unlinkSync(ASK_PENDING_FILE); } catch (_) {}
-    await sendMessage(token, chatId, `\u2705 \u5DF2\u9078\u64C7\uFF1A${label}`, null);
+    await sendMessage(token, chatId, `\u2705 \u5DF2\u9078\u64C7\uFF1A${labels.join(', ')}`, null);
   } catch (err) {
     cachedPane = null;
     return sendMessage(token, chatId, `\u274C \u64CD\u4F5C\u5931\u6557\uFF1A${err.message}`, null);
@@ -604,7 +656,7 @@ async function main() {
               // 先檢查是否有 pending AskUserQuestion → 數字回覆觸發鍵盤操作
               const askMatch = checkAskPending(text);
               if (askMatch) {
-                await handleAskAnswer(creds.token, creds.chatId, askMatch.optionIndex, askMatch.pending);
+                await handleAskAnswer(creds.token, creds.chatId, askMatch.indices, askMatch.pending);
               } else {
                 await handleSay(creds.token, creds.chatId, text);
               }

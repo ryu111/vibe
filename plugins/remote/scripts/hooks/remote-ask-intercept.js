@@ -79,16 +79,14 @@ async function main() {
   } catch (_) {}
 
   // 寫 pending state — daemon 偵測後可用 tmux 鍵盤操作回答
-  if (!notify.multiSelect) {
-    fs.writeFileSync(PENDING_FILE, JSON.stringify({
-      chatId: creds.chatId,
-      questions,
-      questionIndex: 0,
-      multiSelect: false,
-      optionCount: notify.optionCount,
-      createdAt: Date.now(),
-    }));
-  }
+  fs.writeFileSync(PENDING_FILE, JSON.stringify({
+    chatId: creds.chatId,
+    questions,
+    questionIndex: 0,
+    multiSelect: notify.multiSelect,
+    optionCount: notify.optionCount,
+    createdAt: Date.now(),
+  }));
 
   // 立即放行 TUI — 不阻擋、不等待
 }
