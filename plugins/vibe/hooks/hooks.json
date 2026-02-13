@@ -219,6 +219,17 @@
         "hooks": [
           {
             "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/dashboard-refresh.js",
+            "timeout": 30,
+            "statusMessage": "同步 Dashboard..."
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/remote-receipt.js",
             "timeout": 10
           }

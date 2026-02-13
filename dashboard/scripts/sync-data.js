@@ -123,8 +123,13 @@ function scanHooks(pluginDir) {
         summary[event] = entries.map(group => {
           const hookList = group.hooks || [group];
           return hookList.map(h => {
-            const cmd = h.command || '';
-            const scriptName = path.basename(cmd).replace(/\.(js|sh)$/, '');
+            let scriptName;
+            if (h.type === 'prompt') {
+              scriptName = 'test-check(prompt)';
+            } else {
+              const cmd = h.command || '';
+              scriptName = path.basename(cmd).replace(/\.(js|sh)$/, '');
+            }
             return { script: scriptName, matcher: group.matcher || '*' };
           });
         }).flat();

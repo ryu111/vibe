@@ -89,7 +89,7 @@ COLLAB   SessionStart: team-init      /vibe:evolve    知識進化
                                       /vibe:adversarial-review 對抗審查
                                       /vibe:adversarial-refactor 競爭重構
 
-自動: 20 hooks                         手動: 33 skills（+ patterns 0 知識 skills）
+自動: 21 hooks                         手動: 33 skills（+ patterns 0 知識 skills）
 跨 session 記憶：claude-mem（獨立 plugin，非依賴）
 ```
 
@@ -134,7 +134,7 @@ COLLAB   SessionStart: team-init      /vibe:evolve    知識進化
 
 | Phase | Plugin | 前置條件 | 組件數 |
 |:-----:|--------|---------|:------:|
-| 3 | **vibe** | forge ✅ | 29S + 10A + 20H + 30Sc |
+| 3 | **vibe** | forge ✅ | 29S + 10A + 21H + 31Sc |
 
 > **flow 先於 sentinel**：規劃 → 寫碼 → 品質檢查，符合自然開發流程。
 
@@ -144,7 +144,7 @@ COLLAB   SessionStart: team-init      /vibe:evolve    知識進化
 
 | # | Plugin | 文件 | Skills | Agents | Hooks | Scripts |
 |:-:|--------|------|:------:|:------:|:-----:|:-------:|
-| 1 | vibe | [vibe.md](vibe.md) | 29 | 10 | 20 | 30 |
+| 1 | vibe | [vibe.md](vibe.md) | 29 | 10 | 21 | 31 |
 
 > **S** = Skill, **A** = Agent, **H** = Hook, **Sc** = Script
 
@@ -157,6 +157,6 @@ COLLAB   SessionStart: team-init      /vibe:evolve    知識進化
 | **Plugins** | 2 | forge ✅ + 0 新 |
 | **Skills** | 33 | 33 動態能力 + 0 知識庫（patterns） |
 | **Agents** | 10 | 跨 1 個 plugins |
-| **Hooks** | 20 | 自動觸發 |
-| **Scripts** | 37 | hook 腳本 + 共用函式庫 |
-| **合計** | 100 | 跨 2 個獨立安裝的 plugins |
+| **Hooks** | 21 | 自動觸發 |
+| **Scripts** | 38 | hook 腳本 + 共用函式庫 |
+| **合計** | 102 | 跨 2 個獨立安裝的 plugins |
