@@ -73,6 +73,14 @@ function formatDuration(ms) {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
+// 測試用 exports（不影響 hook 執行）
+if (typeof module !== 'undefined') {
+  module.exports = { buildProgressBar, formatDuration, STAGE_ORDER, STAGE_DISPLAY, AGENT_STAGE };
+}
+
+// Hook 模式：直接執行時才讀 stdin（require 時跳過）
+if (require.main === module) {
+
 let input = '';
 process.stdin.on('data', d => input += d);
 process.stdin.on('end', async () => {
@@ -183,3 +191,5 @@ process.stdin.on('end', async () => {
     process.stderr.write(`remote-sender: ${err.message}\n`);
   }
 });
+
+} // if (require.main === module)

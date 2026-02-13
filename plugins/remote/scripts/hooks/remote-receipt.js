@@ -124,4 +124,12 @@ function formatToolLine(tools) {
   return parts.length > 0 ? parts.join(' ') : null;
 }
 
-main().catch(() => process.exit(0));
+// 測試用 exports（不影響 hook 執行）
+if (typeof module !== 'undefined') {
+  module.exports = { formatToolLine };
+}
+
+// Hook 模式：直接執行時才啟動（require 時跳過）
+if (require.main === module) {
+  main().catch(() => process.exit(0));
+}
