@@ -379,6 +379,140 @@ test('不排除：logger.js（不是 hook-logger.js）', () => {
 });
 
 // ═══════════════════════════════════════════════
+// Part 3: 品質守衛 hooks stdin→stdout 驗證
+// ═══════════════════════════════════════════════
+
+console.log('\n🧪 Part 3: 品質守衛 hooks stdin→stdout 驗證');
+console.log('═'.repeat(50));
+
+const { execSync } = require('child_process');
+const PLUGIN_ROOT = path.join(__dirname, '..');
+
+/**
+ * 執行 hook 腳本，回傳 { stdout, stderr, exitCode }
+ */
+function runSentinelHook(hookName, stdinData) {
+  const script = path.join(PLUGIN_ROOT, 'scripts', 'hooks', `${hookName}.js`);
+  const input = JSON.stringify(stdinData);
+  try {
+    const stdout = execSync(
+      `echo '${input.replace(/'/g, "'\\''")}' | node "${script}"`,
+      { stdio: ['pipe', 'pipe', 'pipe'], timeout: 10000 }
+    ).toString().trim();
+    return { stdout, stderr: '', exitCode: 0 };
+  } catch (err) {
+    return {
+      stdout: err.stdout ? err.stdout.toString().trim() : '',
+      stderr: err.stderr ? err.stderr.toString().trim() : '',
+      exitCode: err.status || 1,
+    };
+  }
+}
+
+// ─── auto-lint：未知語言靜默退出 ──────────────
+
+test('auto-lint：.xyz 檔案 → 靜默退出（exit 0, 無 stdout）', () => {
+  const r = runSentinelHook('auto-lint', { tool_input: { file_path: '/tmp/test.xyz' } });
+  assert.strictEqual(r.exitCode, 0);
+  assert.strictEqual(r.stdout, '');
+});
+
+test('auto-lint：無 file_path → 靜默退出', () => {
+  const r = runSentinelHook('auto-lint', { tool_input: {} });
+  assert.strictEqual(r.exitCode, 0);
+  assert.strictEqual(r.stdout, '');
+});
+
+test('auto-lint：linter=null 語言（.json）→ 靜默退出', () => {
+  const r = runSentinelHook('auto-lint', { tool_input: { file_path: '/tmp/test.json' } });
+  assert.strictEqual(r.exitCode, 0);
+  assert.strictEqual(r.stdout, '');
+});
+
+// ─── auto-format：未知語言靜默退出 ─────────────
+
+test('auto-format：.xyz 檔案 → 靜默退出', () => {
+  const r = runSentinelHook('auto-format', { tool_input: { file_path: '/tmp/test.xyz' } });
+  assert.strictEqual(r.exitCode, 0);
+  assert.strictEqual(r.stdout, '');
+});
+
+test('auto-format：無 file_path → 靜默退出', () => {
+  const r = runSentinelHook('auto-format', { tool_input: {} });
+  assert.strictEqual(r.exitCode, 0);
+  assert.strictEqual(r.stdout, '');
+});
+
+test('auto-format：input.file_path 備選路徑（.py）→ 不崩潰', () => {
+  const r = runSentinelHook('auto-format', { input: { file_path: '/tmp/test.py' } });
+  assert.strictEqual(r.exitCode, 0);
+  // 不論 ruff 是否安裝，都不應崩潰
+});
+
+// ─── danger-guard：stdin 解析 + exit code 驗證 ──
+
+test('danger-guard：安全指令 → exit 0', () => {
+  const r = runSentinelHook('danger-guard', { tool_input: { command: 'ls -la' } });
+  assert.strictEqual(r.exitCode, 0);
+  assert.strictEqual(r.stderr, '');
+});
+
+test('danger-guard：空指令 → exit 0', () => {
+  const r = runSentinelHook('danger-guard', { tool_input: { command: '' } });
+  assert.strictEqual(r.exitCode, 0);
+});
+
+test('danger-guard：無 command 欄位 → exit 0', () => {
+  const r = runSentinelHook('danger-guard', { tool_input: {} });
+  assert.strictEqual(r.exitCode, 0);
+});
+
+test('danger-guard：chmod 777 → exit 2 + stderr', () => {
+  const r = runSentinelHook('danger-guard', { tool_input: { command: 'chmod 777 /etc/passwd' } });
+  assert.strictEqual(r.exitCode, 2);
+  assert.ok(r.stderr.includes('danger-guard'), 'stderr 應包含 danger-guard 標識');
+  assert.ok(r.stderr.includes('chmod 777'), 'stderr 應包含攔截原因');
+});
+
+test('danger-guard：DROP TABLE → exit 2 + stderr', () => {
+  const r = runSentinelHook('danger-guard', { tool_input: { command: 'DROP TABLE users' } });
+  assert.strictEqual(r.exitCode, 2);
+  assert.ok(r.stderr.includes('DROP TABLE'));
+});
+
+test('danger-guard：input.command 備選路徑 → 正常處理', () => {
+  const r = runSentinelHook('danger-guard', { input: { command: 'npm install' } });
+  assert.strictEqual(r.exitCode, 0);
+});
+
+// ─── check-console-log：stop_hook_active 防迴圈 ──
+
+test('check-console-log：stop_hook_active=true → 靜默退出', () => {
+  const r = runSentinelHook('check-console-log', { stop_hook_active: true });
+  assert.strictEqual(r.exitCode, 0);
+  assert.strictEqual(r.stdout, '');
+});
+
+test('check-console-log：stop_hook_active=false → 正常執行（非 git 或無變更）', () => {
+  const r = runSentinelHook('check-console-log', { stop_hook_active: false });
+  assert.strictEqual(r.exitCode, 0);
+  // 在測試環境中，git diff 可能無結果，所以靜默退出是正常的
+});
+
+// ─── auto-lint：有 lint 輸出時 JSON 格式驗證 ──
+
+test('auto-lint：.ts 檔案 → stdout 為空或合法 JSON（systemMessage）', () => {
+  const r = runSentinelHook('auto-lint', { tool_input: { file_path: '/tmp/nonexistent.ts' } });
+  assert.strictEqual(r.exitCode, 0);
+  if (r.stdout) {
+    // 有輸出時必須是合法 JSON，且含 continue + systemMessage
+    const parsed = JSON.parse(r.stdout);
+    assert.strictEqual(parsed.continue, true, 'continue 應為 true');
+    assert.ok(parsed.systemMessage, '應有 systemMessage');
+  }
+});
+
+// ═══════════════════════════════════════════════
 // 結果輸出
 // ═══════════════════════════════════════════════
 
