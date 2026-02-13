@@ -1,6 +1,6 @@
 # vibe — 統一開發工作流 Plugin
 
-> **版本**：1.0.2
+> **版本**：1.0.3
 > **定位**：全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制
 > **架構**：6 個功能模組合併為單一 plugin，共用 registry.js 統一 metadata
 
@@ -19,7 +19,7 @@ vibe 是 Vibe marketplace 的核心 plugin，合併了 6 個功能模組：
 | **Dashboard** | Pipeline 即時儀表板 | 1S + 1H |
 | **Remote** | Telegram 遠端控制 | 2S + 5H + 1 Daemon |
 
-**合計**：28 Skills + 10 Agents + 20 Hooks + 29 Scripts
+**合計**：29 Skills + 10 Agents + 20 Hooks + 30 Scripts
 
 ### 設計原則
 
@@ -71,6 +71,7 @@ vibe 是 Vibe marketplace 的核心 plugin，合併了 6 個功能模組：
 | 26 | `dashboard` | Dashboard | 儀表板控制 — start/stop/status/open |
 | 27 | `remote` | Remote | 遠端控制 — daemon 生命週期管理 |
 | 28 | `remote-config` | Remote | 遠端設定教學 — Bot 建立 + 驗證 |
+| 29 | `hook-diag` | 診斷 | Hook 錯誤診斷 — 查看/分析/清除 error log |
 
 ### Agents（10 個）
 
@@ -112,7 +113,7 @@ vibe 是 Vibe marketplace 的核心 plugin，合併了 6 個功能模組：
 | 19 | Stop | check-console-log | Sentinel | command | 強建議 | 偵測殘留 console.log/debugger |
 | 20 | Stop | remote-receipt | Remote | command | — | /say 已讀回條 + 回合摘要 |
 
-### Scripts（29 個）
+### Scripts（30 個）
 
 **Hook 腳本（19 個）** — `scripts/hooks/`
 
@@ -138,11 +139,12 @@ vibe 是 Vibe marketplace 的核心 plugin，合併了 6 個功能模組：
 | remote-sender.js | Remote | 16 |
 | remote-receipt.js | Remote | 20 |
 
-**共用函式庫（10 個）** — `scripts/lib/`
+**共用函式庫（11 個）** — `scripts/lib/`
 
 | 名稱 | 子目錄 | 說明 |
 |------|--------|------|
 | registry.js | （根） | 全域 metadata — STAGES/AGENTS/EMOJI |
+| hook-logger.js | （根） | Hook 錯誤日誌 — 寫入 ~/.claude/hook-errors.log |
 | env-detector.js | flow/ | 環境偵測（語言/框架/PM/工具） |
 | counter.js | flow/ | tool call 計數器 |
 | pipeline-discovery.js | flow/ | 跨 plugin pipeline 動態發現 |
@@ -239,7 +241,7 @@ Pipeline 模式下阻擋 Main Agent 直接 Write/Edit。雙層防禦：`systemMe
 
 #### suggest-compact（PreToolUse:*）
 
-追蹤所有 tool calls，50 次 → 建議 compact，每 25 次提醒。
+追蹤所有 tool calls，50 次 → 建議 compact，每 25 次提醒。透過 `systemMessage` 注入建議（v1.0.3 修正：原用 stderr 導致 "hook error" 顯示）。
 
 #### stage-transition（SubagentStop）
 
@@ -579,6 +581,7 @@ const STAGES = {
 | `~/.claude/remote-bot.pid` | Bot daemon PID（全域） |
 | `~/.claude/remote-say-pending.json` | /say 已讀回條狀態 |
 | `~/.claude/remote-ask-pending.json` | AskUserQuestion 互動狀態 |
+| `~/.claude/hook-errors.log` | Hook 錯誤日誌（自動截斷 500 行） |
 
 ### pipeline.json
 
@@ -606,10 +609,10 @@ const STAGES = {
 ```
 plugins/vibe/
 ├── .claude-plugin/
-│   ├── plugin.json               # name: "vibe", 28 skills, 10 agents
+│   ├── plugin.json               # name: "vibe", 29 skills, 10 agents
 │   └── hooks.json                # 統一 20 hooks
 ├── pipeline.json                 # Stage 順序 + provides
-├── skills/                       # 28 個 skill 目錄
+├── skills/                       # 29 個 skill 目錄
 │   ├── plan/                     # Flow
 │   ├── architect/                # Flow
 │   ├── checkpoint/               # Flow
@@ -637,7 +640,8 @@ plugins/vibe/
 │   ├── doc-sync/                 # Evolve
 │   ├── dashboard/                # Dashboard
 │   ├── remote/                   # Remote
-│   └── remote-config/            # Remote
+│   ├── remote-config/            # Remote
+│   └── hook-diag/                # 診斷
 ├── agents/                       # 10 個 agent 定義
 │   ├── planner.md
 │   ├── architect.md
@@ -653,6 +657,7 @@ plugins/vibe/
 │   ├── hooks/                    # 19 個 hook 腳本
 │   └── lib/                      # 共用函式庫
 │       ├── registry.js           # 全域 metadata
+│       ├── hook-logger.js       # Hook 錯誤日誌
 │       ├── flow/                 # env-detector, counter, pipeline-discovery
 │       ├── sentinel/             # lang-map, tool-detector
 │       ├── dashboard/            # server-manager
@@ -670,7 +675,7 @@ plugins/vibe/
 ```json
 {
   "name": "vibe",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制",
   "skills": ["./skills/"],
   "agents": [

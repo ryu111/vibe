@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.3 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.2 | 全方位開發工作流 | 28 | 10 | 20 | 29+daemon |
+| **vibe** | 1.0.3 | 全方位開發工作流 | 29 | 10 | 20 | 30+daemon |
 
 ### vibe plugin 功能模組
 
@@ -21,6 +21,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | 進化 | 知識進化、文件同步 | 2 | 1 (doc-updater) |
 | 監控 | Pipeline 即時儀表板（WebSocket） | 1 | 0 |
 | 遠端 | Telegram 遠端控制 + tmux 操作 | 2 | 0 |
+| 診斷 | Hook 錯誤診斷 | 1 | 0 |
 
 ### 共用 registry.js（Single Source of Truth）
 
@@ -54,11 +55,12 @@ plugins/vibe/
 │   ├── hooks/               # 19 個 hook 腳本
 │   └── lib/                 # 共用函式庫
 │       ├── registry.js      # ★ 全局 metadata（STAGES/AGENTS/EMOJI）
+│       ├── hook-logger.js   # Hook 錯誤日誌（~/.claude/hook-errors.log）
 │       ├── flow/            # pipeline-discovery, env-detector, counter
 │       ├── sentinel/        # lang-map, tool-detector
 │       ├── dashboard/       # server-manager
 │       └── remote/          # telegram, transcript, bot-manager
-├── skills/                  # 28 個 skill 目錄
+├── skills/                  # 29 個 skill 目錄
 ├── agents/                  # 10 個 agent 定義
 ├── server.js                # Dashboard HTTP+WebSocket server
 ├── bot.js                   # Telegram daemon
@@ -114,15 +116,16 @@ PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
 | 管道 | 可見對象 | 強度 | 用途 |
 |------|---------|------|------|
 | `additionalContext` | Claude | 軟建議 | 背景知識、上下文注入 |
-| `systemMessage` | Claude | 強指令 | 系統級規則（顯示為 "hook error"） |
-| `stderr` + exit 0 | 使用者 | 警告 | 終端提示 |
-| `stderr` + exit 2 | 使用者 | **硬阻擋** | 阻止工具執行 |
+| `systemMessage` | Claude | 強指令 | 系統級規則（模型不可忽略） |
+| `stderr` + exit 2 | 使用者 | **硬阻擋** | 阻止工具執行（僅 danger-guard / dev-gate） |
+| `hookLogger.error()` | log 檔案 | 無 | 記錄到 `~/.claude/hook-errors.log`（`/hook-diag` 查看） |
 
 ## State 與命名慣例
 
 - **Session 隔離 state**：`~/.claude/{name}-{sessionId}.json`（避免多視窗衝突）
   - 例：`pipeline-state-{sessionId}.json`、`compact-counter-{sessionId}.json`
 - **全域共享 daemon**：`~/.claude/dashboard-server.pid`、`~/.claude/remote-bot.pid`
+- **Hook 錯誤日誌**：`~/.claude/hook-errors.log`（自動截斷 500 行，`/hook-diag` 查看）
 - **認證檔案**：`~/.claude/remote.env`（`KEY=VALUE` 格式，環境變數優先）
 - **hooks.json 格式**：只支援 grouped `{ matcher, hooks: [...] }`，不支援 flat
 - **Hook 腳本路徑**：一律使用 `${CLAUDE_PLUGIN_ROOT}/scripts/hooks/xxx.js`

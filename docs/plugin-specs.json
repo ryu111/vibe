@@ -27,7 +27,8 @@
           "typescript-patterns", "python-patterns", "go-patterns", "testing-patterns",
           "evolve", "doc-sync",
           "dashboard",
-          "remote", "remote-config"
+          "remote", "remote-config",
+          "hook-diag"
         ],
         "agents": [
           "planner", "architect", "developer",
@@ -35,7 +36,7 @@
           "doc-updater"
         ],
         "hooks": 20,
-        "scripts": 29
+        "scripts": 30
       }
     }
   }
