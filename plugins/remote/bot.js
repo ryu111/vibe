@@ -357,6 +357,9 @@ function sendAskMultiAnswer(pane, sortedIndices, optionCount) {
   }
   sleep(100);
   sendKey(pane, 'Enter');
+  // 多選有兩步確認：Submit → Review 畫面 → Submit answers
+  sleep(300);
+  sendKey(pane, 'Enter');
 }
 
 /**
