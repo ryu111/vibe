@@ -1,6 +1,6 @@
 {
   "name": "flow",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "開發工作流 — 規劃、架構、context 管理、pipeline 管理、環境偵測",
   "skills": ["./skills/"],
   "agents": [

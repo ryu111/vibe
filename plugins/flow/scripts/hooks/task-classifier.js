@@ -3,6 +3,7 @@
  * task-classifier.js — UserPromptSubmit hook
  *
  * 分析使用者 prompt，分類任務類型，更新 pipeline state 的 expectedStages。
+ * 首次分類為開發型任務時注入完整 pipeline 委派規則（systemMessage）。
  * 支援中途重新分類（漸進式升級）：
  *   - 升級（research → feature）：合併階段，注入委派規則
  *   - 降級（feature → research）：阻擋，保持現有 pipeline 不中斷
@@ -46,6 +47,9 @@ const TYPE_PRIORITY = {
   tdd: 5,
   feature: 6,
 };
+
+// 需要完整 pipeline 委派的任務類型（與 dev-gate 的 FULL_PIPELINE_TYPES 一致）
+const FULL_PIPELINE_TYPES = ['feature', 'refactor', 'tdd'];
 
 // 硬編碼 agent→stage 映射（零依賴，不 import pipeline-discovery）
 const AGENT_STAGE = {
@@ -114,27 +118,79 @@ function getCompletedStages(completedAgents) {
 }
 
 /**
+ * 產生完整 pipeline 委派規則（systemMessage 用）
+ */
+function buildPipelineRules(stages, pipelineRules) {
+  const stageStr = stages.join(' → ');
+  const firstStage = stages[0];
+
+  const parts = [];
+  parts.push(`⛔ PIPELINE 模式啟動 — 你是管理者（Orchestrator），不是執行者（Executor）`);
+  parts.push('');
+  parts.push('█ 絕對禁止 █');
+  parts.push('- 🚫 禁止直接使用 Write 工具寫任何程式碼檔案');
+  parts.push('- 🚫 禁止直接使用 Edit 工具修改任何程式碼檔案');
+  parts.push('- 🚫 禁止直接使用 Bash 工具執行 build、test、lint 等開發指令');
+  parts.push('- 你的唯一職責：按順序使用 Task/Skill 工具委派各階段給 sub-agent');
+  parts.push('- 違反此規則的 Write/Edit 操作會被 dev-gate hook 硬阻擋（exit 2）');
+  parts.push('');
+  parts.push('█ 委派順序 █');
+  if (pipelineRules && pipelineRules.length > 0) {
+    parts.push(...pipelineRules);
+  } else {
+    parts.push(`必要階段：${stageStr}`);
+  }
+  parts.push('');
+  parts.push('█ 執行規則 █');
+  parts.push('1. 立即從第一個階段開始委派');
+  parts.push('2. 每個階段完成後，stage-transition hook 會指示下一步 — 你**必須**照做');
+  parts.push('3. 不可跳過已安裝的階段（REVIEW、TEST、QA 階段**不可省略**）');
+  parts.push('4. 未安裝的 plugin 對應的階段會自動跳過');
+  parts.push('5. Pipeline 執行中**禁止使用 AskUserQuestion** — 各階段自動完成，不中斷使用者');
+  parts.push('');
+  parts.push('█ 正確做法範例 █');
+  parts.push('✅ Task({ subagent_type: "flow:planner", prompt: "..." })');
+  parts.push('✅ Task({ subagent_type: "flow:architect", prompt: "..." })');
+  parts.push('✅ Task({ subagent_type: "flow:developer", prompt: "..." })');
+  parts.push('❌ Write({ file_path: "src/app.ts", content: "..." }) ← 這會被 dev-gate 阻擋');
+  parts.push('');
+  parts.push(`立即使用 Task 工具委派 ${firstStage} 階段的 sub-agent。`);
+
+  return parts.join('\n');
+}
+
+/**
  * 初始分類輸出（首次分類）
  */
-function outputInitialClassification(type, label, stages) {
-  if (stages.length > 0) {
-    const stageStr = stages.join(' → ');
-    const firstStage = stages[0];
-    console.log(JSON.stringify({
-      additionalContext: `⛔ [Pipeline 任務分類] 類型：${label}\n必要階段：${stageStr}\n🚫 你是管理者 — 禁止直接使用 Write/Edit 寫程式碼。立即使用 Task 工具委派 ${firstStage} 階段的 sub-agent。`,
-    }));
-  } else {
+function outputInitialClassification(type, label, stages, state) {
+  if (stages.length === 0) {
+    // 無需 pipeline（research）
     console.log(JSON.stringify({
       additionalContext: `[任務分類] 類型：${label} — 無需 pipeline，直接回答。`,
+    }));
+    return;
+  }
+
+  if (FULL_PIPELINE_TYPES.includes(type)) {
+    // 完整 pipeline 任務 → 注入強制委派規則（systemMessage）
+    const pipelineRules = (state && state.pipelineRules) || [];
+    console.log(JSON.stringify({
+      systemMessage: buildPipelineRules(stages, pipelineRules),
+    }));
+  } else {
+    // 輕量 pipeline（quickfix/bugfix/test）→ 資訊提示
+    const stageStr = stages.join(' → ');
+    console.log(JSON.stringify({
+      additionalContext: `[任務分類] 類型：${label}\n建議階段：${stageStr}`,
     }));
   }
 }
 
 /**
  * 升級輸出（中途升級到更大型 pipeline）
- * 使用 systemMessage 強注入委派規則（因為 pipeline-init 不會重新觸發）
+ * 使用 systemMessage 強注入委派規則
  */
-function outputUpgrade(oldLabel, newLabel, remainingStages, skippedStages) {
+function outputUpgrade(oldLabel, newLabel, remainingStages, skippedStages, state) {
   if (remainingStages.length === 0) {
     console.log(JSON.stringify({
       additionalContext: `[Pipeline 升級] ${oldLabel} → ${newLabel} — 所有階段已完成。`,
@@ -148,7 +204,7 @@ function outputUpgrade(oldLabel, newLabel, remainingStages, skippedStages) {
     ? `\n⏭️ 已完成的階段自動跳過：${skippedStages.join('、')}`
     : '';
 
-  // 升級時用 systemMessage（強）— 彌補 pipeline-init 不會重新觸發的問題
+  // 升級時用 systemMessage（強）
   console.log(JSON.stringify({
     systemMessage: `⛔ [Pipeline 升級] ${oldLabel} → ${newLabel}\n` +
       `你**必須**切換到 Pipeline 管理者模式。\n` +
@@ -190,7 +246,7 @@ process.stdin.on('end', () => {
         state.expectedStages = newStages;
         fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
       }
-      outputInitialClassification(newType, newLabel, newStages);
+      outputInitialClassification(newType, newLabel, newStages, state);
       return;
     }
 
@@ -228,7 +284,7 @@ process.stdin.on('end', () => {
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
 
     // 輸出升級指令
-    outputUpgrade(oldLabel, newLabel, remainingStages, skippedStages);
+    outputUpgrade(oldLabel, newLabel, remainingStages, skippedStages, state);
   } catch (err) {
     process.stderr.write(`task-classifier: ${err.message}\n`);
   }
