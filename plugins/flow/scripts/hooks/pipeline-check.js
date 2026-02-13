@@ -14,9 +14,6 @@ const { discoverPipeline } = require(path.join(__dirname, '..', 'lib', 'pipeline
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
-// 只對完整 pipeline 類型強制檢查（與 task-classifier 的 FULL_PIPELINE_TYPES 一致）
-const FULL_PIPELINE_TYPES = ['feature', 'refactor', 'tdd'];
-
 let input = '';
 process.stdin.on('data', d => input += d);
 process.stdin.on('end', () => {
@@ -47,8 +44,8 @@ process.stdin.on('end', () => {
       process.exit(0);
     }
 
-    // 輕量任務（quickfix/bugfix/test）不強制檢查 — 只有完整 pipeline 才擋
-    if (!FULL_PIPELINE_TYPES.includes(state.taskType)) {
+    // 非強制 pipeline 任務不檢查（flag 由 task-classifier 設定）
+    if (!state.pipelineEnforced) {
       process.exit(0);
     }
 

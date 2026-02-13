@@ -48,7 +48,7 @@ const TYPE_PRIORITY = {
   feature: 6,
 };
 
-// 需要完整 pipeline 委派的任務類型（與 dev-gate 的 FULL_PIPELINE_TYPES 一致）
+// 需要完整 pipeline 委派的任務類型（單一定義點 — dev-gate/pipeline-check 讀 state.pipelineEnforced）
 const FULL_PIPELINE_TYPES = ['feature', 'refactor', 'tdd'];
 
 // 硬編碼 agent→stage 映射（零依賴，不 import pipeline-discovery）
@@ -248,6 +248,7 @@ process.stdin.on('end', () => {
       if (state) {
         state.taskType = newType;
         state.expectedStages = newStages;
+        state.pipelineEnforced = FULL_PIPELINE_TYPES.includes(newType);
         fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
       }
       outputInitialClassification(newType, newLabel, newStages, state);
@@ -285,6 +286,7 @@ process.stdin.on('end', () => {
     // 更新 state
     state.taskType = newType;
     state.expectedStages = newStages;
+    state.pipelineEnforced = FULL_PIPELINE_TYPES.includes(newType);
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
 
     // 輸出升級指令

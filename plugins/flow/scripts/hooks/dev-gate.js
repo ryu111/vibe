@@ -11,12 +11,12 @@
  *
  * 放行條件：
  * - 無 pipeline state → 放行
- * - taskType 非全 pipeline 任務（quickfix/bugfix/test/research）→ 放行
+ * - pipelineEnforced = false（由 task-classifier 設定）→ 放行
  * - delegationActive = true → 放行（sub-agent 操作）
  * - 編輯非程式碼檔案（.md/.json/.yml 等）→ 放行
  *
  * 阻擋條件：
- * - pipeline 啟動 + taskType 為 feature/refactor/tdd + delegationActive = false → exit 2
+ * - pipelineEnforced = true + delegationActive = false + 編輯程式碼 → exit 2
  */
 'use strict';
 const fs = require('fs');
@@ -24,9 +24,6 @@ const path = require('path');
 const os = require('os');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
-
-// 全 pipeline 任務類型（需要委派的）
-const FULL_PIPELINE_TYPES = ['feature', 'refactor', 'tdd'];
 
 // 非程式碼副檔名（允許直接編輯）
 const NON_CODE_EXTS = new Set([
@@ -60,8 +57,8 @@ process.stdin.on('end', () => {
       process.exit(0);
     }
 
-    // 非全 pipeline 任務 → 放行
-    if (!FULL_PIPELINE_TYPES.includes(state.taskType)) {
+    // 非強制 pipeline 任務 → 放行（flag 由 task-classifier 設定）
+    if (!state.pipelineEnforced) {
       process.exit(0);
     }
 
