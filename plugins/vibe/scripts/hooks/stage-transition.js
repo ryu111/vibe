@@ -176,6 +176,10 @@ process.stdin.on('end', () => {
     if (shouldRetry) {
       // ===== 智慧回退：回到 DEV 修復 =====
       state.retries[currentStage] = retryCount + 1;
+
+      // 記錄待重驗階段（DEV 完成後會讀取此標記，強制重跑品質檢查）
+      state.pendingRetry = { stage: currentStage, severity: verdict.severity, round: retryCount + 1 };
+
       const devInfo = pipeline.stageMap['DEV'];
       const devPlugin = devInfo && devInfo.plugin ? `${devInfo.plugin}:` : '';
       const devAgent = devInfo ? devInfo.agent : 'developer';
@@ -201,6 +205,28 @@ process.stdin.on('end', () => {
 2️⃣ 修復完成後重新執行 ${currentStage}（${currentLabel}）→ ${retryMethod}
 
 ⛔ Pipeline 自動模式：不要使用 AskUserQuestion，修復後直接重新執行品質檢查。
+已完成：${completedStr}`;
+
+    } else if (state.pendingRetry && currentStage === 'DEV') {
+      // ===== 回退修復完成 → 強制重跑品質檢查 =====
+      const retryTarget = state.pendingRetry.stage;
+      const retrySeverity = state.pendingRetry.severity;
+      const retryRound = state.pendingRetry.round;
+      delete state.pendingRetry; // 消費標記
+
+      const retryInfo = pipeline.stageMap[retryTarget];
+      const retryLabel = pipeline.stageLabels[retryTarget] || retryTarget;
+      const retryPlugin = retryInfo && retryInfo.plugin ? `${retryInfo.plugin}:` : '';
+      const retryMethod = retryInfo && retryInfo.skill
+        ? `使用 Skill 工具呼叫 ${retryInfo.skill}`
+        : `使用 Task 工具委派給 ${retryPlugin}${retryInfo.agent} agent（subagent_type: "${retryPlugin}${retryInfo.agent}"）`;
+
+      message = `🔄 [回退重驗] DEV 已完成 ${retrySeverity} 問題修復（第 ${retryRound} 輪）。
+⚠️ 你**必須立即**重新執行 ${retryTarget}（${retryLabel}）驗證修復結果。
+➡️ 執行方法：${retryMethod}
+
+⛔ 這是回退流程的必要步驟 — 不可跳過，不可跳到其他階段。
+⛔ Pipeline 自動模式：不要使用 AskUserQuestion。
 已完成：${completedStr}`;
 
     } else {

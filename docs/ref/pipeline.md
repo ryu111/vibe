@@ -289,17 +289,18 @@ hooks.json 定義：
 }
 ```
 
-**邏輯**（v0.3.0 — 含智慧回退/跳過/context 注入）：
+**邏輯**（v0.4.0 — 含智慧回退/重驗/跳過/context 注入）：
 
 1. `stop_hook_active === true` → exit 0（防無限迴圈，必須第一步檢查）
 2. `discoverPipeline()` 動態載入 pipeline 配置
 3. `agentToStage[agent_type]` 查找所屬 stage
 4. `parseVerdict(agent_transcript_path)` 從 transcript JSONL 解析 `PIPELINE_VERDICT` 標記
 5. `shouldRetryStage()` 判斷是否需要回退
-6. **回退路徑**：品質階段 FAIL:CRITICAL/HIGH → 回到 DEV → 重試同一品質階段
-7. **前進路徑**：智慧跳過判斷 → 階段 context 注入 → 指示下一步
-8. 更新 state file（含 `stageResults`、`retries`）
-9. 輸出 `{ "continue": true, "systemMessage": "..." }`
+6. **回退路徑**：品質階段 FAIL:CRITICAL/HIGH → 設定 `pendingRetry` 標記 → 回到 DEV
+7. **回退重驗路徑**：DEV 完成且 `pendingRetry` 存在 → 消費標記 → 強制重跑原品質階段
+8. **前進路徑**：智慧跳過判斷 → 階段 context 注入 → 指示下一步
+9. 更新 state file（含 `stageResults`、`retries`、`pendingRetry`）
+10. 輸出 `{ "continue": true, "systemMessage": "..." }`
 
 **智慧回退機制**：
 
@@ -313,6 +314,25 @@ hooks.json 定義：
 
 - 每個品質階段（REVIEW/TEST/QA/E2E）有獨立的回退計數器
 - 預設上限 3 輪（`CLAUDE_PIPELINE_MAX_RETRIES` 環境變數可覆寫）
+
+**回退重驗機制**（v1.0.6）：
+
+回退流程使用 `pendingRetry` 狀態標記確保 DEV 修復後**必定重跑品質檢查**，不會跳到後續階段：
+
+```
+REVIEW FAIL:CRITICAL
+  → 設定 pendingRetry = { stage: "REVIEW", severity: "CRITICAL", round: 1 }
+  → systemMessage: "回退到 DEV 修復"
+DEV 完成修復
+  → 偵測 pendingRetry 存在 + currentStage === DEV
+  → 消費 pendingRetry 標記
+  → systemMessage: "回退重驗 — 重新執行 REVIEW"（專用訊息，與正常前進不同）
+REVIEW 重跑
+  → PASS → 正常前進到 TEST
+  → FAIL → 再次回退（retries +1）
+```
+
+三分支判斷順序：`shouldRetry`（回退）→ `pendingRetry && DEV`（回退重驗）→ `else`（正常前進）
 
 **智慧跳過**：
 - 純 API 框架（express/fastify/hono/koa/nest）自動跳過 E2E 階段
@@ -351,9 +371,12 @@ stage-transition 從 `agent_transcript_path`（JSONL）最後 20 行中搜尋此
     "TEST": { "verdict": "PASS", "severity": null }
   },
   "retries": { "REVIEW": 1 },
+  "pendingRetry": { "stage": "REVIEW", "severity": "HIGH", "round": 1 },
   "lastTransition": "2026-02-09T14:30:00Z"
 }
 ```
+
+> `pendingRetry` 僅在品質階段回退時設定，DEV 修復完成後消費（delete）。不存在時表示正常流程。
 
 #### Claude 看到的 systemMessage 內容：
 
@@ -379,6 +402,18 @@ stage-transition 從 `agent_transcript_path`（JSONL）最後 20 行中搜尋此
 2️⃣ 修復完成後重新執行 REVIEW（審查）→ 使用 Skill 工具呼叫 /vibe:review
 
 ⛔ Pipeline 自動模式：不要使用 AskUserQuestion，修復後直接重新執行品質檢查。
+已完成：PLAN → ARCH → DEV → REVIEW
+```
+
+**回退重驗**（DEV 修復完成後）：
+
+```
+🔄 [回退重驗] DEV 已完成 CRITICAL 問題修復（第 1 輪）。
+⚠️ 你**必須立即**重新執行 REVIEW（審查）驗證修復結果。
+➡️ 執行方法：使用 Skill 工具呼叫 /vibe:review
+
+⛔ 這是回退流程的必要步驟 — 不可跳過，不可跳到其他階段。
+⛔ Pipeline 自動模式：不要使用 AskUserQuestion。
 已完成：PLAN → ARCH → DEV → REVIEW
 ```
 
