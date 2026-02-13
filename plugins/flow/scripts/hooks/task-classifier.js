@@ -289,8 +289,16 @@ process.stdin.on('end', () => {
     state.pipelineEnforced = FULL_PIPELINE_TYPES.includes(newType);
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
 
-    // 輸出升級指令
-    outputUpgrade(oldLabel, newLabel, remainingStages, skippedStages, state);
+    // 輸出升級指令（只有強制 pipeline 類型才用 systemMessage）
+    if (state.pipelineEnforced) {
+      outputUpgrade(oldLabel, newLabel, remainingStages, skippedStages, state);
+    } else {
+      // 輕量升級（research → quickfix 等）→ additionalContext
+      const stageStr = newStages.join(' → ');
+      console.log(JSON.stringify({
+        additionalContext: `[任務分類升級] ${oldLabel} → ${newLabel}\n建議階段：${stageStr}`,
+      }));
+    }
   } catch (err) {
     process.stderr.write(`task-classifier: ${err.message}\n`);
   }
