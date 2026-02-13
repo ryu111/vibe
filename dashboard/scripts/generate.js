@@ -1032,7 +1032,7 @@ function generateIndex(specs) {
     ▼
 ┌─ FLOW ─────────────────────────────────────┐
 │  SessionStart: pipeline-init（環境偵測+規則）│
-│  /flow:plan → /flow:architect → developer   │
+│  /vibe:plan → /vibe:architect → developer   │
 │  suggest-compact · checkpoint · cancel      │
 └─────────────────────┬───────────────────────┘
                       ▼
@@ -1047,8 +1047,8 @@ function generateIndex(specs) {
 └─────────────────────┬───────────────────────┘
                       ▼
 ┌─ EVOLVE ────────────────────────────────────┐
-│  /evolve:evolve（知識進化）                   │
-│  /evolve:doc-sync（文件同步）                 │
+│  /vibe:evolve（知識進化）                   │
+│  /vibe:doc-sync（文件同步）                 │
 │  agent: doc-updater                         │
 └─────────────────────┬───────────────────────┘
                       ▼
@@ -1056,7 +1056,7 @@ function generateIndex(specs) {
 
   ┌─ DASHBOARD ─ 監控層（即時視覺化）───────────┐
   │  SessionStart: 自動啟動 WebSocket server    │
-  │  /dashboard:dashboard（手動控管）            │
+  │  /vibe:dashboard（手動控管）            │
   └─────────────────────────────────────────────┘
 
   ┌─ REMOTE ─── 遠端控制（Telegram）──────────────┐
@@ -1081,28 +1081,28 @@ function generateIndex(specs) {
 \`\`\`
 自動觸發（Hooks，使用者無感）            手動觸發（Skills，使用者主動）
 ─────────────────────────            ─────────────────────────────
-FLOW     SessionStart: pipeline-init  /flow:plan       功能規劃
-FLOW     PreToolUse: suggest-compact  /flow:architect  架構設計
-FLOW     PreCompact: log-compact      /flow:context-status  Context 狀態
-FLOW     SubagentStop: stage-trans.   /flow:checkpoint 建立檢查點
-FLOW     Stop: pipeline-check         /flow:env-detect 環境偵測
-FLOW     Stop: task-guard             /flow:cancel     取消鎖定
-SENTINEL PostToolUse: auto-lint       /sentinel:review  深度審查
-SENTINEL PostToolUse: auto-format     /sentinel:security 安全掃描
-SENTINEL PostToolUse: test-check      /sentinel:tdd     TDD 工作流
-SENTINEL PreToolUse: danger-guard     /sentinel:e2e     E2E 測試
-SENTINEL Stop: console-log-check      /sentinel:coverage 覆蓋率
-DASH     SessionStart: autostart      /sentinel:lint    手動 lint
-REMOTE   SessionStart: autostart      /sentinel:format  手動格式化
-REMOTE   SubagentStop: sender         /sentinel:verify  綜合驗證
-COLLAB   SessionStart: team-init      /evolve:evolve    知識進化
-                                      /evolve:doc-sync  文件同步
-                                      /dashboard:dashboard 儀表板控管
+FLOW     SessionStart: pipeline-init  /vibe:plan       功能規劃
+FLOW     PreToolUse: suggest-compact  /vibe:architect  架構設計
+FLOW     PreCompact: log-compact      /vibe:context-status  Context 狀態
+FLOW     SubagentStop: stage-trans.   /vibe:checkpoint 建立檢查點
+FLOW     Stop: pipeline-check         /vibe:env-detect 環境偵測
+FLOW     Stop: task-guard             /vibe:cancel     取消鎖定
+SENTINEL PostToolUse: auto-lint       /vibe:review  深度審查
+SENTINEL PostToolUse: auto-format     /vibe:security 安全掃描
+SENTINEL PostToolUse: test-check      /vibe:tdd     TDD 工作流
+SENTINEL PreToolUse: danger-guard     /vibe:e2e     E2E 測試
+SENTINEL Stop: console-log-check      /vibe:coverage 覆蓋率
+DASH     SessionStart: autostart      /vibe:lint    手動 lint
+REMOTE   SessionStart: autostart      /vibe:format  手動格式化
+REMOTE   SubagentStop: sender         /vibe:verify  綜合驗證
+COLLAB   SessionStart: team-init      /vibe:evolve    知識進化
+                                      /vibe:doc-sync  文件同步
+                                      /vibe:dashboard 儀表板控管
                                       /remote           遠端控管
                                       /remote-config    遠端設定
-                                      /collab:adversarial-plan  競爭規劃
-                                      /collab:adversarial-review 對抗審查
-                                      /collab:adversarial-refactor 競爭重構
+                                      /vibe:adversarial-plan  競爭規劃
+                                      /vibe:adversarial-review 對抗審查
+                                      /vibe:adversarial-refactor 競爭重構
 
 自動: ${totalHooks} hooks                         手動: ${dynamicSkills} skills（+ patterns ${patternsSkills} 知識 skills）
 跨 session 記憶：claude-mem（獨立 plugin，非依賴）

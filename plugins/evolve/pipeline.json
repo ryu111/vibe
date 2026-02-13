@@ -1,5 +1,0 @@
-{
-  "provides": {
-    "DOCS": { "agent": "doc-updater", "skill": "/evolve:doc-sync" }
-  }
-}

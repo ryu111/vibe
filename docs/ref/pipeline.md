@@ -119,8 +119,8 @@ plugins/*/pipeline.json         ← 各 plugin 的 pipeline 宣告（provides �
     "DOCS": "文件整理"
   },
   "provides": {
-    "PLAN": { "agent": "planner",   "skill": "/flow:plan" },
-    "ARCH": { "agent": "architect",  "skill": "/flow:architect" },
+    "PLAN": { "agent": "planner",   "skill": "/vibe:plan" },
+    "ARCH": { "agent": "architect",  "skill": "/vibe:architect" },
     "DEV":  { "agent": "developer",  "skill": null }
   }
 }
@@ -141,8 +141,8 @@ plugins/*/pipeline.json         ← 各 plugin 的 pipeline 宣告（provides �
   "stages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "QA", "E2E", "DOCS"],
   "stageLabels": { ... },
   "provides": {
-    "PLAN": { "agent": "planner",   "skill": "/flow:plan" },
-    "ARCH": { "agent": "architect",  "skill": "/flow:architect" },
+    "PLAN": { "agent": "planner",   "skill": "/vibe:plan" },
+    "ARCH": { "agent": "architect",  "skill": "/vibe:architect" },
     "DEV":  { "agent": "developer",  "skill": null }
   }
 }
@@ -153,10 +153,10 @@ plugins/*/pipeline.json         ← 各 plugin 的 pipeline 宣告（provides �
 ```json
 {
   "provides": {
-    "REVIEW": { "agent": "code-reviewer",  "skill": "/sentinel:review" },
-    "TEST":   { "agent": "tester",          "skill": "/sentinel:tdd" },
-    "QA":     { "agent": "qa",              "skill": "/sentinel:qa" },
-    "E2E":    { "agent": "e2e-runner",      "skill": "/sentinel:e2e" }
+    "REVIEW": { "agent": "code-reviewer",  "skill": "/vibe:review" },
+    "TEST":   { "agent": "tester",          "skill": "/vibe:tdd" },
+    "QA":     { "agent": "qa",              "skill": "/vibe:qa" },
+    "E2E":    { "agent": "e2e-runner",      "skill": "/vibe:e2e" }
   }
 }
 ```
@@ -166,7 +166,7 @@ plugins/*/pipeline.json         ← 各 plugin 的 pipeline 宣告（provides �
 ```json
 {
   "provides": {
-    "DOCS": { "agent": "doc-updater",  "skill": "/evolve:doc-sync" }
+    "DOCS": { "agent": "doc-updater",  "skill": "/vibe:doc-sync" }
   }
 }
 ```
@@ -283,12 +283,12 @@ hooks.json 定義：
 ```
 [Pipeline 委派規則]
 程式碼變更應透過對應的 sub-agent 執行，而非 Main Agent 直接處理：
-- 規劃：planner（/flow:plan）
-- 架構：architect（/flow:architect）
+- 規劃：planner（/vibe:plan）
+- 架構：architect（/vibe:architect）
 - 開發：developer
-- 審查：code-reviewer（/sentinel:review）
-- 測試：tester（/sentinel:tdd）
-- 文件：doc-updater（/evolve:doc-sync）
+- 審查：code-reviewer（/vibe:review）
+- 測試：tester（/vibe:tdd）
+- 文件：doc-updater（/vibe:doc-sync）
 task-classifier 會建議需要的階段，請依建議執行。
 未安裝的 plugin 對應的階段可以跳過。
 ```
@@ -397,7 +397,7 @@ stage-transition 從 `agent_transcript_path`（JSONL）最後 20 行中搜尋此
 ```
 ⚠️ [Pipeline 指令] developer 已完成（開發階段）。
 你**必須立即**執行下一階段：REVIEW（審查）。
-➡️ 執行方法：使用 Skill 工具呼叫 /sentinel:review
+➡️ 執行方法：使用 Skill 工具呼叫 /vibe:review
 ⛔ Pipeline 自動模式：不要使用 AskUserQuestion，完成後直接進入下一階段。
 已完成：PLAN → ARCH → DEV
 ```
@@ -411,7 +411,7 @@ stage-transition 從 `agent_transcript_path`（JSONL）最後 20 行中搜尋此
 
 你**必須**執行以下步驟：
 1️⃣ 先回到 DEV 階段修復 HIGH 等級問題 → 使用 Task 工具委派給 developer agent
-2️⃣ 修復完成後重新執行 REVIEW（審查）→ 使用 Skill 工具呼叫 /sentinel:review
+2️⃣ 修復完成後重新執行 REVIEW（審查）→ 使用 Skill 工具呼叫 /vibe:review
 
 ⛔ Pipeline 自動模式：不要使用 AskUserQuestion，修復後直接重新執行品質檢查。
 已完成：PLAN → ARCH → DEV → REVIEW
@@ -509,7 +509,7 @@ Stop 觸發
   1. stop_hook_active === true → exit 0（防迴圈）
   2. 讀取 transcript，找最後一次 TodoWrite
   3. 無 TodoWrite → exit 0（無任務追蹤）
-  4. state 存在且 cancelled === true → cleanup + exit 0（/flow:cancel 手動取消）
+  4. state 存在且 cancelled === true → cleanup + exit 0（/vibe:cancel 手動取消）
   5. state 存在且 blockCount >= maxBlocks → cleanup + exit 0 + 警告（安全閥）
   6. TodoWrite 全部 completed → cleanup + exit 0（任務完成）
   7. 否則 → blockCount++ → 輸出 block
@@ -530,7 +530,7 @@ Stop 觸發
 - 完成或取消時歸零 + 清理 state file
 - 5 次上限（可透過 `CLAUDE_TASK_GUARD_MAX_BLOCKS` 環境變數覆寫）= Claude 嘗試停止 5 次都被擋回去，第 6 次無條件放行
 
-**手動取消**：`/flow:cancel` skill 設定 `cancelled: true` → 下次 Stop hook 放行。
+**手動取消**：`/vibe:cancel` skill 設定 `cancelled: true` → 下次 Stop hook 放行。
 
 **Scope Creep 處理**：不限制。Claude 中途加 todo → guard 持續有效。安全閥（5 次）防止真正的無限迴圈。
 
@@ -559,7 +559,7 @@ Claude 收到 systemMessage 後會用自然語言向使用者報告。
 **Agent 完成，有下一步時：**
 
 > developer 完成了開發階段的工作。
-> 接下來建議進行程式碼審查（REVIEW），我可以使用 `/sentinel:review` 啟動。
+> 接下來建議進行程式碼審查（REVIEW），我可以使用 `/vibe:review` 啟動。
 > 要繼續嗎？
 
 **結束前發現遺漏時：**
@@ -633,7 +633,7 @@ Claude 收到 systemMessage 後會用自然語言向使用者報告。
 | F-13 | 移除 sentinel 後自動跳過 REVIEW、TEST |
 | F-14 | task-guard 在有未完成 todo 時阻擋退出 |
 | F-15 | task-guard 達 5 次阻擋後強制放行 |
-| F-16 | `/flow:cancel` 可手動解除 task-guard |
+| F-16 | `/vibe:cancel` 可手動解除 task-guard |
 
 ### plugin-specs.json 更新
 

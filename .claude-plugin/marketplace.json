@@ -16,53 +16,11 @@
       "tags": ["meta", "plugin-builder", "validation"]
     },
     {
-      "name": "flow",
-      "source": "./plugins/flow",
-      "description": "開發工作流 — 規劃、架構設計、compact、session 持久化、環境偵測",
+      "name": "vibe",
+      "source": "./plugins/vibe",
+      "description": "全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制",
       "category": "workflow",
-      "tags": ["planning", "architecture", "compact", "session", "checkpoint"]
-    },
-    {
-      "name": "sentinel",
-      "source": "./plugins/sentinel",
-      "description": "品質全鏈守衛 — lint、format、review、security、TDD、E2E、verify",
-      "category": "quality",
-      "tags": ["lint", "format", "review", "security", "tdd", "e2e", "testing"]
-    },
-    {
-      "name": "patterns",
-      "source": "./plugins/patterns",
-      "description": "語言/框架模式庫 — 編碼標準、設計模式、最佳實踐",
-      "category": "knowledge",
-      "tags": ["patterns", "standards", "best-practices"]
-    },
-    {
-      "name": "evolve",
-      "source": "./plugins/evolve",
-      "description": "知識進化 — 持續學習、instincts 進化、文件生成與同步",
-      "category": "intelligence",
-      "tags": ["learning", "evolution", "instincts", "docs", "documentation"]
-    },
-    {
-      "name": "dashboard",
-      "source": "./plugins/dashboard",
-      "description": "Pipeline 即時儀表板 — WebSocket 推播監控多 session 工作流進度",
-      "category": "monitoring",
-      "tags": ["visualization", "monitoring", "websocket", "dashboard"]
-    },
-    {
-      "name": "remote",
-      "source": "./plugins/remote",
-      "description": "Telegram 遠端控制 — Pipeline 進度推播、狀態查詢、tmux 遠端操作",
-      "category": "remote-control",
-      "tags": ["telegram", "remote-control", "monitoring", "tmux"]
-    },
-    {
-      "name": "collab",
-      "source": "./plugins/collab",
-      "description": "多模型協作 — 多模型規劃與審查",
-      "category": "collaboration",
-      "tags": ["multi-model", "collaboration", "planning"]
+      "tags": ["planning", "quality", "patterns", "monitoring", "remote-control"]
     }
   ]
 }

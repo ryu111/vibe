@@ -124,7 +124,7 @@ function checkConfig(pipeline) {
   // 每個 skill 引用是否存在
   for (const [stage, info] of Object.entries(pipeline.stageMap)) {
     if (!info.skill) continue;
-    // /sentinel:review → plugins/sentinel/skills/review/SKILL.md
+    // /vibe:review → plugins/vibe/skills/review/SKILL.md
     const parts = info.skill.replace('/', '').split(':');
     if (parts.length !== 2) continue;
     const skillPath = path.join(PLUGINS_DIR, parts[0], 'skills', parts[1], 'SKILL.md');

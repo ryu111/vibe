@@ -129,7 +129,7 @@ Observation → Instinct(0.3) → Cluster(≥3, avg≥0.7) → Skill/Agent
 - MCP 工具：`search` → `timeline` → `get_observations`（3 層漸進式，省 token）
 - 直接查詢：`~/.claude-mem/claude-mem.db`（SQLite FTS5）
 
-**注意**：`CLAUDE_MEM_SKIP_TOOLS` 預設跳過 `Skill`，意味著 `/evolve:evolve` 本身的執行不會被 mem 觀察記錄。instincts 來源是其他工具的觀察，而非 evolve skill 自身。
+**注意**：`CLAUDE_MEM_SKIP_TOOLS` 預設跳過 `Skill`，意味著 `/vibe:evolve` 本身的執行不會被 mem 觀察記錄。instincts 來源是其他工具的觀察，而非 evolve skill 自身。
 
 ### 4.2 doc-sync — 文件同步
 
@@ -238,7 +238,7 @@ plugins/evolve/
 ```json
 {
   "provides": {
-    "DOCS": { "agent": "doc-updater", "skill": "/evolve:doc-sync" }
+    "DOCS": { "agent": "doc-updater", "skill": "/vibe:doc-sync" }
   }
 }
 ```

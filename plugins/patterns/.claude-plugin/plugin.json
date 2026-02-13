@@ -1,6 +1,0 @@
-{
-  "name": "patterns",
-  "version": "0.1.0",
-  "description": "語言/框架模式庫 — 編碼標準、設計模式、最佳實踐",
-  "skills": ["./skills/"]
-}

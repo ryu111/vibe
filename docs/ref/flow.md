@@ -472,7 +472,7 @@ Stop 觸發
   1. stop_hook_active === true → exit 0（防迴圈）
   2. 讀取 transcript，找最後一次 TodoWrite
   3. 無 TodoWrite → exit 0（無任務追蹤）
-  4. state 存在且 cancelled === true → cleanup + exit 0（/flow:cancel 手動取消）
+  4. state 存在且 cancelled === true → cleanup + exit 0（/vibe:cancel 手動取消）
   5. state 存在且 blockCount >= maxBlocks → cleanup + exit 0 + 警告（安全閥）
   6. TodoWrite 全部 completed → cleanup + exit 0（任務完成）
   7. 否則 → blockCount++ → 輸出 block：
@@ -579,7 +579,7 @@ plugins/flow/
 | F-13 | 移除 sentinel 後自動跳過 REVIEW、TEST |
 | F-14 | task-guard 在有未完成 todo 時阻擋退出 |
 | F-15 | task-guard 達 5 次阻擋後強制放行 |
-| F-16 | `/flow:cancel` 可手動解除 task-guard |
+| F-16 | `/vibe:cancel` 可手動解除 task-guard |
 | F-17 | FAIL:HIGH verdict 觸發智慧回退到 DEV |
 | F-18 | 各品質階段回退次數獨立（不互相影響） |
 | F-19 | 超過回退上限（3 輪）後強制繼續 + 警告 |
@@ -621,8 +621,8 @@ plugins/flow/
     "DOCS": "文件整理"
   },
   "provides": {
-    "PLAN": { "agent": "planner",   "skill": "/flow:plan" },
-    "ARCH": { "agent": "architect",  "skill": "/flow:architect" },
+    "PLAN": { "agent": "planner",   "skill": "/vibe:plan" },
+    "ARCH": { "agent": "architect",  "skill": "/vibe:architect" },
     "DEV":  { "agent": "developer",  "skill": null }
   }
 }

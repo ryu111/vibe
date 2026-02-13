@@ -73,9 +73,9 @@
       "extraSteps": [
         { "label": "SessionStart: pipeline-init", "auto": true },
         { "label": "PreToolUse: suggest-compact", "auto": true },
-        { "label": "/flow:context-status", "auto": false },
-        { "label": "/flow:checkpoint", "auto": false },
-        { "label": "/flow:env-detect", "auto": false }
+        { "label": "/vibe:context-status", "auto": false },
+        { "label": "/vibe:checkpoint", "auto": false },
+        { "label": "/vibe:env-detect", "auto": false }
       ]
     },
     {
@@ -97,11 +97,11 @@
       "extraSteps": [
         { "label": "PreToolUse: danger-guard", "auto": true },
         { "label": "Stop: console-log-check", "auto": true },
-        { "label": "/sentinel:lint", "auto": false },
-        { "label": "/sentinel:format", "auto": false },
-        { "label": "/sentinel:coverage", "auto": false },
-        { "label": "/sentinel:verify", "auto": false },
-        { "label": "/sentinel:qa", "auto": false }
+        { "label": "/vibe:lint", "auto": false },
+        { "label": "/vibe:format", "auto": false },
+        { "label": "/vibe:coverage", "auto": false },
+        { "label": "/vibe:verify", "auto": false },
+        { "label": "/vibe:qa", "auto": false }
       ]
     },
     {
@@ -110,8 +110,8 @@
       "desc": "文件階段 — 自動更新對應文件",
       "agentNames": ["doc-updater"],
       "extraSteps": [
-        { "label": "/evolve:evolve", "auto": false },
-        { "label": "/evolve:doc-sync", "auto": false }
+        { "label": "/vibe:evolve", "auto": false },
+        { "label": "/vibe:doc-sync", "auto": false }
       ]
     }
   ],
@@ -163,7 +163,7 @@
       "opacity": 0.6,
       "title": "COLLAB",
       "subtitle": "待定 · Agent Teams",
-      "detail": "/collab:adversarial-plan · /collab:adversarial-review · /collab:adversarial-refactor"
+      "detail": "/vibe:adversarial-plan · /vibe:adversarial-review · /vibe:adversarial-refactor"
     }
   ],
 
@@ -214,7 +214,7 @@
       "color": "var(--purple)",
       "flowSteps": ["理解需求", "掃描專案", "識別影響", "拆解階段", "評估風險", "產出計畫"],
       "detailedNodes": [
-        { "t": "input", "text": "使用者需求", "sub": "自然語言 · /flow:plan 觸發" },
+        { "t": "input", "text": "使用者需求", "sub": "自然語言 · /vibe:plan 觸發" },
         { "t": "step", "text": "解析意圖", "sub": "釐清目標、範圍邊界、成功條件" },
         { "t": "step", "text": "掃描專案", "sub": "Glob + Read → 目錄結構、關鍵檔案" },
         { "t": "step", "text": "識別影響", "sub": "Grep → 依賴關係、匯入鏈、副作用" },
@@ -227,7 +227,7 @@
       "color": "var(--cyan)",
       "flowSteps": ["掃描結構", "分析慣例", "識別邊界", "設計 2-3 方案", "目錄樹+介面+資料流"],
       "detailedNodes": [
-        { "t": "input", "text": "計畫 + 需求", "sub": "/flow:architect 觸發" },
+        { "t": "input", "text": "計畫 + 需求", "sub": "/vibe:architect 觸發" },
         { "t": "step", "text": "掃描結構", "sub": "Glob → 目錄樹、檔案組織模式" },
         { "t": "step", "text": "分析慣例", "sub": "Read + Grep → 命名、模式、框架用法" },
         { "t": "step", "text": "識別邊界", "sub": "模組界限 · API 邊界 · 資料流向" },
@@ -252,7 +252,7 @@
       "color": "var(--accent)",
       "flowSteps": ["收集變更", "理解上下文", "逐項分析", "CRITICAL→LOW 報告"],
       "detailedNodes": [
-        { "t": "input", "text": "程式碼變更", "sub": "git diff · /sentinel:review" },
+        { "t": "input", "text": "程式碼變更", "sub": "git diff · /vibe:review" },
         { "t": "step", "text": "收集變更範圍", "sub": "Bash: git diff · Glob: 目標檔案" },
         { "t": "step", "text": "理解上下文", "sub": "Read: 完整檔案 · Grep: 引用關係" },
         { "t": "step", "text": "逐項分析", "sub": "正確性 · 安全性 · 效能 · 可維護性" },
@@ -262,10 +262,10 @@
     },
     "security-reviewer": {
       "color": "var(--red)",
-      "trigger": "/sentinel:security",
+      "trigger": "/vibe:security",
       "flowSteps": ["識別攻擊面", "追蹤資料流", "OWASP Top 10", "修復建議"],
       "detailedNodes": [
-        { "t": "input", "text": "程式碼 / API", "sub": "/sentinel:security" },
+        { "t": "input", "text": "程式碼 / API", "sub": "/vibe:security" },
         { "t": "step", "text": "識別攻擊面", "sub": "API · 表單 · 外部輸入 · 檔案上傳" },
         { "t": "step", "text": "追蹤資料流", "sub": "輸入 → 處理 → 輸出 完整路徑" },
         { "t": "step", "text": "OWASP Top 10", "sub": "注入 · 認證 · XSS · SSRF · 設定..." },
@@ -277,7 +277,7 @@
       "color": "var(--lime)",
       "flowSteps": ["分析程式碼", "邊界案例", "整合測試", "覆蓋率檢查"],
       "detailedNodes": [
-        { "t": "input", "text": "程式碼 + 規格", "sub": "/sentinel:tdd 觸發" },
+        { "t": "input", "text": "程式碼 + 規格", "sub": "/vibe:tdd 觸發" },
         { "t": "step", "text": "分析程式碼行為", "sub": "Read + Grep → 公開介面、邊界條件" },
         { "t": "step", "text": "設計測試案例", "sub": "邊界值 · 異常路徑 · 整合場景" },
         { "t": "step", "text": "撰寫測試", "sub": "獨立視角 — 不看 developer 的測試邏輯" },
@@ -287,10 +287,10 @@
     },
     "build-error-resolver": {
       "color": "var(--orange)",
-      "trigger": "/sentinel:verify",
+      "trigger": "/vibe:verify",
       "flowSteps": ["解析錯誤", "最小修復", "驗證", "≤3 輪"],
       "detailedNodes": [
-        { "t": "input", "text": "Build 錯誤", "sub": "/sentinel:verify 觸發" },
+        { "t": "input", "text": "Build 錯誤", "sub": "/vibe:verify 觸發" },
         { "t": "step", "text": "解析錯誤", "sub": "分類：型別 · 語法 · 模組 · 設定" },
         { "t": "step", "text": "定位問題", "sub": "Grep + Read → 錯誤來源" },
         { "t": "loop", "label": "≤3 輪", "nodes": [
@@ -305,7 +305,7 @@
       "color": "var(--yellow)",
       "flowSteps": ["啟動應用", "呼叫 API", "驗證 CLI", "確認行為"],
       "detailedNodes": [
-        { "t": "input", "text": "應用 + API", "sub": "/sentinel:qa 觸發" },
+        { "t": "input", "text": "應用 + API", "sub": "/vibe:qa 觸發" },
         { "t": "step", "text": "啟動應用", "sub": "Bash → 啟動 server / 建構專案" },
         { "t": "step", "text": "Smoke Test", "sub": "健康檢查 · 基本端點回應正確" },
         { "t": "step", "text": "API 驗證", "sub": "呼叫 API · 驗證回應格式與內容" },
@@ -317,7 +317,7 @@
       "color": "var(--green)",
       "flowSteps": ["分析頁面", "建 Page Objects", "撰寫測試", "執行", "除錯 ≤3 輪"],
       "detailedNodes": [
-        { "t": "input", "text": "測試目標", "sub": "/sentinel:e2e 觸發" },
+        { "t": "input", "text": "測試目標", "sub": "/vibe:e2e 觸發" },
         { "t": "step", "text": "分析頁面", "sub": "Read HTML/JSX · 識別互動元素" },
         { "t": "step", "text": "建 Page Objects", "sub": "每頁一 class：Locators + Actions" },
         { "t": "step", "text": "撰寫測試 Spec", "sub": "依 Page Object 模式組織" },
@@ -332,7 +332,7 @@
       "color": "var(--green)",
       "flowSteps": ["分析 git diff", "識別受影響文件", "機械變更自動更新", "語意變更產出建議"],
       "detailedNodes": [
-        { "t": "input", "text": "Git diff", "sub": "/evolve:doc-sync 觸發" },
+        { "t": "input", "text": "Git diff", "sub": "/vibe:doc-sync 觸發" },
         { "t": "step", "text": "分析變更", "sub": "Bash: git diff · 識別變更類型" },
         { "t": "step", "text": "識別受影響文件", "sub": "Grep → 對應 .md / README / API docs" },
         { "t": "decision", "text": "變更類型？", "sub": "機械性 vs 語意性" },
@@ -377,6 +377,6 @@
   "pipelineCompletion": {
     "icon": "✅",
     "title": "Pipeline 完成",
-    "detail": "所有任務完成 · task-guard 放行 · pipeline 狀態清除 · /flow:cancel 可手動取消"
+    "detail": "所有任務完成 · task-guard 放行 · pipeline 狀態清除 · /vibe:cancel 可手動取消"
   }
 }

@@ -422,7 +422,7 @@ plugins/patterns/
 | # | 條件 | 說明 |
 |:-:|------|------|
 | P-01 | Plugin 可載入 | `claude --plugin-dir ./plugins/patterns` 成功載入 |
-| P-02 | 8 個 skill 可呼叫 | 各 `/patterns:{skill}` 命令 |
+| P-02 | 8 個 skill 可呼叫 | 各 `/vibe:{skill}` 命令 |
 | P-03 | 每個 skill 有 GOOD/BAD 對比 | 至少 5 組 |
 | P-04 | 每個 skill 有 Quick Reference | 至少一個表格 |
 | P-05 | 每個 skill 有 Checklist | 至少 5 項 |
