@@ -85,8 +85,9 @@ process.stdin.on('end', () => {
     const missingHints = missing.map(s => {
       const info = pipeline.stageMap[s];
       const label = pipeline.stageLabels[s] || s;
+      const prefix = info && info.plugin ? `${info.plugin}:` : '';
       if (info && info.skill) return `- ${label}：執行 ${info.skill}`;
-      if (info && info.agent) return `- ${label}：委派給 ${info.agent}`;
+      if (info && info.agent) return `- ${label}：委派給 ${prefix}${info.agent}（subagent_type: "${prefix}${info.agent}"）`;
       return `- ${label}`;
     }).join('\n');
 

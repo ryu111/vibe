@@ -57,6 +57,7 @@ function discoverPipeline() {
           stageMap[stage] = { ...config, plugin: pluginName };
           if (config.agent) {
             agentToStage[config.agent] = stage;
+            agentToStage[`${pluginName}:${config.agent}`] = stage;
           }
         }
       } catch (_) { /* 跳過無效 JSON */ }

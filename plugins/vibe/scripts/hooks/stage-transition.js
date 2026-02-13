@@ -177,17 +177,20 @@ process.stdin.on('end', () => {
       // ===== 智慧回退：回到 DEV 修復 =====
       state.retries[currentStage] = retryCount + 1;
       const devInfo = pipeline.stageMap['DEV'];
+      const devPlugin = devInfo && devInfo.plugin ? `${devInfo.plugin}:` : '';
+      const devAgent = devInfo ? devInfo.agent : 'developer';
       const devMethod = devInfo && devInfo.skill
         ? `使用 Skill 工具呼叫 ${devInfo.skill}`
-        : `使用 Task 工具委派給 ${devInfo ? devInfo.agent : 'developer'} agent`;
+        : `使用 Task 工具委派給 ${devPlugin}${devAgent} agent（subagent_type: "${devPlugin}${devAgent}"）`;
 
       // 回退後重新執行的 stage 資訊
       const retryInfo = pipeline.stageMap[currentStage];
       const retrySkill = retryInfo && retryInfo.skill ? retryInfo.skill : null;
       const retryAgent = retryInfo && retryInfo.agent ? retryInfo.agent : null;
+      const retryPlugin = retryInfo && retryInfo.plugin ? `${retryInfo.plugin}:` : '';
       const retryMethod = retrySkill
         ? `使用 Skill 工具呼叫 ${retrySkill}`
-        : `使用 Task 工具委派給 ${retryAgent} agent`;
+        : `使用 Task 工具委派給 ${retryPlugin}${retryAgent} agent（subagent_type: "${retryPlugin}${retryAgent}"）`;
 
       message = `🔄 [Pipeline 回退] ${agentType} 完成（${currentLabel}階段），但發現 ${verdict.severity} 等級問題。
 回退原因：${reason}
@@ -228,9 +231,10 @@ process.stdin.on('end', () => {
         const skillCmd = nextInfo && nextInfo.skill ? nextInfo.skill : null;
         const agentName = nextInfo && nextInfo.agent ? nextInfo.agent : null;
 
+        const nextPlugin = nextInfo && nextInfo.plugin ? `${nextInfo.plugin}:` : '';
         const method = skillCmd
           ? `➡️ 執行方法：使用 Skill 工具呼叫 ${skillCmd}`
-          : `➡️ 執行方法：使用 Task 工具委派給 ${agentName} agent（subagent_type: "${agentName}"）`;
+          : `➡️ 執行方法：使用 Task 工具委派給 ${nextPlugin}${agentName} agent（subagent_type: "${nextPlugin}${agentName}"）`;
 
         // 階段專屬 context
         let stageContext = '';
