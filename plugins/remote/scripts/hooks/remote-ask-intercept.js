@@ -7,7 +7,8 @@
  * 2. 直接發送 Telegram 訊息（避免 30s polling 延遲）
  * 3. 寫 remote-ask-pending.json → 輪詢 remote-ask-response.json
  * 4. 收到回覆 → { continue: false, systemMessage: "使用者選擇了：..." }
- * 5. 超時 55 秒 → { continue: true }（回退到正常 TUI）
+ * 5. 超時 55 秒 → { continue: false }（阻止 TUI，告知 Claude 等待）
+ *    → daemon 收到 callback 後透過 tmux send-keys 注入答案
  *
  * 靜默降級：credentials 缺失 → continue: true
  */
@@ -54,15 +55,19 @@ function buildKeyboard(questions, qIdx) {
     }]);
   }
 
-  // 加 description（如果有的話）
+  // 組裝訊息文字
   let text = `\u{1F4CB} *${header}*`;
-  if (q.options.some(o => o.description)) {
+  const hasDesc = q.options.some(o => o.description);
+  if (hasDesc) {
     text += '\n';
-    for (const opt of q.options) {
-      if (opt.description) {
-        text += `\n\u2022 *${opt.label}* \u2014 ${opt.description}`;
-      }
+    for (let i = 0; i < q.options.length; i++) {
+      const opt = q.options[i];
+      text += `\n${i + 1}. *${opt.label}*`;
+      if (opt.description) text += ` \u2014 ${opt.description}`;
     }
+  }
+  if (multiSelect) {
+    text += '\n\n\u{1F449} \u53EF\u9EDE\u591A\u500B\u518D\u6309\u300C\u78BA\u8A8D\u300D';
   }
 
   return { text, keyboard, multiSelect };
@@ -122,6 +127,7 @@ async function main() {
     questionIndex: 0,
     multiSelect: kb.multiSelect,
     selections: kb.multiSelect ? questions[0].options.map(() => false) : [],
+    hookTimedOut: false, // daemon 讀取此欄位判斷是否需要 tmux 注入
     createdAt: Date.now(),
   };
   fs.writeFileSync(PENDING_FILE, JSON.stringify(pending));
@@ -154,13 +160,15 @@ async function main() {
     return;
   }
 
-  // 超時 → 清理 pending，回退到正常 TUI
-  try { fs.unlinkSync(PENDING_FILE); } catch (_) {}
-  // 更新 Telegram 訊息標示超時
+  // 超時 → 保留 pending（設 hookTimedOut），阻止 TUI，daemon 後續 tmux 注入
   try {
-    await tg.editMessageText(creds.token, creds.chatId, msg.message_id, `${kb.text}\n\n\u23F0 \u5DF2\u903E\u6642\uFF0C\u8ACB\u5728\u7D42\u7AEF\u64CD\u4F5C`);
+    pending.hookTimedOut = true;
+    fs.writeFileSync(PENDING_FILE, JSON.stringify(pending));
   } catch (_) {}
-  output({ continue: true });
+  output({
+    continue: false,
+    systemMessage: '\u{1F4F2} Telegram \u9078\u55AE\u5DF2\u767C\u9001\uFF0C\u4F7F\u7528\u8005\u5C1A\u672A\u56DE\u8986\u3002\u56DE\u8986\u5F8C\u7B54\u6848\u6703\u81EA\u52D5\u6CE8\u5165\uFF0C\u8ACB\u5148\u7E7C\u7E8C\u5176\u4ED6\u5DE5\u4F5C\u6216\u7B49\u5F85\u3002',
+  });
 }
 
 main().catch(() => process.exit(0));

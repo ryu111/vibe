@@ -279,10 +279,28 @@ async function handleTmux(token, chatId) {
 // ─── AskUserQuestion callback 處理 ──────────────
 
 /**
+ * 當 hook 已超時（hookTimedOut=true），透過 tmux send-keys 注入答案
+ * @param {string[]} labels — 選擇的 label 列表
+ */
+function injectAnswerViaTmux(labels) {
+  const pane = cachedPane || detectPane();
+  if (!pane) return;
+  cachedPane = pane;
+
+  const labelStr = labels.join(', ');
+  const answer = `\u4F7F\u7528\u8005\u900F\u904E Telegram \u9078\u64C7\u4E86\uFF1A${labelStr}`;
+  try {
+    sendKeys(pane, answer);
+    appendLog(`tmux inject: ${answer}`);
+  } catch (_) {}
+}
+
+/**
  * 處理 Telegram inline keyboard 的 callback_query
  * 與 remote-ask-intercept.js hook 協調：
  * - hook 寫 pending file + 發送 inline keyboard
  * - daemon 收到 callback → 更新 pending / 寫 response file
+ * - 若 hook 已超時（hookTimedOut）→ 額外透過 tmux send-keys 注入答案
  */
 async function handleCallbackQuery(token, chatId, callbackQuery) {
   const cbId = callbackQuery.id;
@@ -332,7 +350,7 @@ async function handleCallbackQuery(token, chatId, callbackQuery) {
         return;
       }
 
-      // 寫 response
+      // 寫 response（hook 可能還在 polling）
       fs.writeFileSync(ASK_RESPONSE_FILE, JSON.stringify({
         questionIndex: qIdx,
         selectedLabels,
@@ -345,6 +363,11 @@ async function handleCallbackQuery(token, chatId, callbackQuery) {
         await editMessageText(token, chatId, pending.messageId,
           `\u{1F4CB} *${q.question || q.header || '\u8ACB\u9078\u64C7'}*\n\u2192 \u9078\u64C7\uFF1A${labelStr} \u2705`);
       } catch (_) {}
+
+      // hook 已超時 → tmux 注入答案
+      if (pending.hookTimedOut) {
+        injectAnswerViaTmux(selectedLabels);
+      }
 
       // 清理 pending
       try { fs.unlinkSync(ASK_PENDING_FILE); } catch (_) {}
@@ -397,6 +420,11 @@ async function handleCallbackQuery(token, chatId, callbackQuery) {
         `\u{1F4CB} *${q.question || q.header || '\u8ACB\u9078\u64C7'}*\n\u2192 \u9078\u64C7\uFF1A${selected.label} \u2705`);
     } catch (_) {}
 
+    // hook 已超時 → tmux 注入答案
+    if (pending.hookTimedOut) {
+      injectAnswerViaTmux([selected.label]);
+    }
+
     // 清理 pending
     try { fs.unlinkSync(ASK_PENDING_FILE); } catch (_) {}
     try { await answerCallbackQuery(token, cbId, `\u2705 ${selected.label}`); } catch (_) {}
@@ -414,6 +442,32 @@ function appendLog(message) {
 
 // ─── 主迴圈 ────────────────────────────────────
 
+/**
+ * 清理可能殘留的孤兒 bot 進程（避免 getUpdates 衝突）
+ */
+function cleanupOrphanProcesses() {
+  try {
+    const { execSync } = require('child_process');
+    const pids = execSync('pgrep -f "bot\\.js"', {
+      encoding: 'utf8',
+      timeout: 3000,
+    }).trim().split('\n').filter(Boolean);
+
+    const myPid = process.pid;
+    for (const pidStr of pids) {
+      const pid = parseInt(pidStr, 10);
+      if (pid !== myPid && pid > 0) {
+        try {
+          process.kill(pid, 'SIGTERM');
+          appendLog(`\u6E05\u7406\u5B64\u5152\u9032\u7A0B: ${pid}`);
+        } catch (_) {}
+      }
+    }
+  } catch (_) {
+    // pgrep 找不到 → 無孤兒進程
+  }
+}
+
 async function main() {
   const creds = getCredentials();
   if (!creds) {
@@ -421,6 +475,8 @@ async function main() {
     process.exit(1);
   }
 
+  // 啟動時清理孤兒進程
+  cleanupOrphanProcesses();
   appendLog('Bot daemon \u555F\u52D5');
 
   // 初始偵測 tmux pane
