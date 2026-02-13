@@ -61,13 +61,13 @@ function classify(prompt) {
   if (!prompt) return 'quickfix';
   const p = prompt.toLowerCase();
 
+  // Trivial/Demo 任務：明確的簡單意圖優先攔截（避免被 research 的泛用詞如「看看」誤匹配）
+  if (/hello.?world|boilerplate|scaffold|skeleton|poc|proof.?of.?concept|概念驗證|prototype|原型|試做|試作|簡單的?\s*(?:範例|demo|example|試試)|練習用|練習一下|tutorial|學習用|playground|scratch/.test(p)) {
+    return 'quickfix';
+  }
   // 研究型：問題、探索、理解
   if (/[?？]$|^(what|how|why|where|explain|show|list|find|search)\b|看看|查看|找找|說明|解釋|什麼|怎麼|為什麼|哪裡|告訴|描述|列出|做什麼|是什麼|有哪些|出問題|是不是/.test(p)) {
     return 'research';
-  }
-  // Trivial/Demo 任務：明確的簡單任務不需要完整 pipeline
-  if (/hello.?world|boilerplate|scaffold|skeleton|poc|proof.?of.?concept|概念驗證|prototype|原型|試做|試作|簡單的?\s*(?:範例|demo|example|試試)|練習用|練習一下|tutorial|學習用|playground|scratch/.test(p)) {
-    return 'quickfix';
   }
   // TDD：明確要求
   if (/tdd|test.?first|測試驅動|先寫測試/.test(p)) {

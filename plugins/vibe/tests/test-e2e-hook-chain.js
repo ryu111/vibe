@@ -805,6 +805,107 @@ console.log('══════════════════════�
 })();
 
 // ═══════════════════════════════════════════════
+// Scenario J: Trivial 分類優先順序（regex 交叉匹配邊界）
+// 驗證 trivial regex 移到 research 之前後，各種衝突場景的正確分類
+// ═══════════════════════════════════════════════
+
+console.log('\n🎯 Scenario J: Trivial 分類優先順序（regex 交叉匹配）');
+console.log('═══════════════════════════════════════════════════════');
+
+(() => {
+  const sid = 'e2e-trivial-priority';
+  try {
+    // J1-J3: Trivial + Research 衝突 — trivial 應優先
+    const trivialResearchCases = [
+      { prompt: '做一個 poc 測試看看', note: 'poc(trivial) + 看看(research)' },
+      { prompt: 'scaffold 一個新專案', note: 'scaffold(trivial)' },
+      { prompt: '簡單的範例 demo', note: '簡單的 範例(trivial)' },
+    ];
+
+    for (let i = 0; i < trivialResearchCases.length; i++) {
+      const { prompt, note } = trivialResearchCases[i];
+      initState(sid);
+      runHook('task-classifier', { session_id: sid, prompt });
+
+      test(`J${i + 1}: trivial 優先 — ${note}`, () => {
+        const state = readState(sid);
+        assert.strictEqual(state.taskType, 'quickfix');
+        assert.strictEqual(state.pipelineEnforced, false);
+      });
+    }
+
+    // J4-J5: Trivial + Feature 衝突 — trivial 意圖明確時應優先
+    const trivialFeatureCases = [
+      { prompt: '建立 hello world express server', note: 'hello world(trivial) > 建立 server(feature)' },
+      { prompt: 'develop a prototype app', note: 'prototype(trivial) > develop(feature)' },
+    ];
+
+    for (let i = 0; i < trivialFeatureCases.length; i++) {
+      const { prompt, note } = trivialFeatureCases[i];
+      initState(sid);
+      runHook('task-classifier', { session_id: sid, prompt });
+
+      test(`J${i + 4}: trivial > feature — ${note}`, () => {
+        const state = readState(sid);
+        assert.strictEqual(state.taskType, 'quickfix');
+      });
+    }
+
+    // J6-J8: 純 Research 不被 trivial 影響（迴歸驗證）
+    const pureResearchCases = [
+      { prompt: '查看目前的架構', note: '查看(research)，無 trivial 關鍵字' },
+      { prompt: '這個 API 是什麼？', note: '是什麼(research)' },
+      { prompt: 'how does this work?', note: 'how(research)' },
+    ];
+
+    for (let i = 0; i < pureResearchCases.length; i++) {
+      const { prompt, note } = pureResearchCases[i];
+      initState(sid);
+      runHook('task-classifier', { session_id: sid, prompt });
+
+      test(`J${i + 6}: research 迴歸 — ${note}`, () => {
+        const state = readState(sid);
+        assert.strictEqual(state.taskType, 'research');
+      });
+    }
+
+    // J9-J10: 純 Feature 不被影響（迴歸驗證）
+    const pureFeatureCases = [
+      { prompt: '建立完整的使用者認證系統', note: '建立...系統(feature)，無 trivial' },
+      { prompt: 'implement user authentication', note: 'implement(feature)' },
+    ];
+
+    for (let i = 0; i < pureFeatureCases.length; i++) {
+      const { prompt, note } = pureFeatureCases[i];
+      initState(sid);
+      runHook('task-classifier', { session_id: sid, prompt });
+
+      test(`J${i + 9}: feature 迴歸 — ${note}`, () => {
+        const state = readState(sid);
+        assert.strictEqual(state.taskType, 'feature');
+        assert.strictEqual(state.pipelineEnforced, true);
+      });
+    }
+
+    // J11: Trivial 任務 dev-gate 不阻擋（完整 hook 鏈驗證）
+    initState(sid);
+    runHook('task-classifier', { session_id: sid, prompt: '做一個 poc 測試看看' });
+
+    const gateResult = runHook('dev-gate', {
+      session_id: sid,
+      tool_name: 'Write',
+      tool_input: { file_path: 'src/poc.ts' },
+    });
+
+    test('J11: trivial(poc+看看) → dev-gate 放行寫碼', () => {
+      assert.strictEqual(gateResult.exitCode, 0);
+    });
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
 // 結果輸出
 // ═══════════════════════════════════════════════
 
