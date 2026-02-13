@@ -7,18 +7,53 @@
  */
 'use strict';
 const https = require('https');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 const API_BASE = 'https://api.telegram.org/bot';
 const SEND_TIMEOUT = 8000;   // sendMessage timeout
 const POLL_TIMEOUT = 30;     // getUpdates long polling（秒）
+const ENV_FILE = path.join(os.homedir(), '.claude', 'notify.env');
 
 /**
- * 從環境變數讀取 Telegram 認證
+ * 解析簡易 .env 檔案（KEY=VALUE 格式）
+ * @param {string} filePath
+ * @returns {object}
+ */
+function parseEnvFile(filePath) {
+  const vars = {};
+  try {
+    if (!fs.existsSync(filePath)) return vars;
+    const lines = fs.readFileSync(filePath, 'utf8').split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx < 1) continue;
+      const key = trimmed.slice(0, eqIdx).trim();
+      const val = trimmed.slice(eqIdx + 1).trim();
+      if (val) vars[key] = val;
+    }
+  } catch (_) {}
+  return vars;
+}
+
+/**
+ * 從環境變數讀取 Telegram 認證，fallback 讀 ~/.claude/notify.env
  * @returns {{ token: string, chatId: string } | null}
  */
 function getCredentials() {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  let token = process.env.TELEGRAM_BOT_TOKEN;
+  let chatId = process.env.TELEGRAM_CHAT_ID;
+
+  // 環境變數不完整時，嘗試讀取 .env 檔案
+  if (!token || !chatId) {
+    const envVars = parseEnvFile(ENV_FILE);
+    token = token || envVars.TELEGRAM_BOT_TOKEN;
+    chatId = chatId || envVars.TELEGRAM_CHAT_ID;
+  }
+
   if (!token || !chatId) return null;
   return { token, chatId };
 }

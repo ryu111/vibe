@@ -61,7 +61,7 @@ function buildProgressBar(currentStage, completedStages, stageResults) {
     if (stage === currentStage) {
       return `${display.emoji} \u23F3`;
     }
-    return `\u2B1C`;
+    return `${display.emoji} \u2B1C`;
   }).join(' \u2192 ');
 }
 
@@ -85,8 +85,9 @@ process.stdin.on('end', async () => {
 
     if (!agentType) process.exit(0);
 
-    // 只處理 pipeline agent
-    const currentStage = AGENT_STAGE[agentType];
+    // 只處理 pipeline agent（agentType 可能是 "flow:architect" 或 "architect"）
+    const shortName = agentType.includes(':') ? agentType.split(':')[1] : agentType;
+    const currentStage = AGENT_STAGE[shortName];
     if (!currentStage) process.exit(0);
 
     // 讀取 pipeline-state file
@@ -100,10 +101,11 @@ process.stdin.on('end', async () => {
       process.exit(0);
     }
 
-    // 建立已完成 stage 列表
+    // 建立已完成 stage 列表（agent 名稱可能是 "flow:planner" 或 "planner"）
     const completedStages = [];
     for (const agent of (state.completed || [])) {
-      const stage = AGENT_STAGE[agent];
+      const shortName = agent.includes(':') ? agent.split(':')[1] : agent;
+      const stage = AGENT_STAGE[shortName];
       if (stage && !completedStages.includes(stage)) {
         completedStages.push(stage);
       }

@@ -128,7 +128,10 @@ async function handleStatus(token, chatId) {
 
   const lines = sessions.map(s => {
     const sid = s.id.slice(0, 8);
-    const completed = (s.completed || []).map(a => AGENT_STAGE[a]).filter(Boolean);
+    const completed = (s.completed || []).map(a => {
+      const short = a.includes(':') ? a.split(':')[1] : a;
+      return AGENT_STAGE[short];
+    }).filter(Boolean);
     const expected = s.expectedStages || Object.values(AGENT_STAGE);
     const progress = Math.round((completed.length / expected.length) * 100);
     const taskType = s.taskType || 'unknown';
@@ -151,7 +154,10 @@ async function handleStages(token, chatId, args) {
   }
 
   const sid = target.id.slice(0, 8);
-  const completed = (target.completed || []).map(a => AGENT_STAGE[a]).filter(Boolean);
+  const completed = (target.completed || []).map(a => {
+    const short = a.includes(':') ? a.split(':')[1] : a;
+    return AGENT_STAGE[short];
+  }).filter(Boolean);
   const results = target.stageResults || {};
 
   const stageLines = (target.expectedStages || Object.keys(STAGE_EMOJI)).map(stage => {
