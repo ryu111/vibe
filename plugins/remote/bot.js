@@ -131,6 +131,19 @@ function sendKeys(pane, text) {
   execSync(`tmux send-keys -t ${pane} Enter`, { timeout: 5000 });
 }
 
+/**
+ * 透過 tmux 鍵盤操作回答 AskUserQuestion
+ * TUI 用上下鍵導航、Enter 確認 — 用 key name 而非 literal text
+ * @param {string} pane — tmux pane ID
+ * @param {number} optionIndex — 0-based 選項索引
+ */
+function sendAskAnswer(pane, optionIndex) {
+  for (let i = 0; i < optionIndex; i++) {
+    execSync(`tmux send-keys -t ${pane} Down`, { timeout: 2000 });
+  }
+  execSync(`tmux send-keys -t ${pane} Enter`, { timeout: 2000 });
+}
+
 // ─── 指令處理 ──────────────────────────────────
 
 /**
@@ -274,6 +287,55 @@ async function handleTmux(token, chatId) {
     return sendMessage(token, chatId, `\u2705 tmux \u5DF2\u9023\u7DDA\nPane: \`${pane}\``);
   }
   return sendMessage(token, chatId, '\u274C tmux \u672A\u9023\u7DDA\n\u8ACB\u5728 tmux \u5167\u555F\u52D5 Claude Code');
+}
+
+/**
+ * 檢查是否有 pending AskUserQuestion
+ * @returns {{ pending: object, optionIndex: number } | null}
+ */
+function checkAskPending(text) {
+  let pending;
+  try {
+    pending = JSON.parse(fs.readFileSync(ASK_PENDING_FILE, 'utf8'));
+  } catch (_) {
+    return null;
+  }
+  // 檢查是否過期（5 分鐘）
+  if (Date.now() - (pending.createdAt || 0) > 5 * 60 * 1000) {
+    try { fs.unlinkSync(ASK_PENDING_FILE); } catch (_) {}
+    return null;
+  }
+  // 解析數字選擇（1-based → 0-based）
+  const num = parseInt(text, 10);
+  if (isNaN(num) || num < 1 || num > (pending.optionCount || 0)) return null;
+  return { pending, optionIndex: num - 1 };
+}
+
+/**
+ * 處理 AskUserQuestion 的 Telegram 回覆 — 透過 tmux 鍵盤操作選擇選項
+ */
+async function handleAskAnswer(token, chatId, optionIndex, pending) {
+  const pane = cachedPane || detectPane();
+  if (!pane) {
+    return sendMessage(token, chatId, '\u274C tmux \u672A\u9023\u7DDA', null);
+  }
+  cachedPane = pane;
+
+  const q = (pending.questions || [])[pending.questionIndex || 0];
+  const label = q && q.options && q.options[optionIndex]
+    ? q.options[optionIndex].label
+    : `\u9078\u9805 ${optionIndex + 1}`;
+
+  try {
+    sendAskAnswer(pane, optionIndex);
+    appendLog(`ask-answer: ${optionIndex} (${label})`);
+    // 清理 pending
+    try { fs.unlinkSync(ASK_PENDING_FILE); } catch (_) {}
+    await sendMessage(token, chatId, `\u2705 \u5DF2\u9078\u64C7\uFF1A${label}`, null);
+  } catch (err) {
+    cachedPane = null;
+    return sendMessage(token, chatId, `\u274C \u64CD\u4F5C\u5931\u6557\uFF1A${err.message}`, null);
+  }
 }
 
 // ─── AskUserQuestion callback 處理 ──────────────
@@ -537,9 +599,15 @@ async function main() {
             await handleTmux(creds.token, creds.chatId);
             break;
           default:
-            // 非指令訊息 → 視同 /say
+            // 非指令訊息
             if (!text.startsWith('/')) {
-              await handleSay(creds.token, creds.chatId, text);
+              // 先檢查是否有 pending AskUserQuestion → 數字回覆觸發鍵盤操作
+              const askMatch = checkAskPending(text);
+              if (askMatch) {
+                await handleAskAnswer(creds.token, creds.chatId, askMatch.optionIndex, askMatch.pending);
+              } else {
+                await handleSay(creds.token, creds.chatId, text);
+              }
             }
             break;
         }

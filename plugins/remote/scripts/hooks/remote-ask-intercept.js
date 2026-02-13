@@ -3,13 +3,13 @@
  * remote-ask-intercept.js — PreToolUse hook 轉發 AskUserQuestion
  *
  * 非阻擋模式：
- * 1. 解析 tool_input.questions → 建構 inline keyboard
- * 2. 發送到 Telegram（inline keyboard）
- * 3. 寫 pending file → 立即放行 TUI（continue: true）
- * 4. 使用者在終端回答 → 正常流程
- * 5. 使用者在 Telegram 回答 → daemon 透過 tmux send-keys 注入
+ * 1. 解析 tool_input.questions → 組裝純文字通知
+ * 2. 發送到 Telegram（純文字，附選項編號）
+ * 3. 寫 pending file（供 daemon 偵測 + tmux 鍵盤操作）
+ * 4. 立即放行 TUI（continue: true）
+ * 5. 使用者在終端回答 → 正常流程
+ * 6. 使用者在 Telegram 回覆數字 → daemon 透過 tmux send-keys 注入鍵盤操作
  *
- * 誰先回答用誰的。Telegram 回答只在使用者不在終端前時有用。
  * 靜默降級：credentials 缺失 → continue: true
  */
 'use strict';
@@ -19,45 +19,32 @@ const os = require('os');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const PENDING_FILE = path.join(CLAUDE_DIR, 'remote-ask-pending.json');
-const RESPONSE_FILE = path.join(CLAUDE_DIR, 'remote-ask-response.json');
 
 /**
- * 將 AskUserQuestion 的 questions 轉換為 Telegram inline keyboard
+ * 組裝通知文字（純文字，附選項編號）
  */
-function buildKeyboard(questions, qIdx) {
+function buildNotifyText(questions, qIdx) {
   const q = questions[qIdx];
   if (!q || !q.options) return null;
 
   const multiSelect = q.multiSelect === true;
   const header = q.question || q.header || '請選擇';
 
-  const keyboard = q.options.map((opt, i) => [{
-    text: multiSelect ? `\u2610 ${opt.label}` : opt.label,
-    callback_data: `ask|${i}`,
-  }]);
+  let text = `\u{1F4CB} ${header}`;
+  text += '\n';
+  for (let i = 0; i < q.options.length; i++) {
+    const opt = q.options[i];
+    text += `\n${i + 1}. ${opt.label}`;
+    if (opt.description) text += ` \u2014 ${opt.description}`;
+  }
 
   if (multiSelect) {
-    keyboard.push([{
-      text: '\u2714 \u78BA\u8A8D',
-      callback_data: 'ask|confirm',
-    }]);
+    text += '\n\n\u{1F449} \u8ACB\u5728\u7D42\u7AEF\u78BA\u8A8D\uFF08\u591A\u9078\uFF09';
+  } else {
+    text += '\n\n\u{1F449} \u56DE\u8986\u6578\u5B57\u5373\u53EF\u9078\u64C7\uFF0C\u6216\u5728\u7D42\u7AEF\u64CD\u4F5C';
   }
 
-  let text = `\u{1F4CB} *${header}*`;
-  const hasDesc = q.options.some(o => o.description);
-  if (hasDesc) {
-    text += '\n';
-    for (let i = 0; i < q.options.length; i++) {
-      const opt = q.options[i];
-      text += `\n${i + 1}. *${opt.label}*`;
-      if (opt.description) text += ` \u2014 ${opt.description}`;
-    }
-  }
-  if (multiSelect) {
-    text += '\n\n\u{1F449} \u53EF\u9EDE\u591A\u500B\u518D\u6309\u300C\u78BA\u8A8D\u300D';
-  }
-
-  return { text, keyboard, multiSelect };
+  return { text, multiSelect, optionCount: q.options.length };
 }
 
 async function main() {
@@ -83,36 +70,22 @@ async function main() {
   const creds = tg.getCredentials();
   if (!creds) process.exit(0);
 
-  const kb = buildKeyboard(questions, 0);
-  if (!kb) process.exit(0);
+  const notify = buildNotifyText(questions, 0);
+  if (!notify) process.exit(0);
 
-  // 清理殘留
-  try { fs.unlinkSync(RESPONSE_FILE); } catch (_) {}
+  // 發送純文字通知（不用 Markdown，避免特殊字元解析失敗）
+  try {
+    await tg.sendMessage(creds.token, creds.chatId, notify.text, null);
+  } catch (_) {}
 
-  if (kb.multiSelect) {
-    // 多選：純文字通知（不給按鈕，避免混亂）
-    const notifyText = kb.text + '\n\n\u{1F449} \u8ACB\u5728\u7D42\u7AEF\u78BA\u8A8D';
-    try {
-      await tg.sendMessage(creds.token, creds.chatId, notifyText);
-    } catch (_) {}
-  } else {
-    // 單選：inline keyboard（可點選標記偏好）
-    let msg;
-    try {
-      msg = await tg.sendMessageWithKeyboard(creds.token, creds.chatId, kb.text, kb.keyboard);
-    } catch (_) {
-      process.exit(0);
-    }
-
-    // 寫 pending state（daemon 讀取用，單選才需要）
+  // 寫 pending state — daemon 偵測後可用 tmux 鍵盤操作回答
+  if (!notify.multiSelect) {
     fs.writeFileSync(PENDING_FILE, JSON.stringify({
-      messageId: msg.message_id,
       chatId: creds.chatId,
       questions,
       questionIndex: 0,
       multiSelect: false,
-      selections: [],
-      hookTimedOut: true,
+      optionCount: notify.optionCount,
       createdAt: Date.now(),
     }));
   }
