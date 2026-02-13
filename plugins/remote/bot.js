@@ -357,11 +357,16 @@ async function handleCallbackQuery(token, chatId, callbackQuery) {
         answeredAt: Date.now(),
       }));
 
-      // 更新 Telegram 訊息為已回答狀態
-      const labelStr = selectedLabels.join(', ');
+      // 更新 Telegram 訊息：顯示完整選項清單 + 已選標記
+      const header = q.question || q.header || '請選擇';
+      let confirmText = `\u2705 *${header}*\n`;
+      for (let i = 0; i < q.options.length; i++) {
+        const opt = q.options[i];
+        const mark = pending.selections[i] ? '\u2705' : '\u00B7';
+        confirmText += `\n${mark} ${opt.label}`;
+      }
       try {
-        await editMessageText(token, chatId, pending.messageId,
-          `\u{1F4CB} *${q.question || q.header || '\u8ACB\u9078\u64C7'}*\n\u2192 \u9078\u64C7\uFF1A${labelStr} \u2705`);
+        await editMessageText(token, chatId, pending.messageId, confirmText);
       } catch (_) {}
 
       // hook 已超時 → tmux 注入答案
@@ -414,10 +419,16 @@ async function handleCallbackQuery(token, chatId, callbackQuery) {
       answeredAt: Date.now(),
     }));
 
-    // 更新 Telegram 訊息為已回答狀態
+    // 更新 Telegram 訊息：顯示完整選項清單 + 已選標記
+    const header = q.question || q.header || '請選擇';
+    let confirmText = `\u2705 *${header}*\n`;
+    for (let i = 0; i < q.options.length; i++) {
+      const opt = q.options[i];
+      const mark = i === idx ? '\u2705' : '\u00B7';
+      confirmText += `\n${mark} ${opt.label}`;
+    }
     try {
-      await editMessageText(token, chatId, pending.messageId,
-        `\u{1F4CB} *${q.question || q.header || '\u8ACB\u9078\u64C7'}*\n\u2192 \u9078\u64C7\uFF1A${selected.label} \u2705`);
+      await editMessageText(token, chatId, pending.messageId, confirmText);
     } catch (_) {}
 
     // hook 已超時 → tmux 注入答案
