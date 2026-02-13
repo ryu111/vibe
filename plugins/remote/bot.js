@@ -297,9 +297,9 @@ async function handleTmux(token, chatId) {
 }
 
 /**
- * 檢查是否有 pending AskUserQuestion，解析數字選擇
+ * 檢查是否有 pending AskUserQuestion，解析數字選擇或自由對話
  * 支援單數字 "2" 和多數字 "1 3" / "1,3" / "1、3"
- * @returns {{ pending: object, indices: number[] } | null}
+ * @returns {{ pending, indices?, confirm?, adjustToggle?, freeText?, text? } | null}
  */
 function checkAskPending(text) {
   let pending;
@@ -330,15 +330,15 @@ function checkAskPending(text) {
         if (indices.length > 0) return { pending, indices, adjustToggle: true };
       }
     }
-    return null;
+    return { pending, freeText: true, text: trimmed };
   }
 
   // 正常狀態 → 解析數字（支援 "2"、"1 3"、"1,3"、"1、3"）
   const nums = text.split(/[\s,、]+/).map(s => parseInt(s, 10)).filter(n => !isNaN(n));
-  if (nums.length === 0) return null;
+  if (nums.length === 0) return { pending, freeText: true, text: trimmed };
   const max = pending.optionCount || 0;
   const indices = [...new Set(nums)].filter(n => n >= 1 && n <= max).map(n => n - 1).sort((a, b) => a - b);
-  if (indices.length === 0) return null;
+  if (indices.length === 0) return { pending, freeText: true, text: trimmed };
   return { pending, indices };
 }
 
@@ -813,7 +813,33 @@ async function main() {
               // 先檢查是否有 pending AskUserQuestion
               const askMatch = checkAskPending(text);
               if (askMatch) {
-                if (askMatch.confirm) {
+                if (askMatch.freeText) {
+                  // 自由對話：Esc 退出 AskUserQuestion → 送出文字
+                  const p = cachedPane || detectPane();
+                  if (p) {
+                    cachedPane = p;
+                    sendKey(p, 'Escape');
+                    sleep(200);
+                    sendKeys(p, askMatch.text);
+                    appendLog(`ask-freetext: "${askMatch.text}"`);
+                    // 更新 Telegram 訊息 + 清理
+                    if (askMatch.pending.messageId) {
+                      const qIdx = askMatch.pending.questionIndex || 0;
+                      const q = (askMatch.pending.questions || [])[qIdx];
+                      const header = q && (q.question || q.header) || '';
+                      try {
+                        await editMessageText(creds.token, creds.chatId,
+                          askMatch.pending.messageId,
+                          `\u{1F4CB} ${header}\n\n\u{1F4AC} ${askMatch.text}`,
+                          null);
+                      } catch (_) {}
+                    }
+                    try { fs.unlinkSync(ASK_PENDING_FILE); } catch (_) {}
+                    await sendMessage(creds.token, creds.chatId, '\u2705 \u5DF2\u50B3\u9001', null);
+                  } else {
+                    await sendMessage(creds.token, creds.chatId, '\u274C tmux \u672A\u9023\u7DDA', null);
+                  }
+                } else if (askMatch.confirm) {
                   // ok 確認 → 提交 / 推進下一題
                   await handleAskConfirm(creds.token, creds.chatId, askMatch.pending);
                 } else if (askMatch.adjustToggle) {
