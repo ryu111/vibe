@@ -52,7 +52,7 @@ let cachedPane = null;
 
 /**
  * 偵測 tmux pane（Claude Code 運行的終端）
- * 優先順序：環境變數 → 進程掃描 → null
+ * 優先順序：環境變數 → pane_current_command → pgrep 進程樹 → TMUX_PANE → null
  */
 function detectPane() {
   // 1. 環境變數（最可靠）
@@ -60,20 +60,41 @@ function detectPane() {
     return process.env.CLAUDE_TMUX_PANE;
   }
 
-  // 2. 掃描 tmux panes 找 claude 進程
   try {
-    const output = execSync('tmux list-panes -a -F "#{pane_id} #{pane_current_command}"', {
+    // 2a. 掃描 tmux panes 的 current_command 找 claude
+    const output = execSync('tmux list-panes -a -F "#{pane_id} #{pane_pid} #{pane_current_command}"', {
       encoding: 'utf8',
       timeout: 3000,
     }).trim();
 
+    const panes = []; // [{id, pid}]
     for (const line of output.split('\n')) {
-      const [paneId, ...cmdParts] = line.split(' ');
+      const [paneId, panePid, ...cmdParts] = line.split(' ');
       const cmd = cmdParts.join(' ').toLowerCase();
       if (cmd.includes('claude')) {
         return paneId;
       }
+      panes.push({ id: paneId, pid: panePid });
     }
+
+    // 2b. pgrep claude → 追溯 parent 到 tmux pane（解決 zsh→claude 的進程樹問題）
+    try {
+      const claudePids = execSync('pgrep -x claude', {
+        encoding: 'utf8',
+        timeout: 3000,
+      }).trim().split('\n').filter(Boolean);
+
+      const paneByPid = {};
+      for (const p of panes) paneByPid[p.pid] = p.id;
+
+      for (const cPid of claudePids) {
+        const ppid = execSync(`ps -o ppid= -p ${cPid}`, {
+          encoding: 'utf8',
+          timeout: 3000,
+        }).trim();
+        if (paneByPid[ppid]) return paneByPid[ppid];
+      }
+    } catch (_) {}
   } catch (_) {
     // tmux 未安裝或未執行
   }
@@ -92,11 +113,11 @@ function detectPane() {
  * @param {string} text — 要注入的文字
  */
 function sendKeys(pane, text) {
-  // 轉義雙引號和特殊字元
+  // 先送文字（-l = literal mode，避免特殊字元被解析為 key name）
   const escaped = text.replace(/"/g, '\\"').replace(/\$/g, '\\$');
-  execSync(`tmux send-keys -t ${pane} "${escaped}" Enter`, {
-    timeout: 5000,
-  });
+  execSync(`tmux send-keys -t ${pane} -l "${escaped}"`, { timeout: 5000 });
+  // 再單獨送 Enter
+  execSync(`tmux send-keys -t ${pane} Enter`, { timeout: 5000 });
 }
 
 // ─── 指令處理 ──────────────────────────────────
