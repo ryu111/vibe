@@ -11,8 +11,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const { getCredentials, sendMessage } = require(path.join(__dirname, '..', 'lib', 'telegram.js'));
-const { parseLastAssistantTurn } = require(path.join(__dirname, '..', 'lib', 'transcript.js'));
+const { getCredentials, sendMessage } = require(path.join(__dirname, '..', 'lib', 'remote', 'telegram.js'));
+const { parseLastAssistantTurn } = require(path.join(__dirname, '..', 'lib', 'remote', 'transcript.js'));
 const { STAGES, STAGE_ORDER, AGENT_TO_STAGE } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');

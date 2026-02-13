@@ -11,9 +11,9 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const { discoverPipeline } = require(path.join(__dirname, '..', 'lib', 'pipeline-discovery.js'));
-const { detect } = require(path.join(__dirname, '..', 'lib', 'env-detector.js'));
-const { reset: resetCounter } = require(path.join(__dirname, '..', 'lib', 'counter.js'));
+const { discoverPipeline } = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-discovery.js'));
+const { detect } = require(path.join(__dirname, '..', 'lib', 'flow', 'env-detector.js'));
+const { reset: resetCounter } = require(path.join(__dirname, '..', 'lib', 'flow', 'counter.js'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 

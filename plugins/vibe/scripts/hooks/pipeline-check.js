@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const { discoverPipeline } = require(path.join(__dirname, '..', 'lib', 'pipeline-discovery.js'));
+const { discoverPipeline } = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-discovery.js'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 

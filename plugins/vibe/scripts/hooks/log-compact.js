@@ -6,7 +6,7 @@
  */
 'use strict';
 const path = require('path');
-const { reset } = require(path.join(__dirname, '..', 'lib', 'counter.js'));
+const { reset } = require(path.join(__dirname, '..', 'lib', 'flow', 'counter.js'));
 
 let input = '';
 process.stdin.on('data', d => input += d);

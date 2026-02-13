@@ -66,13 +66,15 @@ function createPipelineState(state) {
 function runHook(scriptName, stdinData) {
   const mockDir = path.join(CLAUDE_DIR, 'mock-plugin');
   const mockScriptsLib = path.join(mockDir, 'scripts', 'lib');
+  const mockScriptsLibRemote = path.join(mockDir, 'scripts', 'lib', 'remote');
   const mockScriptsHooks = path.join(mockDir, 'scripts', 'hooks');
   fs.mkdirSync(mockScriptsLib, { recursive: true });
+  fs.mkdirSync(mockScriptsLibRemote, { recursive: true });
   fs.mkdirSync(mockScriptsHooks, { recursive: true });
 
   // 建立 mock telegram.js — 記錄 sendMessage 呼叫到 output file
   const outputFile = path.join(CLAUDE_DIR, `output-${Date.now()}.json`);
-  fs.writeFileSync(path.join(mockScriptsLib, 'telegram.js'), `
+  fs.writeFileSync(path.join(mockScriptsLibRemote, 'telegram.js'), `
 'use strict';
 const fs = require('fs');
 const OUTPUT = '${outputFile}';
@@ -98,8 +100,8 @@ module.exports = {
 
   // 複製 transcript.js（真實版本）
   fs.copyFileSync(
-    path.join(SCRIPTS_DIR, 'lib', 'transcript.js'),
-    path.join(mockScriptsLib, 'transcript.js')
+    path.join(SCRIPTS_DIR, 'lib', 'remote', 'transcript.js'),
+    path.join(mockScriptsLibRemote, 'transcript.js')
   );
 
   // 複製 registry.js（真實版本 — hook 腳本透過 __dirname 引用）

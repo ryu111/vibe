@@ -7,7 +7,7 @@
  */
 'use strict';
 const path = require('path');
-const { isRunning, start, getState, getLanIP, PORT } = require(path.join(__dirname, '..', 'lib', 'server-manager.js'));
+const { isRunning, start, getState, getLanIP, PORT } = require(path.join(__dirname, '..', 'lib', 'dashboard', 'server-manager.js'));
 
 let input = '';
 process.stdin.on('data', d => input += d);

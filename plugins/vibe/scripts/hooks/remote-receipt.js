@@ -31,7 +31,7 @@ async function main() {
   // 載入 telegram.js
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || path.join(__dirname, '..', '..');
   const { getCredentials, sendMessage, editMessageText } = require(
-    path.join(pluginRoot, 'scripts', 'lib', 'telegram.js')
+    path.join(pluginRoot, 'scripts', 'lib', 'remote', 'telegram.js')
   );
 
   const creds = getCredentials();
@@ -75,7 +75,7 @@ async function main() {
   if (!transcriptPath || !fs.existsSync(transcriptPath)) process.exit(0);
 
   const { parseLastAssistantTurn } = require(
-    path.join(pluginRoot, 'scripts', 'lib', 'transcript.js')
+    path.join(pluginRoot, 'scripts', 'lib', 'remote', 'transcript.js')
   );
   const turn = parseLastAssistantTurn(transcriptPath, { toolStats: true });
 

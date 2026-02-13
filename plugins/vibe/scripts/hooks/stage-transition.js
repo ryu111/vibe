@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const { discoverPipeline, findNextStage } = require(path.join(__dirname, '..', 'lib', 'pipeline-discovery.js'));
+const { discoverPipeline, findNextStage } = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-discovery.js'));
 
 // 智慧回退配置
 const MAX_RETRIES = parseInt(process.env.CLAUDE_PIPELINE_MAX_RETRIES || '3', 10);

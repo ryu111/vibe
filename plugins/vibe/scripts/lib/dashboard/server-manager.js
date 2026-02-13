@@ -14,7 +14,7 @@ const { spawn } = require('child_process');
 
 const PORT = Number(process.env.VIBE_DASHBOARD_PORT) || 3800;
 const PID_FILE = path.join(os.homedir(), '.claude', 'dashboard-server.pid');
-const SERVER_PATH = path.join(__dirname, '..', '..', 'server.js');
+const SERVER_PATH = path.join(__dirname, '..', '..', '..', 'server.js');
 
 /**
  * 檢查指定 port 是否有服務在監聽

@@ -29,17 +29,17 @@ allowed-tools: Read, Bash, Grep, Glob
 
 ### 查詢狀態
 ```bash
-node -e "const m = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/server-manager.js'); (async()=>{ const r = await m.isRunning(); const s = m.getState(); const ip = m.getLanIP(); console.log(JSON.stringify({running:r, state:s, lanIP:ip, port:m.PORT})) })()"
+node -e "const m = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/dashboard/server-manager.js'); (async()=>{ const r = await m.isRunning(); const s = m.getState(); const ip = m.getLanIP(); console.log(JSON.stringify({running:r, state:s, lanIP:ip, port:m.PORT})) })()"
 ```
 
 ### 啟動
 ```bash
-node -e "const m = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/server-manager.js'); (async()=>{ if(await m.isRunning()){console.log('already running');return} const r=m.start(); console.log(JSON.stringify(r)) })()"
+node -e "const m = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/dashboard/server-manager.js'); (async()=>{ if(await m.isRunning()){console.log('already running');return} const r=m.start(); console.log(JSON.stringify(r)) })()"
 ```
 
 ### 停止
 ```bash
-node -e "const m = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/server-manager.js'); console.log(JSON.stringify(m.stop()))"
+node -e "const m = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/dashboard/server-manager.js'); console.log(JSON.stringify(m.stop()))"
 ```
 
 ### 開啟瀏覽器

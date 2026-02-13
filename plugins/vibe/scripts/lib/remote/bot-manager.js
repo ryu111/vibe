@@ -13,7 +13,7 @@ const os = require('os');
 const { spawn } = require('child_process');
 
 const PID_FILE = path.join(os.homedir(), '.claude', 'remote-bot.pid');
-const BOT_PATH = path.join(__dirname, '..', '..', 'bot.js');
+const BOT_PATH = path.join(__dirname, '..', '..', '..', 'bot.js');
 
 /**
  * 檢查 daemon 是否執行中

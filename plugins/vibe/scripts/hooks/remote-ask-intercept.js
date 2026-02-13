@@ -81,7 +81,7 @@ async function main() {
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || path.join(__dirname, '..', '..');
   let tg;
   try {
-    tg = require(path.join(pluginRoot, 'scripts', 'lib', 'telegram.js'));
+    tg = require(path.join(pluginRoot, 'scripts', 'lib', 'remote', 'telegram.js'));
   } catch (_) {
     process.exit(0);
   }

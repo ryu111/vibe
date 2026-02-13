@@ -75,7 +75,7 @@ console.log('OK');
 #### start
 ```bash
 node -e "
-const mgr = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/bot-manager.js');
+const mgr = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/remote/bot-manager.js');
 if (mgr.isRunning()) {
   const s = mgr.getState();
   console.log(JSON.stringify({ running: true, pid: s.pid }));
@@ -89,7 +89,7 @@ if (mgr.isRunning()) {
 #### stop
 ```bash
 node -e "
-const mgr = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/bot-manager.js');
+const mgr = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/remote/bot-manager.js');
 const r = mgr.stop();
 console.log(JSON.stringify(r));
 "
@@ -98,7 +98,7 @@ console.log(JSON.stringify(r));
 #### status
 ```bash
 node -e "
-const mgr = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/bot-manager.js');
+const mgr = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/remote/bot-manager.js');
 const state = mgr.getState();
 console.log(JSON.stringify(state || { running: false }));
 "

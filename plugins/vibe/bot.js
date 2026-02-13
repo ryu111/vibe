@@ -19,7 +19,7 @@ const {
   getCredentials, sendMessage, editMessageText,
   sendMessageWithKeyboard, answerCallbackQuery, editMessageReplyMarkup,
   getUpdates,
-} = require(path.join(__dirname, 'scripts', 'lib', 'telegram.js'));
+} = require(path.join(__dirname, 'scripts', 'lib', 'remote', 'telegram.js'));
 const { STAGES, STAGE_ORDER, AGENT_TO_STAGE } = require(path.join(__dirname, 'scripts', 'lib', 'registry.js'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');

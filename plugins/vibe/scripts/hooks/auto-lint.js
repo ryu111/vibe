@@ -10,9 +10,9 @@
 const { execSync } = require("child_process");
 const path = require("path");
 
-const langMap = require(path.join(__dirname, "..", "lib", "lang-map.js"));
+const langMap = require(path.join(__dirname, "..", "lib", "sentinel", "lang-map.js"));
 const toolDetector = require(
-  path.join(__dirname, "..", "lib", "tool-detector.js"),
+  path.join(__dirname, "..", "lib", "sentinel", "tool-detector.js"),
 );
 
 let input = "";

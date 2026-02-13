@@ -7,8 +7,8 @@
  */
 'use strict';
 const path = require('path');
-const { getCredentials } = require(path.join(__dirname, '..', 'lib', 'telegram.js'));
-const { isRunning, start, getState } = require(path.join(__dirname, '..', 'lib', 'bot-manager.js'));
+const { getCredentials } = require(path.join(__dirname, '..', 'lib', 'remote', 'telegram.js'));
+const { isRunning, start, getState } = require(path.join(__dirname, '..', 'lib', 'remote', 'bot-manager.js'));
 
 let input = '';
 process.stdin.on('data', d => input += d);
