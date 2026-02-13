@@ -15,7 +15,7 @@
     },
     "flow": {
       "description": "開發工作流 — 規劃、架構、compact、pipeline 管理、環境偵測",
-      "priority": "high",
+      "priority": "done",
       "category": "workflow",
       "buildOrder": 1,
       "depGroup": "core",
@@ -29,7 +29,7 @@
     },
     "sentinel": {
       "description": "品質全鏈守衛 — lint、format、review、security、TDD、E2E、QA、verify",
-      "priority": "high",
+      "priority": "done",
       "category": "quality",
       "buildOrder": 2,
       "depGroup": "core",
@@ -43,7 +43,7 @@
     },
     "patterns": {
       "description": "語言/框架模式庫 — 編碼標準、設計模式、最佳實踐（純知識庫）",
-      "priority": "medium",
+      "priority": "done",
       "category": "knowledge",
       "buildOrder": 3,
       "depGroup": "independent",
@@ -57,7 +57,7 @@
     },
     "evolve": {
       "description": "知識進化 — instincts 聚類進化、文件偵測與同步",
-      "priority": "low",
+      "priority": "done",
       "category": "intelligence",
       "buildOrder": 4,
       "depGroup": "advanced",
@@ -71,7 +71,7 @@
     },
     "dashboard": {
       "description": "Pipeline 視覺化監控 — 即時狀態、階段進度、WebSocket 推播",
-      "priority": "low",
+      "priority": "done",
       "category": "monitoring",
       "buildOrder": 5,
       "depGroup": "monitoring",
@@ -84,12 +84,12 @@
       }
     },
     "notify": {
-      "description": "通訊整合 — LINE / Telegram 雙向通訊，進度通知與遠端指令",
-      "priority": "high",
+      "description": "Telegram 雙向通訊 — Pipeline 進度推播、狀態查詢、tmux 遠端控制",
+      "priority": "done",
       "category": "communication",
       "buildOrder": 6,
       "depGroup": "communication",
-      "tags": ["line", "telegram", "notification", "bidirectional", "messaging"],
+      "tags": ["telegram", "notification", "remote-control", "daemon"],
       "expected": {
         "skills": ["notify", "notify-config"],
         "agents": [],

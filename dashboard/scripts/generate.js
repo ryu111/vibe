@@ -1054,6 +1054,17 @@ function generateIndex(specs) {
                       ▼
                    完成
 
+  ┌─ DASHBOARD ─ 監控層（即時視覺化）───────────┐
+  │  SessionStart: 自動啟動 WebSocket server    │
+  │  /dashboard:dashboard（手動控管）            │
+  └─────────────────────────────────────────────┘
+
+  ┌─ NOTIFY ─── 通訊層（Telegram 雙向）─────────┐
+  │  SessionStart: 自動啟動 bot daemon          │
+  │  SubagentStop: pipeline 進度推播            │
+  │  /notify · /notify-config（手動控管）        │
+  └─────────────────────────────────────────────┘
+
   ┌─ COLLAB ──── 任意階段可插入（需 Agent Teams）┐
   │  adversarial-plan · review · refactor       │
   └─────────────────────────────────────────────┘
@@ -1081,11 +1092,14 @@ SENTINEL PostToolUse: auto-format     /sentinel:security 安全掃描
 SENTINEL PostToolUse: test-check      /sentinel:tdd     TDD 工作流
 SENTINEL PreToolUse: danger-guard     /sentinel:e2e     E2E 測試
 SENTINEL Stop: console-log-check      /sentinel:coverage 覆蓋率
-COLLAB   SessionStart: team-init      /sentinel:lint    手動 lint
-                                      /sentinel:format  手動格式化
-                                      /sentinel:verify  綜合驗證
-                                      /evolve:evolve    知識進化
+DASH     SessionStart: autostart      /sentinel:lint    手動 lint
+NOTIFY   SessionStart: autostart      /sentinel:format  手動格式化
+NOTIFY   SubagentStop: sender         /sentinel:verify  綜合驗證
+COLLAB   SessionStart: team-init      /evolve:evolve    知識進化
                                       /evolve:doc-sync  文件同步
+                                      /dashboard:dashboard 儀表板控管
+                                      /notify           通知控管
+                                      /notify-config    通知設定
                                       /collab:adversarial-plan  競爭規劃
                                       /collab:adversarial-review 對抗審查
                                       /collab:adversarial-refactor 競爭重構
@@ -1115,9 +1129,10 @@ COLLAB   SessionStart: team-init      /sentinel:lint    手動 lint
 │          │                  │                           │
 │          └──────┬───────────┘                           │
 │                 │ 可選增強                               │
-│          ┌──────▼───────┐                               │
-│          │   evolve     │                               │
-│          └──────────────┘                               │
+│    ┌────────────▼──┐  ┌────────────┐  ┌────────────┐   │
+│    │   evolve      │  │ dashboard  │  │   notify   │   │
+│    │  知識進化      │  │  即時監控   │  │ Telegram通訊│   │
+│    └───────────────┘  └────────────┘  └────────────┘   │
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
