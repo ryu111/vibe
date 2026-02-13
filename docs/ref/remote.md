@@ -1,15 +1,15 @@
-# notify — Telegram 雙向通訊
+# remote — Telegram 遠端控制
 
 > **優先級**：高
-> **定位**：通訊整合 — Pipeline 進度推播、狀態查詢、tmux 遠端控制
-> **Telegram 先行**，之後可擴充 LINE
+> **定位**：遠端控制 — Pipeline 進度推播、狀態查詢、tmux 遠端操作
+> **Telegram 先行**，之後可擴充其他通訊管道
 > **核心概念**：遊戲外掛模式 — 讀取狀態（pipeline state files）+ 注入輸入（tmux send-keys）
 
 ---
 
 ## 1. 概述
 
-notify 是 Vibe marketplace 的通訊整合 plugin。三大功能軸：
+remote 是 Vibe marketplace 的遠端控制 plugin。三大功能軸：
 
 1. **推播** — Pipeline stage 完成 → Telegram 通知（使用者手機收到進度）
 2. **查詢** — 從 Telegram 查詢 /status /stages → 讀 state files 直接回覆
@@ -21,7 +21,7 @@ notify 是 Vibe marketplace 的通訊整合 plugin。三大功能軸：
 Claude Code (tmux session)
     ↓ SubagentStop 事件
     ↓
-notify-sender.js → 讀 pipeline-state → Telegram 推播 ──→ 使用者手機
+remote-sender.js → 讀 pipeline-state → Telegram 推播 ──→ 使用者手機
                                                           ↓
                                                      /status /say
                                                           ↓
@@ -33,8 +33,8 @@ bot.js daemon (long polling) ← Telegram Bot API ←────── 使用�
 
 ### 解耦原則
 
-- notify **不 import** flow 的程式碼（零依賴）
-- Agent → Stage 映射硬編碼在 notify-sender.js 內
+- remote **不 import** flow 的程式碼（零依賴）
+- Agent → Stage 映射硬編碼在 remote-sender.js 內
 - 有 flow → pipeline stage 通知完整
 - 無 flow → daemon 仍可運作（/status 掃描 state files，/say 注入 tmux）
 
@@ -57,22 +57,22 @@ bot.js daemon (long polling) ← Telegram Bot API ←────── 使用�
 
 | 名稱 | 說明 |
 |------|------|
-| `notify` | 主控 — start/stop/status/send/test |
-| `notify-config` | 設定教學 — show/verify/guide |
+| `remote` | 主控 — start/stop/status/send/test |
+| `remote-config` | 設定教學 — show/verify/guide |
 
 ### Hooks（2 個）
 
 | 事件 | Matcher | Script | 說明 |
 |------|---------|--------|------|
-| SessionStart | `startup\|resume` | `notify-autostart.js` | 自動啟動 bot daemon |
-| SubagentStop | `*` | `notify-sender.js` | Pipeline stage 完成推播 |
+| SessionStart | `startup\|resume` | `remote-autostart.js` | 自動啟動 bot daemon |
+| SubagentStop | `*` | `remote-sender.js` | Pipeline stage 完成推播 |
 
 ### Scripts（4 個）
 
 | 名稱 | 類型 | 說明 |
 |------|------|------|
-| `notify-autostart.js` | hook | SessionStart: 偵測 → 啟動 daemon |
-| `notify-sender.js` | hook | SubagentStop: 讀 state → 推播 Telegram |
+| `remote-autostart.js` | hook | SessionStart: 偵測 → 啟動 daemon |
+| `remote-sender.js` | hook | SubagentStop: 讀 state → 推播 Telegram |
 | `bot-manager.js` | lib | Daemon 生命週期（isRunning/start/stop/getState） |
 | `telegram.js` | lib | Telegram Bot API 封裝（sendMessage/getUpdates/getMe） |
 
@@ -96,7 +96,7 @@ export TELEGRAM_CHAT_ID="987654321"              # 目標 chat ID
 
 **方式 B：.env 檔案**（推薦）
 ```bash
-# ~/.claude/notify.env
+# ~/.claude/remote.env
 TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
 TELEGRAM_CHAT_ID=987654321
 ```
@@ -109,7 +109,7 @@ TELEGRAM_CHAT_ID=987654321
 
 ### 觸發時機
 
-SubagentStop hook — flow plugin 的 stage-transition.js 先更新 state file（buildOrder 1），notify-sender.js 後讀取（buildOrder 6）。
+SubagentStop hook — flow plugin 的 stage-transition.js 先更新 state file（buildOrder 1），remote-sender.js 後讀取（buildOrder 6）。
 
 ### Agent → Stage 映射（硬編碼）
 
@@ -177,21 +177,23 @@ Session: a1b2c3d4
 tmux new -s claude
 claude
 
-# bot daemon 注入文字到同一 session
-tmux send-keys -t {pane} "幫我加登入頁面" Enter
+# bot daemon 注入文字到同一 session（分步送出）
+tmux send-keys -t {pane} -l "幫我加登入頁面"
+tmux send-keys -t {pane} Enter
 ```
 
 ### tmux pane 偵測
 
 1. `$CLAUDE_TMUX_PANE`（環境變數，最可靠）
-2. `tmux list-panes -a -F "#{pane_id} #{pane_current_command}"` → 找 `claude` 進程
-3. `$TMUX_PANE`（回退）
+2. `tmux list-panes -a` + `pane_current_command` 掃描 → 找 `claude` 進程
+3. `pgrep -x claude` + `ps -o ppid=` → 進程樹回溯到 tmux pane
+4. `$TMUX_PANE`（回退）
 
 ### 安全
 
 - 只回應指定 `TELEGRAM_CHAT_ID` 的使用者
 - `/say` 前綴與查詢指令明確區隔
-- 所有 `/say` 指令記錄到 `~/.claude/notify-bot.log`
+- 所有 `/say` 指令記錄到 `~/.claude/remote-bot.log`
 
 ---
 
@@ -199,11 +201,11 @@ tmux send-keys -t {pane} "幫我加登入頁面" Enter
 
 | 面向 | 設計 |
 |------|------|
-| PID 檔 | `~/.claude/notify-bot.pid`（全域） |
+| PID 檔 | `~/.claude/remote-bot.pid`（全域） |
 | 存活偵測 | `process.kill(pid, 0)`（無 port） |
 | 啟動 | `spawn('node', [botPath], { detached, stdio: 'ignore' })` |
-| 自動啟動 | SessionStart hook → notify-autostart.js |
-| 手動控制 | `/notify start\|stop\|status` |
+| 自動啟動 | SessionStart hook → remote-autostart.js |
+| 手動控制 | `/remote start\|stop\|status` |
 | 優雅關閉 | SIGTERM/SIGINT → 清理 PID → exit 0 |
 | 錯誤恢復 | polling 失敗 → 5s 後重試 |
 
@@ -225,6 +227,7 @@ tmux send-keys -t {pane} "幫我加登入頁面" Enter
 
 ## 10. 未來擴充
 
-- **LINE Messaging API** — 新增 `line.js` API 封裝，`/notify-config` 支援多頻道
+- **更多控制指令** — /cancel、/checkpoint、/restart 等從 Telegram 操作工作流
+- **豐富監控** — context 使用量、token 消耗、即時輸出視窗
+- **多 session 管理** — 同時監控/控制多個 tmux session 的 Claude Code
 - **Claude Control API** — 當 Anthropic 開放 session 控制 API，替換 tmux 為原生呼叫
-- **WebSocket Gateway** — 參考 OpenClaw 架構，建立本地 Gateway 統一多頻道

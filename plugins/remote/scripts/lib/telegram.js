@@ -14,7 +14,7 @@ const os = require('os');
 const API_BASE = 'https://api.telegram.org/bot';
 const SEND_TIMEOUT = 8000;   // sendMessage timeout
 const POLL_TIMEOUT = 30;     // getUpdates long polling（秒）
-const ENV_FILE = path.join(os.homedir(), '.claude', 'notify.env');
+const ENV_FILE = path.join(os.homedir(), '.claude', 'remote.env');
 
 /**
  * 解析簡易 .env 檔案（KEY=VALUE 格式）
@@ -40,7 +40,7 @@ function parseEnvFile(filePath) {
 }
 
 /**
- * 從環境變數讀取 Telegram 認證，fallback 讀 ~/.claude/notify.env
+ * 從環境變數讀取 Telegram 認證，fallback 讀 ~/.claude/remote.env
  * @returns {{ token: string, chatId: string } | null}
  */
 function getCredentials() {

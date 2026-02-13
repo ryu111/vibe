@@ -7,7 +7,7 @@
  * - 控制類：/say（tmux send-keys 注入 Claude Code session）
  *
  * 生命週期：由 bot-manager.js 管理（start/stop）。
- * PID 檔：~/.claude/notify-bot.pid（全域）。
+ * PID 檔：~/.claude/remote-bot.pid（全域）。
  */
 'use strict';
 const fs = require('fs');
@@ -18,12 +18,12 @@ const { execSync } = require('child_process');
 const { getCredentials, sendMessage, getUpdates } = require(path.join(__dirname, 'scripts', 'lib', 'telegram.js'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
-const PID_FILE = path.join(CLAUDE_DIR, 'notify-bot.pid');
-const LOG_FILE = path.join(CLAUDE_DIR, 'notify-bot.log');
+const PID_FILE = path.join(CLAUDE_DIR, 'remote-bot.pid');
+const LOG_FILE = path.join(CLAUDE_DIR, 'remote-bot.log');
 const RETRY_DELAY = 5000;
 const START_TIME = Date.now();
 
-// Agent → Stage 映射（與 notify-sender.js 同步）
+// Agent → Stage 映射（與 remote-sender.js 同步）
 const AGENT_STAGE = {
   planner: 'PLAN',
   architect: 'ARCH',
@@ -212,7 +212,7 @@ async function handlePing(token, chatId) {
 }
 
 async function handleHelp(token, chatId) {
-  return sendMessage(token, chatId, `\u{1F916} *Vibe Notify Bot*
+  return sendMessage(token, chatId, `\u{1F916} *Vibe Remote Bot*
 
 \u{1F50D} *\u67E5\u8A62\u6307\u4EE4*
 /status \u2014 \u5217\u51FA\u6D3B\u8E8D session \u9032\u5EA6
@@ -272,7 +272,7 @@ function appendLog(message) {
 async function main() {
   const creds = getCredentials();
   if (!creds) {
-    process.stderr.write('notify-bot: TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID \u672A\u8A2D\u5B9A\n');
+    process.stderr.write('remote-bot: TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID \u672A\u8A2D\u5B9A\n');
     process.exit(1);
   }
 

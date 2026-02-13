@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * notify-autostart.js — SessionStart hook
+ * remote-autostart.js — SessionStart hook
  *
  * 自動偵測 Telegram bot daemon 是否執行中，未啟動則背景啟動。
  * 無 credentials 時靜默跳過，不打擾使用者。
@@ -23,7 +23,7 @@ process.stdin.on('end', async () => {
     if (isRunning()) {
       const state = getState();
       console.log(JSON.stringify({
-        additionalContext: `Telegram bot \u57F7\u884C\u4E2D\uFF08PID: ${state?.pid || '?'}\uFF09\u3002\u4F7F\u7528 /notify \u7BA1\u7406\u3002`,
+        additionalContext: `Telegram bot \u57F7\u884C\u4E2D\uFF08PID: ${state?.pid || '?'}\uFF09\u3002\u4F7F\u7528 /remote \u7BA1\u7406\u3002`,
       }));
     } else {
       const result = start();
@@ -37,11 +37,11 @@ process.stdin.on('end', async () => {
 
       console.log(JSON.stringify({
         additionalContext: ready
-          ? `Telegram bot \u5DF2\u81EA\u52D5\u555F\u52D5\uFF08PID: ${result.pid}\uFF09\u3002\u4F7F\u7528 /notify \u7BA1\u7406\u3002`
-          : `Telegram bot \u555F\u52D5\u4E2D\uFF08PID: ${result.pid}\uFF09\u3002\u4F7F\u7528 /notify status \u6AA2\u67E5\u3002`,
+          ? `Telegram bot \u5DF2\u81EA\u52D5\u555F\u52D5\uFF08PID: ${result.pid}\uFF09\u3002\u4F7F\u7528 /remote \u7BA1\u7406\u3002`
+          : `Telegram bot \u555F\u52D5\u4E2D\uFF08PID: ${result.pid}\uFF09\u3002\u4F7F\u7528 /remote status \u6AA2\u67E5\u3002`,
       }));
     }
   } catch (err) {
-    process.stderr.write(`notify-autostart: ${err.message}\n`);
+    process.stderr.write(`remote-autostart: ${err.message}\n`);
   }
 });

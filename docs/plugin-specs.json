@@ -83,15 +83,15 @@
         "scripts": 2
       }
     },
-    "notify": {
-      "description": "Telegram 雙向通訊 — Pipeline 進度推播、狀態查詢、tmux 遠端控制",
+    "remote": {
+      "description": "Telegram 遠端控制 — Pipeline 進度推播、狀態查詢、tmux 遠端操作",
       "priority": "done",
-      "category": "communication",
+      "category": "remote-control",
       "buildOrder": 6,
       "depGroup": "communication",
-      "tags": ["telegram", "notification", "remote-control", "daemon"],
+      "tags": ["telegram", "remote-control", "monitoring", "daemon"],
       "expected": {
-        "skills": ["notify", "notify-config"],
+        "skills": ["remote", "remote-config"],
         "agents": [],
         "hooks": 2,
         "scripts": 4

@@ -145,14 +145,14 @@
       "detail": "/dashboard · 瀏覽器儀表板即時顯示 Pipeline 各階段進度與狀態"
     },
     {
-      "name": "NOTIFY",
+      "name": "REMOTE",
       "position": "bottom",
-      "icon": "💬",
+      "icon": "📡",
       "color": "var(--green)",
       "borderStyle": "dashed",
-      "title": "NOTIFY",
-      "subtitle": "LINE / Telegram · 雙向通訊",
-      "detail": "/notify · 進度通知 · 完成回報 · 遠端指令 · 雙向溝通"
+      "title": "REMOTE",
+      "subtitle": "Telegram · 遠端控制",
+      "detail": "/remote · 進度推播 · 狀態查詢 · 遠端指令 · tmux 控制"
     },
     {
       "name": "COLLAB",

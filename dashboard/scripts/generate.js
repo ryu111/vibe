@@ -1059,10 +1059,10 @@ function generateIndex(specs) {
   │  /dashboard:dashboard（手動控管）            │
   └─────────────────────────────────────────────┘
 
-  ┌─ NOTIFY ─── 通訊層（Telegram 雙向）─────────┐
+  ┌─ REMOTE ─── 遠端控制（Telegram）──────────────┐
   │  SessionStart: 自動啟動 bot daemon          │
   │  SubagentStop: pipeline 進度推播            │
-  │  /notify · /notify-config（手動控管）        │
+  │  /remote · /remote-config（手動控管）        │
   └─────────────────────────────────────────────┘
 
   ┌─ COLLAB ──── 任意階段可插入（需 Agent Teams）┐
@@ -1093,13 +1093,13 @@ SENTINEL PostToolUse: test-check      /sentinel:tdd     TDD 工作流
 SENTINEL PreToolUse: danger-guard     /sentinel:e2e     E2E 測試
 SENTINEL Stop: console-log-check      /sentinel:coverage 覆蓋率
 DASH     SessionStart: autostart      /sentinel:lint    手動 lint
-NOTIFY   SessionStart: autostart      /sentinel:format  手動格式化
-NOTIFY   SubagentStop: sender         /sentinel:verify  綜合驗證
+REMOTE   SessionStart: autostart      /sentinel:format  手動格式化
+REMOTE   SubagentStop: sender         /sentinel:verify  綜合驗證
 COLLAB   SessionStart: team-init      /evolve:evolve    知識進化
                                       /evolve:doc-sync  文件同步
                                       /dashboard:dashboard 儀表板控管
-                                      /notify           通知控管
-                                      /notify-config    通知設定
+                                      /remote           遠端控管
+                                      /remote-config    遠端設定
                                       /collab:adversarial-plan  競爭規劃
                                       /collab:adversarial-review 對抗審查
                                       /collab:adversarial-refactor 競爭重構
@@ -1130,8 +1130,8 @@ COLLAB   SessionStart: team-init      /evolve:evolve    知識進化
 │          └──────┬───────────┘                           │
 │                 │ 可選增強                               │
 │    ┌────────────▼──┐  ┌────────────┐  ┌────────────┐   │
-│    │   evolve      │  │ dashboard  │  │   notify   │   │
-│    │  知識進化      │  │  即時監控   │  │ Telegram通訊│   │
+│    │   evolve      │  │ dashboard  │  │   remote   │   │
+│    │  知識進化      │  │  即時監控   │  │  遠端控制   │   │
 │    └───────────────┘  └────────────┘  └────────────┘   │
 └─────────────────────────────────────────────────────────┘
 

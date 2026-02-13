@@ -1,12 +1,12 @@
 ---
-name: notify-config
+name: remote-config
 description: >-
-  Telegram 通知設定教學與驗證 — 引導使用者建立 Bot、取得 Token 和 Chat ID。
-  觸發詞：notify-config、通知設定、telegram 設定、bot 設定。
+  Telegram 遠端控制設定教學與驗證 — 引導使用者建立 Bot、取得 Token 和 Chat ID。
+  觸發詞：remote-config、遠端設定、telegram 設定、bot 設定。
 arguments: $ARGUMENTS
 ---
 
-# /notify-config — Telegram 設定管理
+# /remote-config — Telegram 設定管理
 
 引導使用者完成 Telegram Bot 設定，驗證連線。
 
@@ -47,7 +47,7 @@ if (!creds) {
 
 回報格式：
 - 已設定 → 顯示遮罩 Token（`12345...wxyz`）和 Chat ID
-- 未設定 → 提示使用 `/notify-config guide`
+- 未設定 → 提示使用 `/remote-config guide`
 
 #### verify
 
@@ -91,4 +91,4 @@ export TELEGRAM_CHAT_ID="你的 Chat ID"
 執行 `source ~/.zshrc` 生效。
 
 **Step 4：驗證**
-執行 `/notify-config verify` 確認連線，然後 `/notify test` 發送測試訊息。
+執行 `/remote-config verify` 確認連線，然後 `/remote test` 發送測試訊息。

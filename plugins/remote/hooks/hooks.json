@@ -6,9 +6,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/notify-autostart.js",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/remote-autostart.js",
             "timeout": 5,
-            "statusMessage": "檢查通知服務..."
+            "statusMessage": "檢查遠端服務..."
           }
         ]
       }
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/notify-sender.js",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/remote-sender.js",
             "timeout": 10
           }
         ]

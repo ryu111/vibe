@@ -1,8 +1,0 @@
-{
-  "name": "notify",
-  "version": "0.1.2",
-  "description": "Telegram 雙向通訊 — Pipeline 進度推播、狀態查詢、tmux 遠端控制",
-  "skills": [
-    "./skills/"
-  ]
-}

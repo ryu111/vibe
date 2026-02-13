@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * notify-sender.js — SubagentStop hook
+ * remote-sender.js — SubagentStop hook
  *
  * Pipeline stage 完成時推播 Telegram 通知。
  * 讀取 pipeline-state file → 格式化進度條 → sendMessage。
@@ -148,6 +148,6 @@ Session: \`${shortSession}\``;
     await sendMessage(creds.token, creds.chatId, text);
   } catch (err) {
     // 靜默退出，不影響主流程
-    process.stderr.write(`notify-sender: ${err.message}\n`);
+    process.stderr.write(`remote-sender: ${err.message}\n`);
   }
 });

@@ -1,6 +1,6 @@
 # tmux 使用指南
 
-> 搭配 Vibe notify plugin 使用，讓 Claude Code 可以在背景持續運作並透過 Telegram 遠端控制。
+> 搭配 Vibe remote plugin 使用，讓 Claude Code 可以在背景持續運作並透過 Telegram 遠端控制。
 
 ## 為什麼需要 tmux
 
@@ -54,14 +54,14 @@ tmux a
                    隔天 ──→ tmux a（一切都在）
 ```
 
-## 搭配 notify 遠端控制
+## 搭配 remote 遠端控制
 
-tmux 是 notify plugin `/say` 指令的基礎：
+tmux 是 remote plugin `/say` 指令的基礎：
 
 ```
 Telegram                         你的 Mac
 ┌──────────────┐                 ┌──────────────────────────┐
-│ /say 跑測試  │ ───────────────>│ notify daemon (bot.js)   │
+│ /say 跑測試  │ ───────────────>│ remote daemon (bot.js)   │
 │              │   Telegram API  │      │                    │
 │              │                 │      │ tmux send-keys     │
 │              │                 │      ↓                    │
@@ -71,11 +71,11 @@ Telegram                         你的 Mac
 └──────────────┘                 └──────────────────────────┘
 ```
 
-notify daemon 透過 `tmux send-keys` 把文字「打」進 Claude Code 所在的 pane，Claude Code 以為是你親手輸入的。
+remote daemon 透過 `tmux send-keys` 把文字「打」進 Claude Code 所在的 pane，Claude Code 以為是你親手輸入的。
 
 ### 功能與 tmux 依賴關係
 
-| notify 功能                       | 需要 tmux | 原理                       |
+| remote 功能                       | 需要 tmux | 原理                       |
 | --------------------------------- | :-------: | -------------------------- |
 | 推播通知（stage 完成 → Telegram） |  不需要   | hook 直接呼叫 Telegram API |
 | 查詢狀態（`/status`、`/stages`）  |  不需要   | 讀取 pipeline state files  |
@@ -99,7 +99,7 @@ brew install tmux
 
 ### Q: 我人在電腦前也要用 tmux 嗎？
 
-是的。養成「永遠在 tmux 裡開 Claude Code」的習慣，這樣隨時可以 detach 離開，notify 遠端控制也能正常運作。
+是的。養成「永遠在 tmux 裡開 Claude Code」的習慣，這樣隨時可以 detach 離開，remote 遠端控制也能正常運作。
 
 ### Q: tmux 裡開的 Claude Code 跟直接開有什麼不同？
 

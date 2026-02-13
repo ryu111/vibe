@@ -44,10 +44,10 @@
   │  /dashboard:dashboard（手動控管）            │
   └─────────────────────────────────────────────┘
 
-  ┌─ NOTIFY ─── 通訊層（Telegram 雙向）─────────┐
+  ┌─ REMOTE ─── 通訊層（Telegram 雙向）─────────┐
   │  SessionStart: 自動啟動 bot daemon          │
   │  SubagentStop: pipeline 進度推播            │
-  │  /notify · /notify-config（手動控管）        │
+  │  /remote · /remote-config（手動控管）        │
   └─────────────────────────────────────────────┘
 
   ┌─ COLLAB ──── 任意階段可插入（需 Agent Teams）┐
@@ -78,13 +78,13 @@ SENTINEL PostToolUse: test-check      /sentinel:tdd     TDD 工作流
 SENTINEL PreToolUse: danger-guard     /sentinel:e2e     E2E 測試
 SENTINEL Stop: console-log-check      /sentinel:coverage 覆蓋率
 DASH     SessionStart: autostart      /sentinel:lint    手動 lint
-NOTIFY   SessionStart: autostart      /sentinel:format  手動格式化
-NOTIFY   SubagentStop: sender         /sentinel:verify  綜合驗證
+REMOTE   SessionStart: autostart      /sentinel:format  手動格式化
+REMOTE   SubagentStop: sender         /sentinel:verify  綜合驗證
 COLLAB   SessionStart: team-init      /evolve:evolve    知識進化
                                       /evolve:doc-sync  文件同步
                                       /dashboard:dashboard 儀表板控管
-                                      /notify           通知控管
-                                      /notify-config    通知設定
+                                      /remote           通知控管
+                                      /remote-config    通知設定
                                       /collab:adversarial-plan  競爭規劃
                                       /collab:adversarial-review 對抗審查
                                       /collab:adversarial-refactor 競爭重構
@@ -115,7 +115,7 @@ COLLAB   SessionStart: team-init      /evolve:evolve    知識進化
 │          └──────┬───────────┘                           │
 │                 │ 可選增強                               │
 │    ┌────────────▼──┐  ┌────────────┐  ┌────────────┐   │
-│    │   evolve      │  │ dashboard  │  │   notify   │   │
+│    │   evolve      │  │ dashboard  │  │   remote   │   │
 │    │  知識進化      │  │  即時監控   │  │ Telegram通訊│   │
 │    └───────────────┘  └────────────┘  └────────────┘   │
 └─────────────────────────────────────────────────────────┘
@@ -139,7 +139,7 @@ COLLAB   SessionStart: team-init      /evolve:evolve    知識進化
 | 5 | **patterns** | 無 | 8S |
 | 6 | **evolve** | flow 可選 | 2S + 1A |
 | 7 | **dashboard** | forge ✅ | 1S + 1H + 2Sc |
-| 8 | **notify** | forge ✅ | 2S + 2H + 4Sc |
+| 8 | **remote** | forge ✅ | 2S + 2H + 4Sc |
 | 9 | **collab** | Agent Teams | 3S + 1H + 1Sc |
 
 > **flow 先於 sentinel**：規劃 → 寫碼 → 品質檢查，符合自然開發流程。
@@ -155,7 +155,7 @@ COLLAB   SessionStart: team-init      /evolve:evolve    知識進化
 | 3 | patterns | [patterns.md](patterns.md) | 8 | 0 | 0 | 0 |
 | 4 | evolve | [evolve.md](evolve.md) | 2 | 1 | 0 | 0 |
 | 5 | dashboard | [dashboard.md](dashboard.md) | 1 | 0 | 1 | 2 |
-| 6 | notify | [notify.md](notify.md) | 2 | 0 | 2 | 4 |
+| 6 | remote | [remote.md](remote.md) | 2 | 0 | 2 | 4 |
 | 7 | collab | [collab.md](collab.md) | 3 | 0 | 1 | 1 |
 
 > **S** = Skill, **A** = Agent, **H** = Hook, **Sc** = Script

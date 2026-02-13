@@ -1,14 +1,14 @@
 ---
-name: notify
+name: remote
 description: >-
-  Telegram 通知服務管理 — 啟動/停止 daemon、查詢狀態、發送測試訊息。
-  觸發詞：notify、通知、telegram、bot。
+  Telegram 遠端控制服務管理 — 啟動/停止 daemon、查詢狀態、發送測試訊息。
+  觸發詞：remote、遠端、telegram、bot。
 arguments: $ARGUMENTS
 ---
 
-# /notify — Telegram 通知服務
+# /remote — Telegram 遠端控制服務
 
-管理 Telegram bot daemon 的生命週期和通知功能。
+管理 Telegram bot daemon 的生命週期和遠端控制功能。
 
 ## 指令
 
@@ -26,9 +26,9 @@ arguments: $ARGUMENTS
 ### 1. 解析 `$ARGUMENTS`
 
 從使用者意圖判斷子指令：
-- 「啟動通知」「start bot」→ `start`
-- 「停止通知」「stop」→ `stop`
-- 「通知狀態」「bot 在跑嗎」→ `status`
+- 「啟動」「start bot」→ `start`
+- 「停止」「stop」→ `stop`
+- 「狀態」「bot 在跑嗎」→ `status`
 - 「發送」「傳送」→ `send`
 - 「測試」→ `test`
 
@@ -47,7 +47,7 @@ console.log('OK');
 
 如果回傳 `MISSING`：
 - 告知使用者需要設定 `TELEGRAM_BOT_TOKEN` 和 `TELEGRAM_CHAT_ID`
-- 建議使用 `/notify-config guide` 取得設定教學
+- 建議使用 `/remote-config guide` 取得設定教學
 
 ### 3. 子指令實作
 
@@ -100,7 +100,7 @@ tg.sendMessage(creds.token, creds.chatId, process.argv[1])
 node -e "
 const tg = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/telegram.js');
 const creds = tg.getCredentials();
-tg.sendMessage(creds.token, creds.chatId, '🔔 Vibe Notify 測試成功！\nBot 連線正常。')
+tg.sendMessage(creds.token, creds.chatId, '🔔 Vibe Remote 測試成功！\nBot 連線正常。')
   .then(() => console.log('OK'))
   .catch(e => console.error(e.message));
 "

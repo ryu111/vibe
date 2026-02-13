@@ -51,11 +51,11 @@
       "tags": ["visualization", "monitoring", "websocket", "dashboard"]
     },
     {
-      "name": "notify",
-      "source": "./plugins/notify",
-      "description": "Telegram 雙向通訊 — Pipeline 進度推播、狀態查詢、tmux 遠端控制",
-      "category": "notification",
-      "tags": ["telegram", "notification", "remote-control", "tmux"]
+      "name": "remote",
+      "source": "./plugins/remote",
+      "description": "Telegram 遠端控制 — Pipeline 進度推播、狀態查詢、tmux 遠端操作",
+      "category": "remote-control",
+      "tags": ["telegram", "remote-control", "monitoring", "tmux"]
     },
     {
       "name": "collab",

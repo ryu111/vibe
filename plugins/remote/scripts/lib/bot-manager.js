@@ -2,7 +2,7 @@
 /**
  * bot-manager.js — Telegram Bot Daemon 生命週期管理
  *
- * 共用模組：供 hook（autostart）和 skill（/notify）引用。
+ * 共用模組：供 hook（autostart）和 skill（/remote）引用。
  * PID_FILE 為全域（非 session 隔離），因為 daemon 跨 session 共享。
  * 與 dashboard server-manager.js 模式相同，差異在用 process.kill(pid,0) 偵測存活（無 port）。
  */
@@ -12,7 +12,7 @@ const path = require('path');
 const os = require('os');
 const { spawn } = require('child_process');
 
-const PID_FILE = path.join(os.homedir(), '.claude', 'notify-bot.pid');
+const PID_FILE = path.join(os.homedir(), '.claude', 'remote-bot.pid');
 const BOT_PATH = path.join(__dirname, '..', '..', 'bot.js');
 
 /**
