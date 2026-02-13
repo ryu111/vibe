@@ -83,6 +83,7 @@ bot.js daemon (long polling) ← Telegram Bot API ←────── 使用�
 | `remote-receipt.js` | hook | Stop: /say 已讀回條 + 回合摘要通知 |
 | `bot-manager.js` | lib | Daemon 生命週期（isRunning/start/stop/getState） |
 | `telegram.js` | lib | Telegram Bot API 封裝（sendMessage/editMessageText/sendMessageWithKeyboard/answerCallbackQuery/editMessageReplyMarkup/getUpdates/getMe） |
+| `transcript.js` | lib | 共用 transcript JSONL 解析（parseLastAssistantTurn — 提取文字回應 + 工具統計） |
 
 ### 其他
 
@@ -136,21 +137,30 @@ SubagentStop hook — flow plugin 的 stage-transition.js 先更新 state file�
 
 **Stage 完成**：
 ```
-🏗️ architect 完成（ARCH）
-結果：✅ PASS
-進度：📋 ✅ → 🏗️ ✅ → 💻 ⏳ → 🔍 → 🧪 → ✅ → 🌐 → 📝
-Session: a1b2c3d4
+🔍 REVIEW ✅ 5m (feature)
+  → 程式碼品質良好，無重大問題
+📋✅ 🏗️✅ 💻✅ 🔍✅ 🧪⬜ ✅⬜ 🌐⬜ 📝⬜
 ```
 
-> 進度條格式：已完成 ✅ → 進行中 ⏳ → 待處理（顯示 stage emoji）
+> 格式：`{emoji} {STAGE} {verdict} {耗時} ({taskType}) {retry}`
+> 含 agent 摘要（從 transcript 最後 assistant turn 提取，截斷 200 字）
+> 進度條壓縮為無箭頭一行：已完成 ✅ / 失敗 ❌ / 待處理 ⬜
 > Namespaced agent（如 `flow:architect`）自動去除前綴映射
+
+**Stage 失敗（含回退）**：
+```
+🔍 REVIEW ❌ 3m (feature) (retry 1/3)
+  → SQL injection 風險、缺少輸入驗證
+📋✅ 🏗️✅ 💻✅ 🔍❌ 🧪⬜ ✅⬜ 🌐⬜ 📝⬜
+```
 
 **Pipeline 全部完成**：
 ```
-🎉 Pipeline 完成
-任務：feature | 結果：✅ PASS
-📋 ✅ → 🏗️ ✅ → 💻 ✅ → 🔍 ✅ → 🧪 ✅ → ✅ ✅ → 🌐 ✅ → 📝 ✅
+🎉 Pipeline 完成 ✅ (feature) 26m
+📋✅ 🏗️✅ 💻✅ 🔍✅ 🧪✅ ✅✅ 🌐✅ 📝✅
 ```
+
+> 含總耗時（`initialized` 時間到完成時間）
 
 ---
 
@@ -332,24 +342,25 @@ Telegram 遠端選擇 ────────→ 完成（editMessageText 顯�
 
 ### 回合摘要通知
 
-Stop hook 解析 transcript 最近一個回合的工具呼叫，產出動作摘要推播到 Telegram：
+Stop hook 解析 transcript 最近一個回合，拆成兩則 Telegram 訊息：
 
+**訊息 1：Claude 的文字回應**（有文字時才發）：
 ```
-📋 回合完成
+🤖 好的，我已經完成認證功能的實作。建立了 auth.js 和 login.vue 兩個檔案...
+```
 
-✏️ 編輯 2 個檔案
-  · plugins/remote/bot.js
-  · scripts/hooks/remote-receipt.js
-⚡ 執行 3 個命令
-  · rsync -a --delete ...
-🔍 搜尋 1 次
+**訊息 2：工具統計一行摘要**（有工具時才發）：
 ```
+📋 回合動作：📝×2 ✏️×3 ⚡×1 🤖×2 🔍×5 📖×3
+```
+
+> 工具圖示：📝 Write / ✏️ Edit / ⚡ Bash / 🤖 Task / 🔍 Search / 📖 Read
 
 **特性**：
-- 只讀 transcript 最後 64KB（避免整個 session）
+- 文字回應截斷至 500 字（Telegram 訊息上限 4096，留空間）
+- 共用 `transcript.js` 的 `parseLastAssistantTurn()` 解析（只讀最後 64KB）
 - 節流 10 秒（避免連續回合轟炸）
 - 純文字發送（無 Markdown parse mode，避免特殊字元造成解析錯誤）
-- 無動作（純文字回覆）→ 顯示「💬 文字回覆」
 
 ### 使用者輸入轉發
 
@@ -395,7 +406,8 @@ UserPromptSubmit hook 將使用者輸入同步到 Telegram：
 | 狀態更新 | editMessageText | 同一訊息就地更新、不洗版 |
 | 互動通知 | PreToolUse hook + inline keyboard | 攔截 AskUserQuestion，按鈕 + 數字雙模式遠端選擇 |
 | AskUserQuestion 策略 | 非阻擋（inline keyboard + tmux 鍵盤操作） | 按鈕直覺操作、數字快捷回覆、TUI 正常顯示 |
-| 回合摘要 | Stop hook + transcript 解析 | 即時知道 Claude 做了什麼 |
+| 回合摘要 | Stop hook + transcript 解析 | 🤖 文字回應 + 📋 工具統計雙訊息 |
+| Pipeline 通知 | 壓縮進度條 + 耗時/retry/摘要 | 手機小螢幕友善、資訊更豐富 |
 | 輸入轉發 | UserPromptSubmit hook | 手機同步看到完整對話流 |
 
 ---
