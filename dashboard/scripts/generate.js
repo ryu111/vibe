@@ -1032,7 +1032,7 @@ function generateIndex(specs) {
     ▼
 ┌─ FLOW ─────────────────────────────────────┐
 │  SessionStart: pipeline-init（環境偵測+規則）│
-│  /vibe:plan → /vibe:architect → developer   │
+│  /vibe:scope → /vibe:architect → developer   │
 │  suggest-compact · checkpoint · cancel      │
 └─────────────────────┬───────────────────────┘
                       ▼
@@ -1081,7 +1081,7 @@ function generateIndex(specs) {
 \`\`\`
 自動觸發（Hooks，使用者無感）            手動觸發（Skills，使用者主動）
 ─────────────────────────            ─────────────────────────────
-FLOW     SessionStart: pipeline-init  /vibe:plan       功能規劃
+FLOW     SessionStart: pipeline-init  /vibe:scope      功能規劃
 FLOW     PreToolUse: suggest-compact  /vibe:architect  架構設計
 FLOW     PreCompact: log-compact      /vibe:context-status  Context 狀態
 FLOW     SubagentStop: stage-trans.   /vibe:checkpoint 建立檢查點

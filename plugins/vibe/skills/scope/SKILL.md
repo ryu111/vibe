@@ -1,6 +1,6 @@
 ---
-name: plan
-description: 功能規劃 — 將需求轉化為分階段實作計畫。分析可行性、依賴、風險，產出可執行的計畫書。觸發詞：規劃、plan、計畫、設計功能。
+name: scope
+description: 功能規劃 — 將需求轉化為分階段實作計畫。分析可行性、依賴、風險，產出可執行的計畫書。觸發詞：scope、規劃、計畫、設計功能。
 argument-hint: "[描述你要規劃的功能]"
 allowed-tools: Read, Grep, Glob, AskUserQuestion, Task
 ---

@@ -78,7 +78,7 @@ PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
 
 | 階段 | Agent | Model/Color | Skill |
 |------|-------|-------------|-------|
-| PLAN | planner | opus/purple | `/vibe:plan` |
+| PLAN | planner | opus/purple | `/vibe:scope` |
 | ARCH | architect | opus/cyan | `/vibe:architect` |
 | DEV | developer | sonnet/yellow | — |
 | REVIEW | code-reviewer | opus/blue | `/vibe:review` |

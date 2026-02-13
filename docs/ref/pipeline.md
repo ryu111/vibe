@@ -118,7 +118,7 @@ plugins/vibe/pipeline.json     ← stage 順序 + provides 統一定義
     "DOCS": "文件整理"
   },
   "provides": {
-    "PLAN":   { "agent": "planner",        "skill": "/vibe:plan" },
+    "PLAN":   { "agent": "planner",        "skill": "/vibe:scope" },
     "ARCH":   { "agent": "architect",      "skill": "/vibe:architect" },
     "DEV":    { "agent": "developer",      "skill": null },
     "REVIEW": { "agent": "code-reviewer",  "skill": "/vibe:review" },
@@ -248,7 +248,7 @@ hooks.json 定義：
 ```
 [Pipeline 委派規則]
 程式碼變更應透過對應的 sub-agent 執行，而非 Main Agent 直接處理：
-- 規劃：planner（/vibe:plan）
+- 規劃：planner（/vibe:scope）
 - 架構：architect（/vibe:architect）
 - 開發：developer
 - 審查：code-reviewer（/vibe:review）

@@ -26,7 +26,7 @@ collab 是 Vibe marketplace 的多視角競爭分析 plugin。它利用 **Agent 
 ### 與其他 plugin 的關係
 
 - **sentinel** 的 `/vibe:review` 是單一視角的程式碼審查 → collab 的 `adversarial-review` 是多視角對抗式審查
-- **flow** 的 `/vibe:plan` 是單一視角的計畫 → collab 的 `adversarial-plan` 是多視角競爭規劃
+- **flow** 的 `/vibe:scope` 是單一視角的計畫 → collab 的 `adversarial-plan` 是多視角競爭規劃
 - **未來考量**：collab 的能力可逐步合併進 sentinel 和 flow，作為進階模式
 
 ### 前置條件
@@ -302,7 +302,7 @@ plugins/collab/
 | collab 能力 | 合併目標 | 形式 |
 |------------|---------|------|
 | adversarial-review | **sentinel** | 新增 `/vibe:review --adversarial` 模式 |
-| adversarial-plan | **flow** | 新增 `/vibe:plan --adversarial` 模式 |
+| adversarial-plan | **flow** | 新增 `/vibe:scope --adversarial` 模式 |
 | adversarial-refactor | **sentinel** | 新增 `/vibe:refactor --adversarial` 模式 |
 
 合併後 collab plugin 可能退役，或轉型為「Agent Teams 配置管理」的工具型 plugin。

@@ -130,6 +130,7 @@ function buildPipelineRules(stages, pipelineRules) {
   parts.push('- 🚫 禁止直接使用 Write 工具寫任何程式碼檔案');
   parts.push('- 🚫 禁止直接使用 Edit 工具修改任何程式碼檔案');
   parts.push('- 🚫 禁止直接使用 Bash 工具執行 build、test、lint 等開發指令');
+  parts.push('- 🚫 禁止使用 EnterPlanMode — Pipeline 有自己的 PLAN 階段（/vibe:scope），不需要 Claude 內建 Plan Mode');
   parts.push('- 你的唯一職責：按順序使用 Task/Skill 工具委派各階段給 sub-agent');
   parts.push('- 違反此規則的 Write/Edit 操作會被 dev-gate hook 硬阻擋（exit 2）');
   parts.push('');

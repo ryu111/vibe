@@ -594,7 +594,7 @@ const STAGES = {
   "stages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "QA", "E2E", "DOCS"],
   "stageLabels": { ... },
   "provides": {
-    "PLAN":   { "agent": "planner",        "skill": "/vibe:plan" },
+    "PLAN":   { "agent": "planner",        "skill": "/vibe:scope" },
     "ARCH":   { "agent": "architect",      "skill": "/vibe:architect" },
     "DEV":    { "agent": "developer",      "skill": null },
     "REVIEW": { "agent": "code-reviewer",  "skill": "/vibe:review" },

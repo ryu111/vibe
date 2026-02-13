@@ -214,7 +214,7 @@
       "color": "var(--purple)",
       "flowSteps": ["理解需求", "掃描專案", "識別影響", "拆解階段", "評估風險", "產出計畫"],
       "detailedNodes": [
-        { "t": "input", "text": "使用者需求", "sub": "自然語言 · /vibe:plan 觸發" },
+        { "t": "input", "text": "使用者需求", "sub": "自然語言 · /vibe:scope 觸發" },
         { "t": "step", "text": "解析意圖", "sub": "釐清目標、範圍邊界、成功條件" },
         { "t": "step", "text": "掃描專案", "sub": "Glob + Read → 目錄結構、關鍵檔案" },
         { "t": "step", "text": "識別影響", "sub": "Grep → 依賴關係、匯入鏈、副作用" },
