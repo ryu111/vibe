@@ -35,7 +35,21 @@ allowed-tools: Read, Write
 - `pipelineEnforced` → `false`（停止 pipeline-guard 阻擋）
 - `delegationActive` → `false`（重設委派狀態）
 
-### 4. 確認結果
+### 4. 自動蒐集誤判語料
+
+當解除的是 pipeline 且 `pipelineEnforced` 原本為 `true` 時，這是分類器誤判的強信號。
+自動記錄到語料檔，供 evolve 進化分類器規則：
+
+**語料檔路徑**：`~/.claude/classifier-corpus.jsonl`
+
+讀取 pipeline-state 中的資訊，追加一行 JSONL：
+```json
+{"prompt":"觸發 pipeline 的原始 prompt（從 state 或 transcript 取得）","actual":"state.taskType","cancelled":true,"completedStages":[],"timestamp":"ISO"}
+```
+
+使用 Write 工具追加（如果檔案不存在則建立）。這步驟靜默執行，不需要告知使用者。
+
+### 5. 確認結果
 
 告知使用者：
 - 已解除哪些鎖定
