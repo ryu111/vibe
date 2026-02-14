@@ -1,8 +1,8 @@
 # Pipeline 委派架構
 
 > **定位**：Agent Pipeline 的完整設計規格 — 任務分類、階段轉換、跨 plugin 解耦、使用者可見文字
-> **擁有者**：flow plugin（pipeline 順序 + 轉換邏輯）
-> **協作者**：各 plugin 透過 `pipeline.json` 的 `provides` 欄位自行宣告
+> **擁有者**：vibe plugin / flow 模組（pipeline 順序 + 轉換邏輯）
+> **協作者**：統一在 `pipeline.json` 的 `provides` 欄位宣告
 > **中央參考**：任何影響工作流的變動都與此文件相關 — 新增/移除 agent、調整 stage、修改 plugin 組合時，必須回來更新此文件
 
 ---
@@ -24,8 +24,7 @@ Pipeline 是 Vibe marketplace 的骨幹。以下變動都需要回來檢查此�
 
 ```
 docs/ref/pipeline.md          ← 本文件（規格）
-docs/ref/flow.md              ← flow plugin 設計文件
-docs/ref/{plugin}.md          ← 受影響 plugin 的設計文件
+docs/ref/vibe.md              ← vibe plugin 設計文件（自動生成）
 docs/plugin-specs.json         ← 數量統計
 dashboard/scripts/generate.js  ← pipeline 視覺化
 plugins/vibe/pipeline.json     ← stage 順序 + provides 統一定義
@@ -53,7 +52,7 @@ plugins/vibe/pipeline.json     ← stage 順序 + provides 統一定義
     ▼
 ┌─────────────────────────────────────────┐
 │ ① task-classifier（UserPromptSubmit）    │  ← 軟建議：分類 + 建議階段
-│    prompt hook · haiku · 10s            │
+│    command hook                         │
 └─────────────────────────────────────────┘
     │
     ▼
@@ -82,7 +81,7 @@ plugins/vibe/pipeline.json     ← stage 順序 + provides 統一定義
 
 | # | 名稱 | 事件 | 類型 | 強度 | 輸出管道 | 說明 |
 |:-:|------|------|:----:|:----:|:--------:|------|
-| ① | task-classifier | UserPromptSubmit | prompt | 軟建議 | additionalContext | 分類任務類型，建議 pipeline 階段 |
+| ① | task-classifier | UserPromptSubmit | command | 軟→強 | additionalContext / systemMessage | 分類任務類型 + 按需注入委派規則 |
 | ② | pipeline-rules | SessionStart | command | 軟建議 | additionalContext | 注入委派規則（哪些工作該給 sub-agent） |
 | ③ | stage-transition | SubagentStop | command | 強建議 | systemMessage | Agent 完成後判斷：前進/回退/跳過 |
 | ④ | pipeline-check | Stop | command | 強建議 | systemMessage | 結束前檢查是否有遺漏的建議階段 |
@@ -215,25 +214,30 @@ module.exports = { discoverPipeline, findNextStage };
 
 ## 4. Hook 實作規格
 
-### 4.1 task-classifier（UserPromptSubmit · prompt hook）
+### 4.1 task-classifier（UserPromptSubmit · command hook）
 
-**無需 script** — 純 prompt hook，ECC 原生處理。
+**腳本**：`scripts/hooks/task-classifier.js`
 
-hooks.json 定義：
+關鍵字分類（7 類型），保守預設（quickfix），feature 需正向匹配：
 
-```json
-{
-  "hooks": [{
-    "type": "prompt",
-    "prompt": "Classify this user request into exactly one type.\n\nTypes:\n- research: read-only exploration, questions, understanding code\n- quickfix: trivial change (rename, color, typo) — 1-2 files\n- bugfix: fix specific broken behavior — needs verification\n- feature: new capability — needs planning, architecture, full pipeline\n- refactor: restructure existing code — needs architecture review\n- test: add or fix tests only\n- docs: documentation only\n- tdd: user explicitly requested TDD workflow\n\nStage mappings:\n- research: []\n- quickfix: [\"DEV\"]\n- bugfix: [\"DEV\", \"TEST\"]\n- feature: [\"PLAN\", \"ARCH\", \"DEV\", \"REVIEW\", \"TEST\", \"DOCS\"]\n- refactor: [\"ARCH\", \"DEV\", \"REVIEW\"]\n- test: [\"TEST\"]\n- docs: [\"DOCS\"]\n- tdd: [\"TEST\", \"DEV\", \"REVIEW\"]\n\nRespond with ONLY this JSON: {\"decision\":\"allow\",\"type\":\"...\",\"stages\":[...]}",
-    "model": "haiku",
-    "timeout": 10
-  }]
-}
+```
+research / quickfix / bugfix / feature / refactor / test / tdd
 ```
 
-> **Prompt hook 回應格式**：必須包含 `decision` 欄位（`"allow"` 放行）。
-> 其餘欄位（`type`、`stages`）作為 `additionalContext` 注入，供 Claude 參考。
+Stage 對應：
+
+| 類型 | 階段 |
+|------|------|
+| research | （空） |
+| quickfix | DEV |
+| bugfix | DEV → TEST |
+| feature | PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS |
+| refactor | ARCH → DEV → REVIEW |
+| test | TEST |
+| tdd | TEST → DEV → REVIEW |
+
+首次分類為開發型任務（feature/refactor/tdd）時，透過 `systemMessage` 注入完整 pipeline 委派規則。
+支援中途重新分類（漸進式升級）：升級時合併階段，降級時阻擋以保持 pipeline 不中斷。
 
 ### 4.2 pipeline-rules（SessionStart · 合併在 pipeline-init.js）
 
@@ -591,59 +595,17 @@ Claude 收到 systemMessage 後會用自然語言向使用者報告。
 | 優先 | 檔案 | 變動 |
 |:----:|------|------|
 | 5 | `plugins/vibe/scripts/hooks/pipeline-init.js` | 環境偵測 + pipeline-rules 注入（§4.2） |
-| 6 | `plugins/vibe/hooks/hooks.json` | 統一 20 hooks 定義 |
+| 6 | `plugins/vibe/hooks/hooks.json` | 統一 22 hooks 定義 |
 | 7 | `plugins/vibe/pipeline.json` | 所有 stages + provides |
-| 10 | `docs/ref/flow.md` | Skills 6、Hooks 7（移除 session）、Scripts 9（移除 session）、驗收 16 條 |
-| 11 | `docs/plugin-specs.json` | flow hooks 7、scripts 9；evolve hooks 0、scripts 0 |
+| 10 | `docs/ref/vibe.md` | 自動生成 — 含所有 skills/agents/hooks/scripts |
+| 11 | `docs/plugin-specs.json` | vibe hooks 22、scripts 33 |
 | 12 | `dashboard/scripts/generate.js` | Pipeline 視覺化同步更新 |
 
-### flow.md 具體更新
+### vibe.md 自動同步
 
-> **已完成** — 以下變更已直接套用到 `docs/ref/flow.md`。
-
-**Skills**：5→6（+`cancel`）
-
-**Hooks 表格**新增 3 行：
-
-| 事件 | 名稱 | 類型 | 強度 | 說明 |
-|------|------|:----:|:----:|------|
-| SubagentStop | stage-transition | command | 強建議 | Agent 完成後建議下一個 pipeline 階段 |
-| Stop | pipeline-check | command | 強建議 | 結束前檢查是否有遺漏的建議階段 |
-| Stop | task-guard | command | 絕對阻擋 | 未完成任務時阻擋退出 |
-
-**Scripts 表格**新增 4 行：
-
-| 腳本 | 位置 | 功能 |
-|------|------|------|
-| `stage-transition.js` | `scripts/hooks/` | Pipeline 階段轉換 + state 管理 |
-| `pipeline-check.js` | `scripts/hooks/` | 結束前遺漏階段檢查 |
-| `task-guard.js` | `scripts/hooks/` | 任務完成前阻擋退出 |
-| `pipeline-discovery.js` | `scripts/lib/` | 跨 plugin pipeline 動態發現 |
-
-**驗收標準**新增 8 條（F-09 ~ F-16）：
-
-| # | 條件 |
-|:-:|------|
-| F-09 | stage-transition 在 agent 完成後建議下一步 |
-| F-10 | pipeline-check 偵測遺漏階段並提醒 |
-| F-11 | 只裝 flow 時 pipeline 只含 PLAN → ARCH → DEV |
-| F-12 | 全裝時 pipeline 含完整 6 個階段 |
-| F-13 | 移除 sentinel 後自動跳過 REVIEW、TEST |
-| F-14 | task-guard 在有未完成 todo 時阻擋退出 |
-| F-15 | task-guard 達 5 次阻擋後強制放行 |
-| F-16 | `/vibe:cancel` 可手動解除 task-guard |
-
-### plugin-specs.json 更新
-
-```json
-"flow": {
-  "expected": {
-    "skills": ["plan", "architect", "context-status", "checkpoint", "env-detect", "cancel"],
-    "hooks": 7,
-    "scripts": 9
-  }
-}
-```
+> **已完成** — vibe.md 由 `dashboard/scripts/generate-vibe-doc.js` 自動生成，
+> 包含所有 skills、agents、hooks、scripts 的完整清單。
+> Stop hook 觸發 → `refresh.js` → `generate.js` → vibe.md 自動更新。
 
 ---
 
