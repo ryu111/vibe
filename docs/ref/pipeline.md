@@ -810,7 +810,7 @@ consumer.start(sessionId, { replay: true });
 | Phase | 狀態 | 內容 |
 |:-----:|:----:|------|
 | 1 | ✅ 完成 | Timeline Core（schema + timeline + consumer + 55 tests） |
-| 2 | 待實作 | Hook emit 整合（12+ hooks 加入 `emit()` 呼叫） |
-| 3 | 待實作 | Dashboard 改用 Timeline 作為資料源 |
-| 4 | 待實作 | Remote 改用 Timeline 作為資料源 |
-| 5 | 待實作 | 清理收斂（移除冗餘邏輯、同步文件） |
+| 2 | ✅ 完成 | Hook emit 整合（17 hooks 加入 `emit()` 呼叫） |
+| 3 | ✅ 完成 | Dashboard 整合 Timeline consumer（server.js 事件推播 + UI 事件面板） |
+| 4 | ✅ 完成 | Remote 整合 Timeline consumer（bot.js 事件推播 + `/timeline` 查詢） |
+| 5 | ✅ 完成 | 清理收斂（Phase 狀態同步、文件對齊） |
