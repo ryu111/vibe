@@ -57,7 +57,7 @@ plugins/vibe/
 │       ├── registry.js      # ★ 全局 metadata（STAGES/AGENTS/EMOJI）
 │       ├── hook-logger.js   # Hook 錯誤日誌（~/.claude/hook-errors.log）
 │       ├── flow/            # pipeline-discovery, env-detector, counter
-│       ├── sentinel/        # lang-map, tool-detector
+│       ├── sentinel/        # lang-map, tool-detector, guard-rules
 │       ├── dashboard/       # server-manager
 │       ├── remote/          # telegram, transcript, bot-manager
 │       └── timeline/        # schema, timeline, consumer（統一事件流）
