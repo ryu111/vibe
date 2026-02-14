@@ -61,6 +61,11 @@ process.stdin.on('end', () => {
     // 重設 tool call 計數器
     resetCounter(sessionId);
 
+    // 偵測 OpenSpec 目錄
+    const openspecDir = path.join(cwd, 'openspec');
+    const openspecEnabled = fs.existsSync(openspecDir)
+      && fs.existsSync(path.join(openspecDir, 'config.yaml'));
+
     // 寫入 state file（不含 taskType — 由 task-classifier 設定）
     if (!fs.existsSync(CLAUDE_DIR)) {
       fs.mkdirSync(CLAUDE_DIR, { recursive: true });
@@ -72,6 +77,7 @@ process.stdin.on('end', () => {
       expectedStages: installedStages,
       pipelineRules,
       environment: env,
+      openspecEnabled,
       lastTransition: new Date().toISOString(),
     }, null, 2));
 

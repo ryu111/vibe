@@ -1,0 +1,36 @@
+# Vibe Pipeline 專用 Schema
+# 借鑑 OpenSpec 的 artifact dependency graph 設計
+# 對齊 vibe 8-stage pipeline（PLAN → ARCH → DEV → ... → DOCS）
+
+name: vibe-pipeline
+version: 1
+description: Vibe 8-stage pipeline 相容的 SDD schema
+
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    requires: []
+    # PLAN 階段：planner agent 產出
+    # 內容：為什麼需要這個功能 + 影響分析 + 階段分解
+
+  - id: specs
+    generates: "specs/**/*.md"
+    requires: [proposal]
+    # ARCH 階段前半：architect agent 產出
+    # 內容：Delta specs（ADDED/MODIFIED/REMOVED 行為規格）
+
+  - id: design
+    generates: design.md
+    requires: [proposal]
+    # ARCH 階段後半：architect agent 產出（可與 specs 平行）
+    # 內容：架構方案比較 + 決策 + 介面定義
+
+  - id: tasks
+    generates: tasks.md
+    requires: [specs, design]
+    # ARCH 階段最後：architect agent 產出
+    # 內容：checkbox 任務清單，DEV 階段逐一打勾
+
+apply:
+  requires: [tasks]
+  tracks: tasks.md

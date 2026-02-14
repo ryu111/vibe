@@ -18,11 +18,21 @@ memory: project
 
 ## 工作流程
 
-1. **載入計畫**：讀取 planner 產出的實作計畫
-2. **確認架構**：對照 architect 的目錄樹和介面定義
-3. **按階段實作**：依計畫的 Phase 順序逐步實作
+1. **載入規格**：檢查 `openspec/changes/*/tasks.md` 是否存在，有則按任務清單執行
+2. **確認架構**：對照 `openspec/changes/*/design.md` 的目錄樹和介面定義
+3. **按任務實作**：依 tasks.md 的 checkbox 順序逐一實作，完成一個就打勾 `[x]`
 4. **撰寫測試**：為新功能撰寫對應的測試
 5. **自我檢查**：確認程式碼符合專案慣例和 lint/format 規則
+
+## OpenSpec 任務追蹤
+
+如果存在 `openspec/changes/*/tasks.md`（排除 archive/），按照 checkbox 清單執行：
+
+1. 使用 Glob 搜尋 `openspec/changes/*/tasks.md` 找到活躍 change
+2. 讀取 tasks.md 和 design.md 了解架構決策
+3. 讀取 `specs/` 目錄的行為規格作為實作依據
+4. 依序實作每個 `- [ ]` 任務，遵循 `depends:` 依賴順序
+5. 每完成一個任務，使用 Edit 工具將 `- [ ]` 改為 `- [x]`
 
 ## 規則
 

@@ -20,17 +20,21 @@ memory: project
 
 ## 工作流程
 
-1. **理解預期行為**：閱讀規格或程式碼，確認什麼是正確行為
-2. **啟動服務**：
+1. **載入規格**：檢查 `openspec/changes/*/specs/` 是否存在，有則作為驗證依據
+2. **理解預期行為**：閱讀 specs 或程式碼，確認什麼是正確行為
+3. **啟動服務**：
    - 偵測啟動指令（`npm run dev`、`python manage.py runserver` 等）
    - 背景啟動服務
    - 等待健康檢查通過（curl、WebFetch）
-3. **執行真實操作**：
+4. **執行真實操作**：
    - **API 測試**：curl / WebFetch 呼叫端點，驗證回應
    - **CLI 測試**：執行指令，比對輸出
    - **資料驗證**：檢查資料庫、檔案、快取狀態
-4. **驗證結果**：比對預期值 vs 實際值
-5. **清理環境**：停止服務、清除測試資料
+5. **三維驗證**（OpenSpec verify 模型）：
+   - **完整性（Completeness）**：所有 specs 的 scenarios 都有對應實作和測試
+   - **正確性（Correctness）**：實作行為符合 spec 中 WHEN/THEN 的描述
+   - **一致性（Coherence）**：design.md 的架構決策反映在實際程式碼中
+6. **清理環境**：停止服務、清除測試資料
 
 ## 產出格式
 
@@ -48,6 +52,25 @@ memory: project
 | 1 | GET /api/users | 200 + JSON array | 200 + [...] | ✅ |
 | 2 | POST /api/login | 200 + token | 401 | ❌ |
 
+## 三維驗證摘要（OpenSpec Verify）
+
+| 維度 | 結果 | 說明 |
+|------|:----:|------|
+| 完整性 | ✅/❌ | {N}/{M} 個 spec scenarios 已覆蓋 |
+| 正確性 | ✅/❌ | {通過/失敗的 WHEN/THEN 驗證數} |
+| 一致性 | ✅/❌ | {design 決策在程式碼中的反映程度} |
+
+## 問題清單
+
+### CRITICAL
+- {嚴重問題}
+
+### WARNING
+- {警告}
+
+### SUGGESTION
+- {建議}
+
 ## 失敗詳情
 
 ### ❌ Test 2: POST /api/login
@@ -56,6 +79,25 @@ memory: project
 - **重現步驟**：`curl -X POST localhost:3000/api/login -d '{"email":"test@test.com"}'`
 - **可能原因**：...
 ```
+
+## OpenSpec 三維驗證
+
+如果存在 `openspec/changes/*/specs/`（排除 archive/），執行結構化驗證：
+
+### 完整性（Completeness）
+- 每個 spec 的 `Requirement` 都有對應的實作
+- 每個 `Scenario` 的 WHEN/THEN 都被測試覆蓋
+- tasks.md 中所有 `- [x]` 標記的任務確實已完成
+
+### 正確性（Correctness）
+- 實作行為匹配 spec 中描述的 WHEN/THEN
+- Edge cases 有適當處理
+- 錯誤路徑行為正確
+
+### 一致性（Coherence）
+- design.md 中的架構決策反映在程式碼中
+- 命名、目錄結構與 design.md 一致
+- 沒有偏離設計的「臨時方案」
 
 ## 與 E2E 的分工
 

@@ -319,6 +319,17 @@ process.stdin.on('end', () => {
           stageContext = isApiOnly ? `\n${STAGE_CONTEXT.E2E_API}` : `\n${STAGE_CONTEXT.E2E_UI}`;
         }
 
+        // OpenSpec 上下文提示
+        if (state.openspecEnabled) {
+          if (nextStageCandidate === 'ARCH') {
+            stageContext += '\n📋 OpenSpec：planner 已建立 proposal.md，architect 請讀取 openspec/changes/ 中的 proposal 後產出 design.md、specs/、tasks.md。';
+          } else if (nextStageCandidate === 'DEV') {
+            stageContext += '\n📋 OpenSpec：architect 已產出完整規格，developer 請依照 openspec/changes/ 中的 tasks.md checkbox 逐一實作並打勾。';
+          } else if (nextStageCandidate === 'DOCS') {
+            stageContext += '\n📋 OpenSpec：所有實作已完成，doc-updater 請在更新文件後將 change 歸檔到 openspec/changes/archive/。';
+          }
+        }
+
         // 前一階段完成後的附加提示（安全、覆蓋率等）
         const postHint = POST_STAGE_HINTS[currentStage];
         if (postHint) {

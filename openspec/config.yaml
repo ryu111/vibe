@@ -1,0 +1,35 @@
+# OpenSpec 配置（Vibe Pipeline 專用）
+# 借鑑 Fission-AI/OpenSpec 的 config.yaml 慣例
+# 參考：https://github.com/Fission-AI/openspec
+
+schema: vibe-pipeline
+
+context: |
+  專案：Vibe Marketplace — Claude Code 全端開發工作流 plugin
+  技術棧：JavaScript (Node.js/Bun), Shell
+  目標平台：macOS
+  開發語言：繁體中文（程式碼註解、文件、commit message）
+  Plugin 架構：hooks + agents + skills（詳見 CLAUDE.md）
+  Pipeline：PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
+
+rules:
+  proposal:
+    - 包含回滾計畫
+    - 識別受影響的 vibe 模組（flow/sentinel/dashboard/remote/timeline）
+    - 標註是否涉及 registry.js 變更
+    - 使用繁體中文
+  specs:
+    - 使用 Given/When/Then 格式描述行為規格
+    - 引用既有模式再發明新的
+    - 標注 RFC 2119 關鍵字（MUST/SHOULD/MAY）
+    - 使用繁體中文
+  design:
+    - 提供 2-3 個方案比較
+    - 包含目錄樹和介面定義
+    - 標註對 hooks/pipeline 的影響
+    - 使用繁體中文
+  tasks:
+    - 每個任務最長 2 小時
+    - 標記任務間依賴關係
+    - 包含驗收條件
+    - 使用繁體中文

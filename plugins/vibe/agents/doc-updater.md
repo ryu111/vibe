@@ -74,6 +74,19 @@ git diff HEAD~5 --name-only
 - 保持現有文件的格式和語氣
 - 增量更新，不重寫整份文件
 
+## OpenSpec 歸檔
+
+如果存在 `openspec/changes/*/tasks.md`（排除 archive/），在文件更新完成後執行歸檔：
+
+1. 確認 tasks.md 中所有任務已完成（`- [x]`）
+2. 將 `specs/` 中的 delta specs 合併到 `openspec/specs/`：
+   - ADDED Requirements → append 到對應 spec 檔案
+   - MODIFIED Requirements → replace 對應段落
+   - REMOVED Requirements → 刪除對應段落
+   - 若目標 spec 檔案不存在，建立新檔案
+3. 將完成的 change 目錄移動到 `openspec/changes/archive/YYYY-MM-DD-{name}/`
+4. 在回報中列出歸檔的 change 名稱和合併的 spec 數量
+
 ## 限制
 
 - 不修改程式碼，只修改文件

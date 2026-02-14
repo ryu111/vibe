@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.4 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.24 | 全方位開發工作流 | 30 | 10 | 22 | 40+daemon |
+| **vibe** | 1.0.25 | 全方位開發工作流 | 30 | 10 | 22 | 40+daemon |
 
 ### vibe plugin 功能模組
 
@@ -27,6 +27,27 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 ### 共用 registry.js（Single Source of Truth）
 
 `plugins/vibe/scripts/lib/registry.js` 統一定義所有 agent/stage/emoji/color 映射，消除跨模組重複。所有 hook 腳本和 bot.js 統一從此處 import。
+
+### OpenSpec 規格管理
+
+借鑑 [Fission-AI/OpenSpec](https://github.com/Fission-AI/openspec) 的目錄慣例，原生整合到 pipeline 中：
+
+```
+openspec/
+├── config.yaml              # 專案配置（schema + context + rules）
+├── schemas/vibe-pipeline/   # 自訂 artifact 依賴圖
+├── specs/                   # 規格 Source of Truth（歸檔後累積）
+└── changes/                 # 進行中的 feature
+    ├── {change-name}/       # 每個 feature 一個目錄
+    │   ├── .openspec.yaml   # metadata（schema + date）
+    │   ├── proposal.md      # PLAN 階段 planner 產出（WHY + WHAT）
+    │   ├── design.md        # ARCH 階段 architect 產出（HOW）
+    │   ├── specs/           # ARCH 階段 architect 產出（Delta specs）
+    │   └── tasks.md         # ARCH 階段 architect 產出（checkbox 任務清單）
+    └── archive/             # 已完成的 changes（DOCS 階段歸檔）
+```
+
+**Pipeline 對接**：PLAN→proposal.md | ARCH→design+specs+tasks | DEV→tasks.md打勾 | DOCS→archive歸檔
 
 ## 設計哲學
 
@@ -171,6 +192,7 @@ PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
 | Hook/Script 語言 | JS（與 ECC 一致） | 零編譯、hook 原生支援 |
 | 目標平台 | macOS only | 不需跨平台 |
 | Pipeline 機制 | hooks-only（無 orchestrator） | sub-agent 不能生 sub-agent |
+| 規格管理 | OpenSpec 目錄慣例（原生實作） | 結構化 proposal/design/specs/tasks，累積知識庫 |
 
 ## 文檔體系
 
