@@ -19,6 +19,7 @@ const {
 // ── 測試框架 ────────────────────────────────────────
 let passed = 0;
 let failed = 0;
+require('./test-helpers').cleanTestStateFiles();
 function assert(condition, label) {
   if (condition) {
     console.log(`  \u2705 ${label}`);

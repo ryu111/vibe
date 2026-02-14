@@ -1,6 +1,6 @@
 # vibe — 統一開發工作流 Plugin
 
-> **版本**：1.0.23
+> **版本**：1.0.24
 > **定位**：全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制
 > **架構**：7 個功能模組合併為單一 plugin，共用 registry.js 統一 metadata
 >
@@ -694,7 +694,7 @@ plugins/vibe/
 ```json
 {
   "name": "vibe",
-  "version": "1.0.23",
+  "version": "1.0.24",
   "description": "全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制",
   "skills": [
     "./skills/"

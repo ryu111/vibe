@@ -22,6 +22,7 @@ process.env.CLAUDE_PLUGIN_ROOT = PLUGIN_ROOT;
 
 let passed = 0;
 let failed = 0;
+require('./test-helpers').cleanTestStateFiles();
 
 function test(name, fn) {
   try {

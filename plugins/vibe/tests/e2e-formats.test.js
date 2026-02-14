@@ -23,6 +23,7 @@ const THROTTLE_FILE = path.join(REAL_CLAUDE_DIR, 'remote-receipt-last.json');
 
 let passed = 0;
 let failed = 0;
+require('./test-helpers').cleanTestStateFiles();
 
 function test(name, fn) {
   try {

@@ -20,6 +20,7 @@ const PIPELINE_GUARD_SCRIPT = path.join(PLUGIN_ROOT, 'scripts', 'hooks', 'pipeli
 
 let passed = 0;
 let failed = 0;
+require('./test-helpers').cleanTestStateFiles();
 
 function test(name, fn) {
   try {

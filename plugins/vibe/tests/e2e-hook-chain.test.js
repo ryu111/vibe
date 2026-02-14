@@ -24,6 +24,7 @@ const HOOKS_DIR = path.join(PLUGIN_ROOT, 'scripts', 'hooks');
 
 let passed = 0;
 let failed = 0;
+require('./test-helpers').cleanTestStateFiles();
 
 function test(name, fn) {
   try {

@@ -15,6 +15,7 @@ const TEST_SESSION_ID = 'test-timeline-integration-' + Date.now();
 
 let passed = 0;
 let failed = 0;
+require('./test-helpers').cleanTestStateFiles();
 
 function assert(condition, message) {
   if (condition) {

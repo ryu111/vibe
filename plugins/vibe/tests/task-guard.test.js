@@ -20,6 +20,7 @@ const TMP_DIR = path.join(os.tmpdir(), 'task-guard-test-' + Date.now());
 
 let passed = 0;
 let failed = 0;
+require('./test-helpers').cleanTestStateFiles();
 
 function test(name, fn) {
   try {
