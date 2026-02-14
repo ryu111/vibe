@@ -613,10 +613,10 @@ Claude 收到 systemMessage 後會用自然語言向使用者報告。
 | 優先 | 檔案 | 變動 |
 |:----:|------|------|
 | 5 | `plugins/vibe/scripts/hooks/pipeline-init.js` | 環境偵測 + pipeline-rules 注入（§4.2） |
-| 6 | `plugins/vibe/hooks/hooks.json` | 統一 22 hooks 定義 |
+| 6 | `plugins/vibe/hooks/hooks.json` | 統一 21 hooks 定義 |
 | 7 | `plugins/vibe/pipeline.json` | 所有 stages + provides |
 | 10 | `docs/ref/vibe.md` | 自動生成 — 含所有 skills/agents/hooks/scripts |
-| 11 | `docs/plugin-specs.json` | vibe hooks 22、scripts 33 |
+| 11 | `docs/plugin-specs.json` | vibe hooks 21、scripts 37 |
 | 12 | `dashboard/scripts/generate.js` | Pipeline 視覺化同步更新 |
 
 ### vibe.md 自動同步
