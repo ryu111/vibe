@@ -447,40 +447,30 @@ stage-transition 從 `agent_transcript_path`（JSONL）最後 20 行中搜尋此
 
 #### Claude 看到的 systemMessage 內容：
 
-**正常前進**：
+**正常前進**（v1.0.22 精簡版）：
 
 ```
-⚠️ [Pipeline 指令] developer 已完成（開發階段）。
-你**必須立即**執行下一階段：REVIEW（審查）。
+⛔ [Pipeline] developer✅ → REVIEW（審查）
 ➡️ 執行方法：使用 Skill 工具呼叫 /vibe:review
-⛔ Pipeline 自動模式：不要使用 AskUserQuestion，完成後直接進入下一階段。
-已完成：PLAN → ARCH → DEV
+禁止 AskUserQuestion。已完成：PLAN → ARCH → DEV
 ```
 
-**智慧回退**：
+**智慧回退**（v1.0.22 精簡版）：
 
 ```
-🔄 [Pipeline 回退] code-reviewer 完成（審查階段），但發現 HIGH 等級問題。
+🔄 [Pipeline 回退] REVIEW FAIL:HIGH（1/3）
 回退原因：HIGH 等級問題需要修復
-回退次數：1/3
-
-你**必須**執行以下步驟：
-1️⃣ 先回到 DEV 階段修復 HIGH 等級問題 → 使用 Task 工具委派給 developer agent
-2️⃣ 修復完成後重新執行 REVIEW（審查）→ 使用 Skill 工具呼叫 /vibe:review
-
-⛔ Pipeline 自動模式：不要使用 AskUserQuestion，修復後直接重新執行品質檢查。
+執行：使用 Task 工具委派給 vibe:developer agent（subagent_type: "vibe:developer"）
+修復後 stage-transition 會指示重跑 REVIEW。禁止 AskUserQuestion。
 已完成：PLAN → ARCH → DEV → REVIEW
 ```
 
-**回退重驗**（DEV 修復完成後）：
+**回退重驗**（DEV 修復完成後，v1.0.22 精簡版）：
 
 ```
-🔄 [回退重驗] DEV 已完成 CRITICAL 問題修復（第 1 輪）。
-⚠️ 你**必須立即**重新執行 REVIEW（審查）驗證修復結果。
-➡️ 執行方法：使用 Skill 工具呼叫 /vibe:review
-
-⛔ 這是回退流程的必要步驟 — 不可跳過，不可跳到其他階段。
-⛔ Pipeline 自動模式：不要使用 AskUserQuestion。
+🔄 [回退重驗] DEV 修復完成（第 1 輪）→ 重跑 REVIEW（審查）
+執行：使用 Skill 工具呼叫 /vibe:review
+不可跳過，不可跳到其他階段。禁止 AskUserQuestion。
 已完成：PLAN → ARCH → DEV → REVIEW
 ```
 
