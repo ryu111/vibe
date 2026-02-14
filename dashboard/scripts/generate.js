@@ -28,7 +28,7 @@ const CSS = `
     --bg: #0d1117; --surface: #161b22; --surface2: #1c2129;
     --border: #30363d; --text: #e6edf3; --text-muted: #8b949e;
     --accent: #58a6ff; --green: #3fb950; --yellow: #d29922;
-    --red: #f85149; --purple: #bc8cff; --orange: #f0883e; --cyan: #39d2c0;
+    --red: #f85149; --purple: #bc8cff; --orange: #f0883e; --cyan: #39d2c0; --pink: #f778ba;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; line-height: 1.5; padding: 2rem; max-width: 1100px; margin: 0 auto; }
@@ -126,16 +126,6 @@ const CSS = `
   .tag-hook { background: rgba(210,153,34,0.1); color: var(--yellow); }
   .tag .check { color: var(--green); font-weight: 700; }
   .tag .pending { color: var(--text-muted); opacity: 0.5; }
-
-  /* 依賴圖 */
-  .dep-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1rem 0; }
-  .dep-box { border: 1px solid var(--border); border-radius: 8px; padding: 0.8rem; background: var(--surface); }
-  .dep-box h4 { font-size: 0.85rem; margin-bottom: 0.3rem; }
-  .dep-box p { font-size: 0.78rem; color: var(--text-muted); }
-  .dep-box.dep-independent { border-color: var(--yellow); }
-  .dep-box.dep-core { border-color: var(--accent); }
-  .dep-box.dep-advanced { border-color: var(--purple); }
-  .dep-box.dep-external { border-color: var(--orange); }
 
   /* Agent 工作流 */
   .agent-workflow { display: flex; flex-direction: column; align-items: center; gap: 0; margin: 1rem 0; }
@@ -384,6 +374,31 @@ function genPluginCards(specs, progress) {
 
 // ─── 資料驅動輔助函式 ────────────────────────
 
+// agent color name（meta.json）→ CSS variable 映射
+const COLOR_MAP = {
+  red: 'var(--red)', blue: 'var(--accent)', green: 'var(--green)',
+  yellow: 'var(--yellow)', purple: 'var(--purple)', orange: 'var(--orange)',
+  pink: 'var(--pink)', cyan: 'var(--cyan)',
+};
+
+function agentColor(name, meta) {
+  const ag = meta && meta.agents && meta.agents[name];
+  if (ag && ag.color && COLOR_MAP[ag.color]) return COLOR_MAP[ag.color];
+  return 'var(--border)';
+}
+
+function agentEmoji(name, meta) {
+  const ag = meta && meta.agents && meta.agents[name];
+  return (ag && ag.emoji) || '';
+}
+
+// stage → 主 agent → agent color
+function stageColor(stage, meta) {
+  const prov = meta && meta.pipeline && meta.pipeline.stageProviders && meta.pipeline.stageProviders[stage];
+  if (prov && prov.agent) return agentColor(prov.agent, meta);
+  return 'var(--border)';
+}
+
 const colorToRgba = {
   'var(--yellow)': 'rgba(210,153,34,0.04)',
   'var(--cyan)': 'rgba(57,210,192,0.04)',
@@ -392,6 +407,7 @@ const colorToRgba = {
   'var(--purple)': 'rgba(137,87,229,0.06)',
   'var(--red)': 'rgba(248,81,73,0.04)',
   'var(--orange)': 'rgba(240,136,62,0.04)',
+  'var(--pink)': 'rgba(247,120,186,0.04)',
   'var(--text-muted)': 'rgba(255,255,255,0.02)',
 };
 
@@ -409,7 +425,8 @@ function buildFlowAgent(name, config, meta) {
   if (!trigger) trigger = '自動（Main Agent 委派）';
   return {
     name,
-    color: wf.color,
+    color: agentColor(name, meta),
+    emoji: agentEmoji(name, meta),
     perm: isPlan ? 'readonly' : 'writable',
     permLabel: isPlan ? '唯讀' : '可寫',
     trigger,
@@ -426,7 +443,8 @@ function buildDetailAgent(name, config, meta) {
   const isPlan = ag.permissionMode === 'plan' || ag.permissionMode === 'default';
   return {
     name,
-    color: wf.color,
+    color: agentColor(name, meta),
+    emoji: agentEmoji(name, meta),
     perm: isPlan ? '唯讀' : '可寫',
     permClass: isPlan ? 'readonly' : 'writable',
     model: ag.model,
@@ -434,31 +452,6 @@ function buildDetailAgent(name, config, meta) {
     maxTurns: isPlan ? undefined : ag.maxTurns,
     nodes: wf.detailedNodes,
   };
-}
-
-function genDependencyGraph(specs, config) {
-  if (!config) return '';
-  const pluginsByGroup = {};
-  for (const [name, spec] of Object.entries(specs.plugins)) {
-    if (!spec.depGroup) continue;
-    if (!pluginsByGroup[spec.depGroup]) pluginsByGroup[spec.depGroup] = [];
-    pluginsByGroup[spec.depGroup].push({ name, order: spec.buildOrder });
-  }
-  for (const arr of Object.values(pluginsByGroup)) {
-    arr.sort((a, b) => a.order - b.order);
-  }
-  const boxes = config.dependencyGroups.map(g => {
-    const plugins = pluginsByGroup[g.id] || [];
-    const names = plugins.map(p => `<strong>${p.name}</strong>`).join(' + ');
-    return `
-    <div class="dep-box ${g.class}">
-      <h4 style="color:${g.color}">${g.label}</h4>
-      <p>${names} — ${g.detail}</p>
-    </div>`;
-  }).join('');
-  return `
-  <div class="dep-grid">${boxes}
-  </div>`;
 }
 
 function genFlowDiagram(config, meta) {
@@ -484,10 +477,11 @@ function genFlowDiagram(config, meta) {
         : `<span class="agent-flow-step">${s}</span>`
     ).join('');
     const toolTags = a.tools.map(t => `<span class="agent-tool">${t}</span>`).join('');
+    const emojiPrefix = a.emoji ? `${a.emoji} ` : '';
     return `
         <div class="agent-card" style="border-color:${a.color}">
           <div class="agent-card-head">
-            <h4><span class="agent-dot" style="background:${a.color}"></span>${a.name}</h4>
+            <h4><span class="agent-dot" style="background:${a.color}"></span>${emojiPrefix}${a.name}</h4>
             <span class="agent-perm ${a.perm}">${a.permLabel}</span>
           </div>
           <div class="agent-trigger">觸發：<code>${a.trigger}</code></div>
@@ -661,7 +655,7 @@ function genAgentDetails(config, meta) {
     return {
       num: nums[i],
       label: stage,
-      color: sc.color || 'var(--border)',
+      color: stageColor(stage, meta),
       parallel: sc.parallel || false,
       fallback: sc.fallback || null,
       agents: agents.filter(Boolean),
@@ -703,9 +697,10 @@ function genAgentDetails(config, meta) {
     const modelColor = a.model === 'opus' ? 'var(--purple)' : a.model === 'sonnet' ? 'var(--accent)' : 'var(--green)';
     const turnsInfo = a.maxTurns ? ` · ${a.maxTurns}t` : '';
     const modelTag = `<span class="pipe-agent-model" style="color:${modelColor}">${a.model} · ${a.mode}${turnsInfo}</span>`;
+    const emojiPrefix = a.emoji ? `${a.emoji} ` : '';
     return `<div class="pipe-agent" style="border-color:${a.color}">
       <div class="pipe-agent-head">
-        <h5><span class="agent-dot" style="background:${a.color}"></span>${a.name}</h5>
+        <h5><span class="agent-dot" style="background:${a.color}"></span>${emojiPrefix}${a.name}</h5>
         <div style="display:flex;align-items:center;gap:0.4rem">
           ${modelTag}
           <span class="agent-perm ${a.permClass}">${a.perm}</span>
@@ -897,6 +892,10 @@ function generate(specs, progress) {
   const config = fs.existsSync(CONFIG_PATH) ? loadJSON(CONFIG_PATH) : null;
   const meta = fs.existsSync(META_PATH) ? loadJSON(META_PATH) : null;
 
+  // 動態版號：從 vibe plugin.json 讀取
+  const VIBE_PLUGIN_JSON = path.join(ROOT, 'plugins', 'vibe', '.claude-plugin', 'plugin.json');
+  const vibeVersion = fs.existsSync(VIBE_PLUGIN_JSON) ? loadJSON(VIBE_PLUGIN_JSON).version : '0.0.0';
+
   const ts = new Date(progress.timestamp).toLocaleString('zh-TW', {
     timeZone: 'Asia/Taipei',
     year: 'numeric', month: '2-digit', day: '2-digit',
@@ -944,12 +943,6 @@ function generate(specs, progress) {
 <h2>開發流程</h2>
 ${genFlowDiagram(config, meta)}
 
-<!-- 依賴關係 -->
-<h2>依賴關係</h2>
-${genDependencyGraph(specs, config)}
-
-
-
 <!-- Agent 詳細流程 -->
 <h2>Agent 詳細流程</h2>
 ${genAgentDetails(config, meta)}
@@ -961,7 +954,7 @@ ${genAgentDetails(config, meta)}
 </div>
 
 <div class="footer">
-  Vibe Marketplace v0.2.0 — ${progress.overall.totalActual}/${progress.overall.totalExpected} 組件完成
+  Vibe Marketplace v${vibeVersion} — ${progress.overall.totalActual}/${progress.overall.totalExpected} 組件完成
   · 由 <code>dashboard/scripts/generate.js</code> 自動產生
 </div>
 
@@ -975,7 +968,6 @@ ${genAgentDetails(config, meta)}
 function generateIndex(specs) {
   const pluginEntries = Object.entries(specs.plugins)
     .sort((a, b) => a[1].buildOrder - b[1].buildOrder);
-  const buildPlugins = pluginEntries.filter(([name]) => name !== 'forge');
 
   let totalSkills = 0, totalAgents = 0, totalHooks = 0, totalScripts = 0;
   for (const [, spec] of pluginEntries) {
@@ -986,36 +978,32 @@ function generateIndex(specs) {
   }
   const totalAll = totalSkills + totalAgents + totalHooks + totalScripts;
   const pluginCount = pluginEntries.length;
-  const doneCount = pluginEntries.filter(([, s]) => s.priority === 'done').length;
-  const newCount = pluginCount - doneCount;
-  const patternsSkills = (specs.plugins.patterns || { expected: { skills: [] } }).expected.skills.length;
-  const dynamicSkills = totalSkills - patternsSkills;
 
-  // §4 建構順序
-  const buildRows = buildPlugins.map(([name, spec]) => {
+  // 知識庫 skills 計算（vibe 的 8 個 *-patterns + coding-standards）
+  const knowledgeSkills = ['coding-standards','frontend-patterns','backend-patterns','db-patterns','typescript-patterns','python-patterns','go-patterns','testing-patterns'];
+  const knowledgeCount = knowledgeSkills.length;
+  const dynamicSkills = totalSkills - knowledgeCount;
+
+  // §3 建構順序
+  const buildRows = pluginEntries.map(([name, spec]) => {
     const e = spec.expected;
     const parts = [];
     if (e.skills.length) parts.push(`${e.skills.length}S`);
     if (e.agents.length) parts.push(`${e.agents.length}A`);
     if (e.hooks) parts.push(`${e.hooks}H`);
     if (e.scripts) parts.push(`${e.scripts}Sc`);
-    const phase = spec.buildOrder + 2;
-    let prereq = 'forge ✅';
-    if (name === 'patterns') prereq = '無';
-    else if (name === 'collab') prereq = 'Agent Teams';
-    else if (name === 'evolve') prereq = 'flow 可選';
-    return `| ${phase} | **${name}** | ${prereq} | ${parts.join(' + ')} |`;
+    return `| ${spec.buildOrder + 1} | **${name}** | ${spec.description} | ${parts.join(' + ')} |`;
   }).join('\n');
 
-  // §5 文件索引
-  const fileRows = buildPlugins.map(([name, spec], i) => {
+  // §4 文件索引
+  const fileRows = pluginEntries.map(([name, spec], i) => {
     const e = spec.expected;
     return `| ${i + 1} | ${name} | [${name}.md](${name}.md) | ${e.skills.length} | ${e.agents.length} | ${e.hooks} | ${e.scripts} |`;
   }).join('\n');
 
   return `# Vibe Marketplace — Plugin 設計總覽
 
-> ${pluginCount} 個 plugin（forge + ${newCount} 新）的總流程、依賴關係，以及各文件索引。
+> ${pluginCount} 個 plugin（forge + vibe）的總流程、模組架構，以及各文件索引。
 >
 > **此檔案由 \`dashboard/scripts/generate.js\` 自動產生，請勿手動編輯。**
 > 修改來源：\`docs/plugin-specs.json\`（數量）+ \`dashboard/scripts/generate.js\`（結構）
@@ -1027,50 +1015,45 @@ function generateIndex(specs) {
 完整視覺化流程圖請見 [dashboard.html](../dashboard.html)。
 
 \`\`\`
-開發者啟動 Claude Code
+使用者提出需求
     │
     ▼
-┌─ FLOW ─────────────────────────────────────┐
-│  SessionStart: pipeline-init（環境偵測+規則）│
-│  /vibe:scope → /vibe:architect → developer   │
-│  suggest-compact · checkpoint · cancel      │
-└─────────────────────┬───────────────────────┘
+┌─ task-classifier（haiku · UserPromptSubmit）──┐
+│  自動分類任務類型 → 建議 pipeline 啟動階段     │
+└─────────────────────┬────────────────────────┘
                       ▼
-┌─ PATTERNS ──────────────────────────────────┐
-│  8 個純知識 skills（無 hooks/agents）         │
-└─────────────────────┬───────────────────────┘
+┌─ 規劃模組 ────────────────────────────────────┐
+│  PLAN: planner（/vibe:scope）                 │
+│  ARCH: architect（/vibe:architect）            │
+│  pipeline-init · suggest-compact · cancel     │
+└─────────────────────┬────────────────────────┘
                       ▼
-┌─ SENTINEL ──────────────────────────────────┐
-│  自動: auto-lint · auto-format · test-check │
-│  手動: review · security · tdd · e2e · verify│
-│  攔截: danger-guard · console-log-check     │
-└─────────────────────┬───────────────────────┘
+┌─ 知識模組 ────────────────────────────────────┐
+│  8 個純知識 skills（coding-standards + 7 語言） │
+│  無 hooks/agents — 按需載入                    │
+└─────────────────────┬────────────────────────┘
                       ▼
-┌─ EVOLVE ────────────────────────────────────┐
-│  /vibe:evolve（知識進化）                   │
-│  /vibe:doc-sync（文件同步）                 │
-│  agent: doc-updater                         │
-└─────────────────────┬───────────────────────┘
+┌─ 品質模組 ────────────────────────────────────┐
+│  DEV: developer（寫碼 + 自動 lint/format）     │
+│  REVIEW: code-reviewer + security-reviewer    │
+│  TEST: tester + build-error-resolver          │
+│  QA: qa · E2E: e2e-runner                     │
+│  danger-guard · check-console-log             │
+└─────────────────────┬────────────────────────┘
+                      ▼
+┌─ 進化模組 ────────────────────────────────────┐
+│  DOCS: doc-updater（/vibe:doc-sync）          │
+│  /vibe:evolve（知識進化）                     │
+└─────────────────────┬────────────────────────┘
                       ▼
                    完成
 
-  ┌─ DASHBOARD ─ 監控層（即時視覺化）───────────┐
-  │  SessionStart: 自動啟動 WebSocket server    │
-  │  /vibe:dashboard（手動控管）            │
+  ┌─ 監控模組 ─ WebSocket 即時儀表板 ────────────┐
+  │  SessionStart: 自動啟動 · /vibe:dashboard    │
   └─────────────────────────────────────────────┘
 
-  ┌─ REMOTE ─── 遠端控制（Telegram）──────────────┐
-  │  SessionStart: 自動啟動 bot daemon          │
-  │  SubagentStop: pipeline 進度推播            │
-  │  /remote · /remote-config（手動控管）        │
-  └─────────────────────────────────────────────┘
-
-  ┌─ COLLAB ──── 任意階段可插入（需 Agent Teams）┐
-  │  adversarial-plan · review · refactor       │
-  └─────────────────────────────────────────────┘
-
-  ┌─ claude-mem ──── 獨立 plugin，推薦搭配 ─────┐
-  │  自動: 觀察捕獲 · session 摘要 · context 注入│
+  ┌─ 遠端模組 ─ Telegram 雙向控制 ──────────────┐
+  │  進度推播 · 狀態查詢 · 遠端指令 · tmux 控制  │
   └─────────────────────────────────────────────┘
 \`\`\`
 
@@ -1079,83 +1062,45 @@ function generateIndex(specs) {
 ## 2. 自動 vs 手動
 
 \`\`\`
-自動觸發（Hooks，使用者無感）            手動觸發（Skills，使用者主動）
-─────────────────────────            ─────────────────────────────
-FLOW     SessionStart: pipeline-init  /vibe:scope      功能規劃
-FLOW     PreToolUse: suggest-compact  /vibe:architect  架構設計
-FLOW     PreCompact: log-compact      /vibe:context-status  Context 狀態
-FLOW     SubagentStop: stage-trans.   /vibe:checkpoint 建立檢查點
-FLOW     Stop: pipeline-check         /vibe:env-detect 環境偵測
-FLOW     Stop: task-guard             /vibe:cancel     取消鎖定
-SENTINEL PostToolUse: auto-lint       /vibe:review  深度審查
-SENTINEL PostToolUse: auto-format     /vibe:security 安全掃描
-SENTINEL PostToolUse: test-check      /vibe:tdd     TDD 工作流
-SENTINEL PreToolUse: danger-guard     /vibe:e2e     E2E 測試
-SENTINEL Stop: console-log-check      /vibe:coverage 覆蓋率
-DASH     SessionStart: autostart      /vibe:lint    手動 lint
-REMOTE   SessionStart: autostart      /vibe:format  手動格式化
-REMOTE   SubagentStop: sender         /vibe:verify  綜合驗證
-COLLAB   SessionStart: team-init      /vibe:evolve    知識進化
-                                      /vibe:doc-sync  文件同步
-                                      /vibe:dashboard 儀表板控管
-                                      /remote           遠端控管
-                                      /remote-config    遠端設定
-                                      /vibe:adversarial-plan  競爭規劃
-                                      /vibe:adversarial-review 對抗審查
-                                      /vibe:adversarial-refactor 競爭重構
+自動觸發（Hooks，使用者無感）              手動觸發（Skills，使用者主動）
+──────────────────────────              ──────────────────────────────
+SessionStart: pipeline-init             /vibe:scope       功能規劃
+SessionStart: dashboard-autostart       /vibe:architect   架構設計
+SessionStart: remote-autostart          /vibe:context-status  Context 狀態
+UserPromptSubmit: task-classifier       /vibe:checkpoint  建立檢查點
+PreToolUse(Task): delegation-tracker    /vibe:env-detect  環境偵測
+PreToolUse(Write|Edit): dev-gate        /vibe:cancel      取消鎖定
+PreToolUse(*): suggest-compact          /vibe:review      深度審查
+PreToolUse(Bash): danger-guard          /vibe:security    安全掃描
+PreToolUse(AskUserQuestion): remote-ask /vibe:tdd         TDD 工作流
+PostToolUse(Write|Edit): auto-lint      /vibe:e2e         E2E 測試
+PostToolUse(Write|Edit): auto-format    /vibe:qa          行為測試
+PostToolUse(Write|Edit): test-check     /vibe:coverage    覆蓋率
+PreCompact: log-compact                 /vibe:lint        手動 lint
+SubagentStop: stage-transition          /vibe:format      手動格式化
+SubagentStop: remote-sender             /vibe:verify      綜合驗證
+Stop: pipeline-check                    /vibe:evolve      知識進化
+Stop: task-guard                        /vibe:doc-sync    文件同步
+Stop: check-console-log                 /vibe:dashboard   儀表板控管
+Stop: dashboard-refresh                 /remote           遠端控管
+Stop: remote-receipt                    /remote-config    遠端設定
+UserPromptSubmit: remote-prompt-forward /vibe:hook-diag   Hook 診斷
 
-自動: ${totalHooks} hooks                         手動: ${dynamicSkills} skills（+ patterns ${patternsSkills} 知識 skills）
-跨 session 記憶：claude-mem（獨立 plugin，非依賴）
+自動: ${totalHooks} hooks                           手動: ${dynamicSkills} skills（+ ${knowledgeCount} 知識 skills）
+跨 session 記憶：claude-mem（獨立 plugin，推薦搭配）
 \`\`\`
 
 ---
 
-## 3. 依賴關係圖
+## 3. 建構順序
 
-\`\`\`
-┌─────────────────────────────────────────────────────────┐
-│                    獨立（可單獨安裝）                      │
-│    ┌────────────┐    ┌────────────┐                     │
-│    │  patterns  │    │ claude-mem │                     │
-│    │  純知識庫   │    │  記憶持久化 │                     │
-│    └────────────┘    └────────────┘                     │
-└─────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────┐
-│                 核心雙引擎（建議一起安裝）                  │
-│    ┌────────────┐    ┌────────────┐                     │
-│    │    flow    │    │  sentinel  │                     │
-│    └────────────┘    └────────────┘                     │
-│          │                  │                           │
-│          └──────┬───────────┘                           │
-│                 │ 可選增強                               │
-│    ┌────────────▼──┐  ┌────────────┐  ┌────────────┐   │
-│    │   evolve      │  │ dashboard  │  │   remote   │   │
-│    │  知識進化      │  │  即時監控   │  │  遠端控制   │   │
-│    └───────────────┘  └────────────┘  └────────────┘   │
-└─────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────┐
-│                 進階（需 Agent Teams）                    │
-│    ┌────────────┐                                       │
-│    │   collab   │  需 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS │
-│    └────────────┘                                       │
-└─────────────────────────────────────────────────────────┘
-\`\`\`
-
----
-
-## 4. 建構順序
-
-| Phase | Plugin | 前置條件 | 組件數 |
-|:-----:|--------|---------|:------:|
+| Phase | Plugin | 描述 | 組件數 |
+|:-----:|--------|------|:------:|
 ${buildRows}
 
-> **flow 先於 sentinel**：規劃 → 寫碼 → 品質檢查，符合自然開發流程。
-
 ---
 
-## 5. 文件索引
+## 4. 文件索引
 
 | # | Plugin | 文件 | Skills | Agents | Hooks | Scripts |
 |:-:|--------|------|:------:|:------:|:-----:|:-------:|
@@ -1165,16 +1110,16 @@ ${fileRows}
 
 ---
 
-## 6. 總量統計
+## 5. 總量統計
 
 | 組件類型 | 數量 | 說明 |
 |---------|:----:|------|
-| **Plugins** | ${pluginCount} | forge ✅ + ${newCount} 新 |
-| **Skills** | ${totalSkills} | ${dynamicSkills} 動態能力 + ${patternsSkills} 知識庫（patterns） |
-| **Agents** | ${totalAgents} | 跨 ${pluginEntries.filter(([, s]) => s.expected.agents.length > 0).length} 個 plugins |
-| **Hooks** | ${totalHooks} | 自動觸發 |
+| **Plugins** | ${pluginCount} | forge + vibe |
+| **Skills** | ${totalSkills} | ${dynamicSkills} 動態能力 + ${knowledgeCount} 知識庫 |
+| **Agents** | ${totalAgents} | 全部在 vibe plugin |
+| **Hooks** | ${totalHooks} | 自動觸發（21 條規則） |
 | **Scripts** | ${totalScripts} | hook 腳本 + 共用函式庫 |
-| **合計** | ${totalAll} | 跨 ${pluginCount} 個獨立安裝的 plugins |
+| **合計** | ${totalAll} | 跨 ${pluginCount} 個 plugins |
 `;
 }
 

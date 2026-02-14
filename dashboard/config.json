@@ -1,56 +1,11 @@
 {
-  "dependencyGroups": [
-    {
-      "id": "independent",
-      "label": "獨立安裝",
-      "color": "var(--yellow)",
-      "class": "dep-independent",
-      "detail": "純知識庫，8 skills，無 hooks/agents"
-    },
-    {
-      "id": "core",
-      "label": "核心雙引擎",
-      "color": "var(--accent)",
-      "class": "dep-core",
-      "detail": "建議一起安裝<br>規劃 → 寫碼 → 品質檢查"
-    },
-    {
-      "id": "advanced",
-      "label": "可選增強",
-      "color": "var(--purple)",
-      "class": "dep-advanced",
-      "detail": "知識進化 + 文件<br>依賴 flow（可選）"
-    },
-    {
-      "id": "monitoring",
-      "label": "即時監控",
-      "color": "var(--cyan)",
-      "class": "dep-advanced",
-      "detail": "Pipeline 儀表板<br>WebSocket 即時推播 · 獨立運作"
-    },
-    {
-      "id": "communication",
-      "label": "雙向通訊",
-      "color": "var(--green)",
-      "class": "dep-core",
-      "detail": "LINE / Telegram 整合<br>進度通知 · 遠端指令 · 雙向溝通"
-    },
-    {
-      "id": "pending",
-      "label": "待定（需 Agent Teams）",
-      "color": "var(--orange)",
-      "class": "dep-external",
-      "detail": "多視角競爭分析<br>需 Agent Teams 環境變數"
-    }
-  ],
-
   "taskRoutes": [
     { "type": "research", "label": "研究探索", "stages": "—", "color": "var(--text-muted)" },
     { "type": "quickfix", "label": "小改動", "stages": "DEV", "color": "var(--yellow)" },
     { "type": "bugfix", "label": "修 Bug", "stages": "DEV → TEST", "color": "var(--orange)" },
     { "type": "feature", "label": "新功能", "stages": "PLAN → ARCH → DEV → REVIEW → TEST → DOCS", "color": "var(--green)" },
     { "type": "refactor", "label": "重構", "stages": "ARCH → DEV → REVIEW", "color": "var(--cyan)" },
-    { "type": "test", "label": "補測試", "stages": "TEST", "color": "var(--lime)" },
+    { "type": "test", "label": "補測試", "stages": "TEST", "color": "var(--pink)" },
     { "type": "docs", "label": "寫文件", "stages": "DOCS", "color": "var(--green)" },
     { "type": "tdd", "label": "TDD", "stages": "TEST → DEV → REVIEW", "color": "var(--purple)" }
   ],
@@ -211,7 +166,6 @@
 
   "agentWorkflows": {
     "planner": {
-      "color": "var(--purple)",
       "flowSteps": ["理解需求", "掃描專案", "識別影響", "拆解階段", "評估風險", "產出計畫"],
       "detailedNodes": [
         { "t": "input", "text": "使用者需求", "sub": "自然語言 · /vibe:scope 觸發" },
@@ -224,7 +178,6 @@
       ]
     },
     "architect": {
-      "color": "var(--cyan)",
       "flowSteps": ["掃描結構", "分析慣例", "識別邊界", "設計 2-3 方案", "目錄樹+介面+資料流"],
       "detailedNodes": [
         { "t": "input", "text": "計畫 + 需求", "sub": "/vibe:architect 觸發" },
@@ -236,7 +189,6 @@
       ]
     },
     "developer": {
-      "color": "var(--yellow)",
       "flowSteps": ["載入 PATTERNS", "按階段實作", "寫測試", "自動 hooks", "產出可運行程式碼"],
       "detailedNodes": [
         { "t": "input", "text": "計畫 + 架構方案", "sub": "planner + architect 產出" },
@@ -249,7 +201,6 @@
       ]
     },
     "code-reviewer": {
-      "color": "var(--accent)",
       "flowSteps": ["收集變更", "理解上下文", "逐項分析", "CRITICAL→LOW 報告"],
       "detailedNodes": [
         { "t": "input", "text": "程式碼變更", "sub": "git diff · /vibe:review" },
@@ -261,7 +212,6 @@
       ]
     },
     "security-reviewer": {
-      "color": "var(--red)",
       "trigger": "/vibe:security",
       "flowSteps": ["識別攻擊面", "追蹤資料流", "OWASP Top 10", "修復建議"],
       "detailedNodes": [
@@ -274,7 +224,6 @@
       ]
     },
     "tester": {
-      "color": "var(--lime)",
       "flowSteps": ["分析程式碼", "邊界案例", "整合測試", "覆蓋率檢查"],
       "detailedNodes": [
         { "t": "input", "text": "程式碼 + 規格", "sub": "/vibe:tdd 觸發" },
@@ -286,7 +235,6 @@
       ]
     },
     "build-error-resolver": {
-      "color": "var(--orange)",
       "trigger": "/vibe:verify",
       "flowSteps": ["解析錯誤", "最小修復", "驗證", "≤3 輪"],
       "detailedNodes": [
@@ -302,7 +250,6 @@
       ]
     },
     "qa": {
-      "color": "var(--yellow)",
       "flowSteps": ["啟動應用", "呼叫 API", "驗證 CLI", "確認行為"],
       "detailedNodes": [
         { "t": "input", "text": "應用 + API", "sub": "/vibe:qa 觸發" },
@@ -314,7 +261,6 @@
       ]
     },
     "e2e-runner": {
-      "color": "var(--green)",
       "flowSteps": ["分析頁面", "建 Page Objects", "撰寫測試", "執行", "除錯 ≤3 輪"],
       "detailedNodes": [
         { "t": "input", "text": "測試目標", "sub": "/vibe:e2e 觸發" },
@@ -329,7 +275,6 @@
       ]
     },
     "doc-updater": {
-      "color": "var(--green)",
       "flowSteps": ["分析 git diff", "識別受影響文件", "機械變更自動更新", "語意變更產出建議"],
       "detailedNodes": [
         { "t": "input", "text": "Git diff", "sub": "/vibe:doc-sync 觸發" },
@@ -346,30 +291,25 @@
   },
 
   "stageConfig": {
-    "PLAN": { "color": "var(--purple)" },
-    "ARCH": { "color": "var(--cyan)" },
-    "DEV": { "color": "var(--yellow)" },
+    "PLAN": {},
+    "ARCH": {},
+    "DEV": {},
     "REVIEW": {
-      "color": "var(--accent)",
       "parallel": true,
       "additionalAgents": ["security-reviewer"],
       "fallback": { "icon": "↩", "text": "CRITICAL / HIGH 問題", "target": "③ DEV", "detail": "開發者修復後重新審查" }
     },
     "TEST": {
-      "color": "var(--orange)",
       "additionalAgents": ["build-error-resolver"],
       "fallback": { "icon": "↩", "text": "≤3 輪自動修復仍失敗", "target": "③ DEV", "detail": "需人工修復後重新測試" }
     },
     "QA": {
-      "color": "var(--yellow)",
       "fallback": { "icon": "↩", "text": "行為不符預期", "target": "③ DEV", "detail": "修復後重新驗證" }
     },
     "E2E": {
-      "color": "var(--green)",
       "fallback": { "icon": "↩", "text": "使用者流程失敗", "target": "③ DEV", "detail": "修復後重新測試" }
     },
     "DOCS": {
-      "color": "var(--green)",
       "fallback": { "icon": "⚠", "text": "語意變更需人工確認", "target": "開發者", "detail": "審查建議後手動調整文件" }
     }
   },
