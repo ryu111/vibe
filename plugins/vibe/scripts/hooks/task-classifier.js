@@ -55,48 +55,8 @@ const { NAMESPACED_AGENT_TO_STAGE } = require(path.join(__dirname, '..', 'lib', 
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 
-/**
- * 關鍵字分類 — V2 保守預設（quickfix），feature 需正向匹配
- */
-function classify(prompt) {
-  if (!prompt) return 'quickfix';
-  const p = prompt.toLowerCase();
-
-  // Trivial/Demo 任務：明確的簡單意圖優先攔截（避免被 research 的泛用詞如「看看」誤匹配）
-  if (/hello.?world|boilerplate|scaffold|skeleton|poc|proof.?of.?concept|概念驗證|prototype|原型|試做|試作|簡單的?\s*(?:範例|demo|example|試試)|練習用|練習一下|tutorial|學習用|playground|scratch/.test(p)) {
-    return 'quickfix';
-  }
-  // 研究型：問題、探索、理解
-  if (/[?？]$|^(what|how|why|where|explain|show|list|find|search)\b|看看|查看|找找|說明|解釋|什麼|怎麼|為什麼|哪裡|告訴|描述|列出|做什麼|是什麼|有哪些|出問題|是不是/.test(p)) {
-    return 'research';
-  }
-  // TDD：明確要求
-  if (/tdd|test.?first|測試驅動|先寫測試/.test(p)) {
-    return 'tdd';
-  }
-  // 純測試
-  if (/^(write|add|create|fix).*test|^(寫|加|新增|修).*測試|^test\b/.test(p)) {
-    return 'test';
-  }
-  // 重構
-  if (/refactor|restructure|重構|重寫|重新設計|改架構/.test(p)) {
-    return 'refactor';
-  }
-  // 功能開發：明確的功能建設意圖（正向匹配）
-  if (/implement|develop|build.*feature|新增功能|建立.*(?:功能|api|rest|endpoint|server|service|database|服務|系統|模組|元件|頁面|app|應用|專案|component|module)|實作|開發.*功能|加入.*功能|新的.*(api|endpoint|component|頁面|模組|plugin)|整合.*系統/.test(p)) {
-    return 'feature';
-  }
-  // 快速修復：簡單改動
-  if (/fix.*typo|rename|change.*name|update.*text|改名|修.*typo|換.*名|改.*顏色|改.*文字/.test(p)) {
-    return 'quickfix';
-  }
-  // Bug 修復
-  if (/fix|bug|修(復|正)|debug|壞了|出錯|不work|不能/.test(p)) {
-    return 'bugfix';
-  }
-  // 預設：quickfix（保守 — 僅 DEV 階段，不鎖定 pipeline 模式）
-  return 'quickfix';
-}
+// 分類邏輯提取至 scripts/lib/flow/classifier.js（兩階段級聯分類器）
+const { classify } = require(path.join(__dirname, '..', 'lib', 'flow', 'classifier.js'));
 
 /**
  * 判斷是否為升級（新類型的 pipeline 更大）

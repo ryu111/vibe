@@ -2,10 +2,11 @@
 /**
  * classifier-and-console-filter.test.js — 單元測試
  *
- * Part 1: task-classifier classify() 函數邏輯
+ * Part 1: task-classifier 級聯分類器（import 實際模組）
  * Part 2: check-console-log 檔案過濾 regex
+ * Part 3: 品質守衛 hooks stdin→stdout 驗證
  *
- * 執行：bun test plugins/vibe/tests/classifier-and-console-filter.test.js
+ * 執行：node plugins/vibe/tests/classifier-and-console-filter.test.js
  */
 'use strict';
 const assert = require('assert');
@@ -27,56 +28,204 @@ function test(name, fn) {
 }
 
 // ═══════════════════════════════════════════════
-// Part 1: task-classifier classify() 函數
+// Part 1: 級聯分類器（直接 import 實際模組）
 // ═══════════════════════════════════════════════
 
-/**
- * 從 task-classifier.js 提取的分類邏輯（直接複製函式）
- */
-function classify(prompt) {
-  if (!prompt) return 'quickfix';
-  const p = prompt.toLowerCase();
+const { classify, isStrongQuestion } = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'classifier.js'));
 
-  // 研究型：問題、探索、理解
-  if (/[?？]$|^(what|how|why|where|explain|show|list|find|search)\b|看看|查看|找找|說明|解釋|什麼|怎麼|為什麼|哪裡|告訴|描述|列出|做什麼|是什麼|有哪些|出問題|是不是/.test(p)) {
-    return 'research';
-  }
-  // Trivial/Demo 任務：明確的簡單任務不需要完整 pipeline
-  if (/hello.?world|boilerplate|scaffold|skeleton|poc|proof.?of.?concept|概念驗證|prototype|原型|試做|試作|簡單的?\s*(?:範例|demo|example|試試)|練習用|練習一下|tutorial|學習用|playground|scratch/.test(p)) {
-    return 'quickfix';
-  }
-  // TDD：明確要求
-  if (/tdd|test.?first|測試驅動|先寫測試/.test(p)) {
-    return 'tdd';
-  }
-  // 純測試
-  if (/^(write|add|create|fix).*test|^(寫|加|新增|修).*測試|^test\b/.test(p)) {
-    return 'test';
-  }
-  // 重構
-  if (/refactor|restructure|重構|重寫|重新設計|改架構/.test(p)) {
-    return 'refactor';
-  }
-  // 功能開發：明確的功能建設意圖（正向匹配）
-  if (/implement|develop|build.*feature|新增功能|建立.*(?:功能|api|rest|endpoint|server|service|database|服務|系統|模組|元件|頁面|app|應用|專案|component|module)|實作|開發.*功能|加入.*功能|新的.*(api|endpoint|component|頁面|模組|plugin)|整合.*系統/.test(p)) {
-    return 'feature';
-  }
-  // 快速修復：簡單改動
-  if (/fix.*typo|rename|change.*name|update.*text|改名|修.*typo|換.*名|改.*顏色|改.*文字/.test(p)) {
-    return 'quickfix';
-  }
-  // Bug 修復
-  if (/fix|bug|修(復|正)|debug|壞了|出錯|不work|不能/.test(p)) {
-    return 'bugfix';
-  }
-  // 預設：quickfix（保守 — 僅 DEV 階段，不鎖定 pipeline 模式）
-  return 'quickfix';
-}
-
-console.log('\n🧪 Part 1: task-classifier classify() 函數');
+console.log('\n🧪 Part 1: 級聯分類器 — 強疑問信號');
 console.log('═'.repeat(50));
 
-// ─── Trivial → quickfix ─────────────────────────
+// ─── 句尾疑問標記（嗎/呢/?/？）────────────────────
+
+test('句尾「嗎」：規劃之後 tdd 會有文件產生嗎 → research', () => {
+  assert.strictEqual(classify('我們 規劃之後的 sdd tdd 會有文件產生嗎'), 'research');
+});
+
+test('句尾「嗎」：可以 refactor 嗎 → research', () => {
+  assert.strictEqual(classify('可以 refactor 嗎'), 'research');
+});
+
+test('句尾「呢」：feature 放在哪裡呢 → research', () => {
+  assert.strictEqual(classify('feature 放在哪裡呢'), 'research');
+});
+
+test('句尾「？」：這是 bug？ → research', () => {
+  assert.strictEqual(classify('這是 bug？'), 'research');
+});
+
+test('句尾「?」：is this a bug? → research', () => {
+  assert.strictEqual(classify('is this a bug?'), 'research');
+});
+
+// ─── 中文疑問代詞 ────────────────────────────────
+
+test('什麼：tdd 是什麼 → research', () => {
+  assert.strictEqual(classify('tdd 是什麼'), 'research');
+});
+
+test('怎麼：refactor 怎麼做 → research', () => {
+  assert.strictEqual(classify('refactor 怎麼做'), 'research');
+});
+
+test('為什麼：為什麼要 implement 這個 → research', () => {
+  assert.strictEqual(classify('為什麼要 implement 這個'), 'research');
+});
+
+test('哪裡：bug 在哪裡 → research', () => {
+  assert.strictEqual(classify('bug 在哪裡'), 'research');
+});
+
+test('哪個：哪個 feature 先做 → research', () => {
+  assert.strictEqual(classify('哪個 feature 先做'), 'research');
+});
+
+test('多少：有多少 test → research', () => {
+  assert.strictEqual(classify('有多少 test'), 'research');
+});
+
+test('如何：如何 implement 認證 → research', () => {
+  assert.strictEqual(classify('如何 implement 認證'), 'research');
+});
+
+test('誰：誰寫的這個 bug → research', () => {
+  assert.strictEqual(classify('誰寫的這個 bug'), 'research');
+});
+
+// ─── A不A 正反疑問結構 ──────────────────────────
+
+test('有沒有：有沒有 implement 過 → research', () => {
+  assert.strictEqual(classify('有沒有 implement 過'), 'research');
+});
+
+test('是不是：tdd 是不是必要的 → research', () => {
+  assert.strictEqual(classify('tdd 是不是必要的'), 'research');
+});
+
+test('能不能：能不能 fix 這個 → research', () => {
+  assert.strictEqual(classify('能不能 fix 這個'), 'research');
+});
+
+test('會不會：refactor 會不會壞掉 → research', () => {
+  assert.strictEqual(classify('refactor 會不會壞掉'), 'research');
+});
+
+test('可不可以：可不可以 scaffold 一個 → research', () => {
+  assert.strictEqual(classify('可不可以 scaffold 一個'), 'research');
+});
+
+test('要不要：要不要先寫測試 → research', () => {
+  assert.strictEqual(classify('要不要先寫測試'), 'research');
+});
+
+test('好不好：tdd 好不好用 → research', () => {
+  assert.strictEqual(classify('tdd 好不好用'), 'research');
+});
+
+test('對不對：這樣 implement 對不對 → research', () => {
+  assert.strictEqual(classify('這樣 implement 對不對'), 'research');
+});
+
+// ─── 文言疑問 ────────────────────────────────────
+
+test('是否：是否需要 refactor → research', () => {
+  assert.strictEqual(classify('是否需要 refactor'), 'research');
+});
+
+test('能否：能否改善效能 → research', () => {
+  assert.strictEqual(classify('能否改善效能'), 'research');
+});
+
+test('可否：可否用 tdd 方式 → research', () => {
+  assert.strictEqual(classify('可否用 tdd 方式'), 'research');
+});
+
+test('有無：有無替代方案 → research', () => {
+  assert.strictEqual(classify('有無替代方案'), 'research');
+});
+
+// ─── 顯式探詢 ────────────────────────────────────
+
+test('想知道：想知道 pipeline 的運作 → research', () => {
+  assert.strictEqual(classify('想知道 pipeline 的運作'), 'research');
+});
+
+test('想了解：想了解 tdd 流程 → research', () => {
+  assert.strictEqual(classify('想了解 tdd 流程'), 'research');
+});
+
+test('想問：想問 feature 開發流程 → research', () => {
+  assert.strictEqual(classify('想問 feature 開發流程'), 'research');
+});
+
+test('好奇：好奇 implement 的細節 → research', () => {
+  assert.strictEqual(classify('好奇 implement 的細節'), 'research');
+});
+
+test('不確定：不確定要不要 refactor → research', () => {
+  assert.strictEqual(classify('不確定要不要 refactor'), 'research');
+});
+
+test('不知道：不知道這算不算 bug → research', () => {
+  assert.strictEqual(classify('不知道這算不算 bug'), 'research');
+});
+
+test('請問：請問 tdd 怎麼開始 → research', () => {
+  assert.strictEqual(classify('請問 tdd 怎麼開始'), 'research');
+});
+
+// ─── 英文 WH 疑問 ──────────────────────────────
+
+test('what：what is this function doing → research', () => {
+  assert.strictEqual(classify('what is this function doing'), 'research');
+});
+
+test('how：how to implement auth → research', () => {
+  assert.strictEqual(classify('how to implement auth'), 'research');
+});
+
+test('why：why is this test failing → research', () => {
+  assert.strictEqual(classify('why is this test failing'), 'research');
+});
+
+test('where：where is the bug → research', () => {
+  assert.strictEqual(classify('where is the bug'), 'research');
+});
+
+test('when：when was this feature added → research', () => {
+  assert.strictEqual(classify('when was this feature added'), 'research');
+});
+
+test('which：which module to refactor → research', () => {
+  assert.strictEqual(classify('which module to refactor'), 'research');
+});
+
+test('explain：explain the architecture → research', () => {
+  assert.strictEqual(classify('explain the architecture'), 'research');
+});
+
+test('describe：describe the test flow → research', () => {
+  assert.strictEqual(classify('describe the test flow'), 'research');
+});
+
+// ─── isStrongQuestion 函式驗證 ──────────────────
+
+test('isStrongQuestion: 句尾嗎 → true', () => {
+  assert.strictEqual(isStrongQuestion('會有文件產生嗎'), true);
+});
+
+test('isStrongQuestion: 純動作 → false', () => {
+  assert.strictEqual(isStrongQuestion('幫我 implement 認證'), false);
+});
+
+test('isStrongQuestion: A不A → true', () => {
+  assert.strictEqual(isStrongQuestion('有沒有做過'), true);
+});
+
+// ═══════════════════════════════════════════════
+
+console.log('\n🧪 Part 1b: 級聯分類器 — Trivial 偵測');
+console.log('═'.repeat(50));
 
 test('hello world HTTP server → quickfix', () => {
   assert.strictEqual(classify('建立一個簡單的 hello world HTTP server'), 'quickfix');
@@ -138,7 +287,41 @@ test('學習用 Express server → quickfix', () => {
   assert.strictEqual(classify('學習用 Express server'), 'quickfix');
 });
 
-// ─── Feature → feature（不被 trivial 誤分類）─────────────────────────
+// ═══════════════════════════════════════════════
+
+console.log('\n🧪 Part 1c: 級聯分類器 — 弱探索信號');
+console.log('═'.repeat(50));
+
+test('解釋 pipeline 架構 → research', () => {
+  assert.strictEqual(classify('解釋 pipeline 架構'), 'research');
+});
+
+test('查看現有的測試 → research', () => {
+  assert.strictEqual(classify('查看現有的測試'), 'research');
+});
+
+test('說明一下這段程式碼 → research', () => {
+  assert.strictEqual(classify('說明一下這段程式碼'), 'research');
+});
+
+test('列出所有 hooks → research', () => {
+  assert.strictEqual(classify('列出所有 hooks'), 'research');
+});
+
+test('找找有沒有相關的檔案 → research（找找 + 有沒有 雙重）', () => {
+  assert.strictEqual(classify('找找有沒有相關的檔案'), 'research');
+});
+
+test('做什麼的 → research（弱探索）', () => {
+  assert.strictEqual(classify('做點什麼'), 'research');
+});
+
+// ═══════════════════════════════════════════════
+
+console.log('\n🧪 Part 1d: 級聯分類器 — 動作分類');
+console.log('═'.repeat(50));
+
+// ─── Feature ─────────────────────────────────
 
 test('建立一個完整的 REST API server → feature', () => {
   assert.strictEqual(classify('建立一個完整的 REST API server'), 'feature');
@@ -180,126 +363,304 @@ test('新的 API endpoint 功能 → feature', () => {
   assert.strictEqual(classify('新的 API endpoint 功能'), 'feature');
 });
 
-// ─── Research ─────────────────────────
-
-test('hello world 是什麼？ → research', () => {
-  assert.strictEqual(classify('hello world 是什麼？'), 'research');
+test('開發新的使用者模組 → feature', () => {
+  assert.strictEqual(classify('開發新的使用者模組'), 'feature');
 });
 
-test('這個 server 怎麼用？ → research', () => {
-  assert.strictEqual(classify('這個 server 怎麼用？'), 'research');
+test('建立完整的專案 → feature', () => {
+  assert.strictEqual(classify('建立完整的專案'), 'feature');
 });
 
-test('解釋 pipeline 架構 → research', () => {
-  assert.strictEqual(classify('解釋 pipeline 架構'), 'research');
-});
-
-test('what is this function doing? → research', () => {
-  assert.strictEqual(classify('what is this function doing?'), 'research');
-});
-
-test('查看現有的測試 → research', () => {
-  assert.strictEqual(classify('查看現有的測試'), 'research');
-});
-
-test('說明一下這段程式碼 → research', () => {
-  assert.strictEqual(classify('說明一下這段程式碼'), 'research');
-});
-
-// ─── Other types ─────────────────────────
-
-test('修復登入失敗問題 → bugfix', () => {
-  assert.strictEqual(classify('修復登入失敗問題'), 'bugfix');
-});
-
-test('重構認證模組 → refactor', () => {
-  assert.strictEqual(classify('重構認證模組'), 'refactor');
-});
-
-test('寫測試 → test', () => {
-  assert.strictEqual(classify('寫測試'), 'test');
-});
+// ─── TDD ─────────────────────────────────────
 
 test('tdd 開發流程 → tdd', () => {
   assert.strictEqual(classify('tdd 開發流程'), 'tdd');
-});
-
-test('改名 userId 為 user_id → quickfix', () => {
-  assert.strictEqual(classify('改名 userId 為 user_id'), 'quickfix');
-});
-
-test('空字串 → quickfix', () => {
-  assert.strictEqual(classify(''), 'quickfix');
-});
-
-test('做點什麼 → research（含「做什麼」關鍵字）', () => {
-  assert.strictEqual(classify('做點什麼'), 'research');
-});
-
-test('隨便改改 → quickfix (default)', () => {
-  assert.strictEqual(classify('隨便改改'), 'quickfix');
-});
-
-test('fix the broken button → bugfix', () => {
-  assert.strictEqual(classify('fix the broken button'), 'bugfix');
 });
 
 test('測試驅動開發新功能 → tdd', () => {
   assert.strictEqual(classify('測試驅動開發新功能'), 'tdd');
 });
 
+test('先寫測試再寫程式 → tdd', () => {
+  assert.strictEqual(classify('先寫測試再寫程式'), 'tdd');
+});
+
+test('用 test first 方式 → tdd', () => {
+  assert.strictEqual(classify('用 test first 方式'), 'tdd');
+});
+
+// ─── Test ────────────────────────────────────
+
+test('寫測試 → test', () => {
+  assert.strictEqual(classify('寫測試'), 'test');
+});
+
 test('add unit test for login → test', () => {
   assert.strictEqual(classify('add unit test for login'), 'test');
+});
+
+test('create test for API endpoint → test', () => {
+  assert.strictEqual(classify('create test for API endpoint'), 'test');
+});
+
+// ─── Refactor ────────────────────────────────
+
+test('重構認證模組 → refactor', () => {
+  assert.strictEqual(classify('重構認證模組'), 'refactor');
 });
 
 test('restructure the entire app → refactor', () => {
   assert.strictEqual(classify('restructure the entire app'), 'refactor');
 });
 
-// ─── 邊界案例和複合情境 ─────────────────────────
-
-test('簡單試試看這個 API → quickfix（簡單的試試）', () => {
-  assert.strictEqual(classify('簡單試試看這個 API'), 'quickfix');
-});
-
-test('建立簡單 demo 展示功能 → quickfix（demo 優先於功能）', () => {
-  assert.strictEqual(classify('建立簡單 demo 展示功能'), 'quickfix');
-});
-
-test('開發新的使用者模組 → feature（開發+模組）', () => {
-  assert.strictEqual(classify('開發新的使用者模組'), 'feature');
-});
-
-test('fix typo in variable name → quickfix（typo 修復）', () => {
-  assert.strictEqual(classify('fix typo in variable name'), 'quickfix');
-});
-
-test('update button text → quickfix（更新文字）', () => {
-  assert.strictEqual(classify('update button text'), 'quickfix');
-});
-
-test('create test for API endpoint → test（建立測試）', () => {
-  assert.strictEqual(classify('create test for API endpoint'), 'test');
-});
-
-test('先寫測試再寫程式 → tdd（測試驅動）', () => {
-  assert.strictEqual(classify('先寫測試再寫程式'), 'tdd');
-});
-
-test('重新設計整個架構 → refactor（重新設計）', () => {
+test('重新設計整個架構 → refactor', () => {
   assert.strictEqual(classify('重新設計整個架構'), 'refactor');
 });
 
-test('建立完整的專案 → feature（完整專案）', () => {
-  assert.strictEqual(classify('建立完整的專案'), 'feature');
+// ─── Quickfix ────────────────────────────────
+
+test('改名 userId 為 user_id → quickfix', () => {
+  assert.strictEqual(classify('改名 userId 為 user_id'), 'quickfix');
 });
 
-test('有哪些可用的 hooks？ → research（列表查詢）', () => {
-  assert.strictEqual(classify('有哪些可用的 hooks？'), 'research');
+test('fix typo in variable name → quickfix', () => {
+  assert.strictEqual(classify('fix typo in variable name'), 'quickfix');
 });
 
-test('這段程式碼是不是有問題？ → research（是不是）', () => {
-  assert.strictEqual(classify('這段程式碼是不是有問題？'), 'research');
+test('update button text → quickfix', () => {
+  assert.strictEqual(classify('update button text'), 'quickfix');
+});
+
+test('隨便改改 → quickfix (default)', () => {
+  assert.strictEqual(classify('隨便改改'), 'quickfix');
+});
+
+test('空字串 → quickfix', () => {
+  assert.strictEqual(classify(''), 'quickfix');
+});
+
+// ─── Bugfix ──────────────────────────────────
+
+test('修復登入失敗問題 → bugfix', () => {
+  assert.strictEqual(classify('修復登入失敗問題'), 'bugfix');
+});
+
+test('fix the broken button → bugfix', () => {
+  assert.strictEqual(classify('fix the broken button'), 'bugfix');
+});
+
+test('debug 記憶體洩漏 → bugfix', () => {
+  assert.strictEqual(classify('debug 記憶體洩漏'), 'bugfix');
+});
+
+// ═══════════════════════════════════════════════
+
+console.log('\n🧪 Part 1e: 級聯分類器 — 邊界案例');
+console.log('═'.repeat(50));
+
+// ─── 含動作關鍵字的疑問句（關鍵測試：疑問 > 動作）──
+
+test('含 tdd 的疑問句 → research（嗎 > tdd）', () => {
+  assert.strictEqual(classify('我們規劃之後的 sdd tdd 會有文件產生嗎'), 'research');
+});
+
+test('含 implement 的疑問句 → research（什麼 > feature）', () => {
+  assert.strictEqual(classify('implement 是什麼意思'), 'research');
+});
+
+test('含 refactor 的疑問句 → research（呢 > refactor）', () => {
+  assert.strictEqual(classify('什麼時候該 refactor 呢'), 'research');
+});
+
+test('含 bug 的疑問句 → research（嗎 > bugfix）', () => {
+  assert.strictEqual(classify('這算是 bug 嗎'), 'research');
+});
+
+test('含 test 的疑問句 → research（怎麼 > test）', () => {
+  assert.strictEqual(classify('怎麼寫好的 test'), 'research');
+});
+
+test('含 feature 的 WH 疑問 → research（how > feature）', () => {
+  assert.strictEqual(classify('how to implement this feature'), 'research');
+});
+
+test('含 tdd 的正反疑問 → research（好不好 > tdd）', () => {
+  assert.strictEqual(classify('tdd 好不好用'), 'research');
+});
+
+test('含 fix 的疑問 → research（能不能 > bugfix）', () => {
+  assert.strictEqual(classify('能不能 fix 這個問題'), 'research');
+});
+
+test('含 develop 的不確定 → research（不確定 > feature）', () => {
+  assert.strictEqual(classify('不確定要 develop 什麼'), 'research');
+});
+
+// ─── Trivial + 探索詞 ───────────────────────────
+
+test('hello world 看看 → quickfix（trivial > 弱探索）', () => {
+  assert.strictEqual(classify('做一個 hello world 看看'), 'quickfix');
+});
+
+test('poc 試試看 → quickfix（trivial 優先）', () => {
+  assert.strictEqual(classify('poc 試試看'), 'quickfix');
+});
+
+// ─── Trivial + 疑問 → 疑問優先 ──────────────────
+
+test('hello world 是什麼 → research（強疑問 > trivial）', () => {
+  assert.strictEqual(classify('hello world 是什麼'), 'research');
+});
+
+test('poc 有沒有範例 → research（強疑問 > trivial）', () => {
+  assert.strictEqual(classify('poc 有沒有範例'), 'research');
+});
+
+test('scaffold 怎麼用 → research（強疑問 > trivial）', () => {
+  assert.strictEqual(classify('scaffold 怎麼用'), 'research');
+});
+
+// ─── 短促輸入 ───────────────────────────────────
+
+test('嗎 → research（句尾嗎）', () => {
+  assert.strictEqual(classify('嗎'), 'research');
+});
+
+test('ok → quickfix（default）', () => {
+  assert.strictEqual(classify('ok'), 'quickfix');
+});
+
+test('null → quickfix', () => {
+  assert.strictEqual(classify(null), 'quickfix');
+});
+
+test('undefined → quickfix', () => {
+  assert.strictEqual(classify(undefined), 'quickfix');
+});
+
+// ─── 複合動作（不含疑問信號）→ 第一個匹配贏 ──────
+
+test('tdd + refactor → tdd（tdd 先匹配）', () => {
+  assert.strictEqual(classify('用 tdd 方式 refactor 這段'), 'tdd');
+});
+
+test('簡單 demo 展示功能 → quickfix（trivial 先匹配）', () => {
+  assert.strictEqual(classify('建立簡單 demo 展示功能'), 'quickfix');
+});
+
+// ═══════════════════════════════════════════════
+
+console.log('\n🧪 Part 1f: 級聯分類器 — 壓力測試');
+console.log('═'.repeat(50));
+
+// ─── 中英混合 ──────────────────────────────────
+
+test('中英混合疑問：pipeline 的 tdd stage 有 output 嗎 → research', () => {
+  assert.strictEqual(classify('pipeline 的 tdd stage 有 output 嗎'), 'research');
+});
+
+test('中英混合動作：implement 一個 WebSocket server → feature', () => {
+  assert.strictEqual(classify('implement 一個 WebSocket server'), 'feature');
+});
+
+test('中英混合疑問 WH：how 實作 authentication → research', () => {
+  assert.strictEqual(classify('how 實作 authentication'), 'research');
+});
+
+test('英文問句中文尾：is this a refactor嗎 → research', () => {
+  assert.strictEqual(classify('is this a refactor嗎'), 'research');
+});
+
+// ─── 禮貌式指令（含嗎但是命令意圖）→ 保守分類 ──
+
+test('禮貌指令：幫我 refactor 好嗎 → research（保守：嗎 > 動作）', () => {
+  assert.strictEqual(classify('幫我 refactor 好嗎'), 'research');
+});
+
+test('禮貌指令：可以 implement 這個嗎 → research（保守）', () => {
+  assert.strictEqual(classify('可以 implement 這個嗎'), 'research');
+});
+
+// ─── 多重信號疊加 ──────────────────────────────
+
+test('雙重疑問：什麼是 tdd 好不好用嗎 → research', () => {
+  assert.strictEqual(classify('什麼是 tdd 好不好用嗎'), 'research');
+});
+
+test('疑問 + 動作 + trivial：hello world 有沒有 bug → research', () => {
+  assert.strictEqual(classify('hello world 有沒有 bug'), 'research');
+});
+
+// ─── 純標點 / 特殊字元 ─────────────────────────
+
+test('純問號 → research', () => {
+  assert.strictEqual(classify('?'), 'research');
+});
+
+test('純全形問號 → research', () => {
+  assert.strictEqual(classify('？'), 'research');
+});
+
+test('空白 + 嗎 → research', () => {
+  assert.strictEqual(classify('   嗎  '), 'research');
+});
+
+test('數字 → quickfix（default）', () => {
+  assert.strictEqual(classify('12345'), 'quickfix');
+});
+
+// ─── 超長 prompt ────────────────────────────────
+
+test('超長 prompt（含疑問詞）→ research', () => {
+  const longPrompt = '我想了解一下' + ' 很長的背景描述'.repeat(50) + ' pipeline 的 tdd 機制';
+  assert.strictEqual(classify(longPrompt), 'research');
+});
+
+test('超長 prompt（無疑問詞）→ 正常分類', () => {
+  const longPrompt = '幫我' + ' 加上更多功能'.repeat(50) + ' 實作使用者認證系統';
+  assert.strictEqual(classify(longPrompt), 'feature');
+});
+
+// ─── 大小寫不敏感 ────────────────────────────────
+
+test('大寫 TDD → tdd', () => {
+  assert.strictEqual(classify('TDD 開發'), 'tdd');
+});
+
+test('大寫 IMPLEMENT → feature', () => {
+  assert.strictEqual(classify('IMPLEMENT user auth'), 'feature');
+});
+
+test('大寫 WHAT → research', () => {
+  assert.strictEqual(classify('WHAT is this'), 'research');
+});
+
+// ─── 尾部空白處理 ────────────────────────────────
+
+test('尾部空白 + 嗎 → research', () => {
+  assert.strictEqual(classify('這是 bug 嗎   '), 'research');
+});
+
+test('尾部空白 + ? → research', () => {
+  assert.strictEqual(classify('is this correct?  '), 'research');
+});
+
+// ─── 日常對話式 prompt ──────────────────────────
+
+test('打招呼：嗨 → quickfix（default）', () => {
+  assert.strictEqual(classify('嗨'), 'quickfix');
+});
+
+test('感謝：謝謝 → quickfix（default）', () => {
+  assert.strictEqual(classify('謝謝'), 'quickfix');
+});
+
+test('確認：好的 → quickfix（default）', () => {
+  assert.strictEqual(classify('好的'), 'quickfix');
+});
+
+test('繼續：繼續 → quickfix（default）', () => {
+  assert.strictEqual(classify('繼續'), 'quickfix');
 });
 
 // ═══════════════════════════════════════════════
@@ -309,12 +670,7 @@ test('這段程式碼是不是有問題？ → research（是不是）', () => {
 console.log('\n🧪 Part 2: check-console-log 檔案過濾邏輯');
 console.log('═'.repeat(50));
 
-/**
- * 從 check-console-log.js 提取的過濾邏輯（第 39 行）
- */
 const filterFn = (f) => !/(^|\/)scripts\/hooks\//.test(f) && !/hook-logger\.js$/.test(f);
-
-// ─── 應排除（filterFn 返回 false）─────────────────────────
 
 test('排除：plugins/vibe/scripts/hooks/pipeline-check.js', () => {
   assert.strictEqual(filterFn('plugins/vibe/scripts/hooks/pipeline-check.js'), false);
@@ -339,8 +695,6 @@ test('排除：plugins/vibe/scripts/lib/hook-logger.js', () => {
 test('排除：some/path/hook-logger.js', () => {
   assert.strictEqual(filterFn('some/path/hook-logger.js'), false);
 });
-
-// ─── 不應排除（filterFn 返回 true）─────────────────────────
 
 test('不排除：src/app.js', () => {
   assert.strictEqual(filterFn('src/app.js'), true);
@@ -388,9 +742,6 @@ console.log('═'.repeat(50));
 const { execSync } = require('child_process');
 const PLUGIN_ROOT = path.join(__dirname, '..');
 
-/**
- * 執行 hook 腳本，回傳 { stdout, stderr, exitCode }
- */
 function runSentinelHook(hookName, stdinData) {
   const script = path.join(PLUGIN_ROOT, 'scripts', 'hooks', `${hookName}.js`);
   const input = JSON.stringify(stdinData);
@@ -408,8 +759,6 @@ function runSentinelHook(hookName, stdinData) {
     };
   }
 }
-
-// ─── auto-lint：未知語言靜默退出 ──────────────
 
 test('auto-lint：.xyz 檔案 → 靜默退出（exit 0, 無 stdout）', () => {
   const r = runSentinelHook('auto-lint', { tool_input: { file_path: '/tmp/test.xyz' } });
@@ -429,8 +778,6 @@ test('auto-lint：linter=null 語言（.json）→ 靜默退出', () => {
   assert.strictEqual(r.stdout, '');
 });
 
-// ─── auto-format：未知語言靜默退出 ─────────────
-
 test('auto-format：.xyz 檔案 → 靜默退出', () => {
   const r = runSentinelHook('auto-format', { tool_input: { file_path: '/tmp/test.xyz' } });
   assert.strictEqual(r.exitCode, 0);
@@ -446,10 +793,7 @@ test('auto-format：無 file_path → 靜默退出', () => {
 test('auto-format：input.file_path 備選路徑（.py）→ 不崩潰', () => {
   const r = runSentinelHook('auto-format', { input: { file_path: '/tmp/test.py' } });
   assert.strictEqual(r.exitCode, 0);
-  // 不論 ruff 是否安裝，都不應崩潰
 });
-
-// ─── danger-guard：stdin 解析 + exit code 驗證 ──
 
 test('danger-guard：安全指令 → exit 0', () => {
   const r = runSentinelHook('danger-guard', { tool_input: { command: 'ls -la' } });
@@ -485,27 +829,21 @@ test('danger-guard：input.command 備選路徑 → 正常處理', () => {
   assert.strictEqual(r.exitCode, 0);
 });
 
-// ─── check-console-log：stop_hook_active 防迴圈 ──
-
 test('check-console-log：stop_hook_active=true → 靜默退出', () => {
   const r = runSentinelHook('check-console-log', { stop_hook_active: true });
   assert.strictEqual(r.exitCode, 0);
   assert.strictEqual(r.stdout, '');
 });
 
-test('check-console-log：stop_hook_active=false → 正常執行（非 git 或無變更）', () => {
+test('check-console-log：stop_hook_active=false → 正常執行', () => {
   const r = runSentinelHook('check-console-log', { stop_hook_active: false });
   assert.strictEqual(r.exitCode, 0);
-  // 在測試環境中，git diff 可能無結果，所以靜默退出是正常的
 });
 
-// ─── auto-lint：有 lint 輸出時 JSON 格式驗證 ──
-
-test('auto-lint：.ts 檔案 → stdout 為空或合法 JSON（systemMessage）', () => {
+test('auto-lint：.ts 檔案 → stdout 為空或合法 JSON', () => {
   const r = runSentinelHook('auto-lint', { tool_input: { file_path: '/tmp/nonexistent.ts' } });
   assert.strictEqual(r.exitCode, 0);
   if (r.stdout) {
-    // 有輸出時必須是合法 JSON，且含 continue + systemMessage
     const parsed = JSON.parse(r.stdout);
     assert.strictEqual(parsed.continue, true, 'continue 應為 true');
     assert.ok(parsed.systemMessage, '應有 systemMessage');

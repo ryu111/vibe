@@ -28,7 +28,8 @@
           "evolve", "doc-sync",
           "dashboard",
           "remote", "remote-config",
-          "hook-diag"
+          "hook-diag",
+          "classify-test"
         ],
         "agents": [
           "planner", "architect", "developer",
@@ -36,7 +37,7 @@
           "doc-updater"
         ],
         "hooks": 21,
-        "scripts": 37
+        "scripts": 38
       }
     }
   }
