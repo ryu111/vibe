@@ -3,7 +3,7 @@ name: hook-diag
 description: >-
   Hook 錯誤診斷 — 查看、分析、清除 hook error log。
   觸發詞：hook-diag、hook 錯誤、hook error、hook log、hook 診斷。
-arguments: $ARGUMENTS
+argument-hint: $ARGUMENTS
 allowed-tools: Bash, Read
 ---
 

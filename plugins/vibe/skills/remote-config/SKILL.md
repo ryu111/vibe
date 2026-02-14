@@ -3,7 +3,7 @@ name: remote-config
 description: >-
   Telegram 遠端控制設定教學與驗證 — 引導使用者建立 Bot、取得 Token 和 Chat ID。
   觸發詞：remote-config、遠端設定、telegram 設定、bot 設定。
-arguments: $ARGUMENTS
+argument-hint: $ARGUMENTS
 ---
 
 # /remote-config — Telegram 設定管理
@@ -34,7 +34,7 @@ arguments: $ARGUMENTS
 
 ```bash
 node -e "
-const tg = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/telegram.js');
+const tg = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/remote/telegram.js');
 const creds = tg.getCredentials();
 if (!creds) {
   console.log(JSON.stringify({ configured: false }));
@@ -53,7 +53,7 @@ if (!creds) {
 
 ```bash
 node -e "
-const tg = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/telegram.js');
+const tg = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/remote/telegram.js');
 const creds = tg.getCredentials();
 if (!creds) { console.log('MISSING'); process.exit(0); }
 tg.getMe(creds.token)

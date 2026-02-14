@@ -3,7 +3,7 @@ name: remote
 description: >-
   Telegram 遠端控制服務管理 — 啟動/停止 daemon、查詢狀態、發送測試訊息。
   觸發詞：remote、遠端、telegram、bot。
-arguments: $ARGUMENTS
+argument-hint: $ARGUMENTS
 ---
 
 # /remote — Telegram 遠端控制服務
@@ -59,7 +59,7 @@ AskUserQuestion 在 Telegram 上以純文字顯示選項編號。回覆數字即
 
 ```bash
 node -e "
-const tg = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/telegram.js');
+const tg = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/remote/telegram.js');
 const creds = tg.getCredentials();
 if (!creds) { console.log('MISSING'); process.exit(0); }
 console.log('OK');
@@ -107,7 +107,7 @@ console.log(JSON.stringify(state || { running: false }));
 #### send
 ```bash
 node -e "
-const tg = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/telegram.js');
+const tg = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/remote/telegram.js');
 const creds = tg.getCredentials();
 tg.sendMessage(creds.token, creds.chatId, process.argv[1])
   .then(r => console.log('OK'))
@@ -119,7 +119,7 @@ tg.sendMessage(creds.token, creds.chatId, process.argv[1])
 發送固定測試訊息：
 ```bash
 node -e "
-const tg = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/telegram.js');
+const tg = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/remote/telegram.js');
 const creds = tg.getCredentials();
 tg.sendMessage(creds.token, creds.chatId, '🔔 Vibe Remote 測試成功！\nBot 連線正常。')
   .then(() => console.log('OK'))
