@@ -23,7 +23,7 @@ vibe 是 Vibe marketplace 的核心 plugin，合併了 7 個功能模組：
 | **Remote** | Telegram 遠端控制 | 2S + 5H |
 | **診斷** | Hook 錯誤診斷 | 1S |
 
-**合計**：30 Skills + 10 Agents + 21 Hooks + 38 Scripts
+**合計**：29 Skills + 10 Agents + 21 Hooks + 38 Scripts
 
 ### 設計原則
 
@@ -42,7 +42,7 @@ vibe 是 Vibe marketplace 的核心 plugin，合併了 7 個功能模組：
 
 ## 2. 完整組件清單
 
-### Skills（30 個）
+### Skills（29 個）
 
 | # | 名稱 | 模組 | 說明 |
 |:-:|------|:----:|------|
@@ -50,32 +50,31 @@ vibe 是 Vibe marketplace 的核心 plugin，合併了 7 個功能模組：
 | 2 | `backend-patterns` | Patterns | 後端開發模式 — API 設計（REST/GraphQL）、middleware、 認證授權、ORM、快取策略。 |
 | 3 | `cancel` | Flow | 取消鎖定 — 解除 task-guard 阻擋 + 退出 pipeline 模式，允許直接操作。觸發詞：cancel、取消、解除鎖定、放行、退出 pipeline。 |
 | 4 | `checkpoint` | Flow | 工作檢查點 — 建立、列出、恢復工作狀態。結合 git 實現狀態保存與回溯。觸發詞：checkpoint、檢查點、save、restore、恢復。 |
-| 5 | `classify-test` | — | 分類器診斷 — 測試 prompt 分類結果、顯示命中信號層、蒐集誤判語料。 觸發詞：classify-test、分類測試、分類器、測試分類、誤判。 |
-| 6 | `coding-standards` | Patterns | 通用編碼標準 — 命名規範、檔案組織、錯誤處理、不可變性原則。 適用於所有語言和框架。 |
-| 7 | `context-status` | Flow | Context 狀態查詢 — 追蹤 context 使用量，在邏輯邊界建議壓縮。顯示當前 tool call 計數和建議。觸發詞：context-status、context、狀態。 |
-| 8 | `coverage` | Sentinel | 覆蓋率分析 — 執行測試並產出覆蓋率報告，標示未覆蓋的關鍵路徑。目標：整體 80%，關鍵路徑 100%。觸發詞：coverage、覆蓋率、測試覆蓋。 |
-| 9 | `dashboard` | Dashboard | Pipeline 儀表板控制 — 啟動、停止、重啟、查詢狀態、開啟瀏覽器。觸發詞：dashboard、儀表板、監控。 |
-| 10 | `db-patterns` | Patterns | 資料庫模式 — PostgreSQL 查詢最佳化、索引策略、 migration、連線池管理、Redis 快取模式。 |
-| 11 | `doc-sync` | Evolve | 文件同步 — 偵測程式碼與文件不同步，生成或更新文件。涵蓋 README、API docs、JSDoc、CHANGELOG。 |
-| 12 | `e2e` | Sentinel | E2E 瀏覽器測試 — 觸發 e2e-runner agent 使用 agent-browser CLI 操作瀏覽器驗證使用者流程。觸發詞：e2e、端對端、瀏覽器測試、browser test。 |
-| 13 | `env-detect` | Flow | 環境偵測 — 偵測專案技術棧、套件管理器、可用工具。顯示結構化環境摘要。觸發詞：環境、env、detect、偵測、技術棧。 |
-| 14 | `evolve` | Evolve | 知識進化 — 將 instincts 聚類並進化為 skills 或 agents。從觀察紀錄提取碎片化知識，逐步進化為可重用的能力。 |
-| 15 | `format` | Sentinel | 程式碼格式化 — 手動觸發 Prettier / Ruff format / gofmt。觸發詞：format、格式化、prettier。 |
-| 16 | `frontend-patterns` | Patterns | 前端開發模式 — React hooks、Next.js App Router、 Vue Composition API、狀態管理、效能最佳化。 |
-| 17 | `go-patterns` | Patterns | Go 進階模式 — error handling、concurrency（goroutines/channels）、 interface design、testing patterns。 |
-| 18 | `hook-diag` | 診斷 | Hook 錯誤診斷 — 查看、分析、清除 hook error log。 觸發詞：hook-diag、hook 錯誤、hook error、hook log、hook 診斷。 |
-| 19 | `lint` | Sentinel | 靜態分析 — 手動觸發 ESLint / Ruff / golangci-lint 等 linter。觸發詞：lint、靜態分析、程式碼檢查。 |
-| 20 | `python-patterns` | Patterns | Python 進階模式 — typing、async/await、dataclass、 Protocol、FastAPI/Django 最佳實踐。 |
-| 21 | `qa` | Sentinel | 行為測試 — 觸發 qa agent 啟動應用、呼叫 API、驗證 CLI 輸出，確認真實行為符合預期。觸發詞：qa、行為測試、smoke test、API 驗證。 |
-| 22 | `remote` | Remote | Telegram 遠端控制服務管理 — 啟動/停止 daemon、查詢狀態、發送測試訊息。 觸發詞：remote、遠端、telegram、bot。 |
-| 23 | `remote-config` | Remote | Telegram 遠端控制設定教學與驗證 — 引導使用者建立 Bot、取得 Token 和 Chat ID。 觸發詞：remote-config、遠端設定、telegram 設定、bot 設定。 |
-| 24 | `review` | Sentinel | 程式碼審查 — 觸發 code-reviewer agent 進行全面品質分析，按嚴重程度排序產出結構化報告。觸發詞：review、審查、code review、程式碼檢查。 |
-| 25 | `scope` | Flow | 功能規劃 — 將需求轉化為分階段實作計畫。分析可行性、依賴、風險，產出可執行的計畫書。觸發詞：scope、規劃、計畫、設計功能。 |
-| 26 | `security` | Sentinel | 安全掃描 — 觸發 security-reviewer agent 執行 OWASP Top 10 檢測、資料流追蹤、secret 掃描。觸發詞：security、安全、OWASP、漏洞掃描。 |
-| 27 | `tdd` | Sentinel | TDD 工作流 — 觸發 tester agent 執行 RED → GREEN → REFACTOR 測試驅動開發流程。觸發詞：tdd、測試驅動、寫測試、test driven。 |
-| 28 | `testing-patterns` | Patterns | 測試模式 — unit/integration/e2e 測試策略、 mocking、fixtures、測試金字塔、覆蓋率目標。 |
-| 29 | `typescript-patterns` | Patterns | TypeScript 進階模式 — Utility types、Generic constraints、 Discriminated unions、Type guards、Strict mode 最佳實踐。 |
-| 30 | `verify` | Sentinel | 綜合驗證 — 一鍵執行 Build → Types → Lint → Tests → Git 狀態檢查。觸發詞：verify、驗證、全面檢查、CI check。 |
+| 5 | `coding-standards` | Patterns | 通用編碼標準 — 命名規範、檔案組織、錯誤處理、不可變性原則。 適用於所有語言和框架。 |
+| 6 | `context-status` | Flow | Context 狀態查詢 — 追蹤 context 使用量，在邏輯邊界建議壓縮。顯示當前 tool call 計數和建議。觸發詞：context-status、context、狀態。 |
+| 7 | `coverage` | Sentinel | 覆蓋率分析 — 執行測試並產出覆蓋率報告，標示未覆蓋的關鍵路徑。目標：整體 80%，關鍵路徑 100%。觸發詞：coverage、覆蓋率、測試覆蓋。 |
+| 8 | `dashboard` | Dashboard | Pipeline 儀表板控制 — 啟動、停止、重啟、查詢狀態、開啟瀏覽器。觸發詞：dashboard、儀表板、監控。 |
+| 9 | `db-patterns` | Patterns | 資料庫模式 — PostgreSQL 查詢最佳化、索引策略、 migration、連線池管理、Redis 快取模式。 |
+| 10 | `doc-sync` | Evolve | 文件同步 — 偵測程式碼與文件不同步，生成或更新文件。涵蓋 README、API docs、JSDoc、CHANGELOG。 |
+| 11 | `e2e` | Sentinel | E2E 瀏覽器測試 — 觸發 e2e-runner agent 使用 agent-browser CLI 操作瀏覽器驗證使用者流程。觸發詞：e2e、端對端、瀏覽器測試、browser test。 |
+| 12 | `env-detect` | Flow | 環境偵測 — 偵測專案技術棧、套件管理器、可用工具。顯示結構化環境摘要。觸發詞：環境、env、detect、偵測、技術棧。 |
+| 13 | `evolve` | Evolve | 知識進化 — 將 instincts 聚類並進化為 skills 或 agents。從觀察紀錄提取碎片化知識，逐步進化為可重用的能力。 |
+| 14 | `format` | Sentinel | 程式碼格式化 — 手動觸發 Prettier / Ruff format / gofmt。觸發詞：format、格式化、prettier。 |
+| 15 | `frontend-patterns` | Patterns | 前端開發模式 — React hooks、Next.js App Router、 Vue Composition API、狀態管理、效能最佳化。 |
+| 16 | `go-patterns` | Patterns | Go 進階模式 — error handling、concurrency（goroutines/channels）、 interface design、testing patterns。 |
+| 17 | `hook-diag` | 診斷 | Hook 錯誤診斷 — 查看、分析、清除 hook error log。 觸發詞：hook-diag、hook 錯誤、hook error、hook log、hook 診斷。 |
+| 18 | `lint` | Sentinel | 靜態分析 — 手動觸發 ESLint / Ruff / golangci-lint 等 linter。觸發詞：lint、靜態分析、程式碼檢查。 |
+| 19 | `python-patterns` | Patterns | Python 進階模式 — typing、async/await、dataclass、 Protocol、FastAPI/Django 最佳實踐。 |
+| 20 | `qa` | Sentinel | 行為測試 — 觸發 qa agent 啟動應用、呼叫 API、驗證 CLI 輸出，確認真實行為符合預期。觸發詞：qa、行為測試、smoke test、API 驗證。 |
+| 21 | `remote` | Remote | Telegram 遠端控制服務管理 — 啟動/停止 daemon、查詢狀態、發送測試訊息。 觸發詞：remote、遠端、telegram、bot。 |
+| 22 | `remote-config` | Remote | Telegram 遠端控制設定教學與驗證 — 引導使用者建立 Bot、取得 Token 和 Chat ID。 觸發詞：remote-config、遠端設定、telegram 設定、bot 設定。 |
+| 23 | `review` | Sentinel | 程式碼審查 — 觸發 code-reviewer agent 進行全面品質分析，按嚴重程度排序產出結構化報告。觸發詞：review、審查、code review、程式碼檢查。 |
+| 24 | `scope` | Flow | 功能規劃 — 將需求轉化為分階段實作計畫。分析可行性、依賴、風險，產出可執行的計畫書。觸發詞：scope、規劃、計畫、設計功能。 |
+| 25 | `security` | Sentinel | 安全掃描 — 觸發 security-reviewer agent 執行 OWASP Top 10 檢測、資料流追蹤、secret 掃描。觸發詞：security、安全、OWASP、漏洞掃描。 |
+| 26 | `tdd` | Sentinel | TDD 工作流 — 觸發 tester agent 執行 RED → GREEN → REFACTOR 測試驅動開發流程。觸發詞：tdd、測試驅動、寫測試、test driven。 |
+| 27 | `testing-patterns` | Patterns | 測試模式 — unit/integration/e2e 測試策略、 mocking、fixtures、測試金字塔、覆蓋率目標。 |
+| 28 | `typescript-patterns` | Patterns | TypeScript 進階模式 — Utility types、Generic constraints、 Discriminated unions、Type guards、Strict mode 最佳實踐。 |
+| 29 | `verify` | Sentinel | 綜合驗證 — 一鍵執行 Build → Types → Lint → Tests → Git 狀態檢查。觸發詞：verify、驗證、全面檢查、CI check。 |
 
 ### Agents（10 個）
 
@@ -624,16 +623,15 @@ const STAGES = {
 ```
 plugins/vibe/
 ├── .claude-plugin/
-│   └── plugin.json               # name: "vibe", 30 skills, 10 agents
+│   └── plugin.json               # name: "vibe", 29 skills, 10 agents
 ├── hooks/
 │   └── hooks.json                # 統一 21 hooks
 ├── pipeline.json                 # Stage 順序 + provides
-├── skills/                       # 30 個 skill 目錄
+├── skills/                       # 29 個 skill 目錄
 │   ├── architect/               # Flow
 │   ├── backend-patterns/        # Patterns
 │   ├── cancel/                  # Flow
 │   ├── checkpoint/              # Flow
-│   ├── classify-test/           # —
 │   ├── coding-standards/        # Patterns
 │   ├── context-status/          # Flow
 │   ├── coverage/                # Sentinel

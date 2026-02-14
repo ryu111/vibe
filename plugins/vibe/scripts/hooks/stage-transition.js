@@ -10,6 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { execSync } = require('child_process');
 
 const { discoverPipeline, findNextStage } = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-discovery.js'));
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
@@ -29,6 +30,29 @@ const STAGE_CONTEXT = {
   E2E_UI: '🌐 E2E 重點：瀏覽器使用者流程。用 agent-browser 操作 UI，驗證完整的使用者旅程。不重複 QA 已驗證的 API 場景。',
   E2E_API: '🌐 E2E 重點：跨步驟資料一致性驗證。重點測試多使用者互動、狀態依賴鏈（如 email 更新後能否用新 email 登入）、錯誤恢復流程。不重複 QA 已做過的基本 API 場景。',
 };
+
+// 階段完成後的附加提示（注入到下一階段指令中）
+const POST_STAGE_HINTS = {
+  REVIEW: '🔒 安全提示：REVIEW 已完成程式碼品質審查。建議在 TEST 階段也關注安全相關測試（auth、input validation、injection）。如有 auth/crypto 相關變更，可在 pipeline 完成後執行 /vibe:security 深度掃描。',
+  TEST: '📊 覆蓋率提示：TEST 已完成。進入 QA 前建議關注測試覆蓋率。pipeline 完成後可用 /vibe:coverage 取得詳細報告。',
+};
+
+/**
+ * 自動建立 git checkpoint（pipeline 階段完成時的回溯錨點）
+ * 使用 lightweight git tag，零 agent 介入
+ */
+function autoCheckpoint(stage, sessionId) {
+  try {
+    const tagName = `vibe-pipeline/${stage.toLowerCase()}`;
+    // -f 確保重複執行不報錯（retry 場景同一 stage 會多次執行）
+    execSync(`git tag -f "${tagName}"`, {
+      stdio: 'pipe',
+      timeout: 5000,
+    });
+  } catch (_) {
+    // 非 git repo 或 tag 失敗 → 靜默跳過
+  }
+}
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
@@ -303,6 +327,12 @@ process.stdin.on('end', () => {
           stageContext = isApiOnly ? `\n${STAGE_CONTEXT.E2E_API}` : `\n${STAGE_CONTEXT.E2E_UI}`;
         }
 
+        // 前一階段完成後的附加提示（安全、覆蓋率等）
+        const postHint = POST_STAGE_HINTS[currentStage];
+        if (postHint) {
+          stageContext += `\n${postHint}`;
+        }
+
         // 跳過說明
         const skipNote = skippedStages.length > 0
           ? `\n⏭️ 已智慧跳過：${skippedStages.join('、')}`
@@ -327,7 +357,19 @@ ${method}${stageContext}${skipNote}
         const skipNote = skippedStages.length > 0
           ? `\n⏭️ 已智慧跳過：${skippedStages.join('、')}`
           : '';
-        message = `✅ [Pipeline 完成] ${agentType} 已完成（${currentLabel}階段）。${forcedNote}${skipNote}\n所有階段已完成：${completedStr}\n向使用者報告成果。`;
+        message = `✅ [Pipeline 完成] ${agentType} 已完成（${currentLabel}階段）。${forcedNote}${skipNote}
+所有階段已完成：${completedStr}
+
+📌 Pipeline 後續動作（依序執行）：
+1️⃣ 執行 /vibe:verify 進行最終綜合驗證（Build → Types → Lint → Tests → Git 狀態）
+2️⃣ 向使用者報告成果摘要
+3️⃣ 使用 AskUserQuestion（multiSelect: true）提供後續選項，建議包含：
+   - 提交並推送（commit + push）
+   - 覆蓋率分析（/vibe:coverage）
+   - 安全掃描（/vibe:security）
+   - 知識進化（/vibe:evolve — 將此 session 產生的經驗進化為可重用組件）
+
+⚠️ Pipeline 已解除自動模式，現在可以使用 AskUserQuestion。`;
       }
     }
 
@@ -336,6 +378,11 @@ ${method}${stageContext}${skipNote}
 
     // 寫入 state file
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+
+    // 自動建立 git checkpoint（回退場景除外，因為回退後 tag 會被覆寫）
+    if (!shouldRetry) {
+      autoCheckpoint(currentStage, sessionId);
+    }
 
     // 輸出
     console.log(JSON.stringify({

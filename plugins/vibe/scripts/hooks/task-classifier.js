@@ -58,6 +58,68 @@ const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timelin
 // 分類邏輯提取至 scripts/lib/flow/classifier.js（兩階段級聯分類器）
 const { classify } = require(path.join(__dirname, '..', 'lib', 'flow', 'classifier.js'));
 
+// 語言/框架 → 知識 skill 映射
+const KNOWLEDGE_SKILLS = {
+  languages: {
+    typescript: '/vibe:typescript-patterns',
+    python: '/vibe:python-patterns',
+    go: '/vibe:go-patterns',
+  },
+  frameworks: {
+    'next.js': '/vibe:frontend-patterns',
+    nuxt: '/vibe:frontend-patterns',
+    remix: '/vibe:frontend-patterns',
+    astro: '/vibe:frontend-patterns',
+    svelte: '/vibe:frontend-patterns',
+    vue: '/vibe:frontend-patterns',
+    react: '/vibe:frontend-patterns',
+    angular: '/vibe:frontend-patterns',
+    express: '/vibe:backend-patterns',
+    fastify: '/vibe:backend-patterns',
+    hono: '/vibe:backend-patterns',
+  },
+};
+
+/**
+ * 根據 env-detect 結果產生知識 skill 提示
+ * @param {Object} envInfo - state.environment
+ * @returns {string} 知識提示文字（空字串表示無提示）
+ */
+function buildKnowledgeHints(envInfo) {
+  if (!envInfo) return '';
+  const skills = new Set();
+
+  // 語言映射
+  const primary = envInfo.languages && envInfo.languages.primary;
+  if (primary && KNOWLEDGE_SKILLS.languages[primary]) {
+    skills.add(KNOWLEDGE_SKILLS.languages[primary]);
+  }
+  const secondary = (envInfo.languages && envInfo.languages.secondary) || [];
+  for (const lang of secondary) {
+    if (KNOWLEDGE_SKILLS.languages[lang]) {
+      skills.add(KNOWLEDGE_SKILLS.languages[lang]);
+    }
+  }
+
+  // 框架映射
+  const framework = envInfo.framework && envInfo.framework.name;
+  if (framework && KNOWLEDGE_SKILLS.frameworks[framework]) {
+    skills.add(KNOWLEDGE_SKILLS.frameworks[framework]);
+  }
+
+  // 通用知識（有任何語言偵測時都加）
+  if (primary) {
+    skills.add('/vibe:coding-standards');
+    skills.add('/vibe:testing-patterns');
+  }
+
+  if (skills.size === 0) return '';
+
+  return `\n\n█ 可用知識庫 █\n` +
+    `以下知識 skills 與目前專案環境匹配，sub-agent 可在需要時參考：\n` +
+    Array.from(skills).map(s => `- ${s}`).join('\n');
+}
+
 /**
  * 判斷是否為升級（新類型的 pipeline 更大）
  */
@@ -125,24 +187,30 @@ function buildPipelineRules(stages, pipelineRules) {
  */
 function outputInitialClassification(type, label, stages, state) {
   if (stages.length === 0) {
-    // 無需 pipeline（research）
-    console.log(JSON.stringify({
-      additionalContext: `[任務分類] 類型：${label} — 無需 pipeline，直接回答。`,
-    }));
+    // 無需 pipeline（research）— 仍注入知識提示
+    const envInfo = state && state.environment;
+    const knowledgeHints = buildKnowledgeHints(envInfo);
+    const context = `[任務分類] 類型：${label} — 無需 pipeline，直接回答。` +
+      (knowledgeHints ? `\n${knowledgeHints}` : '');
+    console.log(JSON.stringify({ additionalContext: context }));
     return;
   }
 
   if (FULL_PIPELINE_TYPES.includes(type)) {
-    // 完整 pipeline 任務 → 注入強制委派規則（systemMessage）
+    // 完整 pipeline 任務 → 注入強制委派規則 + 知識提示（systemMessage）
     const pipelineRules = (state && state.pipelineRules) || [];
+    const envInfo = state && state.environment;
+    const knowledgeHints = buildKnowledgeHints(envInfo);
     console.log(JSON.stringify({
-      systemMessage: buildPipelineRules(stages, pipelineRules),
+      systemMessage: buildPipelineRules(stages, pipelineRules) + knowledgeHints,
     }));
   } else {
-    // 輕量 pipeline（quickfix/bugfix/test）→ 資訊提示
+    // 輕量 pipeline（quickfix/bugfix/test）→ 資訊提示 + 知識提示
     const stageStr = stages.join(' → ');
+    const envInfo = state && state.environment;
+    const knowledgeHints = buildKnowledgeHints(envInfo);
     console.log(JSON.stringify({
-      additionalContext: `[任務分類] 類型：${label}\n建議階段：${stageStr}`,
+      additionalContext: `[任務分類] 類型：${label}\n建議階段：${stageStr}${knowledgeHints}`,
     }));
   }
 }
