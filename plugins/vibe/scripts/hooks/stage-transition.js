@@ -13,6 +13,7 @@ const os = require('os');
 
 const { discoverPipeline, findNextStage } = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-discovery.js'));
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
+const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 
 // 智慧回退配置
 const MAX_RETRIES = parseInt(process.env.CLAUDE_PIPELINE_MAX_RETRIES || '3', 10);
@@ -195,6 +196,15 @@ process.stdin.on('end', () => {
       // 記錄待重驗階段（DEV 完成後會讀取此標記，強制重跑品質檢查）
       state.pendingRetry = { stage: currentStage, severity: verdict.severity, round: retryCount + 1 };
 
+      // Emit stage retry event
+      emit(EVENT_TYPES.STAGE_RETRY, sessionId, {
+        stage: currentStage,
+        agentType,
+        verdict: verdict.verdict,
+        severity: verdict.severity,
+        retryCount: retryCount + 1,
+      });
+
       const devInfo = pipeline.stageMap['DEV'];
       const devPlugin = devInfo && devInfo.plugin ? `${devInfo.plugin}:` : '';
       const devAgent = devInfo ? devInfo.agent : 'developer';
@@ -267,6 +277,14 @@ process.stdin.on('end', () => {
       }
 
       if (nextStageCandidate) {
+        // Emit stage complete event (with nextStage)
+        emit(EVENT_TYPES.STAGE_COMPLETE, sessionId, {
+          stage: currentStage,
+          agentType,
+          verdict: verdict?.verdict || 'UNKNOWN',
+          nextStage: nextStageCandidate,
+        });
+
         const nextLabel = pipeline.stageLabels[nextStageCandidate] || nextStageCandidate;
         const nextInfo = pipeline.stageMap[nextStageCandidate];
         const skillCmd = nextInfo && nextInfo.skill ? nextInfo.skill : null;
@@ -297,6 +315,12 @@ ${method}${stageContext}${skipNote}
 ⛔ Pipeline 自動模式：不要使用 AskUserQuestion，完成後直接進入下一階段。
 已完成：${completedStr}`;
       } else {
+        // Emit pipeline complete event
+        emit(EVENT_TYPES.PIPELINE_COMPLETE, sessionId, {
+          finalStage: currentStage,
+          completedStages,
+        });
+
         const skipNote = skippedStages.length > 0
           ? `\n⏭️ 已智慧跳過：${skippedStages.join('、')}`
           : '';

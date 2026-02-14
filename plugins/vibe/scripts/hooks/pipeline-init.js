@@ -15,6 +15,7 @@ const { discoverPipeline } = require(path.join(__dirname, '..', 'lib', 'flow', '
 const { detect } = require(path.join(__dirname, '..', 'lib', 'flow', 'env-detector.js'));
 const { reset: resetCounter } = require(path.join(__dirname, '..', 'lib', 'flow', 'counter.js'));
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
+const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
@@ -73,6 +74,20 @@ process.stdin.on('end', () => {
       environment: env,
       lastTransition: new Date().toISOString(),
     }, null, 2));
+
+    // Emit timeline event
+    emit(EVENT_TYPES.SESSION_START, sessionId, {
+      cwd,
+      environment: {
+        language: env.languages.primary,
+        framework: env.framework?.name,
+        packageManager: env.packageManager?.name,
+        tools: {
+          test: env.tools.test,
+          linter: env.tools.linter,
+        },
+      },
+    });
 
     // 輸出環境摘要（additionalContext = 資訊提示，不觸發 "hook error" 標籤）
     if (env.languages.primary) {

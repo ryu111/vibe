@@ -14,6 +14,8 @@ const path = require('path');
 const os = require('os');
 
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
+const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
+const { NAMESPACED_AGENT_TO_STAGE } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
 let input = '';
@@ -33,6 +35,18 @@ process.stdin.on('end', () => {
     // 標記委派啟動
     state.delegationActive = true;
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+
+    // Extract agent info from Task tool input
+    const toolInput = data.tool_input || {};
+    const agentType = toolInput.subagent_type || '';
+    const shortAgent = agentType.includes(':') ? agentType.split(':')[1] : agentType;
+    const stage = NAMESPACED_AGENT_TO_STAGE[shortAgent] || '';
+
+    // Emit delegation event
+    emit(EVENT_TYPES.DELEGATION_START, sessionId, {
+      agentType: shortAgent,
+      stage,
+    });
 
     process.exit(0); // 永遠放行 Task
   } catch (err) {

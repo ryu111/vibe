@@ -15,12 +15,15 @@ const toolDetector = require(
   path.join(__dirname, "..", "lib", "sentinel", "tool-detector.js"),
 );
 const hookLogger = require(path.join(__dirname, "..", "lib", "hook-logger.js"));
+const { emit, EVENT_TYPES } = require(path.join(__dirname, "..", "lib", "timeline"));
 
 let input = "";
 process.stdin.on("data", (d) => (input += d));
 process.stdin.on("end", () => {
   try {
     const data = JSON.parse(input);
+    const sessionId = data.session_id || 'unknown';
+    const toolName = data.tool_name || 'Write';
 
     // 取得被修改的檔案路徑
     const filePath =
@@ -41,10 +44,12 @@ process.stdin.on("end", () => {
 
     // 執行 lint --fix
     const lintCmd = `${tools.linter} --fix "${filePath}"`;
+    let passed = true;
     try {
       execSync(lintCmd, { stdio: "pipe", timeout: 12000 });
     } catch (err) {
       // lint 有錯誤（exit code !== 0）
+      passed = false;
       const stderr = err.stderr ? err.stderr.toString().trim() : "";
       const stdout = err.stdout ? err.stdout.toString().trim() : "";
       const output = stderr || stdout;
@@ -57,8 +62,14 @@ process.stdin.on("end", () => {
           }),
         );
       }
-      process.exit(0);
     }
+
+    // Emit quality.lint event (無論成功失敗，只要有觸發)
+    emit(EVENT_TYPES.QUALITY_LINT, sessionId, {
+      filePath,
+      tool: toolName,
+      passed,
+    });
 
     // lint 通過，靜默退出
   } catch (err) {

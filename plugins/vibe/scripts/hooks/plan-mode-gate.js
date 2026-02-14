@@ -19,6 +19,7 @@ const path = require('path');
 const os = require('os');
 
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
+const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
 let input = '';
@@ -38,6 +39,12 @@ process.stdin.on('end', () => {
     if (!state.initialized || !state.pipelineEnforced) {
       process.exit(0);
     }
+
+    // Emit tool blocked event (before exit)
+    emit(EVENT_TYPES.TOOL_BLOCKED, sessionId, {
+      tool: 'EnterPlanMode',
+      reason: 'pipeline-active',
+    });
 
     // ⛔ 阻擋：Pipeline 模式下禁止使用內建 Plan Mode
     process.stderr.write(

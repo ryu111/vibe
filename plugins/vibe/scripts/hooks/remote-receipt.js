@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const PENDING_FILE = path.join(CLAUDE_DIR, 'remote-say-pending.json');
@@ -81,6 +82,15 @@ async function main() {
 
   // 至少要有文字或工具才發送
   if (!turn.text && !turn.tools) process.exit(0);
+
+  // Emit turn.summary event
+  const sessionId = data.session_id || 'unknown';
+  const toolCount = turn.tools
+    ? Object.values(turn.tools).reduce((sum, n) => sum + n, 0)
+    : 0;
+  emit(EVENT_TYPES.TURN_SUMMARY, sessionId, {
+    toolCount,
+  });
 
   // 合併為一行：📋 回合：🤖回應 📝×2 ✏️×3 ⚡×1
   const parts = [];

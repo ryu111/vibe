@@ -8,6 +8,7 @@
 'use strict';
 const path = require("path");
 const hookLogger = require(path.join(__dirname, "..", "lib", "hook-logger.js"));
+const { emit, EVENT_TYPES } = require(path.join(__dirname, "..", "lib", "timeline"));
 
 const DANGER_PATTERNS = [
   {
@@ -34,6 +35,7 @@ process.stdin.on("data", (d) => (input += d));
 process.stdin.on("end", () => {
   try {
     const data = JSON.parse(input);
+    const sessionId = data.session_id || 'unknown';
 
     // 取得 Bash 指令
     const command = data.tool_input?.command || data.input?.command || "";
@@ -43,6 +45,13 @@ process.stdin.on("end", () => {
     // 比對危險模式
     for (const { pattern, desc } of DANGER_PATTERNS) {
       if (pattern.test(command)) {
+        // Emit tool blocked event (before exit)
+        emit(EVENT_TYPES.TOOL_BLOCKED, sessionId, {
+          tool: 'Bash',
+          command: command.slice(0, 100), // 限制長度避免過大
+          matchedPattern: desc,
+        });
+
         process.stderr.write(
           `⛔ danger-guard: 攔截危險指令 — ${desc}\n指令：${command}\n`,
         );

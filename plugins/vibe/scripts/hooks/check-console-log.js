@@ -9,6 +9,7 @@
 const { execSync } = require("child_process");
 const path = require("path");
 const hookLogger = require(path.join(__dirname, "..", "lib", "hook-logger.js"));
+const { emit, EVENT_TYPES } = require(path.join(__dirname, "..", "lib", "timeline"));
 
 let input = "";
 process.stdin.on("data", (d) => (input += d));
@@ -64,6 +65,12 @@ process.stdin.on("end", () => {
     }
 
     if (findings.length === 0) process.exit(0);
+
+    // Emit tool guarded event
+    const sessionId = data.session_id || 'unknown';
+    emit(EVENT_TYPES.TOOL_GUARDED, sessionId, {
+      files: findings.map(f => f.file),
+    });
 
     // 產出提醒
     const details = findings

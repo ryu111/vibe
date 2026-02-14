@@ -25,6 +25,7 @@ const MAX_BLOCKS_DEFAULT = 5;
 const MAX_BLOCKS = parseInt(process.env.CLAUDE_TASK_GUARD_MAX_BLOCKS || MAX_BLOCKS_DEFAULT, 10);
 const DEFAULT_PROMISE = 'ALL_TASKS_COMPLETE';
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
+const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 
 /**
  * 從 transcript JSONL 重建任務狀態
@@ -221,6 +222,13 @@ process.stdin.on('end', () => {
     const todoList = incomplete
       .map(t => `- [ ] ${t.subject}`)
       .join('\n');
+
+    // Emit task incomplete event
+    emit(EVENT_TYPES.TASK_INCOMPLETE, sessionId, {
+      blockCount: state.blockCount,
+      maxBlocks: state.maxBlocks || MAX_BLOCKS,
+      incompleteTasks: incomplete.map(t => t.subject),
+    });
 
     console.log(JSON.stringify({
       decision: 'block',

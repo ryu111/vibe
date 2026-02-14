@@ -12,6 +12,7 @@ const os = require('os');
 
 const { discoverPipeline } = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-discovery.js'));
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
+const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
@@ -72,6 +73,12 @@ process.stdin.on('end', () => {
       try { fs.unlinkSync(statePath); } catch (_) {}
       process.exit(0);
     }
+
+    // Emit pipeline incomplete event
+    emit(EVENT_TYPES.PIPELINE_INCOMPLETE, sessionId, {
+      missingStages: missing,
+      completedStages,
+    });
 
     // 有遺漏 → systemMessage 提醒
     const missingLabels = missing.map(s =>

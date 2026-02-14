@@ -17,6 +17,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
+const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const PENDING_FILE = path.join(CLAUDE_DIR, 'remote-ask-pending.json');
@@ -75,9 +76,15 @@ async function main() {
 
   if (data.tool_name !== 'AskUserQuestion') process.exit(0);
 
+  const sessionId = data.session_id || 'unknown';
   const toolInput = data.tool_input || {};
   const questions = toolInput.questions;
   if (!questions || !questions.length) process.exit(0);
+
+  // Emit ask.question event
+  emit(EVENT_TYPES.ASK_QUESTION, sessionId, {
+    questionCount: questions.length,
+  });
 
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || path.join(__dirname, '..', '..');
   let tg;

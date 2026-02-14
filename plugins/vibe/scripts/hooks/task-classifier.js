@@ -53,6 +53,7 @@ const FULL_PIPELINE_TYPES = ['feature', 'refactor', 'tdd'];
 
 const { NAMESPACED_AGENT_TO_STAGE } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
+const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 
 /**
  * 關鍵字分類 — V2 保守預設（quickfix），feature 需正向匹配
@@ -225,6 +226,9 @@ process.stdin.on('end', () => {
     const prompt = data.prompt || data.user_prompt || data.content || '';
     const sessionId = data.session_id || 'unknown';
 
+    // Emit prompt received event
+    emit(EVENT_TYPES.PROMPT_RECEIVED, sessionId, {});
+
     const newType = classify(prompt);
     const newStages = STAGE_MAPS[newType] || [];
     const newLabel = TYPE_LABELS[newType] || newType;
@@ -247,6 +251,12 @@ process.stdin.on('end', () => {
         state.pipelineEnforced = FULL_PIPELINE_TYPES.includes(newType);
         fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
       }
+      // Emit initial classification
+      emit(EVENT_TYPES.TASK_CLASSIFIED, sessionId, {
+        taskType: newType,
+        expectedStages: newStages,
+        reclassified: false,
+      });
       outputInitialClassification(newType, newLabel, newStages, state);
       return;
     }
@@ -284,6 +294,14 @@ process.stdin.on('end', () => {
     state.expectedStages = newStages;
     state.pipelineEnforced = FULL_PIPELINE_TYPES.includes(newType);
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+
+    // Emit upgrade classification
+    emit(EVENT_TYPES.TASK_CLASSIFIED, sessionId, {
+      taskType: newType,
+      expectedStages: newStages,
+      reclassified: true,
+      from: oldType,
+    });
 
     // 輸出升級指令（只有強制 pipeline 類型才用 systemMessage）
     if (state.pipelineEnforced) {

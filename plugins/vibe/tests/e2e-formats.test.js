@@ -116,6 +116,16 @@ module.exports = {
     path.join(mockScriptsLib, 'hook-logger.js')
   );
 
+  // 複製 timeline 模組（remote hooks 需要）
+  const mockTimelineDir = path.join(mockScriptsLib, 'timeline');
+  fs.mkdirSync(mockTimelineDir, { recursive: true });
+  for (const file of ['schema.js', 'timeline.js', 'consumer.js', 'index.js']) {
+    fs.copyFileSync(
+      path.join(SCRIPTS_DIR, 'lib', 'timeline', file),
+      path.join(mockTimelineDir, file)
+    );
+  }
+
   // 複製目標 hook 腳本
   const srcHook = path.join(SCRIPTS_DIR, 'hooks', scriptName);
   const destHook = path.join(mockScriptsHooks, scriptName);

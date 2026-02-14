@@ -11,6 +11,7 @@
 'use strict';
 const path = require('path');
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
+const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 
 // 不需要提醒測試的副檔名
 const SKIP_EXTENSIONS = new Set([
@@ -83,6 +84,7 @@ process.stdin.on('data', d => input += d);
 process.stdin.on('end', () => {
   try {
     const data = JSON.parse(input);
+    const sessionId = data.session_id || 'unknown';
 
     const filePath =
       data.tool_input?.file_path ||
@@ -93,6 +95,11 @@ process.stdin.on('end', () => {
     if (shouldSkip(filePath)) {
       process.exit(0);
     }
+
+    // Emit quality.test-needed event
+    emit(EVENT_TYPES.QUALITY_TEST_NEEDED, sessionId, {
+      filePath,
+    });
 
     // 業務邏輯檔案 → 提醒測試
     const basename = path.basename(filePath);

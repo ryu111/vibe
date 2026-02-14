@@ -9,6 +9,7 @@
 const path = require('path');
 const { increment } = require(path.join(__dirname, '..', 'lib', 'flow', 'counter.js'));
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
+const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 
 let input = '';
 process.stdin.on('data', d => input += d);
@@ -20,6 +21,12 @@ process.stdin.on('end', () => {
     const result = increment(sessionId);
 
     if (result.shouldRemind && result.message) {
+      // Emit compact suggested event
+      emit(EVENT_TYPES.COMPACT_SUGGESTED, sessionId, {
+        count: result.count,
+        threshold: result.threshold,
+      });
+
       // systemMessage 注入建議（不阻擋工具執行）
       console.log(JSON.stringify({ systemMessage: result.message }));
     }

@@ -24,6 +24,7 @@ const path = require('path');
 const os = require('os');
 
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
+const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
 // 非程式碼副檔名（允許直接編輯）
@@ -80,6 +81,14 @@ process.stdin.on('end', () => {
 
     // ⛔ 阻擋：Main Agent 不應直接寫程式碼
     const toolName = data.tool_name || 'Write';
+
+    // Emit tool blocked event (before exit)
+    emit(EVENT_TYPES.TOOL_BLOCKED, sessionId, {
+      tool: toolName,
+      filePath,
+      reason: 'pipeline-enforced',
+    });
+
     process.stderr.write(
       `⛔ Pipeline 模式下禁止直接使用 ${toolName} 寫程式碼。\n` +
       `你是管理者（Orchestrator），不是執行者。\n` +

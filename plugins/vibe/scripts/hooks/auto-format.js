@@ -15,12 +15,15 @@ const toolDetector = require(
   path.join(__dirname, "..", "lib", "sentinel", "tool-detector.js"),
 );
 const hookLogger = require(path.join(__dirname, "..", "lib", "hook-logger.js"));
+const { emit, EVENT_TYPES } = require(path.join(__dirname, "..", "lib", "timeline"));
 
 let input = "";
 process.stdin.on("data", (d) => (input += d));
 process.stdin.on("end", () => {
   try {
     const data = JSON.parse(input);
+    const sessionId = data.session_id || 'unknown';
+    const toolName = data.tool_name || 'Write';
 
     // 取得被修改的檔案路徑
     const filePath =
@@ -54,6 +57,11 @@ process.stdin.on("end", () => {
     // 執行格式化（靜默）
     try {
       execSync(fmtCmd, { stdio: "pipe", timeout: 8000 });
+      // Emit quality.format event (只在成功時)
+      emit(EVENT_TYPES.QUALITY_FORMAT, sessionId, {
+        filePath,
+        tool: toolName,
+      });
     } catch (err) {
       hookLogger.error('auto-format', err);
     }

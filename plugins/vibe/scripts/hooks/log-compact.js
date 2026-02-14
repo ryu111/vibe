@@ -8,6 +8,7 @@
 const path = require('path');
 const { reset } = require(path.join(__dirname, '..', 'lib', 'flow', 'counter.js'));
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
+const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 
 let input = '';
 process.stdin.on('data', d => input += d);
@@ -15,6 +16,11 @@ process.stdin.on('end', () => {
   try {
     const data = JSON.parse(input);
     const sessionId = data.session_id || 'unknown';
+
+    // Emit compact executed event
+    emit(EVENT_TYPES.COMPACT_EXECUTED, sessionId, {
+      sessionId,
+    });
 
     // 重設計數器
     reset(sessionId);
