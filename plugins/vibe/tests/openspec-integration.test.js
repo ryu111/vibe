@@ -436,6 +436,15 @@ test('tester agent 包含 OpenSpec 規格驅動測試產生', () => {
   assert.ok(content.includes('REMOVED'), 'tester 應提及 REMOVED Requirements');
 });
 
+test('security-reviewer agent 包含 OpenSpec 安全規格對照', () => {
+  const agentPath = path.join(PLUGIN_ROOT, 'agents', 'security-reviewer.md');
+  const content = fs.readFileSync(agentPath, 'utf8');
+  assert.ok(content.includes('OpenSpec 安全規格對照'), 'security-reviewer 應有 OpenSpec 安全規格區塊');
+  assert.ok(content.includes('認證/授權'), 'security-reviewer 應提及認證/授權架構');
+  assert.ok(content.includes('openspec/changes/'), 'security-reviewer 應提及 openspec/changes/');
+  assert.ok(content.includes('遺漏的安全需求'), 'security-reviewer 應檢查遺漏的安全需求');
+});
+
 // ─── 結果 ─────────────────────────────
 console.log(`\n📊 結果：${passed} 通過，${failed} 失敗`);
 process.exit(failed > 0 ? 1 : 0);

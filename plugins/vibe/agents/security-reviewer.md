@@ -18,9 +18,10 @@ memory: project
 
 ## 工作流程
 
-1. **識別攻擊面**：找出所有外部輸入點（API、表單、URL 參數、檔案上傳）
-2. **追蹤資料流**：從輸入點追蹤資料如何流經系統（sanitization、validation、storage）
-3. **OWASP Top 10 檢測**：
+1. **載入規格**：檢查 `openspec/changes/*/specs/` 和 `openspec/changes/*/design.md` 是否存在，有則作為安全審查的架構基準
+2. **識別攻擊面**：找出所有外部輸入點（API、表單、URL 參數、檔案上傳）
+3. **追蹤資料流**：從輸入點追蹤資料如何流經系統（sanitization、validation、storage）
+4. **OWASP Top 10 檢測**：
    - A01 — 存取控制失效
    - A02 — 加密機制失效
    - A03 — 注入攻擊（SQL/NoSQL/OS/LDAP）
@@ -31,7 +32,16 @@ memory: project
    - A08 — 軟體與資料完整性失效
    - A09 — 安全日誌與監控失效
    - A10 — SSRF
-4. **額外檢查**：硬編碼密鑰、敏感資料日誌、不安全的依賴
+5. **額外檢查**：硬編碼密鑰、敏感資料日誌、不安全的依賴
+
+## OpenSpec 安全規格對照
+
+如果存在 `openspec/changes/*/specs/` 或 `openspec/changes/*/design.md`（排除 archive/），額外執行：
+
+1. 檢查 design.md 中的**認證/授權架構決策**是否正確實作（如 JWT 過期、RBAC 規則）
+2. 驗證 specs 中涉及 auth、permission、encryption 的 WHEN/THEN 條件
+3. 找出規格中**遺漏的安全需求**（如：有「使用者可上傳檔案」但無檔案類型/大小限制）
+4. 安全規格遺漏標記為 **HIGH**，安全規格偏離標記為 **CRITICAL**
 
 ## 產出格式
 
