@@ -47,7 +47,8 @@ openspec/
     └── archive/             # 已完成的 changes（DOCS 階段歸檔）
 ```
 
-**Pipeline 對接**：PLAN→proposal.md | ARCH→design+specs+tasks | DEV→tasks.md打勾 | DOCS→archive歸檔
+**Pipeline 對接**：PLAN→proposal.md | ARCH→design+specs+tasks | DEV→tasks.md打勾 | REVIEW→specs對照審查 | TEST→specs→測試案例 | DOCS→archive歸檔
+**Agent 覆蓋**：8/10 agents 整合 OpenSpec（planner/architect/developer/code-reviewer/tester/qa/doc-updater/security-reviewer），build-error-resolver 和 e2e-runner 不需要
 
 ## 設計哲學
 
