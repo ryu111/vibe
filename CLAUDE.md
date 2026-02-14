@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.4 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.22 | 全方位開發工作流 | 29 | 10 | 21 | 38+daemon |
+| **vibe** | 1.0.23 | 全方位開發工作流 | 30 | 10 | 22 | 39+daemon |
 
 ### vibe plugin 功能模組
 
@@ -21,6 +21,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | 進化 | 知識進化、文件同步 | 2 | 1 (doc-updater) |
 | 監控 | Pipeline 即時儀表板（WebSocket） | 1 | 0 |
 | 遠端 | Telegram 遠端控制 + tmux 操作 | 2 | 0 |
+| 維護 | RAM 健康檢查、孤兒進程清理 | 1 | 0 |
 | 診斷 | Hook 錯誤診斷 | 1 | 0 |
 
 ### 共用 registry.js（Single Source of Truth）
@@ -96,11 +97,11 @@ PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
 
 ## Hooks 事件全景
 
-統一 hooks.json，21 hooks 按事件分組（順序明確）：
+統一 hooks.json，22 hooks 按事件分組（順序明確）：
 
 | 事件 | Hooks（執行順序） |
 |------|------------------|
-| **SessionStart** | pipeline-init → dashboard-autostart → remote-autostart |
+| **SessionStart** | session-cleanup → pipeline-init → dashboard-autostart → remote-autostart |
 | **UserPromptSubmit** | task-classifier → remote-prompt-forward |
 | **PreToolUse(Task)** | delegation-tracker |
 | **PreToolUse(Write\|Edit\|NotebookEdit\|AskUserQuestion\|EnterPlanMode)** | pipeline-guard |

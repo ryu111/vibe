@@ -28,15 +28,16 @@
           "evolve", "doc-sync",
           "dashboard",
           "remote", "remote-config",
-          "hook-diag"
+          "hook-diag",
+          "health"
         ],
         "agents": [
           "planner", "architect", "developer",
           "code-reviewer", "security-reviewer", "tester", "build-error-resolver", "e2e-runner", "qa",
           "doc-updater"
         ],
-        "hooks": 21,
-        "scripts": 38
+        "hooks": 22,
+        "scripts": 39
       }
     }
   }
