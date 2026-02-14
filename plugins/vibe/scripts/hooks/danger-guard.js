@@ -5,7 +5,7 @@
  * 攔截高風險 Bash 指令。
  * 強度：硬阻擋（exit 2 + stderr）。
  */
-"use strict";
+'use strict';
 const path = require("path");
 const hookLogger = require(path.join(__dirname, "..", "lib", "hook-logger.js"));
 

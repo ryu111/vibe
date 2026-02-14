@@ -6,7 +6,7 @@
  * 強度：強建議（systemMessage 注入錯誤資訊）。
  * 未安裝 linter 時靜默退出。
  */
-"use strict";
+'use strict';
 const { execSync } = require("child_process");
 const path = require("path");
 

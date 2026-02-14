@@ -6,7 +6,7 @@
  * 強度：靜默（格式化成功不通知，失敗記 stderr）。
  * 未安裝 formatter 時靜默退出。
  */
-"use strict";
+'use strict';
 const { execSync } = require("child_process");
 const path = require("path");
 

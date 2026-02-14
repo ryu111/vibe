@@ -5,7 +5,7 @@
  * 偵測系統上已安裝的品質工具。
  * 被 auto-lint.js 和 auto-format.js 共用。
  */
-"use strict";
+'use strict';
 const { execSync } = require("child_process");
 
 // 快取已偵測的結果（同一 process 內）

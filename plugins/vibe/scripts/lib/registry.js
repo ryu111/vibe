@@ -1,11 +1,18 @@
 #!/usr/bin/env node
+/**
+ * registry.js — Vibe Agent/Stage Registry
+ *
+ * 所有 agent/stage metadata 的唯一定義點（Single Source of Truth）。
+ * remote-sender、bot.js、task-classifier、dashboard 都從這裡讀取。
+ *
+ * @module registry
+ * @exports {Object} STAGES - 階段定義（agent/emoji/label/color）
+ * @exports {string[]} STAGE_ORDER - 階段執行順序
+ * @exports {Object} AGENT_TO_STAGE - agent 短名 → stage 映射
+ * @exports {Object} NAMESPACED_AGENT_TO_STAGE - 帶前綴 agent → stage 映射
+ * @exports {Array} TOOL_EMOJI - 工具 emoji 映射
+ */
 'use strict';
-
-// ═══════════════════════════════════════════════════════
-// Vibe Agent/Stage Registry — Single Source of Truth
-// ═══════════════════════════════════════════════════════
-// 所有 agent/stage metadata 的唯一定義點
-// remote-sender、bot.js、task-classifier、dashboard 都從這裡讀取
 
 const STAGES = {
   PLAN:   { agent: 'planner',          emoji: '\u{1F4CB}',          label: '規劃',       color: 'purple' },

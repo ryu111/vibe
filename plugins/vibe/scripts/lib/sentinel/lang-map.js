@@ -5,7 +5,7 @@
  * 副檔名 → 語言 → linter/formatter 映射。
  * 被 auto-lint.js 和 auto-format.js 共用。
  */
-"use strict";
+'use strict';
 const path = require("path");
 
 const LANG_MAP = {

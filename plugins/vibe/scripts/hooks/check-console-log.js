@@ -5,7 +5,7 @@
  * 結束前檢查變更檔案中殘留的 console.log / debugger。
  * 強度：強建議（systemMessage 注入提醒）。
  */
-"use strict";
+'use strict';
 const { execSync } = require("child_process");
 const path = require("path");
 const hookLogger = require(path.join(__dirname, "..", "lib", "hook-logger.js"));
