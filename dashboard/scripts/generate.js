@@ -1070,21 +1070,22 @@ SessionStart: remote-autostart          /vibe:context-status  Context 狀態
 UserPromptSubmit: task-classifier       /vibe:checkpoint  建立檢查點
 PreToolUse(Task): delegation-tracker    /vibe:env-detect  環境偵測
 PreToolUse(Write|Edit): dev-gate        /vibe:cancel      取消鎖定
-PreToolUse(*): suggest-compact          /vibe:review      深度審查
-PreToolUse(Bash): danger-guard          /vibe:security    安全掃描
-PreToolUse(AskUserQuestion): remote-ask /vibe:tdd         TDD 工作流
-PostToolUse(Write|Edit): auto-lint      /vibe:e2e         E2E 測試
-PostToolUse(Write|Edit): auto-format    /vibe:qa          行為測試
-PostToolUse(Write|Edit): test-check     /vibe:coverage    覆蓋率
-PreCompact: log-compact                 /vibe:lint        手動 lint
-SubagentStop: stage-transition          /vibe:format      手動格式化
-SubagentStop: remote-sender             /vibe:verify      綜合驗證
-Stop: pipeline-check                    /vibe:evolve      知識進化
-Stop: task-guard                        /vibe:doc-sync    文件同步
-Stop: check-console-log                 /vibe:dashboard   儀表板控管
-Stop: dashboard-refresh                 /remote           遠端控管
-Stop: remote-receipt                    /remote-config    遠端設定
-UserPromptSubmit: remote-prompt-forward /vibe:hook-diag   Hook 診斷
+PreToolUse(EnterPlanMode): plan-mode-gate /vibe:review    深度審查
+PreToolUse(*): suggest-compact          /vibe:security    安全掃描
+PreToolUse(Bash): danger-guard          /vibe:tdd         TDD 工作流
+PreToolUse(AskUserQuestion): remote-ask /vibe:e2e         E2E 測試
+PostToolUse(Write|Edit): auto-lint      /vibe:qa          行為測試
+PostToolUse(Write|Edit): auto-format    /vibe:coverage    覆蓋率
+PostToolUse(Write|Edit): test-check     /vibe:lint        手動 lint
+PreCompact: log-compact                 /vibe:format      手動格式化
+SubagentStop: stage-transition          /vibe:verify      綜合驗證
+SubagentStop: remote-sender             /vibe:evolve      知識進化
+Stop: pipeline-check                    /vibe:doc-sync    文件同步
+Stop: task-guard                        /vibe:dashboard   儀表板控管
+Stop: check-console-log                 /remote           遠端控管
+Stop: dashboard-refresh                 /remote-config    遠端設定
+Stop: remote-receipt                    /vibe:hook-diag   Hook 診斷
+UserPromptSubmit: remote-prompt-forward
 
 自動: ${totalHooks} hooks                           手動: ${dynamicSkills} skills（+ ${knowledgeCount} 知識 skills）
 跨 session 記憶：claude-mem（獨立 plugin，推薦搭配）
@@ -1117,7 +1118,7 @@ ${fileRows}
 | **Plugins** | ${pluginCount} | forge + vibe |
 | **Skills** | ${totalSkills} | ${dynamicSkills} 動態能力 + ${knowledgeCount} 知識庫 |
 | **Agents** | ${totalAgents} | 全部在 vibe plugin |
-| **Hooks** | ${totalHooks} | 自動觸發（21 條規則） |
+| **Hooks** | ${totalHooks} | 自動觸發 |
 | **Scripts** | ${totalScripts} | hook 腳本 + 共用函式庫 |
 | **合計** | ${totalAll} | 跨 ${pluginCount} 個 plugins |
 `;
