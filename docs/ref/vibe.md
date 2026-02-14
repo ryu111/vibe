@@ -1,6 +1,6 @@
 # vibe — 統一開發工作流 Plugin
 
-> **版本**：1.0.20
+> **版本**：1.0.23
 > **定位**：全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制
 > **架構**：7 個功能模組合併為單一 plugin，共用 registry.js 統一 metadata
 >
@@ -23,7 +23,7 @@ vibe 是 Vibe marketplace 的核心 plugin，合併了 7 個功能模組：
 | **Remote** | Telegram 遠端控制 | 2S + 5H |
 | **診斷** | Hook 錯誤診斷 | 1S |
 
-**合計**：29 Skills + 10 Agents + 21 Hooks + 38 Scripts
+**合計**：30 Skills + 10 Agents + 22 Hooks + 39 Scripts
 
 ### 設計原則
 
@@ -42,7 +42,7 @@ vibe 是 Vibe marketplace 的核心 plugin，合併了 7 個功能模組：
 
 ## 2. 完整組件清單
 
-### Skills（29 個）
+### Skills（30 個）
 
 | # | 名稱 | 模組 | 說明 |
 |:-:|------|:----:|------|
@@ -62,19 +62,20 @@ vibe 是 Vibe marketplace 的核心 plugin，合併了 7 個功能模組：
 | 14 | `format` | Sentinel | 程式碼格式化 — 手動觸發 Prettier / Ruff format / gofmt。觸發詞：format、格式化、prettier。 |
 | 15 | `frontend-patterns` | Patterns | 前端開發模式 — React hooks、Next.js App Router、 Vue Composition API、狀態管理、效能最佳化。 |
 | 16 | `go-patterns` | Patterns | Go 進階模式 — error handling、concurrency（goroutines/channels）、 interface design、testing patterns。 |
-| 17 | `hook-diag` | 診斷 | Hook 錯誤診斷 — 查看、分析、清除 hook error log。 觸發詞：hook-diag、hook 錯誤、hook error、hook log、hook 診斷。 |
-| 18 | `lint` | Sentinel | 靜態分析 — 手動觸發 ESLint / Ruff / golangci-lint 等 linter。觸發詞：lint、靜態分析、程式碼檢查。 |
-| 19 | `python-patterns` | Patterns | Python 進階模式 — typing、async/await、dataclass、 Protocol、FastAPI/Django 最佳實踐。 |
-| 20 | `qa` | Sentinel | 行為測試 — 觸發 qa agent 啟動應用、呼叫 API、驗證 CLI 輸出，確認真實行為符合預期。觸發詞：qa、行為測試、smoke test、API 驗證。 |
-| 21 | `remote` | Remote | Telegram 遠端控制服務管理 — 啟動/停止 daemon、查詢狀態、發送測試訊息。 觸發詞：remote、遠端、telegram、bot。 |
-| 22 | `remote-config` | Remote | Telegram 遠端控制設定教學與驗證 — 引導使用者建立 Bot、取得 Token 和 Chat ID。 觸發詞：remote-config、遠端設定、telegram 設定、bot 設定。 |
-| 23 | `review` | Sentinel | 程式碼審查 — 觸發 code-reviewer agent 進行全面品質分析，按嚴重程度排序產出結構化報告。觸發詞：review、審查、code review、程式碼檢查。 |
-| 24 | `scope` | Flow | 功能規劃 — 將需求轉化為分階段實作計畫。分析可行性、依賴、風險，產出可執行的計畫書。觸發詞：scope、規劃、計畫、設計功能。 |
-| 25 | `security` | Sentinel | 安全掃描 — 觸發 security-reviewer agent 執行 OWASP Top 10 檢測、資料流追蹤、secret 掃描。觸發詞：security、安全、OWASP、漏洞掃描。 |
-| 26 | `tdd` | Sentinel | TDD 工作流 — 觸發 tester agent 執行 RED → GREEN → REFACTOR 測試驅動開發流程。觸發詞：tdd、測試驅動、寫測試、test driven。 |
-| 27 | `testing-patterns` | Patterns | 測試模式 — unit/integration/e2e 測試策略、 mocking、fixtures、測試金字塔、覆蓋率目標。 |
-| 28 | `typescript-patterns` | Patterns | TypeScript 進階模式 — Utility types、Generic constraints、 Discriminated unions、Type guards、Strict mode 最佳實踐。 |
-| 29 | `verify` | Sentinel | 綜合驗證 — 一鍵執行 Build → Types → Lint → Tests → Git 狀態檢查。觸發詞：verify、驗證、全面檢查、CI check。 |
+| 17 | `health` | — | 系統健康檢查 — 監控 RAM 使用、偵測孤兒進程、清理殘留資源。觸發詞：health、健康、RAM、記憶體、進程、cleanup、清理。 |
+| 18 | `hook-diag` | 診斷 | Hook 錯誤診斷 — 查看、分析、清除 hook error log。 觸發詞：hook-diag、hook 錯誤、hook error、hook log、hook 診斷。 |
+| 19 | `lint` | Sentinel | 靜態分析 — 手動觸發 ESLint / Ruff / golangci-lint 等 linter。觸發詞：lint、靜態分析、程式碼檢查。 |
+| 20 | `python-patterns` | Patterns | Python 進階模式 — typing、async/await、dataclass、 Protocol、FastAPI/Django 最佳實踐。 |
+| 21 | `qa` | Sentinel | 行為測試 — 觸發 qa agent 啟動應用、呼叫 API、驗證 CLI 輸出，確認真實行為符合預期。觸發詞：qa、行為測試、smoke test、API 驗證。 |
+| 22 | `remote` | Remote | Telegram 遠端控制服務管理 — 啟動/停止 daemon、查詢狀態、發送測試訊息。 觸發詞：remote、遠端、telegram、bot。 |
+| 23 | `remote-config` | Remote | Telegram 遠端控制設定教學與驗證 — 引導使用者建立 Bot、取得 Token 和 Chat ID。 觸發詞：remote-config、遠端設定、telegram 設定、bot 設定。 |
+| 24 | `review` | Sentinel | 程式碼審查 — 觸發 code-reviewer agent 進行全面品質分析，按嚴重程度排序產出結構化報告。觸發詞：review、審查、code review、程式碼檢查。 |
+| 25 | `scope` | Flow | 功能規劃 — 將需求轉化為分階段實作計畫。分析可行性、依賴、風險，產出可執行的計畫書。觸發詞：scope、規劃、計畫、設計功能。 |
+| 26 | `security` | Sentinel | 安全掃描 — 觸發 security-reviewer agent 執行 OWASP Top 10 檢測、資料流追蹤、secret 掃描。觸發詞：security、安全、OWASP、漏洞掃描。 |
+| 27 | `tdd` | Sentinel | TDD 工作流 — 觸發 tester agent 執行 RED → GREEN → REFACTOR 測試驅動開發流程。觸發詞：tdd、測試驅動、寫測試、test driven。 |
+| 28 | `testing-patterns` | Patterns | 測試模式 — unit/integration/e2e 測試策略、 mocking、fixtures、測試金字塔、覆蓋率目標。 |
+| 29 | `typescript-patterns` | Patterns | TypeScript 進階模式 — Utility types、Generic constraints、 Discriminated unions、Type guards、Strict mode 最佳實踐。 |
+| 30 | `verify` | Sentinel | 綜合驗證 — 一鍵執行 Build → Types → Lint → Tests → Git 狀態檢查。觸發詞：verify、驗證、全面檢查、CI check。 |
 
 ### Agents（10 個）
 
@@ -91,59 +92,61 @@ vibe 是 Vibe marketplace 的核心 plugin，合併了 7 個功能模組：
 | 9 | `security-reviewer` | Sentinel | opus | plan | red | OWASP Top 10 安全報告 |
 | 10 | `tester` | Sentinel | sonnet | acceptEdits | pink | 獨立測試視角 |
 
-### Hooks（21 個）
+### Hooks（22 個）
 
 | # | 事件 | 名稱 | 模組 | 類型 | 強度 | 說明 |
 |:-:|------|------|:----:|:----:|:----:|------|
-| 1 | SessionStart | pipeline-init | Flow | command | — | 環境偵測 + state file 初始化 |
-| 2 | SessionStart | dashboard-autostart | Dashboard | command | — | 自動啟動 WebSocket server |
-| 3 | SessionStart | remote-autostart | Remote | command | — | 自動啟動 bot daemon |
-| 4 | UserPromptSubmit | task-classifier | Flow | command | 軟→強 | 任務分類 + pipeline 階段注入 |
-| 5 | UserPromptSubmit | remote-prompt-forward | Remote | command | — | 使用者輸入轉發 Telegram |
-| 6 | PreToolUse(Task) | delegation-tracker | Flow | command | — | 標記 delegationActive |
-| 7 | PreToolUse(W\|E|NotebookEdit|Ask|EPM) | pipeline-guard | Flow | command | 硬阻擋 | 阻擋 Write|Edit|AskUserQuestion|EnterPlanMode（需用 delegation 或 /vibe:scope） |
-| 8 | PreToolUse(*) | suggest-compact | Flow | command | 軟建議 | 50 calls 建議 compact |
-| 9 | PreToolUse(Bash) | danger-guard | Sentinel | command | 硬阻擋 | 攔截 rm -rf、DROP TABLE 等 |
-| 10 | PreToolUse(Ask) | remote-ask-intercept | Remote | command | — | AskUserQuestion → inline keyboard |
-| 11 | PostToolUse(W\|E) | auto-lint | Sentinel | command | 強建議 | 自動 lint + systemMessage |
-| 12 | PostToolUse(W\|E) | auto-format | Sentinel | command | — | 自動格式化（靜默） |
-| 13 | PostToolUse(W\|E) | test-check | Sentinel | command | 軟建議 | 修改程式碼 → 提醒跑測試 |
-| 14 | PreCompact | log-compact | Flow | command | — | 記錄 compact + 重設計數 |
-| 15 | SubagentStop | stage-transition | Flow | command | 強建議 | 判斷下一步（前進/回退/跳過） |
-| 16 | SubagentStop | remote-sender | Remote | command | — | Pipeline stage 完成 → Telegram |
-| 17 | Stop | pipeline-check | Flow | command | 強建議 | 結束前檢查遺漏階段 |
-| 18 | Stop | task-guard | Flow | command | 硬阻擋 | 未完成任務時 block 退出 |
-| 19 | Stop | check-console-log | Sentinel | command | 強建議 | 偵測殘留 console.log/debugger |
-| 20 | Stop | dashboard-refresh | Dashboard | command | — | 觸發 Dashboard 同步鏈 |
-| 21 | Stop | remote-receipt | Remote | command | — | /say 已讀回條 + 回合摘要 |
+| 1 | SessionStart | session-cleanup | — | command | — |  |
+| 2 | SessionStart | pipeline-init | Flow | command | — | 環境偵測 + state file 初始化 |
+| 3 | SessionStart | dashboard-autostart | Dashboard | command | — | 自動啟動 WebSocket server |
+| 4 | SessionStart | remote-autostart | Remote | command | — | 自動啟動 bot daemon |
+| 5 | UserPromptSubmit | task-classifier | Flow | command | 軟→強 | 任務分類 + pipeline 階段注入 |
+| 6 | UserPromptSubmit | remote-prompt-forward | Remote | command | — | 使用者輸入轉發 Telegram |
+| 7 | PreToolUse(Task) | delegation-tracker | Flow | command | — | 標記 delegationActive |
+| 8 | PreToolUse(W\|E|NotebookEdit|Ask|EPM) | pipeline-guard | Flow | command | 硬阻擋 | 阻擋 Write|Edit|AskUserQuestion|EnterPlanMode（需用 delegation 或 /vibe:scope） |
+| 9 | PreToolUse(*) | suggest-compact | Flow | command | 軟建議 | 50 calls 建議 compact |
+| 10 | PreToolUse(Bash) | danger-guard | Sentinel | command | 硬阻擋 | 攔截 rm -rf、DROP TABLE 等 |
+| 11 | PreToolUse(Ask) | remote-ask-intercept | Remote | command | — | AskUserQuestion → inline keyboard |
+| 12 | PostToolUse(W\|E) | auto-lint | Sentinel | command | 強建議 | 自動 lint + systemMessage |
+| 13 | PostToolUse(W\|E) | auto-format | Sentinel | command | — | 自動格式化（靜默） |
+| 14 | PostToolUse(W\|E) | test-check | Sentinel | command | 軟建議 | 修改程式碼 → 提醒跑測試 |
+| 15 | PreCompact | log-compact | Flow | command | — | 記錄 compact + 重設計數 |
+| 16 | SubagentStop | stage-transition | Flow | command | 強建議 | 判斷下一步（前進/回退/跳過） |
+| 17 | SubagentStop | remote-sender | Remote | command | — | Pipeline stage 完成 → Telegram |
+| 18 | Stop | pipeline-check | Flow | command | 強建議 | 結束前檢查遺漏階段 |
+| 19 | Stop | task-guard | Flow | command | 硬阻擋 | 未完成任務時 block 退出 |
+| 20 | Stop | check-console-log | Sentinel | command | 強建議 | 偵測殘留 console.log/debugger |
+| 21 | Stop | dashboard-refresh | Dashboard | command | — | 觸發 Dashboard 同步鏈 |
+| 22 | Stop | remote-receipt | Remote | command | — | /say 已讀回條 + 回合摘要 |
 
-### Scripts（38 個）
+### Scripts（39 個）
 
-**Hook 腳本（21 個）** — `scripts/hooks/`
+**Hook 腳本（22 個）** — `scripts/hooks/`
 
 | 名稱 | 模組 | 對應 Hook # |
 |------|:----:|:----------:|
-| auto-format.js | Sentinel | 12 |
-| auto-lint.js | Sentinel | 11 |
-| check-console-log.js | Sentinel | 19 |
-| danger-guard.js | Sentinel | 9 |
-| dashboard-autostart.js | Dashboard | 2 |
-| dashboard-refresh.js | Dashboard | 20 |
-| delegation-tracker.js | Flow | 6 |
-| log-compact.js | Flow | 14 |
-| pipeline-check.js | Flow | 17 |
-| pipeline-guard.js | Flow | 7 |
-| pipeline-init.js | Flow | 1 |
-| remote-ask-intercept.js | Remote | 10 |
-| remote-autostart.js | Remote | 3 |
-| remote-prompt-forward.js | Remote | 5 |
-| remote-receipt.js | Remote | 21 |
-| remote-sender.js | Remote | 16 |
-| stage-transition.js | Flow | 15 |
-| suggest-compact.js | Flow | 8 |
-| task-classifier.js | Flow | 4 |
-| task-guard.js | Flow | 18 |
-| test-check.js | Sentinel | 13 |
+| auto-format.js | Sentinel | 13 |
+| auto-lint.js | Sentinel | 12 |
+| check-console-log.js | Sentinel | 20 |
+| danger-guard.js | Sentinel | 10 |
+| dashboard-autostart.js | Dashboard | 3 |
+| dashboard-refresh.js | Dashboard | 21 |
+| delegation-tracker.js | Flow | 7 |
+| log-compact.js | Flow | 15 |
+| pipeline-check.js | Flow | 18 |
+| pipeline-guard.js | Flow | 8 |
+| pipeline-init.js | Flow | 2 |
+| remote-ask-intercept.js | Remote | 11 |
+| remote-autostart.js | Remote | 4 |
+| remote-prompt-forward.js | Remote | 6 |
+| remote-receipt.js | Remote | 22 |
+| remote-sender.js | Remote | 17 |
+| session-cleanup.js | — | 1 |
+| stage-transition.js | Flow | 16 |
+| suggest-compact.js | Flow | 9 |
+| task-classifier.js | Flow | 5 |
+| task-guard.js | Flow | 19 |
+| test-check.js | Sentinel | 14 |
 
 **共用函式庫（17 個）** — `scripts/lib/`
 
@@ -623,11 +626,11 @@ const STAGES = {
 ```
 plugins/vibe/
 ├── .claude-plugin/
-│   └── plugin.json               # name: "vibe", 29 skills, 10 agents
+│   └── plugin.json               # name: "vibe", 30 skills, 10 agents
 ├── hooks/
-│   └── hooks.json                # 統一 21 hooks
+│   └── hooks.json                # 統一 22 hooks
 ├── pipeline.json                 # Stage 順序 + provides
-├── skills/                       # 29 個 skill 目錄
+├── skills/                       # 30 個 skill 目錄
 │   ├── architect/               # Flow
 │   ├── backend-patterns/        # Patterns
 │   ├── cancel/                  # Flow
@@ -644,6 +647,7 @@ plugins/vibe/
 │   ├── format/                  # Sentinel
 │   ├── frontend-patterns/       # Patterns
 │   ├── go-patterns/             # Patterns
+│   ├── health/                  # —
 │   ├── hook-diag/               # 診斷
 │   ├── lint/                    # Sentinel
 │   ├── python-patterns/         # Patterns
@@ -669,7 +673,7 @@ plugins/vibe/
 │   ├── security-reviewer.md
 │   └── tester.md
 ├── scripts/
-│   ├── hooks/                    # 21 個 hook 腳本
+│   ├── hooks/                    # 22 個 hook 腳本
 │   └── lib/                      # 共用函式庫
 │       ├── registry.js           # 全域 metadata
 │       ├── hook-logger.js        # Hook 錯誤日誌
@@ -690,7 +694,7 @@ plugins/vibe/
 ```json
 {
   "name": "vibe",
-  "version": "1.0.20",
+  "version": "1.0.23",
   "description": "全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制",
   "skills": [
     "./skills/"

@@ -27,10 +27,17 @@ Claude Code 長時間使用會累積 RAM，主要原因：
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/tools/ram-monitor.sh"
 ```
 
+輸出包含兩大區塊：
+
+**全系統 RAM 分佈**：將所有進程分為 7 類（Chrome、VS Code、Claude CLI、Chrome MCP、claude-mem、Vibe Daemon、System/Other），顯示進程數、MB、佔比。用於快速定位 RAM 大戶。
+
+**Claude 相關摘要**：Claude 生態圈佔系統百分比 + 孤兒偵測 + state 檔案統計。
+
 解讀輸出：
 - **ORPHAN** 標記 = 孤兒進程，建議清理
-- **黃色** = RAM 超過 4GB 警告
-- **紅色** = RAM 超過 8GB 嚴重警告
+- **黃色** = Claude RAM 超過 4GB 警告
+- **紅色** = Claude RAM 超過 8GB 嚴重警告
+- 系統分佈中 **System/Other** 通常佔最大比例（macOS 系統服務），屬正常現象
 
 ### 清理孤兒（clean）
 
@@ -59,10 +66,10 @@ bash /path/to/ram-monitor.sh --watch
 
 狀態報告後，補充以下資訊：
 
-1. **Session state 檔案數量**：
-   - `~/.claude/timeline-*.jsonl` 數量和總大小
-   - `~/.claude/pipeline-state-*.json` 數量
-   - 超過 3 天的建議清理
+1. **系統分佈解讀**：
+   - Chrome > 5GB（30+ tabs）或 VS Code > 3GB 可能需要關閉分頁
+   - claude-mem > 1GB 可能有 chroma-mcp 洩漏
+   - System/Other 佔 40-60% 屬正常
 
 2. **已知問題提醒**：
    - Claude Code RAM leak 是上游已知問題（GitHub #4953）

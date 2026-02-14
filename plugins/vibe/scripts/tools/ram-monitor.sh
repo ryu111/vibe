@@ -7,10 +7,10 @@
 #   ./ram-monitor.sh --watch  # 持續監控（每 30 秒更新）
 #
 # 監控項目：
-# - Claude Code 主進程
-# - MCP servers（claude-mem, claude-in-chrome, local-llm 等）
-# - 孤兒進程偵測
-# - Dashboard / Remote daemon
+# - 全系統 RAM 分佈（Chrome/VS Code/Claude/MCP/Daemon/System）
+# - Claude Code 主進程 + MCP servers + Daemon 詳細列表
+# - 孤兒進程偵測（PPID=1 / 父進程不存在）
+# - Claude 生態圈佔比摘要
 set -euo pipefail
 
 # 顏色
@@ -195,10 +195,56 @@ show_status() {
   fi
   echo ""
 
-  # --- 摘要 ---
-  echo -e "${BOLD}[摘要]${NC}"
+  # --- 全系統 RAM 分佈 ---
+  echo -e "${BOLD}[全系統 RAM 分佈]${NC}"
+  local sys_total_kb
+  sys_total_kb=$(ps -eo rss 2>/dev/null | awk 'NR>1 {s+=$1} END {print s+0}')
+  local sys_total_mb=$((sys_total_kb / 1024))
+
+  # 用 awk 一次掃描分類所有進程（POSIX awk 相容）
+  ps -eo rss,command 2>/dev/null | awk -v total="$sys_total_kb" '
+    NR==1 {next}
+    {
+      rss=$1; cmd=$0; sub(/^[ ]*[0-9]+[ ]+/, "", cmd)
+      if (cmd ~ /Google Chrome|Chrome Helper/) { k="Chrome" }
+      else if (cmd ~ /Electron|Code Helper|code-insiders/) { k="VS Code" }
+      else if (cmd ~ /(^|\/)claude( |$)/ && cmd !~ /chrome-mcp/) { k="Claude CLI" }
+      else if (cmd ~ /claude-in-chrome-mcp/) { k="Chrome MCP" }
+      else if (cmd ~ /chroma-mcp|worker-service\.cjs|mcp-server\.cjs|uv tool uvx.*chroma/) { k="claude-mem" }
+      else if (cmd ~ /vibe\/server\.js|vibe\/bot\.js/) { k="Vibe Daemon" }
+      else { k="System/Other" }
+
+      if (!(k in cat)) { keys[++n] = k }
+      cat[k] += rss; cnt[k]++
+    }
+    END {
+      # 計算 MB，bubble sort 降序
+      for (i=1; i<=n; i++) mb[keys[i]] = int(cat[keys[i]] / 1024)
+      for (i=1; i<n; i++) {
+        for (j=i+1; j<=n; j++) {
+          if (mb[keys[j]] > mb[keys[i]]) {
+            tmp = keys[i]; keys[i] = keys[j]; keys[j] = tmp
+          }
+        }
+      }
+      for (i=1; i<=n; i++) {
+        k = keys[i]
+        pct = (total > 0) ? sprintf("%.1f", cat[k] * 100 / total) : "0.0"
+        printf "  %-14s %4d procs  %6dMB  (%s%%)\n", k, cnt[k], mb[k], pct
+      }
+      printf "  %-14s %4s        %6dMB\n", "── 合計 ──", "", int(total/1024)
+    }
+  '
+  echo ""
+
+  # --- Claude 相關摘要 ---
+  echo -e "${BOLD}[Claude 相關摘要]${NC}"
   local total_mb=$((total_rss / 1024))
-  echo -e "  總計 RAM: $(format_mb $total_rss)"
+  local claude_pct="0.0"
+  if [ "$sys_total_kb" -gt 0 ]; then
+    claude_pct=$(awk "BEGIN{printf \"%.1f\", $total_rss*100/$sys_total_kb}")
+  fi
+  echo -e "  Claude 生態圈 RAM: $(format_mb $total_rss)（佔系統 ${claude_pct}%）"
 
   if [ "$orphan_count" -gt 0 ]; then
     echo -e "  ${RED}孤兒進程: ${orphan_count} 個（$(format_mb $orphan_rss)）${NC}"
@@ -216,10 +262,10 @@ show_status() {
 
   if [ "$total_mb" -ge "$CRIT_THRESHOLD_MB" ]; then
     echo ""
-    echo -e "  ${RED}*** 警告：總 RAM 超過 ${CRIT_THRESHOLD_MB}MB，建議立即清理或重啟 ***${NC}"
+    echo -e "  ${RED}*** 警告：Claude RAM 超過 ${CRIT_THRESHOLD_MB}MB，建議立即清理或重啟 ***${NC}"
   elif [ "$total_mb" -ge "$WARN_THRESHOLD_MB" ]; then
     echo ""
-    echo -e "  ${YELLOW}注意：總 RAM 超過 ${WARN_THRESHOLD_MB}MB，建議注意觀察${NC}"
+    echo -e "  ${YELLOW}注意：Claude RAM 超過 ${WARN_THRESHOLD_MB}MB，建議注意觀察${NC}"
   fi
   echo ""
 }
@@ -306,7 +352,7 @@ case "${1:-}" in
     echo "用法: ram-monitor.sh [選項]"
     echo ""
     echo "選項:"
-    echo "  (無)      顯示當前 RAM 使用狀態"
+    echo "  (無)      顯示全系統 RAM 分佈 + Claude 生態圈摘要"
     echo "  --clean   清理孤兒進程"
     echo "  --watch   持續監控（每 30 秒更新）"
     echo "  --help    顯示此說明"
