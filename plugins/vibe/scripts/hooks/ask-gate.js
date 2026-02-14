@@ -8,12 +8,13 @@
  *
  * 放行條件：
  * - 無 pipeline state → 放行
- * - pipelineEnforced = false → 放行（非 pipeline 任務）
+ * - pipelineEnforced = false → 放行（非 pipeline 任務 / pipeline 已完成）
  * - pipeline 已取消（cancelled = true）→ 放行
- * - 所有 expectedStages 已完成 → 放行（pipeline 結束）
  *
  * 阻擋條件：
- * - pipelineEnforced = true + pipeline 進行中 → exit 2
+ * - pipelineEnforced = true → exit 2
+ *
+ * 注意：pipeline 完成時 stage-transition 會設 pipelineEnforced=false，自然放行。
  *
  * 強度：硬阻擋（exit 2）。
  */
@@ -56,14 +57,8 @@ process.stdin.on('end', () => {
       process.exit(0);
     }
 
-    // 檢查是否所有階段已完成
-    const completed = state.completed || [];
-    const expected = state.expectedStages || [];
-    if (expected.length > 0) {
-      // 建立已完成 stage 集合（從 agent 名稱反查）
-      // 但更簡單的方式：如果 pipeline-check 已清理 state，就不會到這裡
-      // 這裡用保守判斷：如果有 expectedStages 且 pipeline 仍在進行中 → 阻擋
-    }
+    // pipelineEnforced=true + 非取消 + 已初始化 → 阻擋
+    // 注意：pipeline 完成時 stage-transition 會設 pipelineEnforced=false，自然放行
 
     // ⛔ 阻擋：Pipeline 自動模式下不需 AskUserQuestion
     emit(EVENT_TYPES.TOOL_BLOCKED, sessionId, {

@@ -321,6 +321,9 @@ ${method}${stageContext}${skipNote}
           completedStages,
         });
 
+        // 解除 pipeline 鎖定 — 讓所有 gate hook（ask-gate/dev-gate/plan-mode-gate）放行
+        state.pipelineEnforced = false;
+
         const skipNote = skippedStages.length > 0
           ? `\n⏭️ 已智慧跳過：${skippedStages.join('、')}`
           : '';

@@ -49,10 +49,10 @@ plugins/vibe/
 ├── .claude-plugin/
 │   └── plugin.json          # manifest（name, version, skills, agents）
 ├── hooks/
-│   └── hooks.json           # 統一 22 hooks（7 事件，順序明確）
+│   └── hooks.json           # 統一 23 hooks（7 事件，順序明確）
 ├── pipeline.json            # Pipeline 階段宣告 + provides
 ├── scripts/
-│   ├── hooks/               # 22 個 hook 腳本
+│   ├── hooks/               # 23 個 hook 腳本
 │   └── lib/                 # 共用函式庫
 │       ├── registry.js      # ★ 全局 metadata（STAGES/AGENTS/EMOJI）
 │       ├── hook-logger.js   # Hook 錯誤日誌（~/.claude/hook-errors.log）
