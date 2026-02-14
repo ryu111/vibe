@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.3 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.11 | 全方位開發工作流 | 29 | 10 | 21 | 31+daemon |
+| **vibe** | 1.0.12 | 全方位開發工作流 | 29 | 10 | 22 | 32+daemon |
 
 ### vibe plugin 功能模組
 
@@ -95,7 +95,7 @@ PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
 
 ## Hooks 事件全景
 
-統一 hooks.json，21 hooks 按事件分組（順序明確）：
+統一 hooks.json，22 hooks 按事件分組（順序明確）：
 
 | 事件 | Hooks（執行順序） |
 |------|------------------|
@@ -103,6 +103,7 @@ PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
 | **UserPromptSubmit** | task-classifier → remote-prompt-forward |
 | **PreToolUse(Task)** | delegation-tracker |
 | **PreToolUse(Write\|Edit)** | dev-gate |
+| **PreToolUse(EnterPlanMode)** | plan-mode-gate |
 | **PreToolUse(*)** | suggest-compact |
 | **PreToolUse(Bash)** | danger-guard |
 | **PreToolUse(AskUserQuestion)** | remote-ask-intercept |
