@@ -23,6 +23,7 @@ const {
 } = require(path.join(__dirname, 'scripts', 'lib', 'remote', 'telegram.js'));
 const { STAGES, STAGE_ORDER, AGENT_TO_STAGE } = require(path.join(__dirname, 'scripts', 'lib', 'registry.js'));
 const { createConsumer } = require(path.join(__dirname, 'scripts', 'lib', 'timeline', 'consumer.js'));
+const { query: queryTimeline } = require(path.join(__dirname, 'scripts', 'lib', 'timeline', 'timeline.js'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const PID_FILE = path.join(CLAUDE_DIR, 'remote-bot.pid');
@@ -367,45 +368,19 @@ async function handleTimeline(token, chatId, args) {
   }
 
   const sid = target.id.slice(0, 8);
-  const timelinePath = path.join(CLAUDE_DIR, `timeline-${target.id}.jsonl`);
+  const allEvents = queryTimeline(target.id);
 
-  if (!fs.existsSync(timelinePath)) {
+  if (allEvents.length === 0) {
     return sendMessage(token, chatId, `\u{1F4AD} Session \`${sid}\` \u7121 Timeline \u8A18\u9304`);
   }
 
-  try {
-    const lines = fs.readFileSync(timelinePath, 'utf8').trim().split('\n');
-    const recent = lines.slice(-10).reverse(); // 最近 10 筆，倒序
-    const formatted = recent.map(line => {
-      try {
-        const event = JSON.parse(line);
-        const t = new Date(event.timestamp).toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' });
-        const d = event.data || {};
-        let text = '';
-        switch (event.type) {
-          case 'stage.complete':
-            text = `${d.fromStage}→${d.toStage || 'END'} ${d.verdict}`;
-            break;
-          case 'pipeline.complete':
-            text = `Pipeline 完成（${d.duration || '—'}s）`;
-            break;
-          case 'quality.lint':
-            text = `Lint ${d.file || ''} ${d.pass ? 'PASS' : 'FAIL'}`;
-            break;
-          default:
-            text = event.type;
-        }
-        return `${t} ${text}`;
-      } catch {
-        return null;
-      }
-    }).filter(Boolean);
+  const recent = allEvents.slice(-10).reverse();
+  const formatted = recent
+    .map(event => formatTimelineEvent(event))
+    .filter(Boolean);
 
-    const header = `\u{1F4CB} *Timeline — \`${sid}\`*\n\u{1F4CA} \u6700\u8FD1 ${formatted.length} \u7B46\u4E8B\u4EF6\uFF1A\n\n`;
-    return sendMessage(token, chatId, header + formatted.join('\n'));
-  } catch (err) {
-    return sendMessage(token, chatId, `\u274C \u8B80\u53D6 Timeline \u5931\u6557\uFF1A${err.message}`);
-  }
+  const header = `\u{1F4CB} *Timeline — \`${sid}\`*\n\u{1F4CA} \u6700\u8FD1 ${formatted.length} \u7B46\u4E8B\u4EF6\uFF1A\n\n`;
+  return sendMessage(token, chatId, header + formatted.join('\n'));
 }
 
 // ─── Ask 解析與 UI ────────────────────────────
@@ -781,22 +756,29 @@ function cleanupOrphanProcesses() {
 }
 
 /**
- * 格式化 timeline 事件為 Telegram 訊息（用於推播）
+ * 統一格式化 timeline 事件
+ * @param {object} event - timeline event
+ * @param {object} [opts] - { pushMode: true } 推播模式（只顯示重要事件）
+ * @returns {string|null}
  */
-function formatEventForTelegram(event) {
+function formatTimelineEvent(event, opts = {}) {
   const t = new Date(event.timestamp).toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' });
   const d = event.data || {};
 
   switch (event.type) {
-    case 'stage.complete':
+    case 'stage.complete': {
       const emoji = d.verdict === 'PASS' ? '\u2705' : '\u274C';
-      return `${emoji} ${t} ${d.fromStage}→${d.toStage || 'END'} ${d.agent || ''} ${d.verdict}`;
+      return `${emoji} ${t} ${d.fromStage}\u2192${d.toStage || 'END'} ${d.agent || ''} ${d.verdict}`;
+    }
     case 'pipeline.complete':
       return `\u{1F389} ${t} Pipeline \u5B8C\u6210\uFF08${d.duration || '\u2014'}s\uFF09`;
+    case 'quality.lint':
+      return `${d.pass ? '\u2705' : '\u274C'} ${t} Lint ${d.file || ''} ${d.pass ? 'PASS' : 'FAIL'}`;
     case 'ask.question':
       return `\u2753 ${t} ${d.question || 'AskUserQuestion'}`;
     default:
-      return null; // 不推播其他類型
+      if (opts.pushMode) return null;
+      return `\u{1F4CB} ${t} ${event.type}`;
   }
 }
 
@@ -810,28 +792,10 @@ function startTimelineConsumer(token, chatId, sessionId) {
     name: `remote-${sessionId.slice(0, 8)}`,
     types: ['pipeline', 'remote'],
     handlers: {
-      'stage.complete': async (event) => {
-        const msg = formatEventForTelegram(event);
+      '*': async (event) => {
+        const msg = formatTimelineEvent(event, { pushMode: true });
         if (msg) {
-          try {
-            await sendMessage(token, chatId, msg);
-          } catch (_) {}
-        }
-      },
-      'pipeline.complete': async (event) => {
-        const msg = formatEventForTelegram(event);
-        if (msg) {
-          try {
-            await sendMessage(token, chatId, msg);
-          } catch (_) {}
-        }
-      },
-      'ask.question': async (event) => {
-        const msg = formatEventForTelegram(event);
-        if (msg) {
-          try {
-            await sendMessage(token, chatId, msg);
-          } catch (_) {}
+          try { await sendMessage(token, chatId, msg); } catch (_) {}
         }
       },
     },
