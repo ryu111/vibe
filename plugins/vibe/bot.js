@@ -5,6 +5,7 @@
  * 背景執行的 long polling daemon：
  * - 查詢類：/status /stages /ping /help（讀 state files）
  * - 控制類：/say（tmux send-keys 注入 Claude Code session）
+ * Phase 4：整合 Timeline consumer 訂閱事件流
  *
  * 生命週期：由 bot-manager.js 管理（start/stop）。
  * PID 檔：~/.claude/remote-bot.pid（全域）。
@@ -21,12 +22,16 @@ const {
   getUpdates,
 } = require(path.join(__dirname, 'scripts', 'lib', 'remote', 'telegram.js'));
 const { STAGES, STAGE_ORDER, AGENT_TO_STAGE } = require(path.join(__dirname, 'scripts', 'lib', 'registry.js'));
+const { createConsumer } = require(path.join(__dirname, 'scripts', 'lib', 'timeline', 'consumer.js'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const PID_FILE = path.join(CLAUDE_DIR, 'remote-bot.pid');
 const LOG_FILE = path.join(CLAUDE_DIR, 'remote-bot.log');
 const RETRY_DELAY = 5000;
 const START_TIME = Date.now();
+
+// Timeline consumer 管理
+const timelineConsumers = new Map(); // sessionId → consumer
 
 // 已讀回條 state file（Stop hook 讀取後 editMessageText）
 const SAY_PENDING_FILE = path.join(CLAUDE_DIR, 'remote-say-pending.json');
@@ -304,6 +309,7 @@ async function handleHelp(token, chatId) {
 \u{1F50D} *\u67E5\u8A62\u6307\u4EE4*
 /status \u2014 \u5217\u51FA\u6D3B\u8E8D session \u9032\u5EA6
 /stages [sid] \u2014 \u6307\u5B9A session \u7684 stage \u8A73\u60C5
+/timeline [sid] \u2014 \u67E5\u8A62\u6700\u8FD1 10 \u7B46\u4E8B\u4EF6
 /ping \u2014 \u6E2C\u8A66 bot \u5B58\u6D3B
 /help \u2014 \u986F\u793A\u6B64\u8AAA\u660E
 
@@ -346,6 +352,60 @@ async function handleTmux(token, chatId) {
     return sendMessage(token, chatId, `\u2705 tmux \u5DF2\u9023\u7DDA\nPane: \`${pane}\``);
   }
   return sendMessage(token, chatId, '\u274C tmux \u672A\u9023\u7DDA\n\u8ACB\u5728 tmux \u5167\u555F\u52D5 Claude Code');
+}
+
+async function handleTimeline(token, chatId, args) {
+  const sessions = scanSessions();
+  const target = args
+    ? sessions.find(s => s.id.startsWith(args))
+    : sessions[0];
+
+  if (!target) {
+    return sendMessage(token, chatId, args
+      ? `\u274C \u627E\u4E0D\u5230 session \`${args}\``
+      : '\u{1F4AD} \u7121\u6D3B\u8E8D\u7684 Pipeline session');
+  }
+
+  const sid = target.id.slice(0, 8);
+  const timelinePath = path.join(CLAUDE_DIR, `timeline-${target.id}.jsonl`);
+
+  if (!fs.existsSync(timelinePath)) {
+    return sendMessage(token, chatId, `\u{1F4AD} Session \`${sid}\` \u7121 Timeline \u8A18\u9304`);
+  }
+
+  try {
+    const lines = fs.readFileSync(timelinePath, 'utf8').trim().split('\n');
+    const recent = lines.slice(-10).reverse(); // 最近 10 筆，倒序
+    const formatted = recent.map(line => {
+      try {
+        const event = JSON.parse(line);
+        const t = new Date(event.timestamp).toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' });
+        const d = event.data || {};
+        let text = '';
+        switch (event.type) {
+          case 'stage.complete':
+            text = `${d.fromStage}→${d.toStage || 'END'} ${d.verdict}`;
+            break;
+          case 'pipeline.complete':
+            text = `Pipeline 完成（${d.duration || '—'}s）`;
+            break;
+          case 'quality.lint':
+            text = `Lint ${d.file || ''} ${d.pass ? 'PASS' : 'FAIL'}`;
+            break;
+          default:
+            text = event.type;
+        }
+        return `${t} ${text}`;
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
+
+    const header = `\u{1F4CB} *Timeline — \`${sid}\`*\n\u{1F4CA} \u6700\u8FD1 ${formatted.length} \u7B46\u4E8B\u4EF6\uFF1A\n\n`;
+    return sendMessage(token, chatId, header + formatted.join('\n'));
+  } catch (err) {
+    return sendMessage(token, chatId, `\u274C \u8B80\u53D6 Timeline \u5931\u6557\uFF1A${err.message}`);
+  }
 }
 
 // ─── Ask 解析與 UI ────────────────────────────
@@ -720,6 +780,82 @@ function cleanupOrphanProcesses() {
   }
 }
 
+/**
+ * 格式化 timeline 事件為 Telegram 訊息（用於推播）
+ */
+function formatEventForTelegram(event) {
+  const t = new Date(event.timestamp).toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' });
+  const d = event.data || {};
+
+  switch (event.type) {
+    case 'stage.complete':
+      const emoji = d.verdict === 'PASS' ? '\u2705' : '\u274C';
+      return `${emoji} ${t} ${d.fromStage}→${d.toStage || 'END'} ${d.agent || ''} ${d.verdict}`;
+    case 'pipeline.complete':
+      return `\u{1F389} ${t} Pipeline \u5B8C\u6210\uFF08${d.duration || '\u2014'}s\uFF09`;
+    case 'ask.question':
+      return `\u2753 ${t} ${d.question || 'AskUserQuestion'}`;
+    default:
+      return null; // 不推播其他類型
+  }
+}
+
+/**
+ * 啟動指定 session 的 Timeline consumer（推播到 Telegram）
+ */
+function startTimelineConsumer(token, chatId, sessionId) {
+  if (timelineConsumers.has(sessionId)) return;
+
+  const consumer = createConsumer({
+    name: `remote-${sessionId.slice(0, 8)}`,
+    types: ['pipeline', 'remote'],
+    handlers: {
+      'stage.complete': async (event) => {
+        const msg = formatEventForTelegram(event);
+        if (msg) {
+          try {
+            await sendMessage(token, chatId, msg);
+          } catch (_) {}
+        }
+      },
+      'pipeline.complete': async (event) => {
+        const msg = formatEventForTelegram(event);
+        if (msg) {
+          try {
+            await sendMessage(token, chatId, msg);
+          } catch (_) {}
+        }
+      },
+      'ask.question': async (event) => {
+        const msg = formatEventForTelegram(event);
+        if (msg) {
+          try {
+            await sendMessage(token, chatId, msg);
+          } catch (_) {}
+        }
+      },
+    },
+    onError: (name, err) => {
+      appendLog(`[Timeline Consumer ${name}] Error: ${err.message}`);
+    },
+  });
+
+  // 不 replay（避免重複推播歷史事件）
+  consumer.start(sessionId, { replay: false });
+  timelineConsumers.set(sessionId, consumer);
+}
+
+/**
+ * 停止指定 session 的 Timeline consumer
+ */
+function stopTimelineConsumer(sessionId) {
+  const consumer = timelineConsumers.get(sessionId);
+  if (consumer) {
+    consumer.stop();
+    timelineConsumers.delete(sessionId);
+  }
+}
+
 async function main() {
   const creds = getCredentials();
   if (!creds) {
@@ -737,10 +873,24 @@ async function main() {
     appendLog(`tmux pane \u5075\u6E2C\u5230: ${cachedPane}`);
   }
 
+  // 啟動已存在 session 的 Timeline consumer
+  const sessions = scanSessions();
+  for (const s of sessions) {
+    if (s.expectedStages && s.expectedStages.length > 0) {
+      startTimelineConsumer(creds.token, creds.chatId, s.id);
+    }
+  }
+
   let offset = 0;
 
   // 優雅關閉
   const cleanup = () => {
+    // 停止所有 Timeline consumer
+    for (const [sid, consumer] of timelineConsumers.entries()) {
+      consumer.stop();
+    }
+    timelineConsumers.clear();
+
     appendLog('Bot daemon \u95DC\u9589');
     try { fs.unlinkSync(PID_FILE); } catch (_) {}
     process.exit(0);
@@ -798,6 +948,9 @@ async function main() {
             break;
           case '/tmux':
             await handleTmux(creds.token, creds.chatId);
+            break;
+          case '/timeline':
+            await handleTimeline(creds.token, creds.chatId, args || null);
             break;
           default:
             if (!text.startsWith('/')) {

@@ -1031,6 +1031,78 @@ console.log('══════════════════════�
 })();
 
 // ═══════════════════════════════════════════════
+// Scenario L: ask-gate — Pipeline 模式下阻擋 AskUserQuestion
+// 驗證：pipelineEnforced=true 時 AskUserQuestion 被硬阻擋（exit 2）
+// ═══════════════════════════════════════════════
+
+console.log('\n⛔ Scenario L: ask-gate — Pipeline 自動閉環（阻擋 AskUserQuestion）');
+console.log('═══════════════════════════════════════════════════════');
+
+(() => {
+  const sid = 'e2e-ask-gate';
+  try {
+    const askInput = {
+      session_id: sid,
+      tool_name: 'AskUserQuestion',
+      tool_input: { questions: [{ question: '下一步？', options: [] }] },
+    };
+
+    // L1: 無 state → 放行
+    cleanState(sid);
+    const r1 = runHook('ask-gate', askInput);
+    test('L1: 無 pipeline state → ask-gate 放行', () => {
+      assert.strictEqual(r1.exitCode, 0);
+    });
+
+    // L2: pipelineEnforced=false → 放行
+    initState(sid, { taskType: 'quickfix', pipelineEnforced: false });
+    const r2 = runHook('ask-gate', askInput);
+    test('L2: pipelineEnforced=false → ask-gate 放行', () => {
+      assert.strictEqual(r2.exitCode, 0);
+    });
+
+    // L3: pipelineEnforced=true → 阻擋（exit 2）
+    initState(sid, { taskType: 'feature', pipelineEnforced: true, expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'] });
+    const r3 = runHook('ask-gate', askInput);
+    test('L3: pipelineEnforced=true → ask-gate 阻擋（exit 2）', () => {
+      assert.strictEqual(r3.exitCode, 2);
+    });
+
+    test('L4: 阻擋訊息包含 /vibe:cancel 逃生口', () => {
+      assert.ok(r3.stderr.includes('cancel'), '應提示 /vibe:cancel 退出方式');
+    });
+
+    test('L5: 阻擋訊息說明 pipeline 自動模式', () => {
+      assert.ok(r3.stderr.includes('自動'), '應提及自動模式');
+    });
+
+    // L6: cancelled=true → 放行
+    initState(sid, { taskType: 'feature', pipelineEnforced: true, cancelled: true });
+    const r4 = runHook('ask-gate', askInput);
+    test('L6: pipeline 已取消（cancelled=true）→ ask-gate 放行', () => {
+      assert.strictEqual(r4.exitCode, 0);
+    });
+
+    // L7: 完整 hook 鏈 — feature pipeline + ask-gate 阻擋 + dev-gate 阻擋
+    initState(sid, { taskType: 'feature', pipelineEnforced: true, expectedStages: ['PLAN', 'ARCH', 'DEV'] });
+
+    const askGate = runHook('ask-gate', askInput);
+    const devGate = runHook('dev-gate', {
+      session_id: sid,
+      tool_name: 'Write',
+      tool_input: { file_path: 'src/app.js' },
+    });
+
+    test('L7: feature pipeline 同時阻擋 AskUserQuestion 和 Write', () => {
+      assert.strictEqual(askGate.exitCode, 2, 'ask-gate 應阻擋');
+      assert.strictEqual(devGate.exitCode, 2, 'dev-gate 應阻擋');
+    });
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
 // 結果輸出
 // ═══════════════════════════════════════════════
 

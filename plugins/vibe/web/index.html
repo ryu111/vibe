@@ -1051,6 +1051,7 @@
       const [tick, setTick] = useState(0);
       const [showConfetti, setShowConfetti] = useState(false);
       const [zoom, setZoom] = useState(100);
+      const [timelineEvents, setTimelineEvents] = useState({});
       const prevRef = useRef({});
       const confettiShown = useRef(new Set());
 
@@ -1097,7 +1098,18 @@
           ws.onopen = () => { setConn(true); retries = 0; clearInterval(hb); hb = setInterval(() => { try { ws.send('ping'); } catch {} }, 25000); };
           ws.onclose = () => { setConn(false); clearInterval(hb); rt = setTimeout(connect, Math.min(300 * Math.pow(2, retries++), 5000)); };
           ws.onerror = () => {};
-          ws.onmessage = e => { if (e.data === 'pong') return; const m = JSON.parse(e.data); if (m.sessions) setSessions(m.sessions); };
+          ws.onmessage = e => {
+            if (e.data === 'pong') return;
+            const m = JSON.parse(e.data);
+            if (m.sessions) setSessions(m.sessions);
+            // Timeline 事件推送（增量更新）
+            if (m.type === 'timeline' && m.sessionId && m.event) {
+              setTimelineEvents(prev => {
+                const list = prev[m.sessionId] || [];
+                return { ...prev, [m.sessionId]: [m.event, ...list].slice(0, 50) };
+              });
+            }
+          };
         }
         connect();
         return () => { ws?.close(); clearTimeout(rt); clearInterval(hb); };
@@ -1322,13 +1334,13 @@
               ${!focusCards && html`
               <div class="timeline ${tlOpen ? '' : 'collapsed'}">
                 <h3 class="tl-toggle" onClick=${() => setTlOpen(!tlOpen)}>
-                  <span>📋 Timeline ${events.length ? `(${events.length})` : ''}</span>
+                  <span>📋 Timeline ${(timelineEvents[active] || []).length ? `(${(timelineEvents[active] || []).length})` : ''}</span>
                   <span class="arrow">${tlOpen ? '▼' : '▶'}</span>
                 </h3>
                 <div class="tl-items">
-                  ${events.length ? events.slice(0, 30).map(ev => html`
+                  ${(timelineEvents[active] || []).length ? (timelineEvents[active] || []).slice(0, 30).map(ev => html`
                     <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.text}</span></div>
-                  `) : html`<div style="color:var(--subtext0);font-size:11px;padding:6px 0">等待 pipeline 啟動…</div>`}
+                  `) : html`<div style="color:var(--subtext0);font-size:11px;padding:6px 0">等待事件流…</div>`}
                 </div>
               </div>
               `}

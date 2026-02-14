@@ -2,10 +2,14 @@
 /**
  * Vibe Pipeline Dashboard Server
  * Bun HTTP + WebSocket，監聽 pipeline state 檔案即時推播
+ * Phase 3：整合 Timeline consumer 訂閱事件流
  */
 import { watch, readFileSync, readdirSync, existsSync, statSync, unlinkSync, writeFileSync } from 'fs';
 import { join, extname } from 'path';
 import { homedir } from 'os';
+
+// 動態引入 CommonJS 模組
+const { createConsumer } = await import('./scripts/lib/timeline/consumer.js');
 
 // --port CLI 參數 or 環境變數
 const portArg = process.argv.find(a => a.startsWith('--port='));
@@ -17,6 +21,7 @@ const WEB_DIR = join(import.meta.dir, 'web');
 // --- State ---
 let sessions = {};
 const clients = new Set();
+const timelineConsumers = new Map(); // sessionId → consumer
 
 function scanSessions() {
   if (!existsSync(CLAUDE_DIR)) return {};
@@ -37,6 +42,98 @@ function broadcast(msg) {
   }
 }
 
+/**
+ * 格式化 timeline 事件為精簡單行訊息（用於前端推送）
+ */
+function formatEvent(event) {
+  const t = new Date(event.timestamp).toLocaleTimeString('zh-TW', { hour12: false });
+  const d = event.data || {};
+
+  switch (event.type) {
+    case 'stage.complete':
+      return {
+        time: t,
+        type: d.verdict === 'PASS' ? 'pass' : 'fail',
+        text: `${d.fromStage}→${d.toStage || 'END'} ${d.agent || ''} ${d.verdict}${d.severity ? ':' + d.severity : ''}`,
+      };
+    case 'stage.start':
+      return {
+        time: t,
+        type: 'active',
+        text: `${d.stage} ${d.agent || ''} 開始`,
+      };
+    case 'pipeline.complete':
+      return {
+        time: t,
+        type: 'pass',
+        text: `Pipeline 完成（${d.duration || '—'}s）`,
+      };
+    case 'quality.lint':
+      return {
+        time: t,
+        type: d.pass ? 'pass' : 'fail',
+        text: `Lint ${d.file || ''} ${d.pass ? 'PASS' : 'FAIL'}`,
+      };
+    case 'quality.format':
+      return {
+        time: t,
+        type: 'pass',
+        text: `Format ${d.file || ''}`,
+      };
+    case 'ask.question':
+      return {
+        time: t,
+        type: 'active',
+        text: `❓ ${d.question || 'AskUserQuestion'}`,
+      };
+    default:
+      return {
+        time: t,
+        type: 'active',
+        text: `${event.type} ${d.message || ''}`,
+      };
+  }
+}
+
+/**
+ * 啟動指定 session 的 Timeline consumer
+ */
+function startTimelineConsumer(sessionId) {
+  if (timelineConsumers.has(sessionId)) return;
+
+  const consumer = createConsumer({
+    name: `dashboard-${sessionId.slice(0, 8)}`,
+    types: ['pipeline', 'quality', 'task'],
+    handlers: {
+      '*': (event) => {
+        const formatted = formatEvent(event);
+        broadcast({
+          type: 'timeline',
+          sessionId,
+          event: formatted,
+        });
+      },
+    },
+    onError: (name, err) => {
+      console.error(`[Timeline Consumer ${name}] Error:`, err.message);
+    },
+  });
+
+  consumer.start(sessionId, { replay: true });
+  timelineConsumers.set(sessionId, consumer);
+}
+
+/**
+ * 停止指定 session 的 Timeline consumer
+ */
+function stopTimelineConsumer(sessionId) {
+  const consumer = timelineConsumers.get(sessionId);
+  if (consumer) {
+    consumer.stop();
+    timelineConsumers.delete(sessionId);
+  }
+}
+
 // --- File Watcher（防抖 80ms）---
 let timer;
 if (existsSync(CLAUDE_DIR)) {
@@ -49,8 +146,14 @@ if (existsSync(CLAUDE_DIR)) {
       try {
         if (existsSync(fp)) {
           sessions[sid] = JSON.parse(readFileSync(fp, 'utf8'));
+          // 新 session 出現 → 啟動 consumer
+          if (!timelineConsumers.has(sid)) {
+            startTimelineConsumer(sid);
+          }
         } else {
           delete sessions[sid];
+          // Session 消失 → 停止 consumer
+          stopTimelineConsumer(sid);
         }
       } catch { /* 忽略 */ }
       broadcast({ type: 'update', sessions });
@@ -59,6 +162,11 @@ if (existsSync(CLAUDE_DIR)) {
 }
 
 sessions = scanSessions();
+
+// 啟動已存在 session 的 Timeline consumer
+for (const sid of Object.keys(sessions)) {
+  startTimelineConsumer(sid);
+}
 
 // --- MIME ---
 const MIME = {
@@ -98,6 +206,8 @@ Bun.serve({
       const fp = join(CLAUDE_DIR, `pipeline-state-${sid}.json`);
       try {
         if (existsSync(fp)) unlinkSync(fp);
+        // 停止 Timeline consumer
+        stopTimelineConsumer(sid);
         // 無論檔案是否存在，都清除記憶體中的 session
         if (sessions[sid]) {
           delete sessions[sid];
@@ -151,6 +261,12 @@ try {
 
 // --- 優雅關閉 ---
 function shutdown() {
+  // 停止所有 Timeline consumer
+  for (const [sid, consumer] of timelineConsumers.entries()) {
+    consumer.stop();
+  }
+  timelineConsumers.clear();
+
   // 關閉所有 WebSocket 連線
   for (const ws of clients) {
     try { ws.close(1001, 'Server shutting down'); } catch (_) {}
