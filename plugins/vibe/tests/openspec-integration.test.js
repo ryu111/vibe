@@ -4,8 +4,8 @@
  *
  * 測試重點：
  * 1. pipeline-init.js 偵測 openspec/ 目錄設 openspecEnabled
- * 2. stage-transition.js 注入 OpenSpec 上下文提示
- * 3. 三維驗證：PLAN→ARCH→DEV→DOCS 各階段的 OpenSpec 上下文
+ * 2. stage-transition.js 注入 OpenSpec 上下文提示（ARCH/DEV/REVIEW/TEST/DOCS 5 階段）
+ * 3. Agent 定義驗證：planner/architect/developer/doc-updater/QA/code-reviewer/tester
  *
  * 執行：bun test plugins/vibe/tests/openspec-integration.test.js
  */
@@ -207,7 +207,73 @@ test('PLAN→ARCH 轉場無 OpenSpec 提示（openspecEnabled=false）', () => {
   cleanup(statePath);
 });
 
-test('TEST→QA 轉場無 OpenSpec 提示（非 ARCH/DEV/DOCS）', () => {
+test('DEV→REVIEW 轉場注入 OpenSpec 規格對照提示', () => {
+  const sessionId = 'test-openspec-dev-to-review';
+  const statePath = createTempState(sessionId, {
+    sessionId,
+    initialized: true,
+    completed: ['planner', 'architect'],
+    expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    pipelineEnforced: true,
+    taskType: 'feature',
+    openspecEnabled: true,
+    environment: {},
+    lastTransition: new Date().toISOString(),
+  });
+
+  const output = runHook('stage-transition', {
+    session_id: sessionId,
+    agent_type: 'developer',
+    stop_hook_active: false,
+  });
+
+  const parsed = JSON.parse(output);
+  assert.ok(parsed.systemMessage, '應有 systemMessage');
+  assert.ok(
+    parsed.systemMessage.includes('OpenSpec'),
+    'REVIEW 轉場應包含 OpenSpec 提示'
+  );
+  assert.ok(
+    parsed.systemMessage.includes('specs/') && parsed.systemMessage.includes('design.md'),
+    'REVIEW 轉場應提及 specs/ 和 design.md'
+  );
+  cleanup(statePath);
+});
+
+test('REVIEW→TEST 轉場注入 OpenSpec Scenario 測試提示', () => {
+  const sessionId = 'test-openspec-review-to-test';
+  const statePath = createTempState(sessionId, {
+    sessionId,
+    initialized: true,
+    completed: ['planner', 'architect', 'developer'],
+    expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    pipelineEnforced: true,
+    taskType: 'feature',
+    openspecEnabled: true,
+    environment: {},
+    lastTransition: new Date().toISOString(),
+  });
+
+  const output = runHook('stage-transition', {
+    session_id: sessionId,
+    agent_type: 'code-reviewer',
+    stop_hook_active: false,
+  });
+
+  const parsed = JSON.parse(output);
+  assert.ok(parsed.systemMessage, '應有 systemMessage');
+  assert.ok(
+    parsed.systemMessage.includes('OpenSpec'),
+    'TEST 轉場應包含 OpenSpec 提示'
+  );
+  assert.ok(
+    parsed.systemMessage.includes('WHEN/THEN'),
+    'TEST 轉場應提及 WHEN/THEN 轉換'
+  );
+  cleanup(statePath);
+});
+
+test('TEST→QA 轉場無 OpenSpec 提示（QA 無 OpenSpec 指引）', () => {
   const sessionId = 'test-openspec-test-to-qa';
   const statePath = createTempState(sessionId, {
     sessionId,
@@ -229,7 +295,6 @@ test('TEST→QA 轉場無 OpenSpec 提示（非 ARCH/DEV/DOCS）', () => {
 
   const parsed = JSON.parse(output);
   assert.ok(parsed.systemMessage, '應有 systemMessage');
-  // TEST→QA 不應有 OpenSpec 提示（只有 ARCH/DEV/DOCS 有）
   assert.ok(
     !parsed.systemMessage.includes('OpenSpec'),
     'TEST→QA 轉場不應有 OpenSpec 提示'
@@ -351,6 +416,24 @@ test('QA agent 包含三維驗證模型', () => {
   assert.ok(content.includes('正確性（Correctness）'), 'QA 應有正確性維度');
   assert.ok(content.includes('一致性（Coherence）'), 'QA 應有一致性維度');
   assert.ok(content.includes('CRITICAL'), 'QA 應有問題分級');
+});
+
+test('code-reviewer agent 包含 OpenSpec 規格對照審查', () => {
+  const agentPath = path.join(PLUGIN_ROOT, 'agents', 'code-reviewer.md');
+  const content = fs.readFileSync(agentPath, 'utf8');
+  assert.ok(content.includes('OpenSpec 規格對照審查'), 'code-reviewer 應有 OpenSpec 規格對照區塊');
+  assert.ok(content.includes('規格一致性'), 'code-reviewer 應有規格一致性維度');
+  assert.ok(content.includes('WHEN/THEN'), 'code-reviewer 應提及 WHEN/THEN 驗證');
+  assert.ok(content.includes('openspec/changes/'), 'code-reviewer 應提及 openspec/changes/');
+});
+
+test('tester agent 包含 OpenSpec 規格驅動測試產生', () => {
+  const agentPath = path.join(PLUGIN_ROOT, 'agents', 'tester.md');
+  const content = fs.readFileSync(agentPath, 'utf8');
+  assert.ok(content.includes('從規格推導測試'), 'tester 應有規格推導測試區塊');
+  assert.ok(content.includes('WHEN/THEN'), 'tester 應提及 WHEN/THEN 轉換');
+  assert.ok(content.includes('ADDED'), 'tester 應提及 ADDED Requirements');
+  assert.ok(content.includes('REMOVED'), 'tester 應提及 REMOVED Requirements');
 });
 
 // ─── 結果 ─────────────────────────────

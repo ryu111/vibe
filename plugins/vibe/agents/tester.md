@@ -19,18 +19,24 @@ memory: project
 
 ## 工作流程
 
-1. **分析公開介面**：找出所有 export 的函式、類別、API endpoints
-2. **識別邊界案例**：
+1. **載入規格**：檢查 `openspec/changes/*/specs/` 是否存在，有則作為測試案例來源
+2. **分析公開介面**：找出所有 export 的函式、類別、API endpoints
+3. **從規格推導測試**（若有 OpenSpec specs）：
+   - 每個 `Scenario` 的 WHEN/THEN 條件轉換為一個測試案例
+   - ADDED Requirements → 新功能測試
+   - MODIFIED Requirements → 迴歸測試
+   - REMOVED Requirements → 確認已刪除功能不可訪問
+4. **識別邊界案例**：
    - 空值 / null / undefined
    - 邊界數值（0、-1、MAX_INT）
    - 空陣列 / 空字串
    - 非預期型別
    - 並發 / 競態條件
-3. **撰寫測試**：
+5. **撰寫測試**：
    - 偵測專案使用的測試框架（Jest / Vitest / Mocha / pytest）
    - 遵循專案現有的測試慣例和目錄結構
    - 每個測試有清晰的 describe / it 描述
-4. **執行驗證**：
+6. **執行驗證**：
    - 執行測試確認全部通過
    - 檢查覆蓋率（目標：整體 80%，關鍵路徑 100%）
 

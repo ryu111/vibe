@@ -325,6 +325,10 @@ process.stdin.on('end', () => {
             stageContext += '\n📋 OpenSpec：planner 已建立 proposal.md，architect 請讀取 openspec/changes/ 中的 proposal 後產出 design.md、specs/、tasks.md。';
           } else if (nextStageCandidate === 'DEV') {
             stageContext += '\n📋 OpenSpec：architect 已產出完整規格，developer 請依照 openspec/changes/ 中的 tasks.md checkbox 逐一實作並打勾。';
+          } else if (nextStageCandidate === 'REVIEW') {
+            stageContext += '\n📋 OpenSpec：請讀取 openspec/changes/ 中的 specs/ 和 design.md，對照審查實作是否符合規格。';
+          } else if (nextStageCandidate === 'TEST') {
+            stageContext += '\n📋 OpenSpec：請讀取 openspec/changes/ 中的 specs/，將每個 Scenario 的 WHEN/THEN 轉換為測試案例。';
           } else if (nextStageCandidate === 'DOCS') {
             stageContext += '\n📋 OpenSpec：所有實作已完成，doc-updater 請在更新文件後將 change 歸檔到 openspec/changes/archive/。';
           }
