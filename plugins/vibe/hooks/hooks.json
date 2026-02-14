@@ -147,10 +147,10 @@
         "matcher": "Write|Edit",
         "hooks": [
           {
-            "type": "prompt",
-            "prompt": "The file was just modified. If this file contains business logic that should have tests, briefly remind to run tests. If it's config/style/test file, say nothing. Under 20 words.",
-            "model": "claude-haiku-4-5-20251001",
-            "timeout": 10
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/test-check.js",
+            "timeout": 5,
+            "statusMessage": "檢查測試需求..."
           }
         ]
       }
