@@ -11,8 +11,8 @@ const path = require('path');
 const os = require('os');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
-const THRESHOLD = 50;
-const REMIND_INTERVAL = 25;
+const THRESHOLD = 60;
+const REMIND_INTERVAL = 40;
 
 /**
  * 取得 counter state file 路徑
@@ -54,7 +54,7 @@ function increment(sessionId) {
     if (state.count - state.lastRemind >= REMIND_INTERVAL) {
       shouldRemind = true;
       state.lastRemind = state.count;
-      message = `Context 使用量偏高（${state.count} tool calls）。建議在適當的邏輯邊界使用 /vibe:context-status 查看狀態，或 /compact 壓縮 context。`;
+      message = `Context 偏高（${state.count} calls）。可用 /compact 壓縮。`;
     }
   }
 

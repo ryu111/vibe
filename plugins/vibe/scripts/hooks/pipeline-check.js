@@ -100,7 +100,7 @@ process.stdin.on('end', () => {
 
     console.log(JSON.stringify({
       continue: true,
-      systemMessage: `🚫 [Pipeline 未完成] 以下階段尚未執行：${missingLabels}\n已完成：${completedStr}\n\n你必須先完成這些階段：\n${missingHints}\n\n如果使用者明確要求跳過，請告知使用者跳過了哪些階段及其風險。`,
+      systemMessage: `🚫 [Pipeline 未完成] 缺：${missingLabels}\n${missingHints}\n已完成：${completedStr}`,
     }));
   } catch (err) {
     hookLogger.error('pipeline-check', err);
