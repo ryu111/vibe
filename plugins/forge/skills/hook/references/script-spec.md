@@ -406,3 +406,103 @@ main() {
 
 main
 ```
+
+---
+
+## 進階模式：純函式規則模組
+
+當 hook 腳本的決策邏輯變得複雜時，應將**邏輯**與 **I/O** 分離：
+
+- **Hook 腳本**（`scripts/hooks/xxx.js`）：負責讀 stdin、讀 state file、輸出 JSON、exit code
+- **規則模組**（`scripts/lib/xxx-rules.js`）：純函式，接收參數、回傳決策，不做任何 I/O
+
+### 為什麼要分離
+
+| 面向 | 合在一起 | 分離後 |
+|------|---------|--------|
+| **測試** | 需 mock stdin + state file + child_process | 直接呼叫函式、assert 回傳值 |
+| **重用** | 只能透過 hook 觸發 | 任何腳本都能 require |
+| **維護** | I/O 錯誤和邏輯 bug 混在一起 | 各自獨立除錯 |
+
+### 範例結構
+
+```
+scripts/
+├── hooks/
+│   └── pipeline-guard.js     # I/O 層：讀 stdin → 讀 state → 呼叫 evaluate() → 輸出
+└── lib/
+    └── sentinel/
+        └── guard-rules.js    # 邏輯層：純函式 evaluate(tool, input, state) → {decision, message}
+```
+
+### 規則模組的設計原則
+
+```js
+// guard-rules.js — 純函式，零 I/O
+'use strict';
+const path = require('path');
+
+const NON_CODE_EXTS = new Set(['.md', '.json', '.yml', '.yaml', '.toml', '.txt']);
+
+function isNonCodeFile(filePath) {
+  if (!filePath) return false;
+  const ext = path.extname(filePath).toLowerCase();
+  return NON_CODE_EXTS.has(ext);
+}
+
+/**
+ * 評估工具是否允許執行
+ * @param {string} toolName - 工具名稱
+ * @param {object} toolInput - 工具輸入
+ * @param {object} state - pipeline 狀態（可為 null）
+ * @returns {{ decision: 'allow'|'block', reason?: string, message?: string }}
+ */
+function evaluate(toolName, toolInput, state) {
+  // 純邏輯判斷，不讀檔案、不做 I/O
+  // ...
+  return { decision: 'allow' };
+}
+
+module.exports = { evaluate, isNonCodeFile, NON_CODE_EXTS };
+```
+
+### Hook 腳本只做 I/O
+
+```js
+// pipeline-guard.js — I/O 層
+'use strict';
+const fs = require('fs');
+const { evaluate } = require('../lib/sentinel/guard-rules.js');
+
+let input = '';
+process.stdin.on('data', d => input += d);
+process.stdin.on('end', () => {
+  const data = JSON.parse(input);
+  const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const result = evaluate(data.tool_name, data.tool_input, state);
+
+  if (result.decision === 'block') {
+    process.stderr.write(result.message);
+    process.exit(2);
+  }
+});
+```
+
+### 測試純函式
+
+```js
+// guard-rules.test.js — 不需 mock，直接測試
+const { evaluate, isNonCodeFile } = require('./guard-rules.js');
+const assert = require('assert');
+
+assert.strictEqual(isNonCodeFile('app.js'), false);
+assert.strictEqual(isNonCodeFile('README.md'), true);
+assert.strictEqual(evaluate('Write', { file_path: 'app.js' }, {}).decision, 'block');
+assert.strictEqual(evaluate('Write', { file_path: 'README.md' }, {}).decision, 'allow');
+```
+
+### 何時採用
+
+- Hook 的 `if/else` 超過 3 層
+- 同樣的判斷邏輯被多個 hook 使用
+- 需要為決策邏輯寫單元測試

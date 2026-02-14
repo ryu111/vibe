@@ -565,3 +565,73 @@ keep-coding-instructions: true
 - **Marketplace**：驗證 `marketplace.json` 包含 `name`、`owner`、`plugins` 必要欄位，`strict` 為布林值。
 
 使用 `/plugin validate .` 可一次性執行所有驗證規則。
+
+---
+
+## 十五、進階模式：Registry（Single Source of Truth）
+
+當 plugin 有多個 hook/script/daemon 需要共享 metadata（如 stage 名稱、agent 映射、emoji）時，**集中在一個 registry 模組管理**，避免跨檔案重複定義。
+
+### 問題
+
+```
+hooks/task-classifier.js  →  const STAGES = { PLAN: {...}, ... }  // 重複定義
+hooks/stage-transition.js →  const STAGES = { PLAN: {...}, ... }  // 又複製一份
+bot.js                    →  const STAGES = { PLAN: {...}, ... }  // 再來一份
+```
+
+新增一個 stage 需要改 3+ 個檔案，容易遺漏。
+
+### 解法：registry.js
+
+```
+scripts/lib/
+└── registry.js    ← Single Source of Truth
+```
+
+```js
+// registry.js
+'use strict';
+
+const STAGES = {
+  PLAN:   { emoji: '\ud83d\udccb', color: 'purple', agent: 'planner' },
+  ARCH:   { emoji: '\ud83c\udfd7\ufe0f',  color: 'cyan',   agent: 'architect' },
+  DEV:    { emoji: '\ud83d\udcbb', color: 'yellow', agent: 'developer' },
+  REVIEW: { emoji: '\ud83d\udd0d', color: 'blue',   agent: 'code-reviewer' },
+  // ...
+};
+
+const STAGE_ORDER = Object.keys(STAGES);
+
+// 反向映射：agent 名稱 → stage 名稱
+const AGENT_TO_STAGE = {};
+for (const [stage, meta] of Object.entries(STAGES)) {
+  AGENT_TO_STAGE[meta.agent] = stage;
+}
+
+module.exports = { STAGES, STAGE_ORDER, AGENT_TO_STAGE };
+```
+
+### 使用方式
+
+所有需要 metadata 的檔案統一 require：
+
+```js
+// 任何 hook 或 script
+const { STAGES, STAGE_ORDER, AGENT_TO_STAGE } = require('../lib/registry.js');
+```
+
+### 優點
+
+| 面向 | 效果 |
+|------|------|
+| **新增 stage** | 只改 `registry.js` 一處 |
+| **一致性** | 所有消費者讀同一份資料 |
+| **可測試** | require 後直接 assert |
+| **可發現** | 一個檔案看到所有 metadata |
+
+### 何時採用
+
+- 同一份 metadata 被 2+ 個檔案使用
+- Plugin 有 pipeline/workflow 概念（多階段、多 agent）
+- 需要反向映射（agent → stage、stage → emoji）
