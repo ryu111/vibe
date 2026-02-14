@@ -3,13 +3,13 @@
  * e2e-hook-chain.test.js — Hook 鏈端到端整合測試
  *
  * 模擬完整 pipeline 生命週期，驗證 hook 間的 state 傳遞：
- *   Scenario A: Trivial 任務 → 不鎖 pipeline → dev-gate 放行
- *   Scenario B: Feature 任務 → 鎖 pipeline → dev-gate 阻擋 → delegation 放行 → stage-transition 前進
- *   Scenario C: Cancel 逃生 → 重設 state → dev-gate 放行
+ *   Scenario A: Trivial 任務 → 不鎖 pipeline → pipeline-guard 放行
+ *   Scenario B: Feature 任務 → 鎖 pipeline → pipeline-guard 阻擋 → delegation 放行 → stage-transition 前進
+ *   Scenario C: Cancel 逃生 → 重設 state → pipeline-guard 放行
  *   Scenario D: Reclassification 升級 → quickfix → feature
  *   Scenario E: Console.log 過濾 → hook 腳本排除
  *
- * 執行：bun test plugins/vibe/tests/e2e-hook-chain.test.js
+ * 執行：node plugins/vibe/tests/e2e-hook-chain.test.js
  */
 'use strict';
 const fs = require('fs');
@@ -150,7 +150,7 @@ function runHookWithEnv(hookName, stdinData, extraEnv) {
 }
 
 // ═══════════════════════════════════════════════
-console.log('\n🔗 Scenario A: Trivial 任務 → 不鎖 pipeline → dev-gate 放行');
+console.log('\n🔗 Scenario A: Trivial 任務 → 不鎖 pipeline → pipeline-guard 放行');
 console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
@@ -188,14 +188,14 @@ console.log('═'.repeat(55));
       assert.strictEqual(classifyResult.json.systemMessage, undefined, '不應有 systemMessage');
     });
 
-    // Step 3: dev-gate 應放行（pipelineEnforced=false）
-    const gateResult = runHook('dev-gate', {
+    // Step 3: pipeline-guard 應放行（pipelineEnforced=false）
+    const gateResult = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'Write',
       tool_input: { file_path: 'src/app.js' },
     });
 
-    test('A5: dev-gate 放行 trivial 任務的 Write', () => {
+    test('A5: pipeline-guard 放行 trivial 任務的 Write', () => {
       assert.strictEqual(gateResult.exitCode, 0);
     });
   } finally {
@@ -244,14 +244,14 @@ console.log('═'.repeat(55));
       assert.ok(classifyResult.json.systemMessage.includes('禁止'));
     });
 
-    // Step 3: dev-gate 應阻擋 Main Agent 的 Write
-    const gateBlock = runHook('dev-gate', {
+    // Step 3: pipeline-guard 應阻擋 Main Agent 的 Write
+    const gateBlock = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'Write',
       tool_input: { file_path: 'src/app.js' },
     });
 
-    test('B5: dev-gate 阻擋 Main Agent 直接 Write', () => {
+    test('B5: pipeline-guard 阻擋 Main Agent 直接 Write', () => {
       assert.strictEqual(gateBlock.exitCode, 2);
       assert.ok(gateBlock.stderr.includes('⛔'));
     });
@@ -268,14 +268,14 @@ console.log('═'.repeat(55));
       assert.strictEqual(state.delegationActive, true);
     });
 
-    // Step 5: dev-gate 放行 sub-agent 的 Write
-    const gateAllow = runHook('dev-gate', {
+    // Step 5: pipeline-guard 放行 sub-agent 的 Write
+    const gateAllow = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'Write',
       tool_input: { file_path: 'src/app.js' },
     });
 
-    test('B7: dev-gate 放行（delegationActive=true）', () => {
+    test('B7: pipeline-guard 放行（delegationActive=true）', () => {
       assert.strictEqual(gateAllow.exitCode, 0);
     });
 
@@ -302,14 +302,14 @@ console.log('═'.repeat(55));
       assert.ok(transResult.json.systemMessage.includes('architect'));
     });
 
-    // Step 7: dev-gate 再次阻擋（delegation 已重設）
-    const gateBlock2 = runHook('dev-gate', {
+    // Step 7: pipeline-guard 再次阻擋（delegation 已重設）
+    const gateBlock2 = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'Edit',
       tool_input: { file_path: 'src/component.tsx' },
     });
 
-    test('B11: dev-gate 再次阻擋（delegation 已重設）', () => {
+    test('B11: pipeline-guard 再次阻擋（delegation 已重設）', () => {
       assert.strictEqual(gateBlock2.exitCode, 2);
     });
 
@@ -360,14 +360,14 @@ console.log('═'.repeat(55));
       expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     });
 
-    // Step 2: dev-gate 阻擋
-    const gateBlock = runHook('dev-gate', {
+    // Step 2: pipeline-guard 阻擋
+    const gateBlock = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'Write',
       tool_input: { file_path: 'src/app.js' },
     });
 
-    test('C1: 取消前 dev-gate 阻擋', () => {
+    test('C1: 取消前 pipeline-guard 阻擋', () => {
       assert.strictEqual(gateBlock.exitCode, 2);
     });
 
@@ -380,14 +380,14 @@ console.log('═'.repeat(55));
       JSON.stringify(state, null, 2)
     );
 
-    // Step 4: dev-gate 放行
-    const gateAllow = runHook('dev-gate', {
+    // Step 4: pipeline-guard 放行
+    const gateAllow = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'Write',
       tool_input: { file_path: 'src/app.js' },
     });
 
-    test('C2: cancel 後 dev-gate 放行', () => {
+    test('C2: cancel 後 pipeline-guard 放行', () => {
       assert.strictEqual(gateAllow.exitCode, 0);
     });
 
@@ -463,14 +463,14 @@ console.log('═'.repeat(55));
       assert.ok(upgradeResult.json.systemMessage.includes('Pipeline 升級'));
     });
 
-    // Step 3: dev-gate 此時應阻擋
-    const gateResult = runHook('dev-gate', {
+    // Step 3: pipeline-guard 此時應阻擋
+    const gateResult = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'Write',
       tool_input: { file_path: 'src/app.js' },
     });
 
-    test('D5: 升級後 dev-gate 阻擋', () => {
+    test('D5: 升級後 pipeline-guard 阻擋', () => {
       assert.strictEqual(gateResult.exitCode, 2);
     });
 
@@ -579,7 +579,7 @@ console.log('═'.repeat(55));
 })();
 
 // ═══════════════════════════════════════════════
-console.log('\n🔗 Scenario G: dev-gate 非程式碼檔案放行（pipeline 啟動中）');
+console.log('\n🔗 Scenario G: pipeline-guard 非程式碼檔案放行（pipeline 啟動中）');
 console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
@@ -601,7 +601,7 @@ console.log('═'.repeat(55));
     ];
 
     for (const { file, ext } of exts) {
-      const result = runHook('dev-gate', {
+      const result = runHook('pipeline-guard', {
         session_id: sid,
         tool_name: 'Write',
         tool_input: { file_path: file },
@@ -615,7 +615,7 @@ console.log('═'.repeat(55));
     // 程式碼檔案應阻擋
     const codeExts = ['src/app.js', 'src/index.ts', 'src/App.tsx', 'main.py', 'main.go'];
     for (const file of codeExts) {
-      const result = runHook('dev-gate', {
+      const result = runHook('pipeline-guard', {
         session_id: sid,
         tool_name: 'Write',
         tool_input: { file_path: file },
@@ -887,17 +887,17 @@ console.log('══════════════════════�
       });
     }
 
-    // J11: Trivial 任務 dev-gate 不阻擋（完整 hook 鏈驗證）
+    // J11: Trivial 任務 pipeline-guard 不阻擋（完整 hook 鏈驗證）
     initState(sid);
     runHook('task-classifier', { session_id: sid, prompt: '做一個 poc 測試看看' });
 
-    const gateResult = runHook('dev-gate', {
+    const gateResult = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'Write',
       tool_input: { file_path: 'src/poc.ts' },
     });
 
-    test('J11: trivial(poc+看看) → dev-gate 放行寫碼', () => {
+    test('J11: trivial(poc+看看) → pipeline-guard 放行寫碼', () => {
       assert.strictEqual(gateResult.exitCode, 0);
     });
   } finally {
@@ -908,7 +908,7 @@ console.log('══════════════════════�
 // ═══════════════════════════════════════════════
 // Scenario K: 手動 scope/architect 後自動 enforce pipeline
 // 驗證：task-classifier 初始分類為 quickfix，但 PLAN+ARCH 完成後
-// stage-transition 自動設定 pipelineEnforced=true，dev-gate 阻擋 Main Agent
+// stage-transition 自動設定 pipelineEnforced=true，pipeline-guard 阻擋 Main Agent
 // ═══════════════════════════════════════════════
 
 console.log('\n🔒 Scenario K: 手動 scope/architect 後自動 enforce pipeline');
@@ -998,14 +998,14 @@ console.log('══════════════════════�
       assert.ok(state.expectedStages.includes('REVIEW'));
     });
 
-    // 現在 dev-gate 應該阻擋 Main Agent 直接寫碼
-    const gate = runHook('dev-gate', {
+    // 現在 pipeline-guard 應該阻擋 Main Agent 直接寫碼
+    const gate = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'Write',
       tool_input: { file_path: 'src/timeline.js' },
     });
 
-    test('K8: 自動 enforce 後，dev-gate 阻擋 Main Agent 寫碼（exit 2）', () => {
+    test('K8: 自動 enforce 後，pipeline-guard 阻擋 Main Agent 寫碼（exit 2）', () => {
       assert.strictEqual(gate.exitCode, 2);
     });
 
@@ -1016,13 +1016,13 @@ console.log('══════════════════════�
       tool_input: { subagent_type: 'vibe:developer' },
     });
 
-    const gateAfterDelegate = runHook('dev-gate', {
+    const gateAfterDelegate = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'Write',
       tool_input: { file_path: 'src/timeline.js' },
     });
 
-    test('K9: delegation 後 dev-gate 放行（sub-agent 可寫碼）', () => {
+    test('K9: delegation 後 pipeline-guard 放行（sub-agent 可寫碼）', () => {
       assert.strictEqual(gateAfterDelegate.exitCode, 0);
     });
   } finally {
@@ -1031,15 +1031,15 @@ console.log('══════════════════════�
 })();
 
 // ═══════════════════════════════════════════════
-// Scenario L: ask-gate — Pipeline 模式下阻擋 AskUserQuestion
+// Scenario L: pipeline-guard — Pipeline 模式下阻擋 AskUserQuestion
 // 驗證：pipelineEnforced=true 時 AskUserQuestion 被硬阻擋（exit 2）
 // ═══════════════════════════════════════════════
 
-console.log('\n⛔ Scenario L: ask-gate — Pipeline 自動閉環（阻擋 AskUserQuestion）');
+console.log('\n⛔ Scenario L: pipeline-guard — Pipeline 自動閉環（阻擋 AskUserQuestion）');
 console.log('═══════════════════════════════════════════════════════');
 
 (() => {
-  const sid = 'e2e-ask-gate';
+  const sid = 'e2e-pipeline-guard-ask';
   try {
     const askInput = {
       session_id: sid,
@@ -1049,22 +1049,22 @@ console.log('══════════════════════�
 
     // L1: 無 state → 放行
     cleanState(sid);
-    const r1 = runHook('ask-gate', askInput);
-    test('L1: 無 pipeline state → ask-gate 放行', () => {
+    const r1 = runHook('pipeline-guard', askInput);
+    test('L1: 無 pipeline state → pipeline-guard 放行', () => {
       assert.strictEqual(r1.exitCode, 0);
     });
 
     // L2: pipelineEnforced=false → 放行
     initState(sid, { taskType: 'quickfix', pipelineEnforced: false });
-    const r2 = runHook('ask-gate', askInput);
-    test('L2: pipelineEnforced=false → ask-gate 放行', () => {
+    const r2 = runHook('pipeline-guard', askInput);
+    test('L2: pipelineEnforced=false → pipeline-guard 放行', () => {
       assert.strictEqual(r2.exitCode, 0);
     });
 
     // L3: pipelineEnforced=true → 阻擋（exit 2）
     initState(sid, { taskType: 'feature', pipelineEnforced: true, expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'] });
-    const r3 = runHook('ask-gate', askInput);
-    test('L3: pipelineEnforced=true → ask-gate 阻擋（exit 2）', () => {
+    const r3 = runHook('pipeline-guard', askInput);
+    test('L3: pipelineEnforced=true → pipeline-guard 阻擋（exit 2）', () => {
       assert.strictEqual(r3.exitCode, 2);
     });
 
@@ -1078,25 +1078,125 @@ console.log('══════════════════════�
 
     // L6: cancelled=true → 放行
     initState(sid, { taskType: 'feature', pipelineEnforced: true, cancelled: true });
-    const r4 = runHook('ask-gate', askInput);
-    test('L6: pipeline 已取消（cancelled=true）→ ask-gate 放行', () => {
+    const r4 = runHook('pipeline-guard', askInput);
+    test('L6: pipeline 已取消（cancelled=true）→ pipeline-guard 放行', () => {
       assert.strictEqual(r4.exitCode, 0);
     });
 
-    // L7: 完整 hook 鏈 — feature pipeline + ask-gate 阻擋 + dev-gate 阻擋
+    // L7: 完整 hook 鏈 — feature pipeline + pipeline-guard 阻擋 AskUserQuestion 和 Write
     initState(sid, { taskType: 'feature', pipelineEnforced: true, expectedStages: ['PLAN', 'ARCH', 'DEV'] });
 
-    const askGate = runHook('ask-gate', askInput);
-    const devGate = runHook('dev-gate', {
+    const askGate = runHook('pipeline-guard', askInput);
+    const writeGate = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'Write',
       tool_input: { file_path: 'src/app.js' },
     });
 
     test('L7: feature pipeline 同時阻擋 AskUserQuestion 和 Write', () => {
-      assert.strictEqual(askGate.exitCode, 2, 'ask-gate 應阻擋');
-      assert.strictEqual(devGate.exitCode, 2, 'dev-gate 應阻擋');
+      assert.strictEqual(askGate.exitCode, 2, 'pipeline-guard 應阻擋 AskUserQuestion');
+      assert.strictEqual(writeGate.exitCode, 2, 'pipeline-guard 應阻擋 Write');
     });
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
+// Scenario M: pipeline-guard 白名單測試
+// 驗證：EnterPlanMode 阻擋、cancelled 放行、NotebookEdit 支援
+// ═══════════════════════════════════════════════
+
+console.log('\n🔐 Scenario M: pipeline-guard 白名單與擴充工具');
+console.log('═══════════════════════════════════════════════════════');
+
+(() => {
+  const sid = 'e2e-whitelist';
+  try {
+    // M1: EnterPlanMode 阻擋
+    initState(sid, { taskType: 'feature', pipelineEnforced: true });
+    const planMode = runHook('pipeline-guard', {
+      session_id: sid,
+      tool_name: 'EnterPlanMode',
+      tool_input: {},
+    });
+
+    test('M1: pipelineEnforced=true → 阻擋 EnterPlanMode', () => {
+      assert.strictEqual(planMode.exitCode, 2);
+      assert.ok(planMode.stderr.includes('EnterPlanMode'));
+      assert.ok(planMode.stderr.includes('vibe:planner'));
+      assert.ok(planMode.stderr.includes('/vibe:scope'));
+    });
+
+    // M2: cancelled=true 後 EnterPlanMode 也放行
+    initState(sid, { taskType: 'feature', pipelineEnforced: true, cancelled: true });
+    const planModeAfterCancel = runHook('pipeline-guard', {
+      session_id: sid,
+      tool_name: 'EnterPlanMode',
+      tool_input: {},
+    });
+
+    test('M2: cancelled=true → EnterPlanMode 放行', () => {
+      assert.strictEqual(planModeAfterCancel.exitCode, 0);
+    });
+
+    // M3: NotebookEdit 支援（程式碼檔案阻擋）
+    initState(sid, { taskType: 'feature', pipelineEnforced: true });
+    const notebook = runHook('pipeline-guard', {
+      session_id: sid,
+      tool_name: 'NotebookEdit',
+      tool_input: { file_path: 'notebook.ipynb' },
+    });
+
+    test('M3: NotebookEdit 程式碼檔案 → 阻擋', () => {
+      assert.strictEqual(notebook.exitCode, 2);
+      assert.ok(notebook.stderr.includes('NotebookEdit'));
+    });
+
+    // M4: NotebookEdit 非程式碼檔案（.json）放行
+    const notebookNonCode = runHook('pipeline-guard', {
+      session_id: sid,
+      tool_name: 'NotebookEdit',
+      tool_input: { file_path: 'config.json' },
+    });
+
+    test('M4: NotebookEdit 非程式碼檔案 → 放行', () => {
+      assert.strictEqual(notebookNonCode.exitCode, 0);
+    });
+
+    // M5: delegationActive=true 時 EnterPlanMode 也放行（實際不會發生，但邏輯覆蓋）
+    initState(sid, { taskType: 'feature', pipelineEnforced: true, delegationActive: true });
+    const planModeDelegate = runHook('pipeline-guard', {
+      session_id: sid,
+      tool_name: 'EnterPlanMode',
+      tool_input: {},
+    });
+
+    test('M5: delegationActive=true → EnterPlanMode 放行（統一 delegation 白名單）', () => {
+      assert.strictEqual(planModeDelegate.exitCode, 0);
+    });
+
+    // M6: pipelineEnforced=false 時所有工具放行
+    initState(sid, { taskType: 'quickfix', pipelineEnforced: false });
+    const allTools = [
+      { tool: 'Write', input: { file_path: 'src/app.js' } },
+      { tool: 'Edit', input: { file_path: 'src/component.tsx' } },
+      { tool: 'NotebookEdit', input: { file_path: 'notebook.ipynb' } },
+      { tool: 'AskUserQuestion', input: {} },
+      { tool: 'EnterPlanMode', input: {} },
+    ];
+
+    for (const { tool, input } of allTools) {
+      const result = runHook('pipeline-guard', {
+        session_id: sid,
+        tool_name: tool,
+        tool_input: input,
+      });
+
+      test(`M6: pipelineEnforced=false → ${tool} 放行`, () => {
+        assert.strictEqual(result.exitCode, 0);
+      });
+    }
   } finally {
     cleanState(sid);
   }

@@ -1072,8 +1072,7 @@ SessionStart: dashboard-autostart       /vibe:architect   架構設計
 SessionStart: remote-autostart          /vibe:context-status  Context 狀態
 UserPromptSubmit: task-classifier       /vibe:checkpoint  建立檢查點
 PreToolUse(Task): delegation-tracker    /vibe:env-detect  環境偵測
-PreToolUse(Write|Edit): dev-gate        /vibe:cancel      取消鎖定
-PreToolUse(EnterPlanMode): plan-mode-gate /vibe:review    深度審查
+PreToolUse(W|E|Ask|EPM): pipeline-guard  /vibe:cancel      取消鎖定
 PreToolUse(*): suggest-compact          /vibe:security    安全掃描
 PreToolUse(Bash): danger-guard          /vibe:tdd         TDD 工作流
 PreToolUse(AskUserQuestion): remote-ask /vibe:e2e         E2E 測試

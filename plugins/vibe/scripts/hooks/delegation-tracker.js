@@ -3,7 +3,7 @@
  * delegation-tracker.js — PreToolUse hook (matcher: Task)
  *
  * 當 Main Agent 呼叫 Task 工具時，標記 pipeline state 的 delegationActive = true。
- * 這允許 dev-gate 放行後續 sub-agent 的 Write/Edit 操作。
+ * 這允許 pipeline-guard 放行後續 sub-agent 的 Write/Edit 操作。
  *
  * 因為 plugin hooks 會同時攔截 sub-agent 的 tool calls，
  * 所以需要這個追蹤機制來區分 Main Agent 和 Sub-agent 的操作。

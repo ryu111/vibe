@@ -73,8 +73,7 @@ const HOOK_META_MAP = {
   'task-classifier':       { module: 'Flow',      strength: '軟→強',  desc: '任務分類 + pipeline 階段注入' },
   'remote-prompt-forward': { module: 'Remote',    strength: '—',      desc: '使用者輸入轉發 Telegram' },
   'delegation-tracker':    { module: 'Flow',      strength: '—',      desc: '標記 delegationActive' },
-  'dev-gate':              { module: 'Flow',      strength: '硬阻擋', desc: '阻擋 Main Agent 直寫碼' },
-  'plan-mode-gate':        { module: 'Flow',      strength: '硬阻擋', desc: '阻擋 EnterPlanMode（需用 /vibe:scope）' },
+  'pipeline-guard':        { module: 'Flow',      strength: '硬阻擋', desc: '阻擋 Write|Edit|AskUserQuestion|EnterPlanMode（需用 delegation 或 /vibe:scope）' },
   'suggest-compact':       { module: 'Flow',      strength: '軟建議', desc: '50 calls 建議 compact' },
   'danger-guard':          { module: 'Sentinel',  strength: '硬阻擋', desc: '攔截 rm -rf、DROP TABLE 等' },
   'remote-ask-intercept':  { module: 'Remote',    strength: '—',      desc: 'AskUserQuestion → inline keyboard' },
@@ -93,13 +92,12 @@ const HOOK_META_MAP = {
 
 const HOOK_SCRIPT_MODULE = {
   'pipeline-init.js': 'Flow', 'task-classifier.js': 'Flow',
-  'delegation-tracker.js': 'Flow', 'dev-gate.js': 'Flow',
-  'plan-mode-gate.js': 'Flow', 'suggest-compact.js': 'Flow',
-  'log-compact.js': 'Flow', 'stage-transition.js': 'Flow',
-  'pipeline-check.js': 'Flow', 'task-guard.js': 'Flow',
-  'auto-lint.js': 'Sentinel', 'auto-format.js': 'Sentinel',
-  'test-check.js': 'Sentinel', 'danger-guard.js': 'Sentinel',
-  'check-console-log.js': 'Sentinel',
+  'delegation-tracker.js': 'Flow', 'pipeline-guard.js': 'Flow',
+  'suggest-compact.js': 'Flow', 'log-compact.js': 'Flow',
+  'stage-transition.js': 'Flow', 'pipeline-check.js': 'Flow',
+  'task-guard.js': 'Flow', 'auto-lint.js': 'Sentinel',
+  'auto-format.js': 'Sentinel', 'test-check.js': 'Sentinel',
+  'danger-guard.js': 'Sentinel', 'check-console-log.js': 'Sentinel',
   'dashboard-autostart.js': 'Dashboard', 'dashboard-refresh.js': 'Dashboard',
   'remote-autostart.js': 'Remote', 'remote-prompt-forward.js': 'Remote',
   'remote-ask-intercept.js': 'Remote', 'remote-sender.js': 'Remote',
@@ -476,15 +474,15 @@ function generateVibeDoc(specs, metaPath) {
   d.push('');
   d.push('#### delegation-tracker（PreToolUse:Task）');
   d.push('');
-  d.push(`Task 呼叫時標記 ${c('delegationActive=true')}，讓 sub-agent 通過 dev-gate。`);
+  d.push(`Task 呼叫時標記 ${c('delegationActive=true')}，讓 sub-agent 通過 pipeline-guard。`);
   d.push('');
-  d.push('#### dev-gate（PreToolUse:Write|Edit）');
+  d.push('#### pipeline-guard（PreToolUse:Write|Edit|NotebookEdit|AskUserQuestion|EnterPlanMode）');
   d.push('');
-  d.push(`Pipeline 模式下阻擋 Main Agent 直接 Write/Edit。雙層防禦：${c('systemMessage')} ⛔ + ${c('exit 2')} 硬阻擋。${c('delegationActive=true')} 時放行。`);
-  d.push('');
-  d.push('#### plan-mode-gate（PreToolUse:EnterPlanMode）');
-  d.push('');
-  d.push(`阻擋 Claude 內建 EnterPlanMode，強制使用 ${c('/vibe:scope')} 啟動規劃流程。`);
+  d.push(`統一防護層：`);
+  d.push(`- Write|Edit：阻擋 Main Agent 直寫碼（${c('delegationActive=true')} 時放行）`);
+  d.push(`- AskUserQuestion：轉發給 remote-ask-intercept（Telegram 互動選單）`);
+  d.push(`- EnterPlanMode：阻擋內建 Plan Mode，強制使用 ${c('/vibe:scope')}）`);
+  d.push(`雙層防禦：${c('systemMessage')} ⛔ + ${c('exit 2')} 硬阻擋。`);
   d.push('');
   d.push('#### suggest-compact（PreToolUse:*）');
   d.push('');

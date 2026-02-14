@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.3 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.18 | 全方位開發工作流 | 29 | 10 | 23 | 38+daemon |
+| **vibe** | 1.0.19 | 全方位開發工作流 | 29 | 10 | 21 | 37+daemon |
 
 ### vibe plugin 功能模組
 
@@ -49,10 +49,10 @@ plugins/vibe/
 ├── .claude-plugin/
 │   └── plugin.json          # manifest（name, version, skills, agents）
 ├── hooks/
-│   └── hooks.json           # 統一 23 hooks（7 事件，順序明確）
+│   └── hooks.json           # 統一 21 hooks（7 事件，順序明確）
 ├── pipeline.json            # Pipeline 階段宣告 + provides
 ├── scripts/
-│   ├── hooks/               # 23 個 hook 腳本
+│   ├── hooks/               # 21 個 hook 腳本
 │   └── lib/                 # 共用函式庫
 │       ├── registry.js      # ★ 全局 metadata（STAGES/AGENTS/EMOJI）
 │       ├── hook-logger.js   # Hook 錯誤日誌（~/.claude/hook-errors.log）
@@ -90,25 +90,23 @@ PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
 
 **防禦機制**：
 - `task-classifier`（UserPromptSubmit）— 分類任務 + 按需注入委派規則
-- `dev-gate`（PreToolUse Write|Edit）— **exit 2 硬阻擋** Main Agent 直接寫碼
-- `ask-gate`（PreToolUse AskUserQuestion）— **exit 2 硬阻擋** Pipeline 自動模式下詢問使用者
+- `pipeline-guard`（PreToolUse Write|Edit|NotebookEdit|AskUserQuestion|EnterPlanMode）— **exit 2 硬阻擋** Main Agent 直接寫碼、詢問使用者、進入 Plan Mode
 - `delegation-tracker`（PreToolUse Task）— 設 `delegationActive=true` 讓 sub-agent 通過
 - `stage-transition`（SubagentStop）— 指示下一階段 + 清除 delegation
 
 ## Hooks 事件全景
 
-統一 hooks.json，23 hooks 按事件分組（順序明確）：
+統一 hooks.json，21 hooks 按事件分組（順序明確）：
 
 | 事件 | Hooks（執行順序） |
 |------|------------------|
 | **SessionStart** | pipeline-init → dashboard-autostart → remote-autostart |
 | **UserPromptSubmit** | task-classifier → remote-prompt-forward |
 | **PreToolUse(Task)** | delegation-tracker |
-| **PreToolUse(Write\|Edit)** | dev-gate |
-| **PreToolUse(EnterPlanMode)** | plan-mode-gate |
+| **PreToolUse(Write\|Edit\|NotebookEdit\|AskUserQuestion\|EnterPlanMode)** | pipeline-guard |
 | **PreToolUse(*)** | suggest-compact |
 | **PreToolUse(Bash)** | danger-guard |
-| **PreToolUse(AskUserQuestion)** | ask-gate → remote-ask-intercept |
+| **PreToolUse(AskUserQuestion)** | remote-ask-intercept |
 | **PostToolUse(Write\|Edit)** | auto-lint → auto-format → test-check |
 | **PreCompact** | log-compact |
 | **SubagentStop** | stage-transition → remote-sender |
@@ -120,7 +118,7 @@ PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
 |------|---------|------|------|
 | `additionalContext` | Claude | 軟建議 | 背景知識、上下文注入 |
 | `systemMessage` | Claude | 強指令 | 系統級規則（模型不可忽略） |
-| `stderr` + exit 2 | 使用者 | **硬阻擋** | 阻止工具執行（danger-guard / dev-gate / ask-gate / plan-mode-gate） |
+| `stderr` + exit 2 | 使用者 | **硬阻擋** | 阻止工具執行（danger-guard / pipeline-guard） |
 | `hookLogger.error()` | log 檔案 | 無 | 記錄到 `~/.claude/hook-errors.log`（`/hook-diag` 查看） |
 
 ## State 與命名慣例

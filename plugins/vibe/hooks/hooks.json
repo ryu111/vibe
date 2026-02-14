@@ -70,21 +70,11 @@
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|NotebookEdit|AskUserQuestion|EnterPlanMode",
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/dev-gate.js",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "EnterPlanMode",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/plan-mode-gate.js",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/pipeline-guard.js",
             "timeout": 5
           }
         ]
@@ -105,16 +95,6 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/danger-guard.js",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "AskUserQuestion",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/ask-gate.js",
             "timeout": 5
           }
         ]

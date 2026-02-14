@@ -9,7 +9,7 @@ allowed-tools: Read, Write
 
 你是任務鎖定和 pipeline 模式的手動解除器。處理兩種情境：
 1. **task-guard 鎖定**：反覆阻擋結束回合
-2. **pipeline 模式**：dev-gate 阻擋直接 Write/Edit，強制透過 sub-agent
+2. **pipeline 模式**：pipeline-guard 阻擋直接 Write/Edit/AskUserQuestion/EnterPlanMode，強制透過 sub-agent
 
 ## 工作流程
 
@@ -32,7 +32,7 @@ allowed-tools: Read, Write
 **Task-guard 解除**：將 `task-guard-state` 的 `cancelled` 設為 `true`
 
 **Pipeline 解除**：將 `pipeline-state` 的以下欄位重設：
-- `pipelineEnforced` → `false`（停止 dev-gate 阻擋）
+- `pipelineEnforced` → `false`（停止 pipeline-guard 阻擋）
 - `delegationActive` → `false`（重設委派狀態）
 
 ### 4. 確認結果

@@ -93,6 +93,8 @@ process.stdin.on('end', () => {
       null;
 
     if (shouldSkip(filePath)) {
+      // 顯式輸出 continue: true 避免 ECC 誤判 hook 中斷
+      console.log(JSON.stringify({ continue: true }));
       process.exit(0);
     }
 

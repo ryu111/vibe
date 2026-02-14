@@ -170,7 +170,7 @@ process.stdin.on('end', () => {
     // ===== 自動 enforce pipeline =====
     // 當手動觸發 scope/architect 後，task-classifier 可能沒分類為 feature，
     // 導致 pipelineEnforced=false。若已完成 PLAN+ARCH 且下一步是 DEV，
-    // 自動升級為 feature pipeline，確保 dev-gate 阻擋 Main Agent 直接寫碼。
+    // 自動升級為 feature pipeline，確保 pipeline-guard 阻擋 Main Agent 直接寫碼。
     const DEV_OR_LATER = ['DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'];
     if (!state.pipelineEnforced && nextStage && DEV_OR_LATER.includes(nextStage)) {
       state.pipelineEnforced = true;
@@ -321,7 +321,7 @@ ${method}${stageContext}${skipNote}
           completedStages,
         });
 
-        // 解除 pipeline 鎖定 — 讓所有 gate hook（ask-gate/dev-gate/plan-mode-gate）放行
+        // 解除 pipeline 鎖定 — 讓 pipeline-guard 放行
         state.pipelineEnforced = false;
 
         const skipNote = skippedStages.length > 0
@@ -331,7 +331,7 @@ ${method}${stageContext}${skipNote}
       }
     }
 
-    // 清除委派標記（sub-agent 已完成，重新啟動 dev-gate 保護）
+    // 清除委派標記（sub-agent 已完成，重新啟動 pipeline-guard 保護）
     state.delegationActive = false;
 
     // 寫入 state file

@@ -66,8 +66,7 @@ SessionStart: dashboard-autostart       /vibe:architect   架構設計
 SessionStart: remote-autostart          /vibe:context-status  Context 狀態
 UserPromptSubmit: task-classifier       /vibe:checkpoint  建立檢查點
 PreToolUse(Task): delegation-tracker    /vibe:env-detect  環境偵測
-PreToolUse(Write|Edit): dev-gate        /vibe:cancel      取消鎖定
-PreToolUse(EnterPlanMode): plan-mode-gate /vibe:review    深度審查
+PreToolUse(W|E|Ask|EPM): pipeline-guard  /vibe:cancel      取消鎖定
 PreToolUse(*): suggest-compact          /vibe:security    安全掃描
 PreToolUse(Bash): danger-guard          /vibe:tdd         TDD 工作流
 PreToolUse(AskUserQuestion): remote-ask /vibe:e2e         E2E 測試
@@ -84,7 +83,7 @@ Stop: dashboard-refresh                 /remote-config    遠端設定
 Stop: remote-receipt                    /vibe:hook-diag   Hook 診斷
 UserPromptSubmit: remote-prompt-forward
 
-自動: 23 hooks                           手動: 25 skills（+ 8 知識 skills）
+自動: 21 hooks                           手動: 25 skills（+ 8 知識 skills）
 跨 session 記憶：claude-mem（獨立 plugin，推薦搭配）
 ```
 
@@ -95,7 +94,7 @@ UserPromptSubmit: remote-prompt-forward
 | Phase | Plugin | 描述 | 組件數 |
 |:-----:|--------|------|:------:|
 | 1 | **forge** | 造工具的工具 — 建立、驗證、管理 Claude Code plugin 組件 | 4S + 7Sc |
-| 2 | **vibe** | 全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制 | 29S + 10A + 23H + 38Sc |
+| 2 | **vibe** | 全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制 | 29S + 10A + 21H + 37Sc |
 
 ---
 
@@ -104,7 +103,7 @@ UserPromptSubmit: remote-prompt-forward
 | # | Plugin | 文件 | Skills | Agents | Hooks | Scripts |
 |:-:|--------|------|:------:|:------:|:-----:|:-------:|
 | 1 | forge | [forge.md](forge.md) | 4 | 0 | 0 | 7 |
-| 2 | vibe | [vibe.md](vibe.md) | 29 | 10 | 23 | 38 |
+| 2 | vibe | [vibe.md](vibe.md) | 29 | 10 | 21 | 37 |
 
 > **S** = Skill, **A** = Agent, **H** = Hook, **Sc** = Script
 
@@ -117,6 +116,6 @@ UserPromptSubmit: remote-prompt-forward
 | **Plugins** | 2 | forge + vibe |
 | **Skills** | 33 | 25 動態能力 + 8 知識庫 |
 | **Agents** | 10 | 全部在 vibe plugin |
-| **Hooks** | 23 | 自動觸發 |
-| **Scripts** | 45 | hook 腳本 + 共用函式庫 |
-| **合計** | 111 | 跨 2 個 plugins |
+| **Hooks** | 21 | 自動觸發 |
+| **Scripts** | 44 | hook 腳本 + 共用函式庫 |
+| **合計** | 108 | 跨 2 個 plugins |

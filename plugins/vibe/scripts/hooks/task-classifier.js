@@ -48,7 +48,7 @@ const TYPE_PRIORITY = {
   feature: 6,
 };
 
-// 需要完整 pipeline 委派的任務類型（單一定義點 — dev-gate/pipeline-check 讀 state.pipelineEnforced）
+// 需要完整 pipeline 委派的任務類型（單一定義點 — pipeline-guard/pipeline-check 讀 state.pipelineEnforced）
 const FULL_PIPELINE_TYPES = ['feature', 'refactor', 'tdd'];
 
 const { NAMESPACED_AGENT_TO_STAGE } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
@@ -133,7 +133,7 @@ function buildPipelineRules(stages, pipelineRules) {
   parts.push('- 🚫 禁止直接使用 Bash 工具執行 build、test、lint 等開發指令');
   parts.push('- 🚫 禁止使用 EnterPlanMode — Pipeline 有自己的 PLAN 階段（/vibe:scope），不需要 Claude 內建 Plan Mode');
   parts.push('- 你的唯一職責：按順序使用 Task/Skill 工具委派各階段給 sub-agent');
-  parts.push('- 違反此規則的 Write/Edit 操作會被 dev-gate hook 硬阻擋（exit 2）');
+  parts.push('- 違反此規則的 Write/Edit 操作會被 pipeline-guard hook 硬阻擋（exit 2）');
   parts.push('');
   parts.push('█ 委派順序 █');
   if (pipelineRules && pipelineRules.length > 0) {
@@ -153,7 +153,7 @@ function buildPipelineRules(stages, pipelineRules) {
   parts.push('✅ Task({ subagent_type: "vibe:planner", prompt: "..." })');
   parts.push('✅ Task({ subagent_type: "vibe:architect", prompt: "..." })');
   parts.push('✅ Task({ subagent_type: "vibe:developer", prompt: "..." })');
-  parts.push('❌ Write({ file_path: "src/app.ts", content: "..." }) ← 這會被 dev-gate 阻擋');
+  parts.push('❌ Write({ file_path: "src/app.ts", content: "..." }) ← 這會被 pipeline-guard 阻擋');
   parts.push('');
   parts.push(`立即使用 Task 工具委派 ${firstStage} 階段的 sub-agent。`);
 
@@ -213,7 +213,7 @@ function outputUpgrade(oldLabel, newLabel, remainingStages, skippedStages, state
       `\n█ 絕對禁止 █\n` +
       `- 🚫 禁止直接使用 Write/Edit 寫程式碼\n` +
       `- 你的唯一職責：使用 Task/Skill 工具委派各階段給 sub-agent\n` +
-      `- 違反此規則的 Write/Edit 操作會被 dev-gate hook 硬阻擋（exit 2）\n` +
+      `- 違反此規則的 Write/Edit 操作會被 pipeline-guard hook 硬阻擋（exit 2）\n` +
       `\n立即使用 Task 工具委派 ${firstStage} 階段的 sub-agent。`,
   }));
 }

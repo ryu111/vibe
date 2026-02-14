@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * cancel-and-devgate.test.js — 測試 cancel 操作的 state 重設 + dev-gate 放行驗證
+ * cancel-and-guard.test.js — 測試 cancel 操作的 state 重設 + pipeline-guard 放行驗證
  *
  * Part 1: 模擬 cancel 操作（重設 pipelineEnforced/delegationActive flag）
- * Part 2: 驗證 dev-gate.js 在不同 state 條件下的行為（放行 vs 阻擋）
+ * Part 2: 驗證 pipeline-guard.js 在不同 state 條件下的行為（放行 vs 阻擋）
  *
- * 執行：bun test plugins/vibe/tests/cancel-and-devgate.test.js
+ * 執行：node plugins/vibe/tests/cancel-and-guard.test.js
  */
 'use strict';
 const fs = require('fs');
@@ -16,7 +16,7 @@ const { execSync } = require('child_process');
 
 const PLUGIN_ROOT = path.join(__dirname, '..');
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
-const DEV_GATE_SCRIPT = path.join(PLUGIN_ROOT, 'scripts', 'hooks', 'dev-gate.js');
+const PIPELINE_GUARD_SCRIPT = path.join(PLUGIN_ROOT, 'scripts', 'hooks', 'pipeline-guard.js');
 
 let passed = 0;
 let failed = 0;
@@ -205,14 +205,14 @@ test('只重設 flag，不清除完成記錄', () => {
 });
 
 // ═══════════════════════════════════════════════
-console.log('\n🧪 Part 2: Dev-gate 放行驗證');
+console.log('\n🧪 Part 2: Pipeline-guard 放行驗證');
 // ═══════════════════════════════════════════════
 
 test('放行 — 無 state file', () => {
-  const sessionId = 'test-dg-1';
+  const sessionId = 'test-pg-1';
   cleanState(sessionId);
 
-  const result = runHook(DEV_GATE_SCRIPT, {
+  const result = runHook(PIPELINE_GUARD_SCRIPT, {
     session_id: sessionId,
     tool_name: 'Write',
     tool_input: { file_path: 'src/app.js' },
@@ -222,7 +222,7 @@ test('放行 — 無 state file', () => {
 });
 
 test('放行 — pipelineEnforced=false', () => {
-  const sessionId = 'test-dg-2';
+  const sessionId = 'test-pg-2';
   try {
     writeState(sessionId, {
       initialized: true,
@@ -230,7 +230,7 @@ test('放行 — pipelineEnforced=false', () => {
       pipelineEnforced: false,
     });
 
-    const result = runHook(DEV_GATE_SCRIPT, {
+    const result = runHook(PIPELINE_GUARD_SCRIPT, {
       session_id: sessionId,
       tool_name: 'Write',
       tool_input: { file_path: 'src/app.js' },
@@ -243,7 +243,7 @@ test('放行 — pipelineEnforced=false', () => {
 });
 
 test('放行 — delegationActive=true（sub-agent 操作）', () => {
-  const sessionId = 'test-dg-3';
+  const sessionId = 'test-pg-3';
   try {
     writeState(sessionId, {
       initialized: true,
@@ -252,7 +252,7 @@ test('放行 — delegationActive=true（sub-agent 操作）', () => {
       delegationActive: true,
     });
 
-    const result = runHook(DEV_GATE_SCRIPT, {
+    const result = runHook(PIPELINE_GUARD_SCRIPT, {
       session_id: sessionId,
       tool_name: 'Write',
       tool_input: { file_path: 'src/app.js' },
@@ -265,7 +265,7 @@ test('放行 — delegationActive=true（sub-agent 操作）', () => {
 });
 
 test('放行 — 非程式碼檔案（.md）', () => {
-  const sessionId = 'test-dg-4';
+  const sessionId = 'test-pg-4';
   try {
     writeState(sessionId, {
       initialized: true,
@@ -274,7 +274,7 @@ test('放行 — 非程式碼檔案（.md）', () => {
       delegationActive: false,
     });
 
-    const result = runHook(DEV_GATE_SCRIPT, {
+    const result = runHook(PIPELINE_GUARD_SCRIPT, {
       session_id: sessionId,
       tool_name: 'Write',
       tool_input: { file_path: 'README.md' },
@@ -287,7 +287,7 @@ test('放行 — 非程式碼檔案（.md）', () => {
 });
 
 test('放行 — 非程式碼檔案（.json）', () => {
-  const sessionId = 'test-dg-5';
+  const sessionId = 'test-pg-5';
   try {
     writeState(sessionId, {
       initialized: true,
@@ -296,7 +296,7 @@ test('放行 — 非程式碼檔案（.json）', () => {
       delegationActive: false,
     });
 
-    const result = runHook(DEV_GATE_SCRIPT, {
+    const result = runHook(PIPELINE_GUARD_SCRIPT, {
       session_id: sessionId,
       tool_name: 'Write',
       tool_input: { file_path: 'package.json' },
@@ -309,7 +309,7 @@ test('放行 — 非程式碼檔案（.json）', () => {
 });
 
 test('阻擋 — pipeline 啟動 + 未委派 + 程式碼檔案', () => {
-  const sessionId = 'test-dg-6';
+  const sessionId = 'test-pg-6';
   try {
     writeState(sessionId, {
       initialized: true,
@@ -318,7 +318,7 @@ test('阻擋 — pipeline 啟動 + 未委派 + 程式碼檔案', () => {
       delegationActive: false,
     });
 
-    const result = runHook(DEV_GATE_SCRIPT, {
+    const result = runHook(PIPELINE_GUARD_SCRIPT, {
       session_id: sessionId,
       tool_name: 'Write',
       tool_input: { file_path: 'src/app.js' },
@@ -333,7 +333,7 @@ test('阻擋 — pipeline 啟動 + 未委派 + 程式碼檔案', () => {
 });
 
 test('放行 — cancel 後（pipelineEnforced 已重設）', () => {
-  const sessionId = 'test-dg-7';
+  const sessionId = 'test-pg-7';
   try {
     // 模擬 cancel 後的 state
     writeState(sessionId, {
@@ -344,7 +344,7 @@ test('放行 — cancel 後（pipelineEnforced 已重設）', () => {
       completed: ['vibe:planner', 'vibe:architect'],
     });
 
-    const result = runHook(DEV_GATE_SCRIPT, {
+    const result = runHook(PIPELINE_GUARD_SCRIPT, {
       session_id: sessionId,
       tool_name: 'Write',
       tool_input: { file_path: 'src/app.js' },
@@ -358,13 +358,13 @@ test('放行 — cancel 後（pipelineEnforced 已重設）', () => {
 });
 
 test('放行 — 未初始化（initialized=false）', () => {
-  const sessionId = 'test-dg-8';
+  const sessionId = 'test-pg-8';
   try {
     writeState(sessionId, {
       initialized: false,
     });
 
-    const result = runHook(DEV_GATE_SCRIPT, {
+    const result = runHook(PIPELINE_GUARD_SCRIPT, {
       session_id: sessionId,
       tool_name: 'Write',
       tool_input: { file_path: 'src/app.js' },
@@ -377,14 +377,14 @@ test('放行 — 未初始化（initialized=false）', () => {
 });
 
 test('放行 — 無 taskType（分類前）', () => {
-  const sessionId = 'test-dg-9';
+  const sessionId = 'test-pg-9';
   try {
     writeState(sessionId, {
       initialized: true,
       // taskType 尚未設定
     });
 
-    const result = runHook(DEV_GATE_SCRIPT, {
+    const result = runHook(PIPELINE_GUARD_SCRIPT, {
       session_id: sessionId,
       tool_name: 'Write',
       tool_input: { file_path: 'src/app.js' },
@@ -397,7 +397,7 @@ test('放行 — 無 taskType（分類前）', () => {
 });
 
 test('阻擋 — Edit 工具同樣受限', () => {
-  const sessionId = 'test-dg-10';
+  const sessionId = 'test-pg-10';
   try {
     writeState(sessionId, {
       initialized: true,
@@ -406,7 +406,7 @@ test('阻擋 — Edit 工具同樣受限', () => {
       delegationActive: false,
     });
 
-    const result = runHook(DEV_GATE_SCRIPT, {
+    const result = runHook(PIPELINE_GUARD_SCRIPT, {
       session_id: sessionId,
       tool_name: 'Edit',
       tool_input: { file_path: 'src/component.tsx' },
@@ -420,7 +420,7 @@ test('阻擋 — Edit 工具同樣受限', () => {
 });
 
 test('放行 — 程式碼檔案但有其他放行條件（.yml 視為非程式碼）', () => {
-  const sessionId = 'test-dg-11';
+  const sessionId = 'test-pg-11';
   try {
     writeState(sessionId, {
       initialized: true,
@@ -429,10 +429,102 @@ test('放行 — 程式碼檔案但有其他放行條件（.yml 視為非程式�
       delegationActive: false,
     });
 
-    const result = runHook(DEV_GATE_SCRIPT, {
+    const result = runHook(PIPELINE_GUARD_SCRIPT, {
       session_id: sessionId,
       tool_name: 'Write',
       tool_input: { file_path: '.github/workflows/ci.yml' },
+    });
+
+    assert.strictEqual(result.exitCode, 0);
+  } finally {
+    cleanState(sessionId);
+  }
+});
+
+test('阻擋 — AskUserQuestion（pipeline 啟動中）', () => {
+  const sessionId = 'test-pg-12';
+  try {
+    writeState(sessionId, {
+      initialized: true,
+      taskType: 'feature',
+      pipelineEnforced: true,
+      delegationActive: false,
+    });
+
+    const result = runHook(PIPELINE_GUARD_SCRIPT, {
+      session_id: sessionId,
+      tool_name: 'AskUserQuestion',
+      tool_input: {},
+    });
+
+    assert.strictEqual(result.exitCode, 2);
+    assert.ok(result.stderr.includes('⛔'));
+    assert.ok(result.stderr.includes('自動'));
+  } finally {
+    cleanState(sessionId);
+  }
+});
+
+test('放行 — AskUserQuestion（cancelled=true）', () => {
+  const sessionId = 'test-pg-13';
+  try {
+    writeState(sessionId, {
+      initialized: true,
+      taskType: 'feature',
+      pipelineEnforced: true,
+      delegationActive: false,
+      cancelled: true,
+    });
+
+    const result = runHook(PIPELINE_GUARD_SCRIPT, {
+      session_id: sessionId,
+      tool_name: 'AskUserQuestion',
+      tool_input: {},
+    });
+
+    assert.strictEqual(result.exitCode, 0);
+  } finally {
+    cleanState(sessionId);
+  }
+});
+
+test('阻擋 — EnterPlanMode（pipeline 啟動中）', () => {
+  const sessionId = 'test-pg-14';
+  try {
+    writeState(sessionId, {
+      initialized: true,
+      taskType: 'feature',
+      pipelineEnforced: true,
+      delegationActive: false,
+    });
+
+    const result = runHook(PIPELINE_GUARD_SCRIPT, {
+      session_id: sessionId,
+      tool_name: 'EnterPlanMode',
+      tool_input: {},
+    });
+
+    assert.strictEqual(result.exitCode, 2);
+    assert.ok(result.stderr.includes('EnterPlanMode'));
+    assert.ok(result.stderr.includes('vibe:planner'));
+  } finally {
+    cleanState(sessionId);
+  }
+});
+
+test('放行 — EnterPlanMode（pipelineEnforced=false）', () => {
+  const sessionId = 'test-pg-15';
+  try {
+    writeState(sessionId, {
+      initialized: true,
+      taskType: 'quickfix',
+      pipelineEnforced: false,
+    });
+
+    const result = runHook(PIPELINE_GUARD_SCRIPT, {
+      session_id: sessionId,
+      tool_name: 'EnterPlanMode',
+      tool_input: {},
     });
 
     assert.strictEqual(result.exitCode, 0);

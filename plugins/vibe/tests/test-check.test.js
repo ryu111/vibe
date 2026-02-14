@@ -51,103 +51,103 @@ console.log('\n\ud83e\uddea test-check: \u975c\u9ed8\u653e\u884c\u5834\u666f\uff
 test('\u975c\u9ed8 \u2014 \u7121\u6a94\u6848\u8def\u5f91', () => {
   const result = runHook({ tool_input: {} });
   assert.strictEqual(result.exitCode, 0);
-  assert.strictEqual(result.stdout, '');
+  assert.ok(result.stdout.includes('"continue":true') || result.stdout.includes('"continue": true'), '應輸出 continue: true');
 });
 
 test('\u975c\u9ed8 \u2014 \u6e2c\u8a66\u6a94\u6848 (.test.js)', () => {
   const result = runHook({ tool_input: { file_path: '/app/src/utils.test.js' } });
   assert.strictEqual(result.exitCode, 0);
-  assert.strictEqual(result.stdout, '');
+  assert.ok(result.stdout.includes('"continue":true') || result.stdout.includes('"continue": true'), '應輸出 continue: true');
 });
 
 test('\u975c\u9ed8 \u2014 \u6e2c\u8a66\u6a94\u6848 (.spec.ts)', () => {
   const result = runHook({ tool_input: { file_path: '/app/src/auth.spec.ts' } });
   assert.strictEqual(result.exitCode, 0);
-  assert.strictEqual(result.stdout, '');
+  assert.ok(result.stdout.includes('"continue":true') || result.stdout.includes('"continue": true'), '應輸出 continue: true');
 });
 
 test('\u975c\u9ed8 \u2014 JSON \u8a2d\u5b9a\u6a94', () => {
   const result = runHook({ tool_input: { file_path: '/app/config.json' } });
   assert.strictEqual(result.exitCode, 0);
-  assert.strictEqual(result.stdout, '');
+  assert.ok(result.stdout.includes('"continue":true') || result.stdout.includes('"continue": true'), '應輸出 continue: true');
 });
 
 test('\u975c\u9ed8 \u2014 Markdown \u6587\u4ef6', () => {
   const result = runHook({ tool_input: { file_path: '/app/README.md' } });
   assert.strictEqual(result.exitCode, 0);
-  assert.strictEqual(result.stdout, '');
+  assert.ok(result.stdout.includes('"continue":true') || result.stdout.includes('"continue": true'), '應輸出 continue: true');
 });
 
 test('\u975c\u9ed8 \u2014 CSS \u6a23\u5f0f\u6a94', () => {
   const result = runHook({ tool_input: { file_path: '/app/src/styles/main.css' } });
   assert.strictEqual(result.exitCode, 0);
-  assert.strictEqual(result.stdout, '');
+  assert.ok(result.stdout.includes('"continue":true') || result.stdout.includes('"continue": true'), '應輸出 continue: true');
 });
 
 test('\u975c\u9ed8 \u2014 HTML \u6a94\u6848', () => {
   const result = runHook({ tool_input: { file_path: '/app/public/index.html' } });
   assert.strictEqual(result.exitCode, 0);
-  assert.strictEqual(result.stdout, '');
+  assert.ok(result.stdout.includes('"continue":true') || result.stdout.includes('"continue": true'), '應輸出 continue: true');
 });
 
 test('\u975c\u9ed8 \u2014 hook \u8173\u672c\u8def\u5f91', () => {
   const result = runHook({ tool_input: { file_path: '/plugins/vibe/scripts/hooks/auto-lint.js' } });
   assert.strictEqual(result.exitCode, 0);
-  assert.strictEqual(result.stdout, '');
+  assert.ok(result.stdout.includes('"continue":true') || result.stdout.includes('"continue": true'), '應輸出 continue: true');
 });
 
 test('\u975c\u9ed8 \u2014 lib \u5171\u7528\u51fd\u5f0f\u5eab', () => {
   const result = runHook({ tool_input: { file_path: '/plugins/vibe/scripts/lib/registry.js' } });
   assert.strictEqual(result.exitCode, 0);
-  assert.strictEqual(result.stdout, '');
+  assert.ok(result.stdout.includes('"continue":true') || result.stdout.includes('"continue": true'), '應輸出 continue: true');
 });
 
 test('\u975c\u9ed8 \u2014 YAML \u8a2d\u5b9a', () => {
   const result = runHook({ tool_input: { file_path: '/app/.github/workflows/ci.yml' } });
   assert.strictEqual(result.exitCode, 0);
-  assert.strictEqual(result.stdout, '');
+  assert.ok(result.stdout.includes('"continue":true') || result.stdout.includes('"continue": true'), '應輸出 continue: true');
 });
 
 test('\u975c\u9ed8 \u2014 config \u6a94\u6848 (vite.config.ts)', () => {
   const result = runHook({ tool_input: { file_path: '/app/vite.config.ts' } });
   assert.strictEqual(result.exitCode, 0);
-  assert.strictEqual(result.stdout, '');
+  assert.ok(result.stdout.includes('"continue":true') || result.stdout.includes('"continue": true'), '應輸出 continue: true');
 });
 
 test('\u975c\u9ed8 \u2014 package.json', () => {
   const result = runHook({ tool_input: { file_path: '/app/package.json' } });
   assert.strictEqual(result.exitCode, 0);
-  assert.strictEqual(result.stdout, '');
+  assert.ok(result.stdout.includes('"continue":true') || result.stdout.includes('"continue": true'), '應輸出 continue: true');
 });
 
 test('\u975c\u9ed8 \u2014 tests \u76ee\u9304\u4e0b\u7684\u6a94\u6848', () => {
   const result = runHook({ tool_input: { file_path: '/app/tests/helpers/setup.js' } });
   assert.strictEqual(result.exitCode, 0);
-  assert.strictEqual(result.stdout, '');
+  assert.ok(result.stdout.includes('"continue":true') || result.stdout.includes('"continue": true'), '應輸出 continue: true');
 });
 
 test('\u975c\u9ed8 \u2014 __tests__ \u76ee\u9304', () => {
   const result = runHook({ tool_input: { file_path: '/app/src/__tests__/utils.js' } });
   assert.strictEqual(result.exitCode, 0);
-  assert.strictEqual(result.stdout, '');
+  assert.ok(result.stdout.includes('"continue":true') || result.stdout.includes('"continue": true'), '應輸出 continue: true');
 });
 
 test('\u975c\u9ed8 \u2014 SVG \u6a94\u6848', () => {
   const result = runHook({ tool_input: { file_path: '/app/public/logo.svg' } });
   assert.strictEqual(result.exitCode, 0);
-  assert.strictEqual(result.stdout, '');
+  assert.ok(result.stdout.includes('"continue":true') || result.stdout.includes('"continue": true'), '應輸出 continue: true');
 });
 
 test('\u975c\u9ed8 \u2014 lock \u6a94\u6848', () => {
   const result = runHook({ tool_input: { file_path: '/app/yarn.lock' } });
   assert.strictEqual(result.exitCode, 0);
-  assert.strictEqual(result.stdout, '');
+  assert.ok(result.stdout.includes('"continue":true') || result.stdout.includes('"continue": true'), '應輸出 continue: true');
 });
 
 test('\u975c\u9ed8 \u2014 .claude-plugin \u76ee\u9304', () => {
   const result = runHook({ tool_input: { file_path: '/plugins/vibe/.claude-plugin/plugin.json' } });
   assert.strictEqual(result.exitCode, 0);
-  assert.strictEqual(result.stdout, '');
+  assert.ok(result.stdout.includes('"continue":true') || result.stdout.includes('"continue": true'), '應輸出 continue: true');
 });
 
 // ===================================================

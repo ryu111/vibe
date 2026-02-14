@@ -311,7 +311,8 @@ replayConsumer.start(TEST_SESSION, { replay: true });
 assert(replayReceived.length === 2, `replay 收到歷史 pipeline 事件（${replayReceived.length} 筆）`);
 replayConsumer.stop();
 
-// 5.7 錯誤隔離
+// 5.7 錯誤隔離（重置 timeline 檔案避免 fs.watch 殘留狀態）
+cleanupTestFile();
 const errorConsumer = createConsumer({
   name: 'test-error',
   handlers: {
@@ -320,9 +321,9 @@ const errorConsumer = createConsumer({
   onError: (name, err) => errors.push({ name, msg: err.message }),
 });
 errorConsumer.start(TEST_SESSION);
-await new Promise(r => setTimeout(r, 100));
+await new Promise(r => setTimeout(r, 300));
 emit(EVENT_TYPES.SESSION_START, TEST_SESSION, {});
-await new Promise(r => setTimeout(r, 200));
+await new Promise(r => setTimeout(r, 500));
 errorConsumer.stop();
 assert(errors.some(e => e.msg === 'test error'), '錯誤被 onError 捕獲（不影響其他 handler）');
 

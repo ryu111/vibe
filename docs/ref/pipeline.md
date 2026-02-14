@@ -351,7 +351,7 @@ if nextStage ∈ [DEV, REVIEW, TEST, QA, E2E, DOCS] && !pipelineEnforced:
   3. expectedStages: 不含 REVIEW → 補全為完整 pipeline
 ```
 
-這確保即使使用者用「開始規劃」等語句（task-classifier 無法匹配為 feature），手動走完 PLAN → ARCH 後，dev-gate 仍會正確阻擋 Main Agent 直接寫碼。
+這確保即使使用者用「開始規劃」等語句（task-classifier 無法匹配為 feature），手動走完 PLAN → ARCH 後，pipeline-guard 仍會正確阻擋 Main Agent 直接寫碼。
 
 **智慧跳過**：
 - 純 API 框架（express/fastify/hono/koa/nest）自動跳過 E2E 階段
