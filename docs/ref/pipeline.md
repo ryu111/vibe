@@ -239,6 +239,21 @@ Stage 對應：
 首次分類為開發型任務（feature/refactor/tdd）時，透過 `systemMessage` 注入完整 pipeline 委派規則。
 支援中途重新分類（漸進式升級）：升級時合併階段，降級時阻擋以保持 pipeline 不中斷。
 
+**知識 Skills 自動注入**（v1.0.21）：
+
+讀取 `state.environment`（由 pipeline-init 的 env-detect 寫入），根據語言/框架自動注入對應的知識 skills 參考：
+
+| 偵測結果 | 注入的 Skill |
+|---------|-------------|
+| TypeScript | `/vibe:typescript-patterns` |
+| Python | `/vibe:python-patterns` |
+| Go | `/vibe:go-patterns` |
+| React/Vue/Next.js/Svelte/Angular | `/vibe:frontend-patterns` |
+| Express/Fastify/Hono | `/vibe:backend-patterns` |
+| 任何語言偵測 | `/vibe:coding-standards` + `/vibe:testing-patterns` |
+
+注入位置：systemMessage（feature/refactor/tdd）或 additionalContext（其他分類）的「可用知識庫」區塊。
+
 ### 4.2 pipeline-rules（SessionStart · 合併在 pipeline-init.js）
 
 合併在 `pipeline-init.js` 中，在環境偵測的同時注入 pipeline 規則。
@@ -293,7 +308,7 @@ hooks.json 定義：
 }
 ```
 
-**邏輯**（v1.0.16 — 含智慧回退/重驗/跳過/context 注入/自動 enforce）：
+**邏輯**（v1.0.21 — 含智慧回退/重驗/跳過/context 注入/自動 enforce/自動檢查點/階段提示）：
 
 1. `stop_hook_active === true` → exit 0（防無限迴圈，必須第一步檢查）
 2. `discoverPipeline()` 動態載入 pipeline 配置
@@ -303,9 +318,10 @@ hooks.json 定義：
 6. **自動 enforce**：下一階段為 DEV+ 且 `pipelineEnforced=false` → 自動升級（見下方說明）
 7. **回退路徑**：品質階段 FAIL:CRITICAL/HIGH → 設定 `pendingRetry` 標記 → 回到 DEV
 8. **回退重驗路徑**：DEV 完成且 `pendingRetry` 存在 → 消費標記 → 強制重跑原品質階段
-9. **前進路徑**：智慧跳過判斷 → 階段 context 注入 → 指示下一步
+9. **前進路徑**：智慧跳過判斷 → 階段 context 注入 + POST_STAGE_HINTS 注入 → 指示下一步
 10. 更新 state file（含 `stageResults`、`retries`、`pendingRetry`、`pipelineEnforced`）
-11. 輸出 `{ "continue": true, "systemMessage": "..." }`
+11. **自動檢查點**（v1.0.21）：非回退時，建立 `git tag -f vibe-pipeline/{stage}` 標記
+12. 輸出 `{ "continue": true, "systemMessage": "..." }`
 
 **智慧回退機制**：
 
@@ -352,6 +368,35 @@ if nextStage ∈ [DEV, REVIEW, TEST, QA, E2E, DOCS] && !pipelineEnforced:
 ```
 
 這確保即使使用者用「開始規劃」等語句（task-classifier 無法匹配為 feature），手動走完 PLAN → ARCH 後，pipeline-guard 仍會正確阻擋 Main Agent 直接寫碼。
+
+**自動檢查點**（v1.0.21）：
+
+每個階段正常完成（非回退）後，自動建立輕量 git tag 作為可回溯的檢查點：
+
+```js
+function autoCheckpoint(stage, sessionId) {
+  try {
+    const tagName = `vibe-pipeline/${stage.toLowerCase()}`;
+    execSync(`git tag -f "${tagName}"`, { stdio: 'pipe', timeout: 5000 });
+  } catch (_) {} // 靜默失敗（不影響 pipeline 流程）
+}
+```
+
+- Tag 格式：`vibe-pipeline/{stage}`（如 `vibe-pipeline/dev`、`vibe-pipeline/review`）
+- 使用 `-f` 強制覆寫，每個階段只保留最新一次
+- 回退情境不建立 tag（`shouldRetry` 時跳過）
+- 失敗靜默處理，不中斷 pipeline
+
+**POST_STAGE_HINTS 階段後提示**（v1.0.21）：
+
+特定階段完成後，在下一階段的 context 中注入品質意識提示：
+
+| 完成階段 | 注入提示 |
+|---------|---------|
+| REVIEW | 安全提示 — 建議在 TEST 也關注 auth/input validation/injection，pipeline 完成後可深度掃描 |
+| TEST | 覆蓋率提示 — 建議關注覆蓋率，pipeline 完成後可用 `/vibe:coverage` 取得報告 |
+
+提示以 `additionalContext` 附加在階段 context 後方，不影響核心指令。
 
 **智慧跳過**：
 - 純 API 框架（express/fastify/hono/koa/nest）自動跳過 E2E 階段
@@ -439,12 +484,20 @@ stage-transition 從 `agent_transcript_path`（JSONL）最後 20 行中搜尋此
 已完成：PLAN → ARCH → DEV → REVIEW
 ```
 
-**Pipeline 結束**：
+**Pipeline 結束**（v1.0.21 三步驟閉環）：
 
 ```
-✅ [Pipeline 完成] e2e-runner 已完成（端對端測試階段）。
-所有階段已完成：PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E
-向使用者報告成果。
+✅ [Pipeline 完成] doc-updater 已完成（文件整理階段）。
+所有階段已完成：PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
+
+📋 請執行以下步驟：
+1️⃣ 執行 /vibe:verify 進行綜合驗證（Build → Types → Lint → Tests → Git 狀態）
+2️⃣ 向使用者報告成果摘要
+3️⃣ 使用 AskUserQuestion（multiSelect: true）提供後續選項：
+   - 提交並推送（git commit + push）
+   - 覆蓋率分析（/vibe:coverage）
+   - 安全掃描（/vibe:security）
+   - 知識進化（/vibe:evolve — 將本次經驗進化為可重用能力）
 ```
 
 不認識的 agent（不在任何 plugin 的 pipeline 宣告中）→ exit 0，不輸出。
