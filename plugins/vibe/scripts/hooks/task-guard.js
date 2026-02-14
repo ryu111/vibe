@@ -5,7 +5,15 @@
  * 未完成任務時阻擋 Claude 結束回合。
  * 強度：絕對阻擋（decision: "block"）。
  *
- * TodoWrite 狀態讀取：透過 transcript_path 解析 JSONL。
+ * 從 transcript JSONL 解析 TaskCreate/TaskUpdate 工具呼叫，
+ * 重建任務狀態，偵測未完成的任務。
+ *
+ * 完成承諾機制（借鑑 ralph-wiggum plugin）：
+ * Claude 可在最後訊息中輸出 <promise>ALL_TASKS_COMPLETE</promise>
+ * 強制宣告完成，繞過 TaskUpdate 狀態檢查。
+ *
+ * 阻擋格式：
+ *   { decision: "block", reason: "繼續提示", systemMessage: "狀態資訊" }
  */
 'use strict';
 const fs = require('fs');
@@ -15,7 +23,115 @@ const os = require('os');
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const MAX_BLOCKS_DEFAULT = 5;
 const MAX_BLOCKS = parseInt(process.env.CLAUDE_TASK_GUARD_MAX_BLOCKS || MAX_BLOCKS_DEFAULT, 10);
+const DEFAULT_PROMISE = 'ALL_TASKS_COMPLETE';
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
+
+/**
+ * 從 transcript JSONL 重建任務狀態
+ *
+ * JSONL 格式：
+ * - assistant 訊息含 tool_use: { type:"tool_use", id, name, input }
+ *   路徑：entry.message.content[].name
+ * - user 訊息含 tool_result: { type:"tool_result", tool_use_id, content }
+ *   TaskCreate 結果格式："Task #N created successfully: SUBJECT"
+ *
+ * @returns {{ [id: string]: { subject: string, status: string } }}
+ */
+function reconstructTasks(lines) {
+  // tool_use_id → { name, input } 用於匹配 tool_result
+  const toolUseMap = {};
+  // taskId → { subject, status }
+  const tasks = {};
+
+  for (const line of lines) {
+    let entry;
+    try { entry = JSON.parse(line); } catch (_) { continue; }
+
+    const content = entry.message?.content;
+    if (!Array.isArray(content)) continue;
+
+    for (const block of content) {
+      // 1. 收集 TaskCreate / TaskUpdate tool_use
+      if (block.type === 'tool_use') {
+        if (block.name === 'TaskCreate' || block.name === 'TaskUpdate') {
+          toolUseMap[block.id] = { name: block.name, input: block.input || {} };
+        }
+
+        // TaskUpdate 直接有 taskId 和 status
+        if (block.name === 'TaskUpdate' && block.input?.taskId) {
+          const id = String(block.input.taskId);
+          if (!tasks[id]) tasks[id] = { subject: `Task #${id}`, status: 'pending' };
+          if (block.input.status) {
+            tasks[id].status = block.input.status;
+          }
+        }
+      }
+
+      // 2. 匹配 TaskCreate 的 tool_result → 取得 ID
+      if (block.type === 'tool_result' && block.tool_use_id) {
+        const toolUse = toolUseMap[block.tool_use_id];
+        if (toolUse?.name === 'TaskCreate') {
+          const resultText = typeof block.content === 'string'
+            ? block.content
+            : Array.isArray(block.content)
+              ? block.content.map(b => b.text || b.content || '').join('')
+              : '';
+
+          // 格式："Task #N created successfully: SUBJECT"
+          const match = resultText.match(/Task #(\d+)/);
+          if (match) {
+            const id = match[1];
+            if (!tasks[id]) {
+              tasks[id] = {
+                subject: toolUse.input.subject || `Task #${id}`,
+                status: 'pending',
+              };
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return tasks;
+}
+
+/**
+ * 從 transcript 最後一個 assistant 訊息中提取 <promise> 標籤內容
+ * （借鑑 ralph-wiggum plugin 的完成承諾機制）
+ *
+ * @returns {string|null} promise 標籤的內容，或 null
+ */
+function extractPromise(lines) {
+  // 從後往前找最後一個 assistant 訊息
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let entry;
+    try { entry = JSON.parse(lines[i]); } catch (_) { continue; }
+
+    const role = entry.message?.role;
+    if (role !== 'assistant') continue;
+
+    const content = entry.message?.content;
+    if (!Array.isArray(content)) continue;
+
+    // 拼接所有 text 區塊
+    const text = content
+      .filter(b => b.type === 'text')
+      .map(b => b.text || '')
+      .join('\n');
+
+    // 提取 <promise>...</promise>
+    const match = text.match(/<promise>([\s\S]*?)<\/promise>/);
+    if (match) {
+      // 正規化空白（與 ralph-wiggum 一致）
+      return match[1].trim().replace(/\s+/g, ' ');
+    }
+
+    // 只看最後一個 assistant 訊息
+    return null;
+  }
+  return null;
+}
 
 let input = '';
 process.stdin.on('data', d => input += d);
@@ -32,46 +148,44 @@ process.stdin.on('end', () => {
     const transcriptPath = data.transcript_path;
     const statePath = path.join(CLAUDE_DIR, `task-guard-state-${sessionId}.json`);
 
-    // 2. 讀取 transcript，找最後一次 TodoWrite
+    // 2. 讀取 transcript
     if (!transcriptPath || !fs.existsSync(transcriptPath)) {
       process.exit(0);
     }
 
-    const transcript = fs.readFileSync(transcriptPath, 'utf8')
+    const lines = fs.readFileSync(transcriptPath, 'utf8')
       .split('\n')
       .filter(Boolean);
 
-    let lastTodoWrite = null;
-    for (let i = transcript.length - 1; i >= 0; i--) {
-      try {
-        const entry = JSON.parse(transcript[i]);
-        // 嘗試多種可能的欄位名稱
-        const toolName = entry.tool || entry.toolName || entry.tool_name || '';
-        if (toolName === 'TodoWrite') {
-          lastTodoWrite = entry;
-          break;
-        }
-      } catch (_) { continue; }
-    }
+    // 3. 重建任務狀態
+    const tasks = reconstructTasks(lines);
+    const taskIds = Object.keys(tasks);
 
-    // 3. 無 TodoWrite → 不阻擋
-    if (!lastTodoWrite) {
+    // 無任務 → 不阻擋
+    if (taskIds.length === 0) {
       cleanup(statePath);
       process.exit(0);
     }
 
-    // 解析 todos
-    const todos = lastTodoWrite.input?.todos
-      || lastTodoWrite.params?.todos
-      || lastTodoWrite.arguments?.todos
-      || [];
+    // 4. 找出未完成任務（排除 completed 和 deleted）
+    const incomplete = taskIds
+      .filter(id => tasks[id].status !== 'completed' && tasks[id].status !== 'deleted')
+      .map(id => tasks[id]);
 
-    if (todos.length === 0) {
+    if (incomplete.length === 0) {
       cleanup(statePath);
       process.exit(0);
     }
 
-    // 4. 讀取 state file
+    // 4.5 完成承諾檢查（借鑑 ralph-wiggum）
+    const promiseText = extractPromise(lines);
+    const expectedPromise = process.env.CLAUDE_TASK_GUARD_PROMISE || DEFAULT_PROMISE;
+    if (promiseText && promiseText === expectedPromise) {
+      cleanup(statePath);
+      process.exit(0);
+    }
+
+    // 5. 讀取 state file
     let state = { blockCount: 0, maxBlocks: MAX_BLOCKS, cancelled: false };
     if (fs.existsSync(statePath)) {
       try {
@@ -79,26 +193,19 @@ process.stdin.on('end', () => {
       } catch (_) {}
     }
 
-    // 5. 手動取消
+    // 6. 手動取消（/cancel 設定）
     if (state.cancelled) {
       cleanup(statePath);
       process.exit(0);
     }
 
-    // 6. 安全閥
+    // 7. 安全閥
     if (state.blockCount >= (state.maxBlocks || MAX_BLOCKS)) {
       cleanup(statePath);
       console.log(JSON.stringify({
         continue: true,
         systemMessage: `⚠️ task-guard：已達到最大阻擋次數（${state.blockCount}），強制放行。`,
       }));
-      process.exit(0);
-    }
-
-    // 7. 檢查任務完成度
-    const incomplete = todos.filter(t => t.status !== 'completed');
-    if (incomplete.length === 0) {
-      cleanup(statePath);
       process.exit(0);
     }
 
@@ -112,13 +219,13 @@ process.stdin.on('end', () => {
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
 
     const todoList = incomplete
-      .map(t => `- [ ] ${t.content}`)
+      .map(t => `- [ ] ${t.subject}`)
       .join('\n');
 
     console.log(JSON.stringify({
       decision: 'block',
-      reason: '繼續完成未完成的任務',
-      systemMessage: `⛔ 任務尚未完成（第 ${state.blockCount}/${state.maxBlocks || MAX_BLOCKS} 次阻擋）\n\n未完成項目：\n${todoList}\n\n請繼續完成以上項目。如果確實無法繼續，請告知使用者原因。`,
+      reason: `繼續完成未完成的任務：\n${todoList}`,
+      systemMessage: `⛔ 任務尚未完成（第 ${state.blockCount}/${state.maxBlocks || MAX_BLOCKS} 次阻擋）\n\n未完成項目（${incomplete.length}/${taskIds.length}）：\n${todoList}\n\n請繼續完成以上項目。完成後請將所有任務標記為 completed。\n如果確實已全部完成，輸出 <promise>${expectedPromise}</promise> 以退出。`,
     }));
   } catch (err) {
     hookLogger.error('task-guard', err);
