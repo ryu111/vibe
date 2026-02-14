@@ -67,21 +67,22 @@ SessionStart: remote-autostart          /vibe:context-status  Context 狀態
 UserPromptSubmit: task-classifier       /vibe:checkpoint  建立檢查點
 PreToolUse(Task): delegation-tracker    /vibe:env-detect  環境偵測
 PreToolUse(Write|Edit): dev-gate        /vibe:cancel      取消鎖定
-PreToolUse(*): suggest-compact          /vibe:review      深度審查
-PreToolUse(Bash): danger-guard          /vibe:security    安全掃描
-PreToolUse(AskUserQuestion): remote-ask /vibe:tdd         TDD 工作流
-PostToolUse(Write|Edit): auto-lint      /vibe:e2e         E2E 測試
-PostToolUse(Write|Edit): auto-format    /vibe:qa          行為測試
-PostToolUse(Write|Edit): test-check     /vibe:coverage    覆蓋率
-PreCompact: log-compact                 /vibe:lint        手動 lint
-SubagentStop: stage-transition          /vibe:format      手動格式化
-SubagentStop: remote-sender             /vibe:verify      綜合驗證
-Stop: pipeline-check                    /vibe:evolve      知識進化
-Stop: task-guard                        /vibe:doc-sync    文件同步
-Stop: check-console-log                 /vibe:dashboard   儀表板控管
-Stop: dashboard-refresh                 /remote           遠端控管
-Stop: remote-receipt                    /remote-config    遠端設定
-UserPromptSubmit: remote-prompt-forward /vibe:hook-diag   Hook 診斷
+PreToolUse(EnterPlanMode): plan-mode-gate /vibe:review    深度審查
+PreToolUse(*): suggest-compact          /vibe:security    安全掃描
+PreToolUse(Bash): danger-guard          /vibe:tdd         TDD 工作流
+PreToolUse(AskUserQuestion): remote-ask /vibe:e2e         E2E 測試
+PostToolUse(Write|Edit): auto-lint      /vibe:qa          行為測試
+PostToolUse(Write|Edit): auto-format    /vibe:coverage    覆蓋率
+PostToolUse(Write|Edit): test-check     /vibe:lint        手動 lint
+PreCompact: log-compact                 /vibe:format      手動格式化
+SubagentStop: stage-transition          /vibe:verify      綜合驗證
+SubagentStop: remote-sender             /vibe:evolve      知識進化
+Stop: pipeline-check                    /vibe:doc-sync    文件同步
+Stop: task-guard                        /vibe:dashboard   儀表板控管
+Stop: check-console-log                 /remote           遠端控管
+Stop: dashboard-refresh                 /remote-config    遠端設定
+Stop: remote-receipt                    /vibe:hook-diag   Hook 診斷
+UserPromptSubmit: remote-prompt-forward
 
 自動: 22 hooks                           手動: 25 skills（+ 8 知識 skills）
 跨 session 記憶：claude-mem（獨立 plugin，推薦搭配）
@@ -94,7 +95,7 @@ UserPromptSubmit: remote-prompt-forward /vibe:hook-diag   Hook 診斷
 | Phase | Plugin | 描述 | 組件數 |
 |:-----:|--------|------|:------:|
 | 1 | **forge** | 造工具的工具 — 建立、驗證、管理 Claude Code plugin 組件 | 4S + 7Sc |
-| 2 | **vibe** | 全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制 | 29S + 10A + 22H + 32Sc |
+| 2 | **vibe** | 全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制 | 29S + 10A + 22H + 33Sc |
 
 ---
 
@@ -103,7 +104,7 @@ UserPromptSubmit: remote-prompt-forward /vibe:hook-diag   Hook 診斷
 | # | Plugin | 文件 | Skills | Agents | Hooks | Scripts |
 |:-:|--------|------|:------:|:------:|:-----:|:-------:|
 | 1 | forge | [forge.md](forge.md) | 4 | 0 | 0 | 7 |
-| 2 | vibe | [vibe.md](vibe.md) | 29 | 10 | 22 | 32 |
+| 2 | vibe | [vibe.md](vibe.md) | 29 | 10 | 22 | 33 |
 
 > **S** = Skill, **A** = Agent, **H** = Hook, **Sc** = Script
 
@@ -116,6 +117,6 @@ UserPromptSubmit: remote-prompt-forward /vibe:hook-diag   Hook 診斷
 | **Plugins** | 2 | forge + vibe |
 | **Skills** | 33 | 25 動態能力 + 8 知識庫 |
 | **Agents** | 10 | 全部在 vibe plugin |
-| **Hooks** | 22 | 自動觸發（21 條規則） |
-| **Scripts** | 39 | hook 腳本 + 共用函式庫 |
-| **合計** | 104 | 跨 2 個 plugins |
+| **Hooks** | 22 | 自動觸發 |
+| **Scripts** | 40 | hook 腳本 + 共用函式庫 |
+| **合計** | 105 | 跨 2 個 plugins |
