@@ -140,44 +140,23 @@ function getCompletedStages(completedAgents) {
 }
 
 /**
- * 產生完整 pipeline 委派規則（systemMessage 用）
+ * 產生 pipeline 委派規則（systemMessage 用）
+ * 精簡版：pipeline-guard 已硬阻擋 Write/Edit，這裡只需核心指令
  */
 function buildPipelineRules(stages, pipelineRules) {
   const stageStr = stages.join(' → ');
   const firstStage = stages[0];
 
   const parts = [];
-  parts.push(`⛔ PIPELINE 模式啟動 — 你是管理者（Orchestrator），不是執行者（Executor）`);
-  parts.push('');
-  parts.push('█ 絕對禁止 █');
-  parts.push('- 🚫 禁止直接使用 Write 工具寫任何程式碼檔案');
-  parts.push('- 🚫 禁止直接使用 Edit 工具修改任何程式碼檔案');
-  parts.push('- 🚫 禁止直接使用 Bash 工具執行 build、test、lint 等開發指令');
-  parts.push('- 🚫 禁止使用 EnterPlanMode — Pipeline 有自己的 PLAN 階段（/vibe:scope），不需要 Claude 內建 Plan Mode');
-  parts.push('- 你的唯一職責：按順序使用 Task/Skill 工具委派各階段給 sub-agent');
-  parts.push('- 違反此規則的 Write/Edit 操作會被 pipeline-guard hook 硬阻擋（exit 2）');
-  parts.push('');
-  parts.push('█ 委派順序 █');
+  parts.push(`⛔ PIPELINE 模式 — 你是管理者，不是執行者。`);
+  parts.push(`禁止 Write/Edit/EnterPlanMode（pipeline-guard 硬阻擋）。使用 Task/Skill 委派 sub-agent。`);
   if (pipelineRules && pipelineRules.length > 0) {
     parts.push(...pipelineRules);
   } else {
-    parts.push(`必要階段：${stageStr}`);
+    parts.push(`階段：${stageStr}`);
   }
-  parts.push('');
-  parts.push('█ 執行規則 █');
-  parts.push('1. 立即從第一個階段開始委派');
-  parts.push('2. 每個階段完成後，stage-transition hook 會指示下一步 — 你**必須**照做');
-  parts.push('3. 不可跳過已安裝的階段（REVIEW、TEST、QA 階段**不可省略**）');
-  parts.push('4. 未安裝的 plugin 對應的階段會自動跳過');
-  parts.push('5. Pipeline 執行中**禁止使用 AskUserQuestion** — 各階段自動完成，不中斷使用者');
-  parts.push('');
-  parts.push('█ 正確做法範例 █');
-  parts.push('✅ Task({ subagent_type: "vibe:planner", prompt: "..." })');
-  parts.push('✅ Task({ subagent_type: "vibe:architect", prompt: "..." })');
-  parts.push('✅ Task({ subagent_type: "vibe:developer", prompt: "..." })');
-  parts.push('❌ Write({ file_path: "src/app.ts", content: "..." }) ← 這會被 pipeline-guard 阻擋');
-  parts.push('');
-  parts.push(`立即使用 Task 工具委派 ${firstStage} 階段的 sub-agent。`);
+  parts.push(`每階段完成後 stage-transition 指示下一步，照做即可。禁止 AskUserQuestion。`);
+  parts.push(`立即委派 ${firstStage} 階段。`);
 
   return parts.join('\n');
 }
@@ -233,16 +212,12 @@ function outputUpgrade(oldLabel, newLabel, remainingStages, skippedStages, state
     ? `\n⏭️ 已完成的階段自動跳過：${skippedStages.join('、')}`
     : '';
 
-  // 升級時用 systemMessage（強）
+  // 升級時用 systemMessage（強）— 精簡版，pipeline-guard 硬阻擋已保障
   console.log(JSON.stringify({
     systemMessage: `⛔ [Pipeline 升級] ${oldLabel} → ${newLabel}\n` +
-      `你**必須**切換到 Pipeline 管理者模式。\n` +
+      `切換管理者模式。禁止 Write/Edit（pipeline-guard 硬阻擋）。\n` +
       `剩餘階段：${stageStr}${skipNote}\n` +
-      `\n█ 絕對禁止 █\n` +
-      `- 🚫 禁止直接使用 Write/Edit 寫程式碼\n` +
-      `- 你的唯一職責：使用 Task/Skill 工具委派各階段給 sub-agent\n` +
-      `- 違反此規則的 Write/Edit 操作會被 pipeline-guard hook 硬阻擋（exit 2）\n` +
-      `\n立即使用 Task 工具委派 ${firstStage} 階段的 sub-agent。`,
+      `立即委派 ${firstStage} 階段。`,
   }));
 }
 

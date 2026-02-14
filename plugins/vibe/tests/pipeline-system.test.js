@@ -348,14 +348,14 @@ test('回退場景：修復後重新執行 REVIEW（namespaced 格式）', () =>
 
     const output = JSON.parse(result);
     assert.ok(output.systemMessage, '應該有 systemMessage');
-    // 應該同時包含回退到 DEV 和重新執行 REVIEW 的指示
+    // 精簡後回退訊息只包含 DEV method + 告知 stage-transition 會指示重跑
     assert.ok(
       output.systemMessage.includes('vibe:developer'),
       'systemMessage 應包含 vibe:developer（回退修復）'
     );
     assert.ok(
-      output.systemMessage.includes('vibe:code-reviewer'),
-      'systemMessage 應包含 vibe:code-reviewer（重新執行）'
+      output.systemMessage.includes('REVIEW'),
+      'systemMessage 應提及 REVIEW（重跑目標階段）'
     );
   } finally {
     cleanup(statePath, transcriptPath);

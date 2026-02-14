@@ -245,15 +245,10 @@ process.stdin.on('end', () => {
         ? `使用 Skill 工具呼叫 ${retrySkill}`
         : `使用 Task 工具委派給 ${retryPlugin}${retryAgent} agent（subagent_type: "${retryPlugin}${retryAgent}"）`;
 
-      message = `🔄 [Pipeline 回退] ${agentType} 完成（${currentLabel}階段），但發現 ${verdict.severity} 等級問題。
+      message = `🔄 [Pipeline 回退] ${currentStage} FAIL:${verdict.severity}（${retryCount + 1}/${MAX_RETRIES}）
 回退原因：${reason}
-回退次數：${retryCount + 1}/${MAX_RETRIES}
-
-你**必須**執行以下步驟：
-1️⃣ 先回到 DEV 階段修復 ${verdict.severity} 等級問題 → ${devMethod}
-2️⃣ 修復完成後重新執行 ${currentStage}（${currentLabel}）→ ${retryMethod}
-
-⛔ Pipeline 自動模式：不要使用 AskUserQuestion，修復後直接重新執行品質檢查。
+執行：${devMethod}
+修復後 stage-transition 會指示重跑 ${currentStage}。禁止 AskUserQuestion。
 已完成：${completedStr}`;
 
     } else if (state.pendingRetry && currentStage === 'DEV') {
@@ -270,12 +265,9 @@ process.stdin.on('end', () => {
         ? `使用 Skill 工具呼叫 ${retryInfo.skill}`
         : `使用 Task 工具委派給 ${retryPlugin}${retryInfo.agent} agent（subagent_type: "${retryPlugin}${retryInfo.agent}"）`;
 
-      message = `🔄 [回退重驗] DEV 已完成 ${retrySeverity} 問題修復（第 ${retryRound} 輪）。
-⚠️ 你**必須立即**重新執行 ${retryTarget}（${retryLabel}）驗證修復結果。
-➡️ 執行方法：${retryMethod}
-
-⛔ 這是回退流程的必要步驟 — 不可跳過，不可跳到其他階段。
-⛔ Pipeline 自動模式：不要使用 AskUserQuestion。
+      message = `🔄 [回退重驗] DEV 修復完成（第 ${retryRound} 輪）→ 重跑 ${retryTarget}（${retryLabel}）
+執行：${retryMethod}
+不可跳過，不可跳到其他階段。禁止 AskUserQuestion。
 已完成：${completedStr}`;
 
     } else {
@@ -338,12 +330,9 @@ process.stdin.on('end', () => {
           ? `\n⏭️ 已智慧跳過：${skippedStages.join('、')}`
           : '';
 
-        message = `⛔ [Pipeline 指令] ${agentType} 已完成（${currentLabel}階段）。${forcedNote}
-你**必須立即**執行下一階段：${nextStageCandidate}（${nextLabel}）。
+        message = `⛔ [Pipeline] ${agentType}✅ → ${nextStageCandidate}（${nextLabel}）${forcedNote}
 ${method}${stageContext}${skipNote}
-這是 Pipeline 流程的必要步驟，不可跳過。
-⛔ Pipeline 自動模式：不要使用 AskUserQuestion，完成後直接進入下一階段。
-已完成：${completedStr}`;
+禁止 AskUserQuestion。已完成：${completedStr}`;
       } else {
         // Emit pipeline complete event
         emit(EVENT_TYPES.PIPELINE_COMPLETE, sessionId, {
