@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.3 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.14 | 全方位開發工作流 | 29 | 10 | 22 | 33+daemon |
+| **vibe** | 1.0.15 | 全方位開發工作流 | 29 | 10 | 22 | 33+daemon |
 
 ### vibe plugin 功能模組
 
@@ -85,7 +85,7 @@ PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
 | TEST | tester | sonnet/pink | `/vibe:tdd` |
 | QA | qa | sonnet/yellow | `/vibe:qa` |
 | E2E | e2e-runner | sonnet/green | `/vibe:e2e` |
-| DOCS | doc-updater | opus/purple | `/vibe:doc-sync` |
+| DOCS | doc-updater | haiku/purple | `/vibe:doc-sync` |
 
 **防禦機制**：
 - `task-classifier`（UserPromptSubmit）— 分類任務 + 按需注入委派規則
@@ -135,7 +135,8 @@ PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
 
 | 色彩 | Agent | Model |
 |:----:|-------|:-----:|
-| purple | planner · doc-updater | opus |
+| purple | planner | opus |
+| purple | doc-updater | haiku |
 | cyan | architect | opus |
 | yellow | developer · qa | sonnet |
 | blue | code-reviewer | opus |
@@ -175,13 +176,13 @@ PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
 | 路徑 | 內容 | 維護方式 |
 |------|------|---------|
 | `docs/reference/` | 6 份組件規格書（plugin/skill/agent/hook/script/template） | 手動 |
-| `docs/ref/` | plugin 設計文件 + `index.md` + `pipeline.md` | index.md 自動生成 |
+| `docs/ref/` | plugin 設計文件 + `index.md` + `vibe.md` + `pipeline.md` | index.md + vibe.md 自動生成 |
 | `docs/plugin-specs.json` | 組件數量 Single Source of Truth | 手動 |
 | `docs/ECC研究報告.md` | ECC 平台深度分析 | 手動 |
 | `dashboard/` | Build-time 靜態生成系統（HTML + index.md） | Stop hook 自動觸發 |
 | `dashboard/config.json` | 儀表板視覺配置 | 手動 |
 
-**自動同步鏈**：Stop hook → `refresh.js` → `sync-data.js` + `scan-progress.js` → `generate.js` → `dashboard.html` + `index.md`
+**自動同步鏈**：Stop hook → `refresh.js` → `sync-data.js` + `scan-progress.js` → `generate.js` → `dashboard.html` + `index.md` + `vibe.md`
 
 ## 開發規範
 

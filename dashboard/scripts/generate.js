@@ -16,6 +16,9 @@ const CONFIG_PATH = path.join(ROOT, 'dashboard', 'config.json');
 const META_PATH = path.join(ROOT, 'dashboard', 'data', 'meta.json');
 const OUTPUT_PATH = path.join(ROOT, 'dashboard', 'dashboard.html');
 const INDEX_PATH = path.join(ROOT, 'docs', 'ref', 'index.md');
+const VIBE_DOC_PATH = path.join(ROOT, 'docs', 'ref', 'vibe.md');
+
+const { generateVibeDoc } = require('./generate-vibe-doc');
 
 function loadJSON(p) {
   return JSON.parse(fs.readFileSync(p, 'utf-8'));
@@ -1132,6 +1135,12 @@ function main() {
     const specs = loadJSON(SPECS_PATH);
     fs.writeFileSync(INDEX_PATH, generateIndex(specs));
     console.log(`Index 已更新：docs/ref/index.md`);
+
+    // vibe.md 需要 specs + meta
+    if (fs.existsSync(META_PATH)) {
+      fs.writeFileSync(VIBE_DOC_PATH, generateVibeDoc(specs, META_PATH));
+      console.log(`Vibe doc 已更新：docs/ref/vibe.md`);
+    }
   }
 
   // dashboard 需要 specs + progress
