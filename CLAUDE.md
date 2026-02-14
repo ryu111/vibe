@@ -204,6 +204,7 @@ commit 涉及 plugin 變更時，必須同步更新該 plugin 的 `plugin.json` 
 4. 如涉及新 stage → 更新 `registry.js`
 5. 驗證腳本通過（`forge` 提供驗證工具）
 6. 更新 `plugin.json` 版號
+7. **同步 CLAUDE.md 所有數字**：Plugin 架構表、目錄結構註解、Hooks 事件全景（Stop hook `claude-md-check` 會自動驗證）
 
 ### Plugin 發布流程
 1. 更新 `plugin.json`（version + description）

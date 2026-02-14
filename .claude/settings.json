@@ -11,6 +11,17 @@
             "statusMessage": "更新 Dashboard..."
           }
         ]
+      },
+      {
+        "description": "檢查 CLAUDE.md 數字是否與實際檔案一致",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/claude-md-check.js",
+            "timeout": 5,
+            "statusMessage": "檢查 CLAUDE.md 同步..."
+          }
+        ]
       }
     ]
   }
