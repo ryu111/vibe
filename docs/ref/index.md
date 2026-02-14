@@ -95,7 +95,7 @@ UserPromptSubmit: remote-prompt-forward
 | Phase | Plugin | 描述 | 組件數 |
 |:-----:|--------|------|:------:|
 | 1 | **forge** | 造工具的工具 — 建立、驗證、管理 Claude Code plugin 組件 | 4S + 7Sc |
-| 2 | **vibe** | 全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制 | 29S + 10A + 22H + 33Sc |
+| 2 | **vibe** | 全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制 | 29S + 10A + 22H + 37Sc |
 
 ---
 
@@ -104,7 +104,7 @@ UserPromptSubmit: remote-prompt-forward
 | # | Plugin | 文件 | Skills | Agents | Hooks | Scripts |
 |:-:|--------|------|:------:|:------:|:-----:|:-------:|
 | 1 | forge | [forge.md](forge.md) | 4 | 0 | 0 | 7 |
-| 2 | vibe | [vibe.md](vibe.md) | 29 | 10 | 22 | 33 |
+| 2 | vibe | [vibe.md](vibe.md) | 29 | 10 | 22 | 37 |
 
 > **S** = Skill, **A** = Agent, **H** = Hook, **Sc** = Script
 
@@ -118,5 +118,5 @@ UserPromptSubmit: remote-prompt-forward
 | **Skills** | 33 | 25 動態能力 + 8 知識庫 |
 | **Agents** | 10 | 全部在 vibe plugin |
 | **Hooks** | 22 | 自動觸發 |
-| **Scripts** | 40 | hook 腳本 + 共用函式庫 |
-| **合計** | 105 | 跨 2 個 plugins |
+| **Scripts** | 44 | hook 腳本 + 共用函式庫 |
+| **合計** | 109 | 跨 2 個 plugins |

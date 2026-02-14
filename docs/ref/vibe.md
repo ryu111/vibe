@@ -1,6 +1,6 @@
 # vibe — 統一開發工作流 Plugin
 
-> **版本**：1.0.15
+> **版本**：1.0.16
 > **定位**：全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制
 > **架構**：7 個功能模組合併為單一 plugin，共用 registry.js 統一 metadata
 >
@@ -23,7 +23,7 @@ vibe 是 Vibe marketplace 的核心 plugin，合併了 7 個功能模組：
 | **Remote** | Telegram 遠端控制 | 2S + 5H |
 | **診斷** | Hook 錯誤診斷 | 1S |
 
-**合計**：29 Skills + 10 Agents + 22 Hooks + 33 Scripts
+**合計**：29 Skills + 10 Agents + 22 Hooks + 37 Scripts
 
 ### 設計原則
 
@@ -118,7 +118,7 @@ vibe 是 Vibe marketplace 的核心 plugin，合併了 7 個功能模組：
 | 21 | Stop | dashboard-refresh | Dashboard | command | — | 觸發 Dashboard 同步鏈 |
 | 22 | Stop | remote-receipt | Remote | command | — | /say 已讀回條 + 回合摘要 |
 
-### Scripts（33 個）
+### Scripts（37 個）
 
 **Hook 腳本（22 個）** — `scripts/hooks/`
 
@@ -147,7 +147,7 @@ vibe 是 Vibe marketplace 的核心 plugin，合併了 7 個功能模組：
 | task-guard.js | Flow | 19 |
 | test-check.js | Sentinel | 14 |
 
-**共用函式庫（11 個）** — `scripts/lib/`
+**共用函式庫（15 個）** — `scripts/lib/`
 
 | 名稱 | 子目錄 | 說明 |
 |------|--------|------|
@@ -162,6 +162,10 @@ vibe 是 Vibe marketplace 的核心 plugin，合併了 7 個功能模組：
 | transcript.js | remote/ | Transcript JSONL 解析 |
 | lang-map.js | sentinel/ | 副檔名→語言→工具映射 |
 | tool-detector.js | sentinel/ | 偵測已安裝工具 + 快取 |
+| consumer.js | — |  |
+| index.js | — |  |
+| schema.js | — |  |
+| timeline.js | — |  |
 
 ---
 
@@ -686,7 +690,7 @@ plugins/vibe/
 ```json
 {
   "name": "vibe",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制",
   "skills": [
     "./skills/"

@@ -293,18 +293,19 @@ hooks.json 定義：
 }
 ```
 
-**邏輯**（v0.4.0 — 含智慧回退/重驗/跳過/context 注入）：
+**邏輯**（v1.0.16 — 含智慧回退/重驗/跳過/context 注入/自動 enforce）：
 
 1. `stop_hook_active === true` → exit 0（防無限迴圈，必須第一步檢查）
 2. `discoverPipeline()` 動態載入 pipeline 配置
 3. `agentToStage[agent_type]` 查找所屬 stage
 4. `parseVerdict(agent_transcript_path)` 從 transcript JSONL 解析 `PIPELINE_VERDICT` 標記
 5. `shouldRetryStage()` 判斷是否需要回退
-6. **回退路徑**：品質階段 FAIL:CRITICAL/HIGH → 設定 `pendingRetry` 標記 → 回到 DEV
-7. **回退重驗路徑**：DEV 完成且 `pendingRetry` 存在 → 消費標記 → 強制重跑原品質階段
-8. **前進路徑**：智慧跳過判斷 → 階段 context 注入 → 指示下一步
-9. 更新 state file（含 `stageResults`、`retries`、`pendingRetry`）
-10. 輸出 `{ "continue": true, "systemMessage": "..." }`
+6. **自動 enforce**：下一階段為 DEV+ 且 `pipelineEnforced=false` → 自動升級（見下方說明）
+7. **回退路徑**：品質階段 FAIL:CRITICAL/HIGH → 設定 `pendingRetry` 標記 → 回到 DEV
+8. **回退重驗路徑**：DEV 完成且 `pendingRetry` 存在 → 消費標記 → 強制重跑原品質階段
+9. **前進路徑**：智慧跳過判斷 → 階段 context 注入 → 指示下一步
+10. 更新 state file（含 `stageResults`、`retries`、`pendingRetry`、`pipelineEnforced`）
+11. 輸出 `{ "continue": true, "systemMessage": "..." }`
 
 **智慧回退機制**：
 
@@ -338,6 +339,20 @@ REVIEW 重跑
 
 三分支判斷順序：`shouldRetry`（回退）→ `pendingRetry && DEV`（回退重驗）→ `else`（正常前進）
 
+**自動 Pipeline Enforce**（v1.0.16）：
+
+修補手動觸發 `/vibe:scope` + `/vibe:architect` 時 task-classifier 未分類為 feature 的缺口。
+當 stage-transition 判斷下一階段為 DEV 或更後面（REVIEW/TEST/QA/E2E/DOCS）且 `pipelineEnforced=false` 時，自動升級：
+
+```
+if nextStage ∈ [DEV, REVIEW, TEST, QA, E2E, DOCS] && !pipelineEnforced:
+  1. pipelineEnforced → true
+  2. taskType: quickfix/research → feature
+  3. expectedStages: 不含 REVIEW → 補全為完整 pipeline
+```
+
+這確保即使使用者用「開始規劃」等語句（task-classifier 無法匹配為 feature），手動走完 PLAN → ARCH 後，dev-gate 仍會正確阻擋 Main Agent 直接寫碼。
+
 **智慧跳過**：
 - 純 API 框架（express/fastify/hono/koa/nest）自動跳過 E2E 階段
 - 基於 `state.environment.framework.name` 判斷
@@ -368,6 +383,8 @@ stage-transition 從 `agent_transcript_path`（JSONL）最後 20 行中搜尋此
 {
   "sessionId": "abc123",
   "initialized": true,
+  "pipelineEnforced": true,
+  "taskType": "feature",
   "completed": ["planner", "architect", "developer"],
   "expectedStages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "QA", "E2E", "DOCS"],
   "stageResults": {
@@ -381,6 +398,7 @@ stage-transition 從 `agent_transcript_path`（JSONL）最後 20 行中搜尋此
 ```
 
 > `pendingRetry` 僅在品質階段回退時設定，DEV 修復完成後消費（delete）。不存在時表示正常流程。
+> `pipelineEnforced` 可由 task-classifier 初始設定，或由 stage-transition 自動升級（v1.0.16）。
 
 #### Claude 看到的 systemMessage 內容：
 
@@ -730,3 +748,69 @@ PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
 - 不需 agent-tracker hook
 
 **並行執行留待 V2**：當串行版本穩定後，再啟用 `parallel` 欄位 + agent-tracker。
+
+---
+
+## 8. Timeline 統一事件模組（v1.0.16）
+
+### 8.1 定位
+
+Timeline 是 Pipeline 的統一事件記錄層，取代 Dashboard 和 Remote 各自獨立的資料流。
+所有 hook/agent/skill/task 的使用摘要統一寫入 Timeline，消費端（Dashboard、Remote）按需訂閱。
+
+```
+Hooks ──emit()──→ Timeline（JSONL）──watch()──→ Dashboard Consumer
+                                              ──watch()──→ Remote Consumer
+```
+
+### 8.2 核心模組
+
+| 檔案 | 功能 |
+|------|------|
+| `scripts/lib/timeline/schema.js` | 22 種事件類型、5 分類、envelope 建構/驗證 |
+| `scripts/lib/timeline/timeline.js` | emit / query / queryLast / watch / cleanup / listSessions |
+| `scripts/lib/timeline/consumer.js` | createConsumer 宣告式訂閱（分類展開、錯誤隔離、replay） |
+| `scripts/lib/timeline/index.js` | 統一 re-export 入口 |
+
+### 8.3 事件類型（22 種 × 5 分類）
+
+| 分類 | 事件 | 數量 |
+|------|------|:----:|
+| **session** | session.start | 1 |
+| **task** | task.classified · prompt.received · delegation.start · task.incomplete | 4 |
+| **pipeline** | stage.start · stage.complete · stage.retry · pipeline.complete · pipeline.incomplete | 5 |
+| **quality** | tool.blocked · tool.guarded · quality.lint · quality.format · quality.test-needed | 5 |
+| **remote** | ask.question · ask.answered · turn.summary · say.sent · say.completed · compact.suggested · compact.executed | 7 |
+
+### 8.4 儲存格式
+
+- **路徑**：`~/.claude/timeline-{sessionId}.jsonl`
+- **格式**：Append-only JSONL（每行一個 JSON envelope）
+- **Envelope**：`{ id, type, sessionId, timestamp, data }`
+- **截斷**：超過 2000 筆時自動保留最近 1500 筆
+- **與 pipeline-state 共存**：Timeline 記錄事件歷史，pipeline-state 記錄當前快照，兩者互補
+
+### 8.5 Consumer 模式
+
+```js
+const consumer = createConsumer({
+  name: 'dashboard',
+  types: ['pipeline', 'quality'],  // 支援分類名展開
+  handlers: {
+    'stage.complete': (event) => updateUI(event),
+    '*': (event) => logEvent(event),
+  },
+  onError: (name, err) => logger.error(name, err),
+});
+consumer.start(sessionId, { replay: true });
+```
+
+### 8.6 實作階段
+
+| Phase | 狀態 | 內容 |
+|:-----:|:----:|------|
+| 1 | ✅ 完成 | Timeline Core（schema + timeline + consumer + 55 tests） |
+| 2 | 待實作 | Hook emit 整合（12+ hooks 加入 `emit()` 呼叫） |
+| 3 | 待實作 | Dashboard 改用 Timeline 作為資料源 |
+| 4 | 待實作 | Remote 改用 Timeline 作為資料源 |
+| 5 | 待實作 | 清理收斂（移除冗餘邏輯、同步文件） |
