@@ -166,6 +166,21 @@ process.stdin.on('end', () => {
     }
     const completedStr = completedStages.join(' → ');
 
+    // ===== 自動 enforce pipeline =====
+    // 當手動觸發 scope/architect 後，task-classifier 可能沒分類為 feature，
+    // 導致 pipelineEnforced=false。若已完成 PLAN+ARCH 且下一步是 DEV，
+    // 自動升級為 feature pipeline，確保 dev-gate 阻擋 Main Agent 直接寫碼。
+    const DEV_OR_LATER = ['DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'];
+    if (!state.pipelineEnforced && nextStage && DEV_OR_LATER.includes(nextStage)) {
+      state.pipelineEnforced = true;
+      if (!state.taskType || state.taskType === 'quickfix' || state.taskType === 'research') {
+        state.taskType = 'feature';
+      }
+      if (!state.expectedStages || !state.expectedStages.includes('REVIEW')) {
+        state.expectedStages = pipeline.stageOrder;
+      }
+    }
+
     // 讀取環境資訊（用於智慧跳過判斷）
     const envInfo = state.environment || {};
     const frameworkName = (envInfo.framework && envInfo.framework.name) || '';

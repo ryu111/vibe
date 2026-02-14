@@ -906,6 +906,131 @@ console.log('══════════════════════�
 })();
 
 // ═══════════════════════════════════════════════
+// Scenario K: 手動 scope/architect 後自動 enforce pipeline
+// 驗證：task-classifier 初始分類為 quickfix，但 PLAN+ARCH 完成後
+// stage-transition 自動設定 pipelineEnforced=true，dev-gate 阻擋 Main Agent
+// ═══════════════════════════════════════════════
+
+console.log('\n🔒 Scenario K: 手動 scope/architect 後自動 enforce pipeline');
+console.log('═══════════════════════════════════════════════════════');
+
+(() => {
+  const sid = 'e2e-auto-enforce';
+  try {
+    // 模擬初始分類為 quickfix（使用者說「開始規劃」不匹配 feature regex）
+    initState(sid, {
+      taskType: 'quickfix',
+      pipelineEnforced: false,
+      expectedStages: ['DEV'],
+    });
+
+    test('K1: 初始狀態 pipelineEnforced=false', () => {
+      const state = readState(sid);
+      assert.strictEqual(state.pipelineEnforced, false);
+      assert.strictEqual(state.taskType, 'quickfix');
+    });
+
+    // 模擬手動 /vibe:scope → planner agent 完成
+    // delegation-tracker 設定 delegationActive
+    runHook('delegation-tracker', {
+      session_id: sid,
+      tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:planner' },
+    });
+
+    // planner 完成 → stage-transition 觸發
+    const t1 = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:planner',
+      stop_hook_active: false,
+    });
+
+    test('K2: planner 完成後，指示下一步 ARCH', () => {
+      assert.ok(t1.json && t1.json.systemMessage);
+      assert.ok(
+        t1.json.systemMessage.includes('architect') ||
+        t1.json.systemMessage.includes('ARCH'),
+        '應指示 ARCH 階段'
+      );
+    });
+
+    test('K3: planner 完成後，pipelineEnforced 仍為 false（PLAN→ARCH 不觸發 enforce）', () => {
+      const state = readState(sid);
+      assert.strictEqual(state.pipelineEnforced, false);
+    });
+
+    // 模擬手動 /vibe:architect → architect agent 完成
+    runHook('delegation-tracker', {
+      session_id: sid,
+      tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:architect' },
+    });
+
+    const t2 = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:architect',
+      stop_hook_active: false,
+    });
+
+    test('K4: architect 完成後，指示下一步 DEV', () => {
+      assert.ok(t2.json && t2.json.systemMessage);
+      assert.ok(
+        t2.json.systemMessage.includes('developer') ||
+        t2.json.systemMessage.includes('DEV'),
+        '應指示 DEV 階段'
+      );
+    });
+
+    test('K5: architect 完成後，pipelineEnforced 自動升級為 true', () => {
+      const state = readState(sid);
+      assert.strictEqual(state.pipelineEnforced, true);
+    });
+
+    test('K6: taskType 自動升級為 feature', () => {
+      const state = readState(sid);
+      assert.strictEqual(state.taskType, 'feature');
+    });
+
+    test('K7: expectedStages 自動補全', () => {
+      const state = readState(sid);
+      assert.ok(state.expectedStages.length > 2, '應有完整的階段列表');
+      assert.ok(state.expectedStages.includes('DEV'));
+      assert.ok(state.expectedStages.includes('REVIEW'));
+    });
+
+    // 現在 dev-gate 應該阻擋 Main Agent 直接寫碼
+    const gate = runHook('dev-gate', {
+      session_id: sid,
+      tool_name: 'Write',
+      tool_input: { file_path: 'src/timeline.js' },
+    });
+
+    test('K8: 自動 enforce 後，dev-gate 阻擋 Main Agent 寫碼（exit 2）', () => {
+      assert.strictEqual(gate.exitCode, 2);
+    });
+
+    // 但 delegation 後應該放行
+    runHook('delegation-tracker', {
+      session_id: sid,
+      tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:developer' },
+    });
+
+    const gateAfterDelegate = runHook('dev-gate', {
+      session_id: sid,
+      tool_name: 'Write',
+      tool_input: { file_path: 'src/timeline.js' },
+    });
+
+    test('K9: delegation 後 dev-gate 放行（sub-agent 可寫碼）', () => {
+      assert.strictEqual(gateAfterDelegate.exitCode, 0);
+    });
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
 // 結果輸出
 // ═══════════════════════════════════════════════
 
