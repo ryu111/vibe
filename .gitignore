@@ -15,6 +15,16 @@ dashboard/data/progress.json
 dashboard/dashboard.html
 dashboard/data/meta.json
 dashboard/themes/*/preview.html
+dashboard/themes/
+
+# OpenSpec 生成物（pipeline 產出，可重建）
+openspec/changes/archive/
+openspec/changes/*/design-mockup.html
+openspec/specs/
+
+# 自動生成的文件
+docs/ref/index.md
+docs/ref/vibe.md
 
 # Node
 node_modules/
