@@ -181,6 +181,7 @@
     .al.completed { background: var(--green); }
     .al.error { background: var(--red); box-shadow: 0 0 6px var(--red); animation: alPulse 1.5s ease infinite; }
     .al.delegating { background: var(--blue); box-shadow: 0 0 8px var(--blue); animation: alPulse 1.5s ease infinite; }
+    .al.waiting { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); animation: alPulse 1.5s ease infinite; }
     .al.standby { background: var(--blue); opacity: 0.6; }
     .al.pending { background: var(--surface2); }
     .al.idle { background: var(--surface2); opacity: 0.5; }
@@ -193,6 +194,7 @@
     .ac-chip.st-completed { background: rgba(166,227,161,0.1); color: var(--green); }
     .ac-chip.st-error { background: rgba(243,139,168,0.15); color: var(--red); font-weight: 600; }
     .ac-chip.st-delegating { background: rgba(137,180,250,0.15); color: var(--blue); }
+    .ac-chip.st-waiting { background: rgba(249,226,175,0.15); color: var(--yellow); }
     .ac-chip.st-standby { color: var(--blue); }
     .ac-chip.st-skipped { color: var(--overlay0); text-decoration: line-through; }
     .ac-chip.st-idle { color: var(--overlay0); }
@@ -1096,7 +1098,7 @@
     }
 
     // --- Agent 狀態面板 ---
-    function getAgentInfo(agent, s) {
+    function getAgentInfo(agent, s, askPending) {
       let status = 'idle', statusLabel = '閒置', dur = null, tools = null, retries = 0;
       if (agent.stage && s) {
         // 無 pipeline 時 → 閒置（非「跳過」）
@@ -1129,8 +1131,12 @@
       } else if (agent.id === 'main' && s) {
         // 只在有 currentStage 時才認定委派中（避免 delegationActive 殘留）
         const reallyDelegating = s.delegationActive && s.currentStage;
-        status = reallyDelegating ? 'delegating' : 'running';
-        statusLabel = reallyDelegating ? '委派中' : '運行中';
+        if (askPending) {
+          status = 'waiting'; statusLabel = '等待回覆';
+        } else {
+          status = reallyDelegating ? 'delegating' : 'running';
+          statusLabel = reallyDelegating ? '委派中' : '運行中';
+        }
       }
       // 只有 pipeline agents 活躍時高亮 skills（系統/輔助 agent 無法追蹤具體 skill 使用）
       const isActive = ['running', 'delegating'].includes(status);
@@ -1138,10 +1144,19 @@
       return { ...agent, status, statusLabel, dur, tools, retries, isActive, skillsLit };
     }
 
-    function AgentStatus({ s, tick }) {
+    function AgentStatus({ s, tick, events }) {
+      // 偵測 AskUserQuestion 等待中（最新 ask.question 無配對 ask.answered）
+      const askPending = useMemo(() => {
+        if (!events?.length) return false;
+        for (const ev of events) {
+          if (ev.eventType === 'ask.answered') return false;
+          if (ev.eventType === 'ask.question') return true;
+        }
+        return false;
+      }, [events]);
       // 每個 agent 獨立計時器（agent 變 active 時記錄起始時間）
       const timers = useRef({});
-      const agents = AGENT_ROSTER.map(a => getAgentInfo(a, s));
+      const agents = AGENT_ROSTER.map(a => getAgentInfo(a, s, askPending));
       // 同步計時器狀態
       agents.forEach(a => {
         if (a.isActive && !timers.current[a.id]) timers.current[a.id] = Date.now();
@@ -1548,7 +1563,7 @@
 
               <!-- Tab: Dashboard -->
               ${mainTab === 'dashboard' && html`
-              <${AgentStatus} s=${s} tick=${tick} />
+              <${AgentStatus} s=${s} tick=${tick} events=${tlAll} />
               <${MCPStats} events=${tlAll} />
               ${!isComplete && html`
                 <div class="cards">
