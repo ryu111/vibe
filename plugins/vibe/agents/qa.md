@@ -108,6 +108,28 @@ memory: project
 | 錯誤處理驗證 | 狀態依賴鏈驗證 |
 | 單一操作的正確性 | 複合流程的完整性 |
 
+## 設計合規驗證（條件執行）
+
+如果存在 `openspec/changes/*/design-system.md` 或 `design-system/MASTER.md`：
+
+1. 讀取設計系統規範（色彩、字體、間距、風格）
+2. 檢查 CSS/Tailwind 實作是否使用了規範中的色彩值（grep hex codes）
+3. 驗證 `cursor: pointer` 是否套用在所有可點擊元素（button、a、[role="button"]）
+4. 驗證文字對比度是否 >= 4.5:1（WCAG AA）— 用前景/背景 hex 值計算
+5. 結果加入 QA 報告的獨立區塊：
+
+```markdown
+## 設計合規
+
+| # | 檢查項目 | 規範值 | 實際值 | 結果 |
+|:-:|----------|--------|--------|:----:|
+| 1 | Primary 色彩 | #xxx | #xxx | ✅/❌ |
+| 2 | cursor:pointer | 所有可點擊 | N/M 元素 | ✅/❌ |
+| 3 | 文字對比度 | >= 4.5:1 | X:1 | ✅/❌ |
+```
+
+設計合規問題歸類為 WARNING（不觸發 FAIL），除非對比度低於 3:1（歸類為 CRITICAL）。
+
 ## 規則
 
 1. **不寫測試碼**：直接執行真實操作。撰寫測試碼是 tester 的職責

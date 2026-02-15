@@ -33,6 +33,7 @@ const STAGE_CONTEXT = {
 
 // 階段完成後的附加提示（注入到下一階段指令中）
 const POST_STAGE_HINTS = {
+  ARCH: '🎨 設計提示：如果 ARCH 產出了 design-system.md，developer 請遵循其中的色彩、字體、間距規範。',
   REVIEW: '🔒 安全提示：REVIEW 已完成程式碼品質審查。建議在 TEST 階段也關注安全相關測試（auth、input validation、injection）。如有 auth/crypto 相關變更，可在 pipeline 完成後執行 /vibe:security 深度掃描。',
   TEST: '📊 覆蓋率提示：TEST 已完成。進入 QA 前建議關注測試覆蓋率。pipeline 完成後可用 /vibe:coverage 取得詳細報告。',
 };
@@ -325,6 +326,19 @@ process.stdin.on('end', () => {
             stageContext += '\n📋 OpenSpec：planner 已建立 proposal.md，architect 請讀取 openspec/changes/ 中的 proposal 後產出 design.md、specs/、tasks.md。';
           } else if (nextStageCandidate === 'DEV') {
             stageContext += '\n📋 OpenSpec：architect 已產出完整規格，developer 請依照 openspec/changes/ 中的 tasks.md checkbox 逐一實作並打勾。';
+            // 設計系統 context 注入（檢查 openspec 或專案根目錄的 design-system.md）
+            try {
+              const cwd = process.cwd();
+              const hasDesignSystem =
+                fs.readdirSync(path.join(cwd, 'openspec', 'changes')).some(d => {
+                  if (d === 'archive') return false;
+                  return fs.existsSync(path.join(cwd, 'openspec', 'changes', d, 'design-system.md'));
+                }) ||
+                fs.existsSync(path.join(cwd, 'design-system', 'MASTER.md'));
+              if (hasDesignSystem) {
+                stageContext += '\n🎨 前端實作請參考 design-system.md，確保色彩(hex)、字體(Google Fonts)、間距(spacing tokens) 與設計系統一致。';
+              }
+            } catch (_) {}
           } else if (nextStageCandidate === 'REVIEW') {
             stageContext += '\n📋 OpenSpec：請讀取 openspec/changes/ 中的 specs/ 和 design.md，對照審查實作是否符合規格。';
           } else if (nextStageCandidate === 'TEST') {
@@ -332,6 +346,16 @@ process.stdin.on('end', () => {
           } else if (nextStageCandidate === 'DOCS') {
             stageContext += '\n📋 OpenSpec：所有實作已完成，doc-updater 請在更新文件後將 change 歸檔到 openspec/changes/archive/。';
           }
+        }
+
+        // 非 OpenSpec 模式下的設計系統 context 注入（DEV 階段）
+        if (!state.openspecEnabled && nextStageCandidate === 'DEV') {
+          try {
+            const cwd = process.cwd();
+            if (fs.existsSync(path.join(cwd, 'design-system', 'MASTER.md'))) {
+              stageContext += '\n🎨 前端實作請參考 design-system/MASTER.md，確保色彩(hex)、字體(Google Fonts)、間距(spacing tokens) 與設計系統一致。';
+            }
+          } catch (_) {}
         }
 
         // 前一階段完成後的附加提示（安全、覆蓋率等）

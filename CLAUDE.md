@@ -9,13 +9,14 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.26 | 全方位開發工作流 | 30 | 10 | 22 | 40+daemon |
+| **vibe** | 1.0.27 | 全方位開發工作流 | 31 | 11 | 22 | 40+daemon |
 
 ### vibe plugin 功能模組
 
 | 模組 | 功能 | Skills | Agents |
 |------|------|:------:|:------:|
 | 規劃 | Pipeline 工作流管理、規劃、架構設計 | 6 | 3 (planner/architect/developer) |
+| 設計 | UI/UX 設計系統生成（ui-ux-pro-max 整合） | 1 | 1 (designer) |
 | 品質 | lint、format、review、security、TDD、E2E、QA | 9 | 6 (code-reviewer/security-reviewer/tester/build-error-resolver/e2e-runner/qa) |
 | 知識 | 語言/框架模式庫（純知識） | 8 | 0 |
 | 進化 | 知識進化、文件同步 | 2 | 1 (doc-updater) |
@@ -42,6 +43,7 @@ openspec/
     │   ├── .openspec.yaml   # metadata（schema + date）
     │   ├── proposal.md      # PLAN 階段 planner 產出（WHY + WHAT）
     │   ├── design.md        # ARCH 階段 architect 產出（HOW）
+    │   ├── design-system.md # ARCH 階段 architect 條件產出（UI/UX 設計系統）
     │   ├── specs/           # ARCH 階段 architect 產出（Delta specs）
     │   └── tasks.md         # ARCH 階段 architect 產出（checkbox 任務清單）
     └── archive/             # 已完成的 changes（DOCS 階段歸檔）
@@ -79,13 +81,13 @@ plugins/vibe/
 │   └── lib/                 # 共用函式庫
 │       ├── registry.js      # ★ 全局 metadata（STAGES/AGENTS/EMOJI）
 │       ├── hook-logger.js   # Hook 錯誤日誌（~/.claude/hook-errors.log）
-│       ├── flow/            # pipeline-discovery, env-detector, counter, classifier
+│       ├── flow/            # pipeline-discovery, env-detector, counter, classifier, uiux-resolver
 │       ├── sentinel/        # lang-map, tool-detector, guard-rules
 │       ├── dashboard/       # server-manager
 │       ├── remote/          # telegram, transcript, bot-manager
 │       └── timeline/        # schema, timeline, consumer（統一事件流）
-├── skills/                  # 29 個 skill 目錄
-├── agents/                  # 10 個 agent 定義
+├── skills/                  # 30 個 skill 目錄
+├── agents/                  # 11 個 agent 定義
 ├── server.js                # Dashboard HTTP+WebSocket server
 ├── bot.js                   # Telegram daemon
 ├── web/index.html           # Dashboard 前端
@@ -161,6 +163,7 @@ PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
 | purple | planner | opus |
 | purple | doc-updater | haiku |
 | cyan | architect | opus |
+| cyan | designer | sonnet |
 | yellow | developer · qa | sonnet |
 | blue | code-reviewer | opus |
 | red | security-reviewer | opus |

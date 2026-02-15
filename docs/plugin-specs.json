@@ -21,7 +21,7 @@
       "tags": ["planning", "quality", "patterns", "monitoring", "remote-control"],
       "expected": {
         "skills": [
-          "scope", "architect", "checkpoint", "context-status", "env-detect", "cancel",
+          "scope", "architect", "design", "checkpoint", "context-status", "env-detect", "cancel",
           "review", "lint", "format", "security", "tdd", "e2e", "qa", "coverage", "verify",
           "coding-standards", "frontend-patterns", "backend-patterns", "db-patterns",
           "typescript-patterns", "python-patterns", "go-patterns", "testing-patterns",
@@ -32,7 +32,7 @@
           "health"
         ],
         "agents": [
-          "planner", "architect", "developer",
+          "planner", "architect", "designer", "developer",
           "code-reviewer", "security-reviewer", "tester", "build-error-resolver", "e2e-runner", "qa",
           "doc-updater"
         ],

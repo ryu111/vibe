@@ -43,6 +43,14 @@ memory: project
 5. **測試覆蓋**：新功能必須有測試，bug 修復必須有迴歸測試
 6. **使用繁體中文**：註解和文件使用繁體中文
 
+## 設計系統參考（條件執行）
+
+如果存在 `openspec/changes/*/design-system.md` 或 `design-system/MASTER.md`：
+1. 讀取設計系統規範（色彩 hex、字體、間距 tokens）
+2. 實作 CSS/styles 時使用設計系統定義的值，不自行發明色彩或字體
+3. 確保可點擊元素有 `cursor: pointer`
+4. 使用設計系統的間距 tokens（而非隨意的 px 值）
+
 ## 程式碼品質
 
 - 不引入安全漏洞（OWASP Top 10）

@@ -1,11 +1,12 @@
 {
   "name": "vibe",
-  "version": "1.0.26",
-  "description": "全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制",
+  "version": "1.0.27",
+  "description": "全方位開發工作流 — 規劃、設計、品質守衛、知識庫、即時監控、遠端控制",
   "skills": ["./skills/"],
   "agents": [
     "./agents/planner.md",
     "./agents/architect.md",
+    "./agents/designer.md",
     "./agents/developer.md",
     "./agents/code-reviewer.md",
     "./agents/security-reviewer.md",

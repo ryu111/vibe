@@ -135,6 +135,24 @@ Migration: {遷移指引}
 - [ ] 3.3 確認文件同步
 ```
 
+## 前端設計整合（條件執行）
+
+如果功能涉及 UI/前端（判斷依據：有 .tsx/.vue/.svelte/.html/.css 檔案變更，或 proposal.md 提及 UI/頁面/介面/設計），執行以下額外步驟：
+
+1. 偵測 search.py 路徑：
+   ```bash
+   node -e "const r = require('${CLAUDE_PLUGIN_ROOT}/scripts/lib/flow/uiux-resolver.js'); console.log(r.resolve() || 'NOT_FOUND')"
+   ```
+2. 如果 search.py 可用，執行設計系統生成：
+   ```bash
+   python3 {search.py路徑} "{產品類型} {風格}" --design-system -p "{功能名}" --format markdown
+   ```
+3. 將設計系統結果寫入 `openspec/changes/{name}/design-system.md`
+4. 在 design.md 的「方案」中引用設計系統的色彩、字體、風格決策
+5. 在 tasks.md 中加入設計相關任務（如「套用設計系統色彩變數」「設定字體配對」）
+
+如果 search.py 不可用，跳過此步驟（不影響主要架構設計流程）。
+
 ## 規則
 
 1. **不寫程式碼**：只定義介面和結構，不實作

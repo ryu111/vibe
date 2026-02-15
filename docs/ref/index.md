@@ -83,7 +83,7 @@ Stop: dashboard-refresh                 /remote-config    遠端設定
 Stop: remote-receipt                    /vibe:hook-diag   Hook 診斷
 UserPromptSubmit: remote-prompt-forward
 
-自動: 22 hooks                           手動: 26 skills（+ 8 知識 skills）
+自動: 22 hooks                           手動: 27 skills（+ 8 知識 skills）
 跨 session 記憶：claude-mem（獨立 plugin，推薦搭配）
 ```
 
@@ -94,7 +94,7 @@ UserPromptSubmit: remote-prompt-forward
 | Phase | Plugin | 描述 | 組件數 |
 |:-----:|--------|------|:------:|
 | 1 | **forge** | 造工具的工具 — 建立、驗證、管理 Claude Code plugin 組件 | 4S + 7Sc |
-| 2 | **vibe** | 全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制 | 30S + 10A + 22H + 39Sc |
+| 2 | **vibe** | 全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制 | 31S + 11A + 22H + 40Sc |
 
 ---
 
@@ -103,7 +103,7 @@ UserPromptSubmit: remote-prompt-forward
 | # | Plugin | 文件 | Skills | Agents | Hooks | Scripts |
 |:-:|--------|------|:------:|:------:|:-----:|:-------:|
 | 1 | forge | [forge.md](forge.md) | 4 | 0 | 0 | 7 |
-| 2 | vibe | [vibe.md](vibe.md) | 30 | 10 | 22 | 39 |
+| 2 | vibe | [vibe.md](vibe.md) | 31 | 11 | 22 | 40 |
 
 > **S** = Skill, **A** = Agent, **H** = Hook, **Sc** = Script
 
@@ -114,8 +114,8 @@ UserPromptSubmit: remote-prompt-forward
 | 組件類型 | 數量 | 說明 |
 |---------|:----:|------|
 | **Plugins** | 2 | forge + vibe |
-| **Skills** | 34 | 26 動態能力 + 8 知識庫 |
-| **Agents** | 10 | 全部在 vibe plugin |
+| **Skills** | 35 | 27 動態能力 + 8 知識庫 |
+| **Agents** | 11 | 全部在 vibe plugin |
 | **Hooks** | 22 | 自動觸發 |
-| **Scripts** | 46 | hook 腳本 + 共用函式庫 |
-| **合計** | 112 | 跨 2 個 plugins |
+| **Scripts** | 47 | hook 腳本 + 共用函式庫 |
+| **合計** | 115 | 跨 2 個 plugins |

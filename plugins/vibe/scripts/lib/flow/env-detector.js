@@ -19,7 +19,7 @@ function detect(cwd) {
     languages: { primary: null, secondary: [] },
     framework: null,
     packageManager: null,
-    tools: { linter: null, formatter: null, test: null, bundler: null },
+    tools: { linter: null, formatter: null, test: null, bundler: null, designSystem: null },
   };
 
   // --- 語言偵測 ---
@@ -161,6 +161,14 @@ function detect(cwd) {
     result.tools.test = result.tools.test || 'go test';
     result.tools.formatter = result.tools.formatter || 'gofmt';
   }
+
+  // ui-ux-pro-max 偵測
+  try {
+    const { resolve } = require(path.join(__dirname, 'uiux-resolver.js'));
+    if (resolve(cwd)) {
+      result.tools.designSystem = 'ui-ux-pro-max';
+    }
+  } catch (_) {}
 
   return result;
 }

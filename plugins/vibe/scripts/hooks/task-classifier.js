@@ -113,6 +113,18 @@ function buildKnowledgeHints(envInfo) {
     skills.add('/vibe:testing-patterns');
   }
 
+  // 前端框架偵測到時注入設計 skill 建議
+  const FRONTEND_FRAMEWORKS = ['next.js', 'nuxt', 'remix', 'astro', 'svelte', 'vue', 'react', 'angular'];
+  if (framework && FRONTEND_FRAMEWORKS.includes(framework)) {
+    skills.add('/vibe:design');
+  }
+
+  // ui-ux-pro-max 已安裝時注入設計 skill
+  const designSystem = envInfo.tools && envInfo.tools.designSystem;
+  if (designSystem) {
+    skills.add('/vibe:design');
+  }
+
   if (skills.size === 0) return '';
 
   return `\n\n█ 可用知識庫 █\n` +
