@@ -24,6 +24,7 @@ const {
 const { STAGES, STAGE_ORDER, AGENT_TO_STAGE } = require(path.join(__dirname, 'scripts', 'lib', 'registry.js'));
 const { createConsumer } = require(path.join(__dirname, 'scripts', 'lib', 'timeline', 'consumer.js'));
 const { query: queryTimeline } = require(path.join(__dirname, 'scripts', 'lib', 'timeline', 'timeline.js'));
+const { formatTimeline, formatEventText, EMOJI_MAP } = require(path.join(__dirname, 'scripts', 'lib', 'timeline', 'formatter.js'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const PID_FILE = path.join(CLAUDE_DIR, 'remote-bot.pid');
@@ -357,13 +358,27 @@ async function handleTmux(token, chatId) {
 
 async function handleTimeline(token, chatId, args) {
   const sessions = scanSessions();
-  const target = args
-    ? sessions.find(s => s.id.startsWith(args))
+  // 支援 /timeline [sid] [mode] 或 /timeline [mode]
+  const parts = (args || '').split(/\s+/).filter(Boolean);
+  const modes = ['full', 'compact', 'summary', 'stats'];
+  let targetArg = null;
+  let mode = 'compact';
+
+  for (const p of parts) {
+    if (modes.includes(p.toLowerCase())) {
+      mode = p.toLowerCase();
+    } else {
+      targetArg = p;
+    }
+  }
+
+  const target = targetArg
+    ? sessions.find(s => s.id.startsWith(targetArg))
     : sessions[0];
 
   if (!target) {
-    return sendMessage(token, chatId, args
-      ? `\u274C \u627E\u4E0D\u5230 session \`${args}\``
+    return sendMessage(token, chatId, targetArg
+      ? `\u274C \u627E\u4E0D\u5230 session \`${targetArg}\``
       : '\u{1F4AD} \u7121\u6D3B\u8E8D\u7684 Pipeline session');
   }
 
@@ -374,13 +389,18 @@ async function handleTimeline(token, chatId, args) {
     return sendMessage(token, chatId, `\u{1F4AD} Session \`${sid}\` \u7121 Timeline \u8A18\u9304`);
   }
 
-  const recent = allEvents.slice(-10).reverse();
-  const formatted = recent
-    .map(event => formatTimelineEvent(event))
-    .filter(Boolean);
+  // 使用 formatter 模組格式化
+  const showStats = mode === 'stats';
+  const fmtMode = showStats ? 'compact' : mode;
+  const lines = formatTimeline(allEvents, { mode: fmtMode, stats: showStats });
 
-  const header = `\u{1F4CB} *Timeline — \`${sid}\`*\n\u{1F4CA} \u6700\u8FD1 ${formatted.length} \u7B46\u4E8B\u4EF6\uFF1A\n\n`;
-  return sendMessage(token, chatId, header + formatted.join('\n'));
+  // Telegram 訊息長度限制 4096，超長時截斷
+  const header = `\u{1F4CB} *Timeline — \`${sid}\`*\n\u{1F4CA} ${allEvents.length} \u7B46\u4E8B\u4EF6\uFF08${fmtMode}\uFF09\n\n`;
+  let body = lines.join('\n');
+  if (header.length + body.length > 4000) {
+    body = body.slice(0, 4000 - header.length) + '\n\u2026\uFF08\u622A\u65B7\uFF09';
+  }
+  return sendMessage(token, chatId, header + body);
 }
 
 // ─── Ask 解析與 UI ────────────────────────────
@@ -756,30 +776,24 @@ function cleanupOrphanProcesses() {
 }
 
 /**
- * 統一格式化 timeline 事件
+ * 統一格式化 timeline 事件（推播用）
+ * 使用 formatter.js 的 formatEventText 統一文字描述
  * @param {object} event - timeline event
  * @param {object} [opts] - { pushMode: true } 推播模式（只顯示重要事件）
  * @returns {string|null}
  */
 function formatTimelineEvent(event, opts = {}) {
   const t = new Date(event.timestamp).toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' });
-  const d = event.data || {};
+  const emoji = EMOJI_MAP[event.type] || '\u{1F4CB}';
 
-  switch (event.type) {
-    case 'stage.complete': {
-      const emoji = d.verdict === 'PASS' ? '\u2705' : '\u274C';
-      return `${emoji} ${t} ${d.fromStage}\u2192${d.toStage || 'END'} ${d.agent || ''} ${d.verdict}`;
-    }
-    case 'pipeline.complete':
-      return `\u{1F389} ${t} Pipeline \u5B8C\u6210\uFF08${d.duration || '\u2014'}s\uFF09`;
-    case 'quality.lint':
-      return `${d.pass ? '\u2705' : '\u274C'} ${t} Lint ${d.file || ''} ${d.pass ? 'PASS' : 'FAIL'}`;
-    case 'ask.question':
-      return `\u2753 ${t} ${d.question || 'AskUserQuestion'}`;
-    default:
-      if (opts.pushMode) return null;
-      return `\u{1F4CB} ${t} ${event.type}`;
+  // 推播模式：只推送重要事件（pipeline + stage + 阻擋）
+  if (opts.pushMode) {
+    const important = ['stage.complete', 'stage.retry', 'pipeline.complete',
+                       'pipeline.incomplete', 'tool.blocked', 'ask.question'];
+    if (!important.includes(event.type)) return null;
   }
+
+  return `${emoji} ${t} ${formatEventText(event)}`;
 }
 
 /**

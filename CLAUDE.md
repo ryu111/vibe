@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.30 | 全方位開發工作流 | 31 | 11 | 22 | 42 |
+| **vibe** | 1.0.31 | 全方位開發工作流 | 32 | 11 | 22 | 42 |
 
 ### vibe plugin 功能模組
 
@@ -20,7 +20,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | 品質 | lint、format、review、security、TDD、E2E、QA | 9 | 6 (code-reviewer/security-reviewer/tester/build-error-resolver/e2e-runner/qa) |
 | 知識 | 語言/框架模式庫（純知識） | 8 | 0 |
 | 進化 | 知識進化、文件同步 | 2 | 1 (doc-updater) |
-| 監控 | Pipeline 即時儀表板（WebSocket） | 1 | 0 |
+| 監控 | Pipeline 即時儀表板（WebSocket）+ Timeline 查詢 | 2 | 0 |
 | 遠端 | Telegram 遠端控制 + tmux 操作 | 2 | 0 |
 | 維護 | RAM 健康檢查、孤兒進程清理 | 1 | 0 |
 | 診斷 | Hook 錯誤診斷 | 1 | 0 |

@@ -10,6 +10,7 @@ import { homedir } from 'os';
 
 // 動態引入 CommonJS 模組
 const { createConsumer } = await import('./scripts/lib/timeline/consumer.js');
+const { formatEventText, EMOJI_MAP } = await import('./scripts/lib/timeline/formatter.js');
 
 // --port CLI 參數 or 環境變數
 const portArg = process.argv.find(a => a.startsWith('--port='));
@@ -43,56 +44,26 @@ function broadcast(msg) {
 }
 
 /**
- * 格式化 timeline 事件為精簡單行訊息（用於前端推送）
+ * 格式化 timeline 事件為結構化物件（用於前端推送）
+ * 使用 formatter.js 的 formatEventText 統一文字描述
  */
 function formatEvent(event) {
   const t = new Date(event.timestamp).toLocaleTimeString('zh-TW', { hour12: false });
   const d = event.data || {};
+  const emoji = EMOJI_MAP[event.type] || '📌';
+  const text = formatEventText(event);
 
-  switch (event.type) {
-    case 'stage.complete':
-      return {
-        time: t,
-        type: d.verdict === 'PASS' ? 'pass' : 'fail',
-        text: `${d.fromStage}→${d.toStage || 'END'} ${d.agent || ''} ${d.verdict}${d.severity ? ':' + d.severity : ''}`,
-      };
-    case 'stage.start':
-      return {
-        time: t,
-        type: 'active',
-        text: `${d.stage} ${d.agent || ''} 開始`,
-      };
-    case 'pipeline.complete':
-      return {
-        time: t,
-        type: 'pass',
-        text: `Pipeline 完成（${d.duration || '—'}s）`,
-      };
-    case 'quality.lint':
-      return {
-        time: t,
-        type: d.pass ? 'pass' : 'fail',
-        text: `Lint ${d.file || ''} ${d.pass ? 'PASS' : 'FAIL'}`,
-      };
-    case 'quality.format':
-      return {
-        time: t,
-        type: 'pass',
-        text: `Format ${d.file || ''}`,
-      };
-    case 'ask.question':
-      return {
-        time: t,
-        type: 'active',
-        text: `❓ ${d.question || 'AskUserQuestion'}`,
-      };
-    default:
-      return {
-        time: t,
-        type: 'active',
-        text: `${event.type} ${d.message || ''}`,
-      };
+  // 判斷事件狀態類型（前端 CSS 用）
+  let type = 'active';
+  if (event.type === 'stage.complete' || event.type === 'pipeline.complete') {
+    type = (d.verdict === 'FAIL' || d.severity) ? 'fail' : 'pass';
+  } else if (event.type === 'quality.lint') {
+    type = d.pass ? 'pass' : 'fail';
+  } else if (event.type === 'tool.blocked' || event.type === 'stage.retry') {
+    type = 'fail';
   }
+
+  return { time: t, type, emoji, text };
 }
 
 /**
