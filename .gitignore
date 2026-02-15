@@ -4,6 +4,11 @@
 # Claude Code 本機設定（含個人權限、output style 偏好）
 .claude/settings.local.json
 .claude/projects/
+.claude/agent-memory/
+.claude/skills/
+
+# 子目錄中 uipro init 產生的 .claude/
+dashboard/.claude/
 
 # 自動產生的檔案（由 hook 重建）
 dashboard/data/progress.json

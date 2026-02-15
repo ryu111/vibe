@@ -118,7 +118,7 @@ test('PLAN→ARCH 轉場注入 OpenSpec 提示（openspecEnabled=true）', () =>
     sessionId,
     initialized: true,
     completed: [],
-    expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     pipelineEnforced: true,
     taskType: 'feature',
     openspecEnabled: true,
@@ -151,7 +151,7 @@ test('ARCH→DEV 轉場注入 OpenSpec 提示（openspecEnabled=true）', () => 
     sessionId,
     initialized: true,
     completed: ['planner'],
-    expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     pipelineEnforced: true,
     taskType: 'feature',
     openspecEnabled: true,
@@ -184,7 +184,7 @@ test('PLAN→ARCH 轉場無 OpenSpec 提示（openspecEnabled=false）', () => {
     sessionId,
     initialized: true,
     completed: [],
-    expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     pipelineEnforced: true,
     taskType: 'feature',
     openspecEnabled: false,
@@ -213,7 +213,7 @@ test('DEV→REVIEW 轉場注入 OpenSpec 規格對照提示', () => {
     sessionId,
     initialized: true,
     completed: ['planner', 'architect'],
-    expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     pipelineEnforced: true,
     taskType: 'feature',
     openspecEnabled: true,
@@ -246,7 +246,7 @@ test('REVIEW→TEST 轉場注入 OpenSpec Scenario 測試提示', () => {
     sessionId,
     initialized: true,
     completed: ['planner', 'architect', 'developer'],
-    expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     pipelineEnforced: true,
     taskType: 'feature',
     openspecEnabled: true,
@@ -279,7 +279,7 @@ test('TEST→QA 轉場無 OpenSpec 提示（QA 無 OpenSpec 指引）', () => {
     sessionId,
     initialized: true,
     completed: ['planner', 'architect', 'developer', 'code-reviewer'],
-    expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     pipelineEnforced: true,
     taskType: 'feature',
     openspecEnabled: true,
@@ -308,7 +308,7 @@ test('QA→E2E→DOCS 轉場注入 OpenSpec 歸檔提示', () => {
     sessionId,
     initialized: true,
     completed: ['planner', 'architect', 'developer', 'code-reviewer', 'tester', 'qa', 'e2e-runner'],
-    expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     pipelineEnforced: true,
     taskType: 'feature',
     openspecEnabled: true,
@@ -350,13 +350,15 @@ test('openspec/config.yaml 存在且包含 schema 欄位', () => {
   assert.ok(content.includes('rules:'), '應包含 rules 區塊');
 });
 
-test('openspec/schemas/vibe-pipeline/schema.yaml 存在且定義 4 個 artifacts', () => {
+test('openspec/schemas/vibe-pipeline/schema.yaml 存在且定義 6 個 artifacts', () => {
   const schemaPath = path.join(PROJECT_ROOT, 'openspec', 'schemas', 'vibe-pipeline', 'schema.yaml');
   assert.ok(fs.existsSync(schemaPath), 'schema.yaml 應存在');
   const content = fs.readFileSync(schemaPath, 'utf8');
   assert.ok(content.includes('id: proposal'), '應定義 proposal artifact');
   assert.ok(content.includes('id: specs'), '應定義 specs artifact');
   assert.ok(content.includes('id: design'), '應定義 design artifact');
+  assert.ok(content.includes('id: design-system'), '應定義 design-system artifact');
+  assert.ok(content.includes('id: design-mockup'), '應定義 design-mockup artifact');
   assert.ok(content.includes('id: tasks'), '應定義 tasks artifact');
 });
 

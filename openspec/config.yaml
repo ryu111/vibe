@@ -10,7 +10,7 @@ context: |
   目標平台：macOS
   開發語言：繁體中文（程式碼註解、文件、commit message）
   Plugin 架構：hooks + agents + skills（詳見 CLAUDE.md）
-  Pipeline：PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
+  Pipeline：PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 
 rules:
   proposal:

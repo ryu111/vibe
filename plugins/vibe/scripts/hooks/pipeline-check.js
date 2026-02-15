@@ -63,9 +63,10 @@ process.stdin.on('end', () => {
       }
     }
 
-    // 比較期望 vs 已完成
+    // 比較期望 vs 已完成（排除已跳過的階段）
+    const skipped = state.skippedStages || [];
     const missing = state.expectedStages.filter(s =>
-      pipeline.stageMap[s] && !completedStages.includes(s)
+      pipeline.stageMap[s] && !completedStages.includes(s) && !skipped.includes(s)
     );
 
     if (missing.length === 0) {

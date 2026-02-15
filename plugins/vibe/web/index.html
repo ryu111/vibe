@@ -594,12 +594,13 @@
     // --- 常量 ---
     const TYPE_LABELS = { research: '研究探索', quickfix: '快速修復', bugfix: '修復 Bug', feature: '新功能開發', refactor: '重構', test: '測試', tdd: 'TDD 開發' };
     const typeLabel = t => TYPE_LABELS[t] || t || '—';
-    const ROW1 = ['PLAN', 'ARCH', 'DEV', 'REVIEW'];
+    const ROW1 = ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW'];
     const ROW2 = ['TEST', 'QA', 'E2E', 'DOCS'];
     const ALL_STAGES = [...ROW1, ...ROW2];
     const SM = {
       PLAN:   { agent: 'planner',       color: '#cba6f7', emoji: '📋', label: '規劃', todos: ['分析需求', '定義範圍', '評估風險'], skills: ['plan'] },
       ARCH:   { agent: 'architect',     color: '#89dceb', emoji: '🏛️', label: '架構', todos: ['分析架構', '設計方案', '評估取捨'], skills: ['architect'] },
+      DESIGN: { agent: 'designer',      color: '#7dcfff', emoji: '🎨', label: '設計', todos: ['讀取 design.md', '偵測 search.py', '產出設計系統', '產出 HTML mockup', '開啟瀏覽器預覽'], skills: ['design'] },
       DEV:    { agent: 'developer',     color: '#f9e2af', emoji: '🏗️', label: '開發', todos: ['撰寫程式碼', '建立測試', '整合模組'], skills: ['lint', 'format', 'env-detect'] },
       REVIEW: { agent: 'code-reviewer', color: '#89b4fa', emoji: '🔍', label: '審查', todos: ['檢查正確性', '安全性評估', '程式碼品質'], skills: ['review', 'security'] },
       TEST:   { agent: 'tester',        color: '#f5c2e7', emoji: '🧪', label: '測試', todos: ['撰寫測試', '執行測試', '覆蓋率分析'], skills: ['tdd', 'coverage'] },

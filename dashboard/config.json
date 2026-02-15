@@ -3,7 +3,7 @@
     { "type": "research", "label": "研究探索", "stages": "—", "color": "var(--text-muted)" },
     { "type": "quickfix", "label": "小改動", "stages": "DEV", "color": "var(--yellow)" },
     { "type": "bugfix", "label": "修 Bug", "stages": "DEV → TEST", "color": "var(--orange)" },
-    { "type": "feature", "label": "新功能", "stages": "PLAN → ARCH → DEV → REVIEW → TEST → DOCS", "color": "var(--green)" },
+    { "type": "feature", "label": "新功能", "stages": "PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → DOCS", "color": "var(--green)" },
     { "type": "refactor", "label": "重構", "stages": "ARCH → DEV → REVIEW", "color": "var(--cyan)" },
     { "type": "test", "label": "補測試", "stages": "TEST", "color": "var(--pink)" },
     { "type": "docs", "label": "寫文件", "stages": "DOCS", "color": "var(--green)" },
@@ -23,8 +23,8 @@
     {
       "name": "FLOW",
       "color": "var(--accent)",
-      "desc": "規劃階段 — 唯讀分析，產出計畫與架構方案",
-      "agentNames": ["planner", "architect"],
+      "desc": "規劃階段 — 唯讀分析，產出計畫與架構方案，設計視覺系統",
+      "agentNames": ["planner", "architect", "designer"],
       "extraSteps": [
         { "label": "SessionStart: pipeline-init", "auto": true },
         { "label": "PreToolUse: suggest-compact", "auto": true },
@@ -188,6 +188,16 @@
         { "t": "output", "text": "架構方案比較", "sub": "目錄樹 · 介面定義 · 資料流 · 取捨分析" }
       ]
     },
+    "designer": {
+      "flowSteps": ["偵測框架", "解讀需求", "產出設計系統", "HTML mockup"],
+      "detailedNodes": [
+        { "t": "input", "text": "proposal + design", "sub": "Pipeline DESIGN 階段" },
+        { "t": "step", "text": "偵測框架", "sub": "env-detector → React/Vue/... → --stack" },
+        { "t": "step", "text": "解讀需求", "sub": "產品類型 · 風格偏好 · 特殊需求" },
+        { "t": "step", "text": "產出設計系統", "sub": "ui-ux-pro-max → 色彩 · 字體 · 間距" },
+        { "t": "output", "text": "design-system + mockup", "sub": "design-system.md · design-mockup.html（瀏覽器可預覽）" }
+      ]
+    },
     "developer": {
       "flowSteps": ["載入 PATTERNS", "按階段實作", "寫測試", "自動 hooks", "產出可運行程式碼"],
       "detailedNodes": [
@@ -293,21 +303,22 @@
   "stageConfig": {
     "PLAN": {},
     "ARCH": {},
+    "DESIGN": {},
     "DEV": {},
     "REVIEW": {
       "parallel": true,
       "additionalAgents": ["security-reviewer"],
-      "fallback": { "icon": "↩", "text": "CRITICAL / HIGH 問題", "target": "③ DEV", "detail": "開發者修復後重新審查" }
+      "fallback": { "icon": "↩", "text": "CRITICAL / HIGH 問題", "target": "④ DEV", "detail": "開發者修復後重新審查" }
     },
     "TEST": {
       "additionalAgents": ["build-error-resolver"],
-      "fallback": { "icon": "↩", "text": "≤3 輪自動修復仍失敗", "target": "③ DEV", "detail": "需人工修復後重新測試" }
+      "fallback": { "icon": "↩", "text": "≤3 輪自動修復仍失敗", "target": "④ DEV", "detail": "需人工修復後重新測試" }
     },
     "QA": {
-      "fallback": { "icon": "↩", "text": "行為不符預期", "target": "③ DEV", "detail": "修復後重新驗證" }
+      "fallback": { "icon": "↩", "text": "行為不符預期", "target": "④ DEV", "detail": "修復後重新驗證" }
     },
     "E2E": {
-      "fallback": { "icon": "↩", "text": "使用者流程失敗", "target": "③ DEV", "detail": "修復後重新測試" }
+      "fallback": { "icon": "↩", "text": "使用者流程失敗", "target": "④ DEV", "detail": "修復後重新測試" }
     },
     "DOCS": {
       "fallback": { "icon": "⚠", "text": "語意變更需人工確認", "target": "開發者", "detail": "審查建議後手動調整文件" }

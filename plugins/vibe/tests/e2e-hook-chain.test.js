@@ -231,11 +231,11 @@ console.log('═'.repeat(55));
       assert.strictEqual(state.pipelineEnforced, true);
     });
 
-    test('B3: expectedStages 含完整 8 階段', () => {
+    test('B3: expectedStages 含完整 9 階段', () => {
       const state = readState(sid);
-      assert.strictEqual(state.expectedStages.length, 8);
+      assert.strictEqual(state.expectedStages.length, 9);
       assert.strictEqual(state.expectedStages[0], 'PLAN');
-      assert.strictEqual(state.expectedStages[7], 'DOCS');
+      assert.strictEqual(state.expectedStages[8], 'DOCS');
     });
 
     test('B4: task-classifier 輸出 systemMessage（pipeline 規則）', () => {
@@ -318,7 +318,7 @@ console.log('═'.repeat(55));
     // 補齊其餘 agent 完成紀錄
     const state = readState(sid);
     state.completed = [
-      'vibe:planner', 'vibe:architect', 'vibe:developer',
+      'vibe:planner', 'vibe:architect', 'vibe:designer', 'vibe:developer',
       'vibe:code-reviewer', 'vibe:tester', 'vibe:qa',
       'vibe:e2e-runner', 'vibe:doc-updater',
     ];
@@ -358,7 +358,7 @@ console.log('═'.repeat(55));
       pipelineEnforced: true,
       delegationActive: false,
       completed: ['vibe:planner'],
-      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     });
 
     // Step 2: pipeline-guard 阻擋
@@ -396,7 +396,7 @@ console.log('═'.repeat(55));
     test('C3: cancel 後完成記錄保留', () => {
       const finalState = readState(sid);
       assert.ok(finalState.completed.includes('vibe:planner'));
-      assert.strictEqual(finalState.expectedStages.length, 8);
+      assert.strictEqual(finalState.expectedStages.length, 9);
     });
 
     // Step 6: pipeline-check 也不再檢查（pipelineEnforced=false）
@@ -504,7 +504,7 @@ console.log('═'.repeat(55));
       pipelineEnforced: true,
       delegationActive: false,
       completed: ['vibe:planner', 'vibe:architect', 'vibe:developer'],
-      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     });
 
     // 模擬 code-reviewer 完成但無 verdict
@@ -552,7 +552,7 @@ console.log('═'.repeat(55));
       taskType: 'feature',
       pipelineEnforced: true,
       completed: ['vibe:planner', 'vibe:architect'],
-      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     });
 
     const checkResult = runHook('pipeline-check', {
@@ -716,7 +716,7 @@ console.log('══════════════════════�
     // 初始化 — feature pipeline，DEV 已完成
     initState(sid, {
       taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
       pipelineEnforced: true,
       completed: ['vibe:developer'],
     });
@@ -1063,7 +1063,7 @@ console.log('══════════════════════�
     });
 
     // L3: pipelineEnforced=true → 阻擋（exit 2）
-    initState(sid, { taskType: 'feature', pipelineEnforced: true, expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'] });
+    initState(sid, { taskType: 'feature', pipelineEnforced: true, expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW'] });
     const r3 = runHook('pipeline-guard', askInput);
     test('L3: pipelineEnforced=true → pipeline-guard 阻擋（exit 2）', () => {
       assert.strictEqual(r3.exitCode, 2);
@@ -1085,7 +1085,7 @@ console.log('══════════════════════�
     });
 
     // L7: 完整 hook 鏈 — feature pipeline + pipeline-guard 阻擋 AskUserQuestion 和 Write
-    initState(sid, { taskType: 'feature', pipelineEnforced: true, expectedStages: ['PLAN', 'ARCH', 'DEV'] });
+    initState(sid, { taskType: 'feature', pipelineEnforced: true, expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV'] });
 
     const askGate = runHook('pipeline-guard', askInput);
     const writeGate = runHook('pipeline-guard', {

@@ -1,0 +1,8 @@
+schema: vibe-pipeline
+created: 2026-02-15
+stage: ARCH
+artifacts:
+  - proposal.md
+  - design.md
+  - specs/dashboard/spec.md
+  - tasks.md

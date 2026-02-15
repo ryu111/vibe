@@ -14,9 +14,11 @@
  */
 'use strict';
 
+// ⚠️ 物件 key 順序決定 STAGE_ORDER！DESIGN 必須在 ARCH 和 DEV 之間
 const STAGES = {
   PLAN:   { agent: 'planner',          emoji: '\u{1F4CB}',          label: '規劃',       color: 'purple' },
   ARCH:   { agent: 'architect',        emoji: '\u{1F3D7}\uFE0F',   label: '架構',       color: 'cyan' },
+  DESIGN: { agent: 'designer',         emoji: '\u{1F3A8}',          label: '設計',       color: 'cyan' },
   DEV:    { agent: 'developer',        emoji: '\u{1F4BB}',          label: '開發',       color: 'yellow' },
   REVIEW: { agent: 'code-reviewer',    emoji: '\u{1F50D}',          label: '審查',       color: 'blue' },
   TEST:   { agent: 'tester',           emoji: '\u{1F9EA}',          label: '測試',       color: 'pink' },
@@ -47,10 +49,14 @@ const TOOL_EMOJI = [
   ['read',   '\u{1F4D6}'],   // 📖
 ];
 
+// 前端框架 — 需要視覺設計階段（共用常量）
+const FRONTEND_FRAMEWORKS = ['next.js', 'nuxt', 'remix', 'astro', 'svelte', 'vue', 'react', 'angular'];
+
 module.exports = {
   STAGES,
   STAGE_ORDER,
   AGENT_TO_STAGE,
   NAMESPACED_AGENT_TO_STAGE,
   TOOL_EMOJI,
+  FRONTEND_FRAMEWORKS,
 };

@@ -64,12 +64,13 @@ console.log('\n🧪 Part 1: pipeline-discovery 雙格式 agent 映射');
 
 const { discoverPipeline } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'flow', 'pipeline-discovery.js'));
 
-test('agentToStage 包含 8 個短名稱映射', () => {
+test('agentToStage 包含 9 個短名稱映射', () => {
   const pipeline = discoverPipeline();
-  const shortNames = ['planner', 'architect', 'developer', 'code-reviewer', 'tester', 'qa', 'e2e-runner', 'doc-updater'];
+  const shortNames = ['planner', 'architect', 'designer', 'developer', 'code-reviewer', 'tester', 'qa', 'e2e-runner', 'doc-updater'];
   const expectedMappings = {
     'planner': 'PLAN',
     'architect': 'ARCH',
+    'designer': 'DESIGN',
     'developer': 'DEV',
     'code-reviewer': 'REVIEW',
     'tester': 'TEST',
@@ -88,15 +89,16 @@ test('agentToStage 包含 8 個短名稱映射', () => {
   }
 });
 
-test('agentToStage 包含 8 個 namespaced 映射', () => {
+test('agentToStage 包含 9 個 namespaced 映射', () => {
   const pipeline = discoverPipeline();
   const namespacedNames = [
-    'vibe:planner', 'vibe:architect', 'vibe:developer', 'vibe:code-reviewer',
+    'vibe:planner', 'vibe:architect', 'vibe:designer', 'vibe:developer', 'vibe:code-reviewer',
     'vibe:tester', 'vibe:qa', 'vibe:e2e-runner', 'vibe:doc-updater'
   ];
   const expectedMappings = {
     'vibe:planner': 'PLAN',
     'vibe:architect': 'ARCH',
+    'vibe:designer': 'DESIGN',
     'vibe:developer': 'DEV',
     'vibe:code-reviewer': 'REVIEW',
     'vibe:tester': 'TEST',
@@ -115,15 +117,15 @@ test('agentToStage 包含 8 個 namespaced 映射', () => {
   }
 });
 
-test('agentToStage 總數 = 16（8 短 + 8 namespaced）', () => {
+test('agentToStage 總數 = 18（9 短 + 9 namespaced）', () => {
   const pipeline = discoverPipeline();
   const count = Object.keys(pipeline.agentToStage).length;
-  assert.strictEqual(count, 16, `agentToStage 應有 16 個映射，實際有 ${count} 個`);
+  assert.strictEqual(count, 18, `agentToStage 應有 18 個映射，實際有 ${count} 個`);
 });
 
 test('stageMap 中每個 stage 的 plugin 欄位 = "vibe"', () => {
   const pipeline = discoverPipeline();
-  const stages = ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'];
+  const stages = ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'];
   for (const stage of stages) {
     assert.ok(pipeline.stageMap[stage], `缺少 stage: ${stage}`);
     assert.strictEqual(
@@ -134,9 +136,9 @@ test('stageMap 中每個 stage 的 plugin 欄位 = "vibe"', () => {
   }
 });
 
-test('stageOrder 包含 8 個 stage 且順序正確', () => {
+test('stageOrder 包含 9 個 stage 且順序正確', () => {
   const pipeline = discoverPipeline();
-  const expected = ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'];
+  const expected = ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'];
   assert.deepStrictEqual(
     pipeline.stageOrder,
     expected,
@@ -501,6 +503,199 @@ test('非強制 pipeline：不檢查', () => {
 
     // 非強制 pipeline 不應該檢查
     assert.strictEqual(result.trim(), '', '非強制 pipeline 不應該檢查');
+  } finally {
+    cleanup(statePath);
+  }
+});
+
+// ═══════════════════════════════════════════════
+// DESIGN 跳過邏輯測試
+// ═══════════════════════════════════════════════
+
+test('ARCH→DESIGN 前進：前端框架不跳過 DESIGN', () => {
+  const sessionId = `pipeline-test-design-frontend-${Date.now()}`;
+  const statePath = createTempState(sessionId, {
+    pipelineEnforced: true,
+    taskType: 'feature',
+    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    completed: ['vibe:planner'], // stage-transition.js 依賴 completed (agentType 列表)
+    currentStage: 'ARCH',
+    environment: { framework: { name: 'react' } },
+    stageResults: { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } },
+    retries: {},
+  });
+
+  const transcriptPath = createTempTranscript(sessionId, [
+    { role: 'user', type: 'agent_stop', subagent_type: 'vibe:architect' },
+  ]);
+
+  try {
+    const stdinData = {
+      session_id: sessionId,
+      stop_hook_active: false,
+      agent_type: 'vibe:architect',
+      agent_transcript_path: transcriptPath,
+    };
+
+    const result = execSync(
+      `node "${path.join(PLUGIN_ROOT, 'scripts', 'hooks', 'stage-transition.js')}"`,
+      {
+        input: JSON.stringify(stdinData),
+        encoding: 'utf8',
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT },
+      }
+    );
+
+    const output = JSON.parse(result);
+    assert.ok(output.systemMessage, '應有 systemMessage');
+    assert.ok(output.systemMessage.includes('→ DESIGN'), '應進入 DESIGN 階段');
+    assert.ok(!output.systemMessage.includes('→ DEV'), '不應跳過 DESIGN 直接進 DEV');
+
+    // 檢查 state file
+    const updatedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    assert.ok(!updatedState.skippedStages || !updatedState.skippedStages.includes('DESIGN'),
+      '前端框架不應跳過 DESIGN');
+  } finally {
+    cleanup(statePath);
+    cleanup(transcriptPath);
+  }
+});
+
+test('ARCH→DESIGN 前進：後端框架跳過 DESIGN', () => {
+  const sessionId = `pipeline-test-design-backend-${Date.now()}`;
+  const statePath = createTempState(sessionId, {
+    pipelineEnforced: true,
+    taskType: 'feature',
+    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    completed: ['vibe:planner'], // stage-transition.js 依賴 completed (agentType 列表)
+    currentStage: 'ARCH',
+    environment: { framework: { name: 'express' } },
+    stageResults: { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } },
+    retries: {},
+  });
+
+  const transcriptPath = createTempTranscript(sessionId, [
+    { role: 'user', type: 'agent_stop', subagent_type: 'vibe:architect' },
+  ]);
+
+  try {
+    const stdinData = {
+      session_id: sessionId,
+      stop_hook_active: false,
+      agent_type: 'vibe:architect',
+      agent_transcript_path: transcriptPath,
+    };
+
+    const result = execSync(
+      `node "${path.join(PLUGIN_ROOT, 'scripts', 'hooks', 'stage-transition.js')}"`,
+      {
+        input: JSON.stringify(stdinData),
+        encoding: 'utf8',
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT },
+      }
+    );
+
+    const output = JSON.parse(result);
+    assert.ok(output.systemMessage, '應有 systemMessage');
+    assert.ok(output.systemMessage.includes('→ DEV'), '後端框架應跳過 DESIGN 進入 DEV');
+
+    // 檢查 state file
+    const updatedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    assert.ok(updatedState.skippedStages && updatedState.skippedStages.includes('DESIGN'),
+      'skippedStages 應包含 DESIGN');
+  } finally {
+    cleanup(statePath);
+    cleanup(transcriptPath);
+  }
+});
+
+test('ARCH→DESIGN 前進：needsDesign=true 強制不跳過', () => {
+  const sessionId = `pipeline-test-design-forced-${Date.now()}`;
+  const statePath = createTempState(sessionId, {
+    pipelineEnforced: true,
+    taskType: 'feature',
+    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    completed: ['vibe:planner'], // stage-transition.js 依賴 completed (agentType 列表)
+    currentStage: 'ARCH',
+    environment: { framework: { name: 'express' } }, // 後端框架
+    needsDesign: true, // 強制需要設計
+    stageResults: { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } },
+    retries: {},
+  });
+
+  const transcriptPath = createTempTranscript(sessionId, [
+    { role: 'user', type: 'agent_stop', subagent_type: 'vibe:architect' },
+  ]);
+
+  try {
+    const stdinData = {
+      session_id: sessionId,
+      stop_hook_active: false,
+      agent_type: 'vibe:architect',
+      agent_transcript_path: transcriptPath,
+    };
+
+    const result = execSync(
+      `node "${path.join(PLUGIN_ROOT, 'scripts', 'hooks', 'stage-transition.js')}"`,
+      {
+        input: JSON.stringify(stdinData),
+        encoding: 'utf8',
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT },
+      }
+    );
+
+    const output = JSON.parse(result);
+    assert.ok(output.systemMessage, '應有 systemMessage');
+    assert.ok(output.systemMessage.includes('→ DESIGN'), 'needsDesign=true 應進入 DESIGN');
+
+    // 檢查 state file
+    const updatedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    assert.ok(!updatedState.skippedStages || !updatedState.skippedStages.includes('DESIGN'),
+      'needsDesign=true 不應跳過 DESIGN');
+  } finally {
+    cleanup(statePath);
+    cleanup(transcriptPath);
+  }
+});
+
+test('pipeline-check 排除 skippedStages 中的 DESIGN', () => {
+  const sessionId = `pipeline-test-skip-check-${Date.now()}`;
+  const statePath = createTempState(sessionId, {
+    pipelineEnforced: true,
+    taskType: 'feature',
+    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    completed: ['vibe:planner', 'vibe:architect', 'vibe:developer', 'vibe:code-reviewer', 'vibe:tester', 'vibe:qa', 'vibe:doc-updater'],
+    currentStage: 'DOCS',
+    skippedStages: ['DESIGN', 'E2E'], // 跳過了 DESIGN 和 E2E
+    stageResults: {
+      PLAN: { verdict: 'PASS' },
+      ARCH: { verdict: 'PASS' },
+      DEV: { verdict: 'PASS' },
+      REVIEW: { verdict: 'PASS' },
+      TEST: { verdict: 'PASS' },
+      QA: { verdict: 'PASS' },
+      DOCS: { verdict: 'PASS' },
+    },
+    retries: {},
+  });
+
+  try {
+    const stdinData = {
+      session_id: sessionId,
+      stop_hook_active: false,
+    };
+
+    const result = execSync(
+      `node "${path.join(PLUGIN_ROOT, 'scripts', 'hooks', 'pipeline-check.js')}"`,
+      {
+        input: JSON.stringify(stdinData),
+        encoding: 'utf8',
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT },
+      }
+    );
+
+    // 跳過的階段不應被視為遺漏（應該清理 state 並 exit 0）
+    assert.strictEqual(result.trim(), '', 'skippedStages 中的階段不應被視為遺漏');
   } finally {
     cleanup(statePath);
   }

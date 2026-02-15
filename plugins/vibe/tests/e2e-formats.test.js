@@ -255,7 +255,7 @@ console.log('\n\u{1F9EA} P4. Pipeline stage \u5B8C\u6210 (remote-sender.js)');
 test('PASS stage\uFF1A\u542B emoji + STAGE + \u2705 + \u9032\u5EA6\u689D', () => {
   const { sessionId } = createPipelineState({
     completed: ['vibe:planner', 'vibe:architect'],
-    expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     stageResults: { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } },
     taskType: 'feature',
     lastTransition: Date.now() - 5 * 60000,

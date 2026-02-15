@@ -15,6 +15,7 @@ const { execSync } = require('child_process');
 const { discoverPipeline, findNextStage } = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-discovery.js'));
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
+const { FRONTEND_FRAMEWORKS } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
 
 // 智慧回退配置
 const MAX_RETRIES = parseInt(process.env.CLAUDE_PIPELINE_MAX_RETRIES || '3', 10);
@@ -33,7 +34,8 @@ const STAGE_CONTEXT = {
 
 // 階段完成後的附加提示（注入到下一階段指令中）
 const POST_STAGE_HINTS = {
-  ARCH: '🎨 設計提示：如果 ARCH 產出了 design-system.md，developer 請遵循其中的色彩、字體、間距規範。',
+  ARCH: '🎨 設計提示：ARCH 完成。如果這是前端專案，接下來的 DESIGN 階段會產出設計系統和視覺化 mockup。',
+  DESIGN: '🎨 設計提示：DESIGN 已產出 design-system.md 和 mockup.html。developer 請遵循設計系統的色彩(hex)、字體(Google Fonts)、間距(spacing tokens) 規範。',
   REVIEW: '🔒 安全提示：REVIEW 已完成程式碼品質審查。建議在 TEST 階段也關注安全相關測試（auth、input validation、injection）。如有 auth/crypto 相關變更，可在 pipeline 完成後執行 /vibe:security 深度掃描。',
   TEST: '📊 覆蓋率提示：TEST 已完成。進入 QA 前建議關注測試覆蓋率。pipeline 完成後可用 /vibe:coverage 取得詳細報告。',
 };
@@ -196,7 +198,7 @@ process.stdin.on('end', () => {
     // 當手動觸發 scope/architect 後，task-classifier 可能沒分類為 feature，
     // 導致 pipelineEnforced=false。若已完成 PLAN+ARCH 且下一步是 DEV，
     // 自動升級為 feature pipeline，確保 pipeline-guard 阻擋 Main Agent 直接寫碼。
-    const DEV_OR_LATER = ['DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'];
+    const DEV_OR_LATER = ['DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'];
     if (!state.pipelineEnforced && nextStage && DEV_OR_LATER.includes(nextStage)) {
       state.pipelineEnforced = true;
       if (!state.taskType || state.taskType === 'quickfix' || state.taskType === 'research') {
@@ -211,6 +213,25 @@ process.stdin.on('end', () => {
     const envInfo = state.environment || {};
     const frameworkName = (envInfo.framework && envInfo.framework.name) || '';
     const isApiOnly = API_ONLY_FRAMEWORKS.includes(frameworkName);
+
+    // ARCH 完成後，偵測是否有設計產出（design-system.md）→ 設定 needsDesign
+    if (currentStage === 'ARCH' && state.openspecEnabled) {
+      try {
+        const cwd = process.cwd();
+        const changesDir = path.join(cwd, 'openspec', 'changes');
+        if (fs.existsSync(changesDir)) {
+          const activeDirs = fs.readdirSync(changesDir)
+            .filter(d => d !== 'archive' && fs.statSync(path.join(changesDir, d)).isDirectory());
+          for (const dir of activeDirs) {
+            const designSystemPath = path.join(changesDir, dir, 'design-system.md');
+            if (fs.existsSync(designSystemPath)) {
+              state.needsDesign = true;
+              break;
+            }
+          }
+        }
+      } catch (_) {}
+    }
 
     let message;
 
@@ -283,10 +304,30 @@ process.stdin.on('end', () => {
       // 智慧跳過：找下一個適用的 stage
       let nextStageCandidate = nextStage;
       const skippedStages = [];
+      if (!state.skippedStages) state.skippedStages = [];
+
       while (nextStageCandidate) {
+        // 前端框架或明確標記 needsDesign → 不跳過 DESIGN
+        // 否則跳過（純後端/CLI 專案不需視覺設計）
+        if (nextStageCandidate === 'DESIGN') {
+          const needsDesign = state.needsDesign === true;
+          const isFrontend = FRONTEND_FRAMEWORKS.includes(frameworkName);
+          if (!needsDesign && !isFrontend) {
+            skippedStages.push('DESIGN（純後端/CLI 專案不需視覺設計）');
+            if (!state.skippedStages.includes('DESIGN')) {
+              state.skippedStages.push('DESIGN');
+            }
+            nextStageCandidate = findNextStage(pipeline.stageOrder, pipeline.stageMap, nextStageCandidate);
+            continue;
+          }
+        }
+
         // 純 API 專案跳過 E2E（瀏覽器測試無意義）
         if (nextStageCandidate === 'E2E' && isApiOnly) {
-          skippedStages.push(`E2E（純 API 專案不需瀏覽器測試）`);
+          skippedStages.push('E2E（純 API 專案不需瀏覽器測試）');
+          if (!state.skippedStages.includes('E2E')) {
+            state.skippedStages.push('E2E');
+          }
           nextStageCandidate = findNextStage(pipeline.stageOrder, pipeline.stageMap, nextStageCandidate);
           continue;
         }
@@ -324,21 +365,10 @@ process.stdin.on('end', () => {
         if (state.openspecEnabled) {
           if (nextStageCandidate === 'ARCH') {
             stageContext += '\n📋 OpenSpec：planner 已建立 proposal.md，architect 請讀取 openspec/changes/ 中的 proposal 後產出 design.md、specs/、tasks.md。';
+          } else if (nextStageCandidate === 'DESIGN') {
+            stageContext += '\n📋 OpenSpec：architect 已產出 design.md 和 proposal.md。designer 請讀取這兩份文件，產出 design-system.md（色彩/字體/間距規範）和 design-mockup.html（視覺化預覽）到 openspec/changes/ 中。';
           } else if (nextStageCandidate === 'DEV') {
             stageContext += '\n📋 OpenSpec：architect 已產出完整規格，developer 請依照 openspec/changes/ 中的 tasks.md checkbox 逐一實作並打勾。';
-            // 設計系統 context 注入（檢查 openspec 或專案根目錄的 design-system.md）
-            try {
-              const cwd = process.cwd();
-              const hasDesignSystem =
-                fs.readdirSync(path.join(cwd, 'openspec', 'changes')).some(d => {
-                  if (d === 'archive') return false;
-                  return fs.existsSync(path.join(cwd, 'openspec', 'changes', d, 'design-system.md'));
-                }) ||
-                fs.existsSync(path.join(cwd, 'design-system', 'MASTER.md'));
-              if (hasDesignSystem) {
-                stageContext += '\n🎨 前端實作請參考 design-system.md，確保色彩(hex)、字體(Google Fonts)、間距(spacing tokens) 與設計系統一致。';
-              }
-            } catch (_) {}
           } else if (nextStageCandidate === 'REVIEW') {
             stageContext += '\n📋 OpenSpec：請讀取 openspec/changes/ 中的 specs/ 和 design.md，對照審查實作是否符合規格。';
           } else if (nextStageCandidate === 'TEST') {
@@ -359,7 +389,11 @@ process.stdin.on('end', () => {
         }
 
         // 前一階段完成後的附加提示（安全、覆蓋率等）
-        const postHint = POST_STAGE_HINTS[currentStage];
+        let postHint = POST_STAGE_HINTS[currentStage];
+        // ARCH 階段完成時，若 DESIGN 被跳過，使用替代提示
+        if (currentStage === 'ARCH' && state.skippedStages && state.skippedStages.includes('DESIGN')) {
+          postHint = null; // 跳過 DESIGN 時不提示 DESIGN 階段
+        }
         if (postHint) {
           stageContext += `\n${postHint}`;
         }

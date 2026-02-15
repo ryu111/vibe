@@ -1,6 +1,6 @@
 # vibe — 統一開發工作流 Plugin
 
-> **版本**：1.0.27
+> **版本**：1.0.29
 > **定位**：全方位開發工作流 — 規劃、品質守衛、知識庫、即時監控、遠端控制
 > **架構**：7 個功能模組合併為單一 plugin，共用 registry.js 統一 metadata
 >
@@ -175,16 +175,17 @@ vibe 是 Vibe marketplace 的核心 plugin，合併了 7 個功能模組：
 
 ---
 
-## 3. Pipeline 8 階段
+## 3. Pipeline 9 階段
 
 ```
-PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
+PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 ```
 
 | 階段 | Agent | Model/Color | Skill |
 |------|-------|-------------|-------|
 | PLAN | planner | opus/purple | /vibe:scope |
 | ARCH | architect | opus/cyan | /vibe:architect |
+| DESIGN | designer | sonnet/cyan | /vibe:design |
 | DEV | developer | sonnet/yellow | — |
 | REVIEW | code-reviewer | opus/blue | /vibe:review |
 | TEST | tester | sonnet/pink | /vibe:tdd |
@@ -537,6 +538,7 @@ bot.js daemon ← Telegram Bot API ←────── 手機
 const STAGES = {
   PLAN:   { agent: 'planner',        emoji: '📋', label: '規劃',       color: 'purple' },
   ARCH:   { agent: 'architect',      emoji: '🏗️', label: '架構',       color: 'cyan' },
+  DESIGN: { agent: 'designer',       emoji: '🎨', label: '設計',       color: 'cyan' },
   DEV:    { agent: 'developer',      emoji: '💻', label: '開發',       color: 'yellow' },
   REVIEW: { agent: 'code-reviewer',  emoji: '🔍', label: '審查',       color: 'blue' },
   TEST:   { agent: 'tester',         emoji: '🧪', label: '測試',       color: 'pink' },
@@ -546,7 +548,7 @@ const STAGES = {
 };
 ```
 
-匯出：`STAGES`、`STAGE_ORDER`、`AGENT_TO_STAGE`、`NAMESPACED_AGENT_TO_STAGE`、`TOOL_EMOJI`。
+匯出：`STAGES`、`STAGE_ORDER`、`AGENT_TO_STAGE`、`NAMESPACED_AGENT_TO_STAGE`、`TOOL_EMOJI`、`FRONTEND_FRAMEWORKS`。
 
 ### State Files
 
@@ -568,6 +570,7 @@ const STAGES = {
   "stages": [
     "PLAN",
     "ARCH",
+    "DESIGN",
     "DEV",
     "REVIEW",
     "TEST",
@@ -578,6 +581,7 @@ const STAGES = {
   "stageLabels": {
     "PLAN": "規劃",
     "ARCH": "架構",
+    "DESIGN": "設計",
     "DEV": "開發",
     "REVIEW": "審查",
     "TEST": "測試",
@@ -593,6 +597,10 @@ const STAGES = {
     "ARCH": {
       "agent": "architect",
       "skill": "/vibe:architect"
+    },
+    "DESIGN": {
+      "agent": "designer",
+      "skill": "/vibe:design"
     },
     "DEV": {
       "agent": "developer",
@@ -699,7 +707,7 @@ plugins/vibe/
 ```json
 {
   "name": "vibe",
-  "version": "1.0.27",
+  "version": "1.0.29",
   "description": "全方位開發工作流 — 規劃、設計、品質守衛、知識庫、即時監控、遠端控制",
   "skills": [
     "./skills/"

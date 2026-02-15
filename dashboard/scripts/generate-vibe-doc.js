@@ -369,7 +369,7 @@ function generateVibeDoc(specs, metaPath) {
 
   // ━━━ §3 Pipeline ━━━
   d.push(hr);
-  d.push('## 3. Pipeline 8 階段');
+  d.push(`## 3. Pipeline ${pipelineJson.stages.length} 階段`);
   d.push('');
   d.push('```');
   d.push(pipelineJson.stages.join(' → '));
@@ -735,6 +735,7 @@ function generateVibeDoc(specs, metaPath) {
   d.push('const STAGES = {');
   d.push("  PLAN:   { agent: 'planner',        emoji: '📋', label: '規劃',       color: 'purple' },");
   d.push("  ARCH:   { agent: 'architect',      emoji: '🏗️', label: '架構',       color: 'cyan' },");
+  d.push("  DESIGN: { agent: 'designer',       emoji: '🎨', label: '設計',       color: 'cyan' },");
   d.push("  DEV:    { agent: 'developer',      emoji: '💻', label: '開發',       color: 'yellow' },");
   d.push("  REVIEW: { agent: 'code-reviewer',  emoji: '🔍', label: '審查',       color: 'blue' },");
   d.push("  TEST:   { agent: 'tester',         emoji: '🧪', label: '測試',       color: 'pink' },");
@@ -744,7 +745,7 @@ function generateVibeDoc(specs, metaPath) {
   d.push('};');
   d.push('```');
   d.push('');
-  d.push(`匯出：${c('STAGES')}、${c('STAGE_ORDER')}、${c('AGENT_TO_STAGE')}、${c('NAMESPACED_AGENT_TO_STAGE')}、${c('TOOL_EMOJI')}。`);
+  d.push(`匯出：${c('STAGES')}、${c('STAGE_ORDER')}、${c('AGENT_TO_STAGE')}、${c('NAMESPACED_AGENT_TO_STAGE')}、${c('TOOL_EMOJI')}、${c('FRONTEND_FRAMEWORKS')}。`);
   d.push('');
   d.push('### State Files');
   d.push('');

@@ -21,7 +21,7 @@ const STAGE_MAPS = {
   research: [],
   quickfix: ['DEV'],
   bugfix: ['DEV', 'TEST'],
-  feature: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+  feature: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
   refactor: ['ARCH', 'DEV', 'REVIEW'],
   test: ['TEST'],
   tdd: ['TEST', 'DEV', 'REVIEW'],
@@ -114,7 +114,7 @@ function buildKnowledgeHints(envInfo) {
   }
 
   // 前端框架偵測到時注入設計 skill 建議
-  const FRONTEND_FRAMEWORKS = ['next.js', 'nuxt', 'remix', 'astro', 'svelte', 'vue', 'react', 'angular'];
+  const { FRONTEND_FRAMEWORKS } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
   if (framework && FRONTEND_FRAMEWORKS.includes(framework)) {
     skills.add('/vibe:design');
   }

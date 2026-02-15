@@ -105,7 +105,7 @@ plugins/vibe/pipeline.json     ← stage 順序 + provides 統一定義
 ```json
 // plugins/vibe/pipeline.json
 {
-  "stages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "QA", "E2E", "DOCS"],
+  "stages": ["PLAN", "ARCH", "DESIGN", "DEV", "REVIEW", "TEST", "QA", "E2E", "DOCS"],
   "stageLabels": {
     "PLAN": "規劃",
     "ARCH": "架構",
@@ -203,12 +203,12 @@ module.exports = { discoverPipeline, findNextStage };
 
 | 安裝組合 | 實際 pipeline |
 |---------|--------------|
-| 只裝 flow | PLAN → ARCH → DEV |
-| flow + sentinel | PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E |
-| flow + evolve | PLAN → ARCH → DEV → DOCS |
-| 全裝 | PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS |
+| 只裝 flow | PLAN → ARCH → DESIGN → DEV |
+| flow + sentinel | PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E |
+| flow + evolve | PLAN → ARCH → DESIGN → DEV → DOCS |
+| 全裝 | PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS |
 | 移除 sentinel | 自動跳過 REVIEW、TEST、QA、E2E，無需改任何 config |
-| 純 API + 全裝 | PLAN → ARCH → DEV → REVIEW → TEST → QA → ~~E2E~~ → DOCS（智慧跳過） |
+| 純 API + 全裝 | PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → ~~E2E~~ → DOCS（智慧跳過） |
 
 ---
 
@@ -231,7 +231,7 @@ Stage 對應：
 | research | （空） |
 | quickfix | DEV |
 | bugfix | DEV → TEST |
-| feature | PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS |
+| feature | PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS |
 | refactor | ARCH → DEV → REVIEW |
 | test | TEST |
 | tdd | TEST → DEV → REVIEW |
@@ -430,8 +430,9 @@ stage-transition 從 `agent_transcript_path`（JSONL）最後 20 行中搜尋此
   "initialized": true,
   "pipelineEnforced": true,
   "taskType": "feature",
-  "completed": ["planner", "architect", "developer"],
-  "expectedStages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "QA", "E2E", "DOCS"],
+  "completed": ["planner", "architect", "designer", "developer"],
+  "expectedStages": ["PLAN", "ARCH", "DESIGN", "DEV", "REVIEW", "TEST", "QA", "E2E", "DOCS"],
+  "skippedStages": ["E2E"],
   "stageResults": {
     "REVIEW": { "verdict": "FAIL", "severity": "HIGH" },
     "TEST": { "verdict": "PASS", "severity": null }
@@ -452,7 +453,7 @@ stage-transition 從 `agent_transcript_path`（JSONL）最後 20 行中搜尋此
 ```
 ⛔ [Pipeline] developer✅ → REVIEW（審查）
 ➡️ 執行方法：使用 Skill 工具呼叫 /vibe:review
-禁止 AskUserQuestion。已完成：PLAN → ARCH → DEV
+禁止 AskUserQuestion。已完成：PLAN → ARCH → DESIGN → DEV
 ```
 
 **智慧回退**（v1.0.22 精簡版）：
@@ -462,7 +463,7 @@ stage-transition 從 `agent_transcript_path`（JSONL）最後 20 行中搜尋此
 回退原因：HIGH 等級問題需要修復
 執行：使用 Task 工具委派給 vibe:developer agent（subagent_type: "vibe:developer"）
 修復後 stage-transition 會指示重跑 REVIEW。禁止 AskUserQuestion。
-已完成：PLAN → ARCH → DEV → REVIEW
+已完成：PLAN → ARCH → DESIGN → DEV → REVIEW
 ```
 
 **回退重驗**（DEV 修復完成後，v1.0.22 精簡版）：
@@ -471,14 +472,14 @@ stage-transition 從 `agent_transcript_path`（JSONL）最後 20 行中搜尋此
 🔄 [回退重驗] DEV 修復完成（第 1 輪）→ 重跑 REVIEW（審查）
 執行：使用 Skill 工具呼叫 /vibe:review
 不可跳過，不可跳到其他階段。禁止 AskUserQuestion。
-已完成：PLAN → ARCH → DEV → REVIEW
+已完成：PLAN → ARCH → DESIGN → DEV → REVIEW
 ```
 
 **Pipeline 結束**（v1.0.21 三步驟閉環）：
 
 ```
 ✅ [Pipeline 完成] doc-updater 已完成（文件整理階段）。
-所有階段已完成：PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
+所有階段已完成：PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 
 📋 請執行以下步驟：
 1️⃣ 執行 /vibe:verify 進行綜合驗證（Build → Types → Lint → Tests → Git 狀態）
@@ -524,7 +525,7 @@ hooks.json 定義：
 
 ```
 [Pipeline 提醒] 以下建議階段尚未執行：REVIEW, TEST
-已完成：PLAN → ARCH → DEV
+已完成：PLAN → ARCH → DESIGN → DEV
 如果是刻意跳過，請向使用者說明原因。
 ```
 
@@ -634,7 +635,7 @@ Claude 收到 systemMessage 後會用自然語言向使用者報告。
 
 **Pipeline 完整結束時：**
 
-> 所有階段都已完成（PLAN → ARCH → DEV → REVIEW → TEST → DOCS）。
+> 所有階段都已完成（PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → DOCS）。
 > 以下是本次工作摘要：...
 
 ---
@@ -688,7 +689,7 @@ Claude 收到 systemMessage 後會用自然語言向使用者報告。
 
 ```json
 {
-  "stages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "DOCS"],
+  "stages": ["PLAN", "ARCH", "DESIGN", "DEV", "REVIEW", "TEST", "DOCS"],
   "parallel": {
     "REVIEW+TEST": {
       "stages": ["REVIEW", "TEST"],
@@ -726,7 +727,8 @@ Claude 收到 systemMessage 後會用自然語言向使用者報告。
 ```json
 {
   "completed": ["planner", "architect"],
-  "expectedStages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST"],
+  "expectedStages": ["PLAN", "ARCH", "DESIGN", "DEV", "REVIEW", "TEST"],
+  "skippedStages": [],
   "activeAgents": [
     {
       "type": "developer",
@@ -776,7 +778,7 @@ SubagentStop 觸發（前景 agent 完成）
 **初期實作不需並行**。所有 pipeline 階段串行執行：
 
 ```
-PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
+PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
  │       │      │      │       │     │     │      │
  └───────┴──────┴──────┴───────┴─────┴─────┴──────┘
          全部前景，逐一執行（含智慧回退 + 智慧跳過）

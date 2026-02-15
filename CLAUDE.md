@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.27 | 全方位開發工作流 | 31 | 11 | 22 | 40+daemon |
+| **vibe** | 1.0.29 | 全方位開發工作流 | 31 | 11 | 22 | 41 |
 
 ### vibe plugin 功能模組
 
@@ -43,14 +43,15 @@ openspec/
     │   ├── .openspec.yaml   # metadata（schema + date）
     │   ├── proposal.md      # PLAN 階段 planner 產出（WHY + WHAT）
     │   ├── design.md        # ARCH 階段 architect 產出（HOW）
-    │   ├── design-system.md # ARCH 階段 architect 條件產出（UI/UX 設計系統）
+    │   ├── design-system.md # DESIGN 階段 designer 產出（UI/UX 設計系統）
+    │   ├── design-mockup.html # DESIGN 階段 designer 產出（視覺化 mockup）
     │   ├── specs/           # ARCH 階段 architect 產出（Delta specs）
     │   └── tasks.md         # ARCH 階段 architect 產出（checkbox 任務清單）
     └── archive/             # 已完成的 changes（DOCS 階段歸檔）
 ```
 
-**Pipeline 對接**：PLAN→proposal.md | ARCH→design+specs+tasks | DEV→tasks.md打勾 | REVIEW→specs對照審查 | TEST→specs→測試案例 | DOCS→archive歸檔
-**Agent 覆蓋**：8/10 agents 整合 OpenSpec（planner/architect/developer/code-reviewer/tester/qa/doc-updater/security-reviewer），build-error-resolver 和 e2e-runner 不需要
+**Pipeline 對接**：PLAN→proposal.md | ARCH→design+specs+tasks | DESIGN→design-system+mockup | DEV→tasks.md打勾 | REVIEW→specs對照審查 | TEST→specs→測試案例 | DOCS→archive歸檔
+**Agent 覆蓋**：9/11 agents 整合 OpenSpec（planner/architect/designer/developer/code-reviewer/tester/qa/doc-updater/security-reviewer），build-error-resolver 和 e2e-runner 不需要
 
 ## 設計哲學
 
@@ -86,7 +87,7 @@ plugins/vibe/
 │       ├── dashboard/       # server-manager
 │       ├── remote/          # telegram, transcript, bot-manager
 │       └── timeline/        # schema, timeline, consumer（統一事件流）
-├── skills/                  # 30 個 skill 目錄
+├── skills/                  # 31 個 skill 目錄
 ├── agents/                  # 11 個 agent 定義
 ├── server.js                # Dashboard HTTP+WebSocket server
 ├── bot.js                   # Telegram daemon
@@ -96,16 +97,17 @@ plugins/vibe/
 
 ## Pipeline 委派架構
 
-8 階段工作流，由 hooks 驅動（無 orchestrator agent）：
+9 階段工作流，由 hooks 驅動（無 orchestrator agent）：
 
 ```
-PLAN → ARCH → DEV → REVIEW → TEST → QA → E2E → DOCS
+PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 ```
 
 | 階段 | Agent | Model/Color | Skill |
 |------|-------|-------------|-------|
 | PLAN | planner | opus/purple | `/vibe:scope` |
 | ARCH | architect | opus/cyan | `/vibe:architect` |
+| DESIGN | designer | sonnet/cyan | `/vibe:design` |
 | DEV | developer | sonnet/yellow | — |
 | REVIEW | code-reviewer | opus/blue | `/vibe:review` |
 | TEST | tester | sonnet/pink | `/vibe:tdd` |

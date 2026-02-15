@@ -14,8 +14,13 @@ const os = require('os');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
-// search.py 在 ui-ux-pro-max 中的相對路徑
-const SEARCH_SCRIPT = path.join('src', 'ui-ux-pro-max', 'scripts', 'search.py');
+// search.py 在 ui-ux-pro-max 中的可能相對路徑
+// Git clone 結構：src/ui-ux-pro-max/scripts/search.py
+// CLI (uipro init) 結構：scripts/search.py
+const SEARCH_PATHS = [
+  path.join('scripts', 'search.py'),
+  path.join('src', 'ui-ux-pro-max', 'scripts', 'search.py'),
+];
 
 /**
  * 偵測 ui-ux-pro-max 的 search.py 路徑
@@ -26,8 +31,11 @@ function resolve(cwd) {
   const projectDir = cwd || process.cwd();
 
   // 1. 專案本地 .claude/skills/ui-ux-pro-max/
-  const localPath = path.join(projectDir, '.claude', 'skills', 'ui-ux-pro-max', SEARCH_SCRIPT);
-  if (fs.existsSync(localPath)) return localPath;
+  const localBase = path.join(projectDir, '.claude', 'skills', 'ui-ux-pro-max');
+  for (const rel of SEARCH_PATHS) {
+    const candidate = path.join(localBase, rel);
+    if (fs.existsSync(candidate)) return candidate;
+  }
 
   // 2. Marketplace cache（遍歷所有 marketplace 和版本）
   const cachePath = path.join(CLAUDE_DIR, 'plugins', 'cache');
@@ -41,8 +49,10 @@ function resolve(cwd) {
           // 取最新版本（字典序最大）
           const latest = versions.sort().reverse()[0];
           if (latest) {
-            const candidate = path.join(pluginDir, latest, SEARCH_SCRIPT);
-            if (fs.existsSync(candidate)) return candidate;
+            for (const rel of SEARCH_PATHS) {
+              const candidate = path.join(pluginDir, latest, rel);
+              if (fs.existsSync(candidate)) return candidate;
+            }
           }
         }
       }
@@ -56,11 +66,12 @@ function resolve(cwd) {
       const entries = fs.readdirSync(globalPlugins);
       for (const entry of entries) {
         if (entry === 'cache') continue;
-        const candidate = path.join(globalPlugins, entry, 'ui-ux-pro-max', SEARCH_SCRIPT);
-        if (fs.existsSync(candidate)) return candidate;
-        // 也檢查直接在 entry 下的情況
-        const directCandidate = path.join(globalPlugins, entry, SEARCH_SCRIPT);
-        if (fs.existsSync(directCandidate)) return directCandidate;
+        for (const rel of SEARCH_PATHS) {
+          const candidate = path.join(globalPlugins, entry, 'ui-ux-pro-max', rel);
+          if (fs.existsSync(candidate)) return candidate;
+          const directCandidate = path.join(globalPlugins, entry, rel);
+          if (fs.existsSync(directCandidate)) return directCandidate;
+        }
       }
     } catch (_) {}
   }
