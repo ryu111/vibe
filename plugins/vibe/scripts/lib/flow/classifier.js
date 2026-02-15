@@ -7,14 +7,14 @@
  *   → 疑問句永遠優先於動作關鍵字
  *   → 使用者可用 /vibe:scope 明確啟動 pipeline，不需靠分類器猜
  *
- * 三層架構（Phase 2 實作 Layer 1+2，Layer 3 延後到 Phase 5）：
+ * 三層架構：
  *   Layer 1:  Explicit Pipeline — [pipeline:xxx] 語法（100% 信心度）
  *   Layer 2:  Regex Classifier — 疑問/trivial/動作關鍵字（70~95% 信心度）
  *     ├─ Strong Question Guard — 多層疑問信號（最高優先級）
  *     ├─ Trivial Detection — hello world / poc / demo
  *     ├─ Weak Explore — 看看 / 查看 / 說明 等探索詞
  *     └─ Action Keywords — tdd / feature / refactor / bugfix
- *   Layer 3:  LLM Fallback — 低信心度時呼叫 LLM 語意判斷（Phase 5）
+ *   Layer 3:  LLM Fallback — 低信心度時呼叫 Haiku 語意分類（ANTHROPIC_API_KEY 降級為 context 注入）
  *
  * 分類流程（舊版 classify）：
  *   Phase 1:  Strong Question Guard — 多層疑問信號（最高優先級）
@@ -27,6 +27,7 @@
  */
 'use strict';
 
+const https = require('https');
 const { PIPELINES, TASKTYPE_TO_PIPELINE } = require('../registry.js');
 
 // ═══════════════════════════════════════════════
@@ -191,7 +192,7 @@ function calculateConfidence(taskType, prompt) {
 /**
  * 三層分類（新版介面）
  * @param {string} prompt - 使用者輸入（原始文字）
- * @returns {{ pipeline: string, confidence: number, source: 'explicit'|'regex'|'pending-llm' }}
+ * @returns {{ pipeline: string, confidence: number, source: 'explicit'|'regex'|'pending-llm'|'llm'|'regex-low' }}
  */
 function classifyWithConfidence(prompt) {
   if (!prompt) {
@@ -217,6 +218,105 @@ function classifyWithConfidence(prompt) {
 }
 
 // ═══════════════════════════════════════════════
+// Layer 3: LLM Fallback（Haiku 語意分類）
+// ═══════════════════════════════════════════════
+
+/** LLM 分類使用的模型（Haiku：便宜、快速、分類任務足夠） */
+const LLM_MODEL = 'claude-haiku-4-5-20251001';
+
+/** LLM 呼叫逾時（ms） */
+const LLM_TIMEOUT = 8000;
+
+/**
+ * 呼叫 Anthropic API 進行語意分類
+ *
+ * @param {string} prompt - 使用者輸入
+ * @returns {Promise<{pipeline: string, confidence: number, source: 'llm'}|null>}
+ *   成功回傳分類結果，失敗回傳 null（供降級使用）
+ */
+function classifyWithLLM(prompt) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return Promise.resolve(null);
+
+  const catalog = Object.entries(PIPELINES)
+    .map(([id, p]) => `- ${id}: ${p.description}`)
+    .join('\n');
+
+  const systemPrompt = [
+    '你是任務分類器。根據使用者輸入判斷最適合的開發 pipeline。',
+    '只回覆一個 JSON 物件：{"pipeline":"<id>"}',
+    '',
+    '可用 pipeline：',
+    catalog,
+    '',
+    '分類原則：',
+    '- 問問題、查資料、探索 → none',
+    '- 修 typo、改名、一行修改 → fix',
+    '- Bug 修復、小功能補丁 → quick-dev',
+    '- 新功能、新系統、新模組 → standard（無 UI）或 full（含 UI）',
+    '- 重構 → standard',
+    '- TDD 工作流 → test-first',
+    '- 純 UI/樣式 → ui-only',
+    '- 純文件 → docs-only',
+    '- 安全修復 → security',
+  ].join('\n');
+
+  const body = JSON.stringify({
+    model: LLM_MODEL,
+    max_tokens: 60,
+    messages: [{ role: 'user', content: prompt.slice(0, 500) }],
+    system: systemPrompt,
+  });
+
+  return new Promise((resolve) => {
+    const req = https.request({
+      hostname: 'api.anthropic.com',
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Length': Buffer.byteLength(body),
+      },
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode !== 200) { resolve(null); return; }
+        try {
+          const parsed = JSON.parse(data);
+          const text = (parsed.content && parsed.content[0] && parsed.content[0].text) || '';
+          const match = text.match(/\{[^}]+\}/);
+          if (!match) { resolve(null); return; }
+          const result = JSON.parse(match[0]);
+          if (!result.pipeline || !PIPELINES[result.pipeline]) { resolve(null); return; }
+          resolve({ pipeline: result.pipeline, confidence: 0.85, source: 'llm' });
+        } catch (_) { resolve(null); }
+      });
+    });
+
+    req.on('error', () => resolve(null));
+    req.setTimeout(LLM_TIMEOUT, () => { req.destroy(); resolve(null); });
+    req.write(body);
+    req.end();
+  });
+}
+
+/**
+ * 產生 Pipeline 目錄提示（LLM 降級時注入 additionalContext）
+ * @returns {string}
+ */
+function buildPipelineCatalogHint() {
+  const catalog = Object.entries(PIPELINES)
+    .filter(([id]) => id !== 'none')
+    .map(([id, p]) => `  [pipeline:${id}] — ${p.label}：${p.description}`)
+    .join('\n');
+
+  return '\n💡 分類器信心度偏低。如果自動選擇不正確，可在 prompt 中加上語法覆寫：\n' + catalog;
+}
+
+// ═══════════════════════════════════════════════
 // 匯出
 // ═══════════════════════════════════════════════
 
@@ -225,9 +325,13 @@ module.exports = {
   classify,
   isStrongQuestion,
 
-  // 新版介面（Phase 2）
+  // 新版介面
   extractExplicitPipeline,
   classifyWithConfidence,
+
+  // Layer 3 LLM
+  classifyWithLLM,
+  buildPipelineCatalogHint,
 
   // 匯出常量供測試驗證
   STRONG_QUESTION,

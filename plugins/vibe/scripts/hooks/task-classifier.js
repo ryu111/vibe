@@ -26,7 +26,11 @@ const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 
 // 分類邏輯提取至 scripts/lib/flow/classifier.js（三層級聯分類器）
-const { classifyWithConfidence } = require(path.join(__dirname, '..', 'lib', 'flow', 'classifier.js'));
+const {
+  classifyWithConfidence,
+  classifyWithLLM,
+  buildPipelineCatalogHint,
+} = require(path.join(__dirname, '..', 'lib', 'flow', 'classifier.js'));
 
 // 語言/框架 → 知識 skill 映射
 const KNOWLEDGE_SKILLS = {
@@ -170,16 +174,18 @@ function buildPipelineRules(pipelineId, stages, pipelineRules) {
 /**
  * 初始分類輸出（首次分類）
  */
-function outputInitialClassification(pipelineId, stages, state) {
+function outputInitialClassification(pipelineId, stages, state, options = {}) {
   const pipelineLabel = PIPELINE_LABELS[pipelineId] || pipelineId;
   const pipelineEnforced = PIPELINES[pipelineId]?.enforced || false;
+  const catalogHint = options.catalogHint || '';
 
   if (stages.length === 0) {
-    // 無需 pipeline（none）— 仍注入知識提示
+    // 無需 pipeline（none）— 仍注入知識提示 + 低信心度時附加 pipeline 目錄
     const envInfo = state && state.environment;
     const knowledgeHints = buildKnowledgeHints(envInfo);
     const context = `[任務分類] Pipeline: ${pipelineLabel} — 無需 pipeline，直接回答。` +
-      (knowledgeHints ? `\n${knowledgeHints}` : '');
+      (knowledgeHints ? `\n${knowledgeHints}` : '') +
+      catalogHint;
     console.log(JSON.stringify({ additionalContext: context }));
     return;
   }
@@ -244,6 +250,7 @@ function outputUpgrade(oldPipelineId, newPipelineId, remainingStages, skippedSta
 let input = '';
 process.stdin.on('data', d => input += d);
 process.stdin.on('end', () => {
+  (async () => {
   try {
     const data = JSON.parse(input);
     const prompt = data.prompt || data.user_prompt || data.content || '';
@@ -254,6 +261,22 @@ process.stdin.on('end', () => {
 
     // 使用新的 classifyWithConfidence（回傳 { pipeline, confidence, source }）
     const result = classifyWithConfidence(prompt);
+
+    // Layer 3: LLM Fallback — 低信心度時呼叫 Haiku 語意分類
+    let catalogHint = '';
+    if (result.source === 'pending-llm') {
+      const llmResult = await classifyWithLLM(prompt);
+      if (llmResult) {
+        result.pipeline = llmResult.pipeline;
+        result.confidence = llmResult.confidence;
+        result.source = llmResult.source;
+      } else {
+        // LLM 不可用 → 降級回 regex + 注入 pipeline 目錄提示
+        result.source = 'regex-low';
+        catalogHint = buildPipelineCatalogHint();
+      }
+    }
+
     const newPipelineId = result.pipeline;
     const newStages = PIPELINES[newPipelineId]?.stages || [];
     const newPipelineEnforced = PIPELINES[newPipelineId]?.enforced || false;
@@ -287,7 +310,7 @@ process.stdin.on('end', () => {
         expectedStages: newStages,
         reclassified: false,
       });
-      outputInitialClassification(newPipelineId, newStages, state);
+      outputInitialClassification(newPipelineId, newStages, state, { catalogHint });
       return;
     }
 
@@ -341,4 +364,5 @@ process.stdin.on('end', () => {
   } catch (err) {
     hookLogger.error('task-classifier', err);
   }
+  })();
 });

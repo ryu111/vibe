@@ -27,6 +27,12 @@ function test(name, fn) {
   }
 }
 
+// Async test 收集器（Layer 3 LLM 測試需要 await）
+const asyncQueue = [];
+function asyncTest(name, fn) {
+  asyncQueue.push({ name, fn });
+}
+
 // ═══════════════════════════════════════════════
 // Part 1: 級聯分類器（直接 import 實際模組）
 // ═══════════════════════════════════════════════
@@ -841,6 +847,108 @@ test('映射: tdd → test-first', () => {
 });
 
 // ═══════════════════════════════════════════════
+// Part 1i: Layer 3 LLM Fallback — 介面驗證
+// ═══════════════════════════════════════════════
+
+const { classifyWithLLM, buildPipelineCatalogHint } = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'classifier.js'));
+
+console.log('\n🧪 Part 1i: Layer 3 LLM Fallback — 介面驗證');
+console.log('═'.repeat(50));
+
+asyncTest('classifyWithLLM: 無 API key → 回傳 null', async () => {
+  // 確保測試環境無 key（暫存原始值並清除）
+  const origKey = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  try {
+    const result = await classifyWithLLM('建立一個完整的 REST API');
+    assert.strictEqual(result, null, '無 API key 時應回傳 null');
+  } finally {
+    if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
+  }
+});
+
+asyncTest('classifyWithLLM: 空 prompt → 回傳 null（無 key）', async () => {
+  const origKey = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  try {
+    const result = await classifyWithLLM('');
+    assert.strictEqual(result, null);
+  } finally {
+    if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
+  }
+});
+
+test('classifyWithLLM: 函式回傳 Promise', () => {
+  const origKey = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  try {
+    const result = classifyWithLLM('test');
+    assert.ok(result instanceof Promise, '應回傳 Promise');
+  } finally {
+    if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
+  }
+});
+
+test('buildPipelineCatalogHint: 回傳非空字串', () => {
+  const hint = buildPipelineCatalogHint();
+  assert.ok(typeof hint === 'string');
+  assert.ok(hint.length > 0);
+});
+
+test('buildPipelineCatalogHint: 包含 [pipeline:xxx] 語法', () => {
+  const hint = buildPipelineCatalogHint();
+  assert.ok(hint.includes('[pipeline:'), '應包含 [pipeline: 語法');
+});
+
+test('buildPipelineCatalogHint: 包含所有非 none 的 pipeline', () => {
+  const hint = buildPipelineCatalogHint();
+  const expected = ['full', 'standard', 'quick-dev', 'fix', 'test-first', 'ui-only', 'review-only', 'docs-only', 'security'];
+  for (const id of expected) {
+    assert.ok(hint.includes(`[pipeline:${id}]`), `應包含 [pipeline:${id}]`);
+  }
+});
+
+test('buildPipelineCatalogHint: 不包含 none', () => {
+  const hint = buildPipelineCatalogHint();
+  assert.ok(!hint.includes('[pipeline:none]'), '不應包含 [pipeline:none]');
+});
+
+test('buildPipelineCatalogHint: 包含信心度偏低提示', () => {
+  const hint = buildPipelineCatalogHint();
+  assert.ok(hint.includes('信心度偏低'), '應包含信心度提示文字');
+});
+
+test('Layer 3 觸發條件: weak explore 信心度 < 0.7 → pending-llm', () => {
+  const result = classifyWithConfidence('看看現在的狀態');
+  assert.strictEqual(result.source, 'pending-llm');
+  assert.ok(result.confidence < 0.7, '信心度應 < 0.7');
+});
+
+test('Layer 3 不觸發: strong question → regex', () => {
+  const result = classifyWithConfidence('什麼是 pipeline?');
+  assert.strictEqual(result.source, 'regex');
+  assert.ok(result.confidence >= 0.7);
+});
+
+test('Layer 3 不觸發: action keyword → regex', () => {
+  const result = classifyWithConfidence('implement user authentication');
+  assert.strictEqual(result.source, 'regex');
+  assert.ok(result.confidence >= 0.7);
+});
+
+test('Layer 3 不觸發: trivial → regex', () => {
+  const result = classifyWithConfidence('做一個 hello world');
+  assert.strictEqual(result.source, 'regex');
+  assert.ok(result.confidence >= 0.7);
+});
+
+test('Layer 3 不觸發: explicit pipeline → explicit', () => {
+  const result = classifyWithConfidence('[pipeline:full] 建立系統');
+  assert.strictEqual(result.source, 'explicit');
+  assert.strictEqual(result.confidence, 1.0);
+});
+
+// ═══════════════════════════════════════════════
 // Part 2: check-console-log 檔案過濾邏輯
 // ═══════════════════════════════════════════════
 
@@ -1031,10 +1139,29 @@ test('auto-lint：.ts 檔案 → stdout 為空或合法 JSON', () => {
 // 結果輸出
 // ═══════════════════════════════════════════════
 
-console.log('\n' + '='.repeat(50));
-console.log(`結果：${passed} 通過 / ${failed} 失敗 / ${passed + failed} 總計`);
-if (failed > 0) {
-  process.exit(1);
-} else {
-  console.log('✅ 全部通過\n');
-}
+// Async tests 運行器（收集的 asyncTest 在此執行）
+(async () => {
+  if (asyncQueue.length > 0) {
+    console.log('\n🧪 Async Tests');
+    console.log('═'.repeat(50));
+    for (const { name, fn } of asyncQueue) {
+      try {
+        await fn();
+        passed++;
+        console.log(`  ✅ ${name}`);
+      } catch (err) {
+        failed++;
+        console.log(`  ❌ ${name}`);
+        console.log(`     ${err.message}`);
+      }
+    }
+  }
+
+  console.log('\n' + '='.repeat(50));
+  console.log(`結果：${passed} 通過 / ${failed} 失敗 / ${passed + failed} 總計`);
+  if (failed > 0) {
+    process.exit(1);
+  } else {
+    console.log('✅ 全部通過\n');
+  }
+})();
