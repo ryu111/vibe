@@ -60,7 +60,7 @@
 
     /* Collapsed sidebar mini cards */
     .collapsed .sc { padding: 6px; text-align: center; }
-    .collapsed .sc-id, .collapsed .sc-meta, .collapsed .sc-bar, .collapsed .zombie-sub, .collapsed .sc .x { display: none; }
+    .collapsed .sc-id, .collapsed .sc-meta, .collapsed .sc-bar, .collapsed .zombie-sub, .collapsed .sc .x, .collapsed .group-hdr, .collapsed .group-sep, .collapsed .cleanup-btn { display: none; }
     .collapsed .sc::before { content: attr(data-pct); font-size: 9px; color: var(--subtext0); }
 
     @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
@@ -163,6 +163,43 @@
     .light-stage { font-weight: 600; min-width: 56px; }
     .light-label { color: var(--subtext0); flex: 1; }
     .light-verdict { font-weight: 600; }
+
+    /* Agent 狀態面板 */
+    .agent-panel { background: var(--surface0); border-radius: 10px; padding: 14px 16px; border: 1px solid var(--surface1); }
+    .agent-panel-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .agent-panel-hdr h3 { font-size: 11px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin: 0; }
+    .agent-panel-stats { display: flex; gap: 12px; }
+    .agent-panel-stat { font-size: 10px; color: var(--subtext0); }
+    .agent-panel-stat .num { font-weight: 700; color: var(--text); }
+    .agent-sep { height: 0; border-top: 1px solid var(--surface1); margin: 4px 0; }
+    /* Grid 對齊：[燈] [名稱] [職責] [model] [狀態] [chips] [時長] */
+    .agent-row { display: grid; grid-template-columns: 16px 140px 68px 54px 64px 1fr 44px; column-gap: 6px; align-items: center; padding: 4px 4px; font-size: 11px; border-bottom: 1px solid rgba(69,71,90,0.15); transition: background 0.15s; }
+    .agent-row:last-child { border-bottom: none; }
+    .agent-row:hover { background: rgba(69,71,90,0.1); border-radius: 4px; }
+    .al { width: 8px; height: 8px; border-radius: 50%; justify-self: center; }
+    .al.running { background: var(--green); box-shadow: 0 0 8px var(--green); animation: alPulse 1.5s ease infinite; }
+    .al.completed { background: var(--green); }
+    .al.error { background: var(--red); box-shadow: 0 0 6px var(--red); animation: alPulse 1.5s ease infinite; }
+    .al.delegating { background: var(--blue); box-shadow: 0 0 8px var(--blue); animation: alPulse 1.5s ease infinite; }
+    .al.standby { background: var(--blue); opacity: 0.6; }
+    .al.pending { background: var(--surface2); }
+    .al.idle { background: var(--surface2); opacity: 0.5; }
+    .al.skipped { background: var(--surface2); opacity: 0.3; }
+    @keyframes alPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .agent-name { font-weight: 600; display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ac-chip { font-size: 9px; padding: 2px 7px; border-radius: 4px; background: var(--surface1); color: var(--subtext0); white-space: nowrap; text-align: center; }
+    .ac-chip.model { background: rgba(137,180,250,0.12); color: var(--blue); }
+    .ac-chip.st-running { background: rgba(166,227,161,0.15); color: var(--green); font-weight: 600; }
+    .ac-chip.st-completed { background: rgba(166,227,161,0.1); color: var(--green); }
+    .ac-chip.st-error { background: rgba(243,139,168,0.15); color: var(--red); font-weight: 600; }
+    .ac-chip.st-delegating { background: rgba(137,180,250,0.15); color: var(--blue); }
+    .ac-chip.st-standby { color: var(--blue); }
+    .ac-chip.st-skipped { color: var(--overlay0); text-decoration: line-through; }
+    .ac-chip.st-idle { color: var(--overlay0); }
+    .agent-extra { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; }
+    .ac-chip.skill { font-size: 9px; padding: 2px 6px; opacity: 0.4; transition: opacity 0.3s; }
+    .ac-chip.skill-on { opacity: 1; background: rgba(166,227,161,0.15); color: var(--green); font-weight: 600; }
+    .agent-dur { font-size: 10px; color: var(--subtext0); text-align: right; font-variant-numeric: tabular-nums; }
 
     /* Info Cards */
     .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -703,6 +740,28 @@
       return `${Math.floor(d/3600)}h`;
     }
 
+    // 秒數格式化
+    function fmtSec(secs) {
+      if (!secs && secs !== 0) return '—';
+      if (secs < 60) return Math.round(secs) + 's';
+      const m = Math.floor(secs / 60), s = Math.round(secs % 60);
+      return s > 0 ? `${m}m${s}s` : `${m}m`;
+    }
+
+    // --- Agent 名冊（14 agents = 3 系統 + 9 Pipeline + 2 輔助）---
+    const AGENT_ROSTER = [
+      { id: 'main', name: 'Main Agent', emoji: '🎯', model: 'opus', color: '#f9e2af', role: '管理者', group: 'system', skills: ['scope', 'classify', 'delegate'] },
+      { id: 'explore', name: 'Explore', emoji: '🔭', model: 'opus', color: '#89dceb', role: '探索', group: 'system', skills: ['Glob', 'Grep', 'Read'] },
+      { id: 'plan', name: 'Plan', emoji: '📐', model: 'opus', color: '#cba6f7', role: '規劃', group: 'system', skills: ['plan', 'research'] },
+      ...Object.entries(SM).map(([stage, m]) => ({
+        id: m.agent, name: m.agent, emoji: m.emoji,
+        model: ({ planner:'opus', architect:'opus', designer:'sonnet', developer:'sonnet', 'code-reviewer':'opus', tester:'sonnet', qa:'sonnet', 'e2e-runner':'sonnet', 'doc-updater':'haiku' })[m.agent] || 'sonnet',
+        color: m.color, role: stage, stage, group: 'pipeline', skills: m.skills || [],
+      })),
+      { id: 'security-reviewer', name: 'security', emoji: '🛡️', model: 'opus', color: '#f38ba8', role: '安全審查', group: 'support', skills: ['OWASP', 'scan'] },
+      { id: 'build-error-resolver', name: 'build-err', emoji: '🔧', model: 'haiku', color: '#fab387', role: 'Build 修復', group: 'support', skills: ['diagnose', 'fix'] },
+    ];
+
     // --- 像素辦公室：角色像素系統 ---
     const PXS = 4; // 每個像素 4px × 4px（放大角色可見度）
     const SK = '#ffd8b4', EY = '#222', MO = '#c47a5a', LG = '#445';
@@ -1014,38 +1073,99 @@
       `;
     }
 
-    // --- 燈號摘要元件 ---
-    function LightSummary({ s }) {
-      if (!s?.expectedStages?.length) return null;
+    // --- Agent 狀態面板 ---
+    function getAgentInfo(agent, s) {
+      let status = 'idle', statusLabel = '閒置', dur = null, tools = null, retries = 0;
+      if (agent.stage && s) {
+        // 無 pipeline 時 → 閒置（非「跳過」）
+        if (!s.expectedStages?.length) {
+          status = 'idle'; statusLabel = '閒置';
+        } else if (!s.expectedStages.includes(agent.stage)) {
+          // 不在此 pipeline 範圍內 → 不適用
+          status = 'idle'; statusLabel = '—';
+        } else {
+          const st = getStatus(agent.stage, s);
+          const r = s.stageResults?.[agent.stage];
+          dur = r?.duration; tools = r?.toolCalls;
+          retries = s.retries?.[agent.stage] || 0;
+          switch (st) {
+            case 'active': status = 'running'; statusLabel = '運行中'; break;
+            case 'pass':
+              // 有執行證據才顯示完成（防止空 PASS 預設綠燈）
+              if (r?.duration || r?.toolCalls || r?.completedAt) {
+                status = 'completed'; statusLabel = 'PASS';
+              } else {
+                status = 'idle'; statusLabel = '—';
+              }
+              break;
+            case 'fail': status = 'error'; statusLabel = r?.severity || 'FAIL'; break;
+            case 'next': status = 'standby'; statusLabel = '待命'; break;
+            case 'skipped': status = 'skipped'; statusLabel = '跳過'; break;
+            default: status = 'pending'; statusLabel = '等待'; break;
+          }
+        }
+      } else if (agent.id === 'main' && s) {
+        // 只在有 currentStage 時才認定委派中（避免 delegationActive 殘留）
+        const reallyDelegating = s.delegationActive && s.currentStage;
+        status = reallyDelegating ? 'delegating' : 'running';
+        statusLabel = reallyDelegating ? '委派中' : '運行中';
+      }
+      // 只有 pipeline agents 活躍時高亮 skills（系統/輔助 agent 無法追蹤具體 skill 使用）
+      const isActive = ['running', 'delegating'].includes(status);
+      const skillsLit = isActive && agent.group === 'pipeline';
+      return { ...agent, status, statusLabel, dur, tools, retries, isActive, skillsLit };
+    }
+
+    function AgentStatus({ s, tick }) {
+      // 每個 agent 獨立計時器（agent 變 active 時記錄起始時間）
+      const timers = useRef({});
+      const agents = AGENT_ROSTER.map(a => getAgentInfo(a, s));
+      // 同步計時器狀態
+      agents.forEach(a => {
+        if (a.isActive && !timers.current[a.id]) timers.current[a.id] = Date.now();
+        else if (!a.isActive) delete timers.current[a.id];
+      });
+      const running = agents.filter(a => ['running', 'delegating'].includes(a.status)).length;
+      const done = agents.filter(a => a.status === 'completed').length;
+      const groups = [
+        { key: 'system', label: '系統', items: agents.filter(a => a.group === 'system') },
+        { key: 'pipeline', label: 'Pipeline', items: agents.filter(a => a.group === 'pipeline') },
+        { key: 'support', label: '輔助', items: agents.filter(a => a.group === 'support') },
+      ];
       return html`
-        <div class="summary">
-          <h3>🏁 Pipeline 完成摘要</h3>
-          ${ALL_STAGES.map(stage => {
-            const status = getStatus(stage, s);
-            if (status === 'skipped' && !s.expectedStages.includes(stage)) {
+        <div class="agent-panel">
+          <div class="agent-panel-hdr">
+            <h3>🤖 Agents 當前狀態</h3>
+            <div class="agent-panel-stats">
+              <span class="agent-panel-stat">活躍 <span class="num">${running}</span></span>
+              <span class="agent-panel-stat">完成 <span class="num">${done}</span></span>
+              <span class="agent-panel-stat">共 <span class="num">${agents.length}</span></span>
+            </div>
+          </div>
+          ${groups.map((g, gi) => html`
+            ${gi > 0 && html`<div class="agent-sep"></div>`}
+            ${g.items.map(a => {
+              // 時長：完成 → 顯示耗時 / 活躍 → 獨立即時計時
+              let durText = '—';
+              if (a.dur) durText = fmtSec(a.dur);
+              else if (a.isActive && timers.current[a.id]) {
+                durText = fmtSec(Math.round((Date.now() - timers.current[a.id]) / 1000));
+              }
               return html`
-                <div class="light-row">
-                  <span class="light skip"></span>
-                  <span class="light-stage">${stage}</span>
-                  <span class="light-label">${SM[stage].label}</span>
-                  <span class="light-verdict" style="color:var(--overlay0)">SKIP</span>
-                </div>`;
-            }
-            const r = s.stageResults?.[stage];
-            const verdict = r?.verdict || '—';
-            const retries = s.retries?.[stage] || 0;
-            return html`
-              <div class="light-row">
-                <span class="light ${verdict === 'PASS' ? 'pass' : verdict === 'FAIL' ? 'fail' : 'skip'}"></span>
-                <span class="light-stage">${stage}</span>
-                <span class="light-label">${SM[stage].label}</span>
-                ${r?.duration && html`<span style="font-size:10px;color:var(--subtext0);min-width:36px">${r.duration}s</span>`}
-                ${r?.toolCalls && html`<span style="font-size:10px;color:var(--subtext0);min-width:42px">🔧${r.toolCalls}</span>`}
-                <span class="light-verdict" style="color:${verdict === 'PASS' ? 'var(--green)' : verdict === 'FAIL' ? 'var(--red)' : 'var(--overlay0)'}">
-                  ${verdict}${retries > 0 ? ` (重試${retries})` : ''}
-                </span>
-              </div>`;
-          })}
+              <div class="agent-row">
+                <span class="al ${a.status}"></span>
+                <span class="agent-name" style="${a.isActive ? `color:${a.color}` : ''}">${a.emoji} ${a.name}</span>
+                <span class="ac-chip">${a.role}</span>
+                <span class="ac-chip model">${a.model}</span>
+                <span class="ac-chip st-${a.status}">${a.statusLabel}${a.retries > 0 ? ` ×${a.retries}` : ''}</span>
+                <div class="agent-extra">
+                  ${(a.skills || []).map(sk => html`<span class="ac-chip skill ${a.skillsLit ? 'skill-on' : ''}">${sk}</span>`)}
+                  ${a.tools && html`<span class="ac-chip skill-on">🔧${a.tools}</span>`}
+                </div>
+                <span class="agent-dur">${durText}</span>
+              </div>
+            `})}
+          `)}
         </div>
       `;
     }
@@ -1288,7 +1408,7 @@
               `}
 
               ${pipeSessions.length > 0 && html`
-                <div class="group-hdr"><h2>Pipeline</h2><span class="count">${pipeSessions.length}</span></div>
+                <div class="group-hdr"><h2>Sessions</h2><span class="count">${pipeSessions.length}</span></div>
                 ${pipeSessions.map(([id, ss]) => html`
                   <div class="sc ${id === active ? 'active' : ''}" data-pct="${pct(ss)}%" onClick=${() => selectSession(id)}>
                     <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
@@ -1367,7 +1487,8 @@
 
               <!-- Tab: Dashboard -->
               ${mainTab === 'dashboard' && html`
-              ${isComplete ? html`<${LightSummary} s=${s} />` : html`
+              <${AgentStatus} s=${s} tick=${tick} />
+              ${!isComplete && html`
                 <div class="cards">
                   <div class="card">
                     <h3>🔧 環境</h3>
