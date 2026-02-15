@@ -186,6 +186,47 @@
     .tl-item.active .msg { color: var(--blue); }
     @keyframes slideIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
 
+    /* Dashboard mini pipeline */
+    .mini-pipeline { display: flex; gap: 2px; margin: 12px 0; align-items: center; }
+    .mini-stage { flex: 1; height: 6px; border-radius: 3px; background: var(--surface1); position: relative; transition: background 0.3s; }
+    .mini-stage.pass { background: var(--green); }
+    .mini-stage.active { background: var(--blue); animation: pulse 1.5s infinite; }
+    .mini-stage.fail { background: var(--red); }
+    .mini-stage.skipped { background: var(--surface1); opacity: 0.5; }
+    .mini-stage-label { position: absolute; top: -14px; left: 50%; transform: translateX(-50%); font-size: 8px; color: var(--subtext0); white-space: nowrap; }
+    .mini-stage.active .mini-stage-label, .mini-stage.pass .mini-stage-label { color: var(--text); }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .mini-arrow { color: var(--surface2); font-size: 8px; flex-shrink: 0; }
+
+    /* Dashboard mini timeline */
+    .mini-tl { margin-top: 12px; }
+    .mini-tl h4 { font-size: 10px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+    .mini-tl .tl-item { font-size: 10px; }
+    /* Clear button */
+    .tl-clear { background: none; border: 1px solid var(--surface2); color: var(--subtext0); border-radius: 4px; padding: 2px 8px; font-size: 9px; font-family: inherit; cursor: pointer; transition: all 0.15s; margin-left: auto; }
+    .tl-clear:hover { border-color: var(--red); color: var(--red); }
+
+    /* Main Tabs */
+    .main-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--surface1); margin-bottom: 12px; }
+    .main-tab { background: none; color: var(--subtext0); border: none; border-bottom: 2px solid transparent; padding: 6px 16px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; transition: all 0.15s; }
+    .main-tab:hover { color: var(--text); }
+    .main-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+    .main-tab .tab-count { font-size: 9px; font-weight: 400; color: var(--overlay0); margin-left: 4px; }
+
+    /* Timeline full view */
+    .tl-full { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    .tl-full .tl-items { flex: 1; overflow-y: auto; }
+
+    /* Timeline Tabs + Filter */
+    .tl-tabs { display: flex; gap: 0; margin: 4px 0 2px; border-bottom: 1px solid var(--surface1); }
+    .tl-tab { background: none; color: var(--subtext0); border: none; border-bottom: 2px solid transparent; padding: 3px 10px; font-size: 10px; font-family: inherit; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+    .tl-tab:hover { color: var(--text); }
+    .tl-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+    .tl-filter { display: flex; gap: 4px; margin: 4px 0 6px; }
+    .tl-chip { background: var(--surface1); color: var(--subtext0); border: none; border-radius: 4px; padding: 2px 8px; font-size: 9px; font-family: inherit; cursor: pointer; transition: all 0.15s; }
+    .tl-chip:hover { background: var(--surface2); color: var(--text); }
+    .tl-chip.active { background: var(--blue); color: var(--base); }
+
     /* Sort/Filter bar */
     .filter-bar { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
     .filter-bar select { background: var(--surface0); color: var(--text); border: 1px solid var(--surface1); border-radius: 6px; padding: 3px 8px; font-size: 10px; font-family: inherit; cursor: pointer; }
@@ -267,6 +308,9 @@
       border-radius: 0 !important; border-width: 3px !important; border-style: solid !important;
       box-shadow: 4px 4px 0 rgba(0,0,0,0.5) !important;
     }
+    .pixel .main-tab { font-family: 'Press Start 2P', monospace !important; font-size: 8px !important; border-bottom-width: 3px !important; }
+    .pixel .tl-tab { font-family: 'Press Start 2P', monospace !important; font-size: 7px !important; border-bottom-width: 3px !important; }
+    .pixel .tl-chip { border-radius: 0 !important; border: 2px solid var(--surface2) !important; box-shadow: 2px 2px 0 rgba(0,0,0,0.5) !important; font-family: 'Press Start 2P', monospace !important; font-size: 7px !important; }
     .pixel .ac-badge, .pixel .task-badge, .pixel .group-hdr .count, .pixel .cleanup-btn,
     .pixel .sc-bar, .pixel .progress-bar { border-radius: 0 !important; }
     .pixel .ac-todo-dot, .pixel .dot, .pixel .live-dot, .pixel .light, .pixel .ac-retry {
@@ -1053,6 +1097,9 @@
       const [showConfetti, setShowConfetti] = useState(false);
       const [zoom, setZoom] = useState(100);
       const [timelineEvents, setTimelineEvents] = useState({});
+      const [tlFilter, setTlFilter] = useState(0); // 0=全部, 10/30/60=分鐘
+      const [tlTab, setTlTab] = useState('all'); // all/agent/pipeline/quality/task
+      const [mainTab, setMainTab] = useState('pipeline'); // pipeline/dashboard/timeline
       const prevRef = useRef({});
       const confettiShown = useRef(new Set());
 
@@ -1076,7 +1123,17 @@
       const progress = s ? pct(s) : 0;
       const isComplete = progress === 100 && hasPipeline(s);
       const selectSession = id => { setActive(id); setEvents([]); prevRef.current = {}; };
+      const clearTimeline = () => { if (active) setTimelineEvents(prev => ({ ...prev, [active]: [] })); };
       const row2Reversed = [...ROW2].reverse();
+
+      // Timeline 篩選（時間 + 分類雙重過濾，tick 每秒觸發重算）
+      const tlAll = timelineEvents[active] || [];
+      const tlFiltered = useMemo(() => {
+        let list = tlAll;
+        if (tlTab !== 'all') list = list.filter(ev => ev.cat === tlTab);
+        if (tlFilter !== 0) { const cutoff = Date.now() - tlFilter * 60000; list = list.filter(ev => ev.ts && ev.ts >= cutoff); }
+        return list;
+      }, [tlAll, tlFilter, tlTab, tick]);
 
       // 每秒 tick（驅動 elapsed 更新 + 資源刷新）
       useEffect(() => { const id = setInterval(() => setTick(t => t + 1), 1000); return () => clearInterval(id); }, []);
@@ -1147,10 +1204,13 @@
             case 'ArrowDown': case 'j': e.preventDefault(); if (idx < sids.length - 1) selectSession(sids[idx + 1]); break;
             case 's': case 'S': setSideOpen(p => !p); showToast('S — 側邊欄切換'); break;
             case 'f': case 'F': setFullscreen(p => !p); showToast('F — 全螢幕切換'); break;
-            case 't': case 'T': setTlOpen(p => !p); showToast('T — Timeline 切換'); break;
+            case 't': case 'T': setMainTab('timeline'); showToast('T — Timeline'); break;
             case 'p': case 'P': setTheme(t => t === 'default' ? 'pixel' : 'default'); showToast('P — 主題切換'); break;
             case 'c': case 'C': setFocusCards(p => !p); showToast('C — 卡片聚焦'); break;
-            case '?': showToast('↑↓ 切換 · S 側邊欄 · F 全螢幕 · C 卡片 · T Timeline · E 導出 · P 主題 · ⌘± 縮放'); break;
+            case '1': setMainTab('dashboard'); showToast('1 — Dashboard'); break;
+            case '2': setMainTab('pipeline'); showToast('2 — Pipeline'); break;
+            case '3': setMainTab('timeline'); showToast('3 — Timeline'); break;
+            case '?': showToast('1/2/3 Tab · ↑↓ 切換 · S 側邊 · F 全螢幕 · C 聚焦 · E 導出 · P 主題 · ⌘± 縮放'); break;
             case 'e': case 'E': if (s) { exportReport(s, active, events, 'md'); showToast('E — 導出 Markdown'); } break;
           }
         }
@@ -1289,26 +1349,16 @@
                 </div>
               </h1>
 
-              <!-- S/U Snake Grid or Pixel Office -->
-              ${theme === 'pixel' ? html`<${OfficeView} s=${s} tick=${tick} />` : html`
-                <div class="snake">
-                  ${ROW1.map(stage => html`<${AgentCard} stage=${stage} s=${s} tick=${tick} />`)}
-                  <div class="snake-turn ${getStatus('REVIEW', s) === 'active' ? 'flowing' : getStatus('REVIEW', s) === 'pass' ? 'done' : ''}">↓</div>
-                  <div class="snake-row2">
-                    ${row2Reversed.map(stage => html`<${AgentCard} stage=${stage} s=${s} tick=${tick} />`)}
-                  </div>
-                </div>
-              `}
-
-              <!-- Progress -->
-              <div class="${isComplete ? 'celebrate' : ''}" style="position:relative">
-                <div class="progress-bar">
-                  <div class="progress-fill ${isComplete ? 'complete' : ''}" style="width:${progress}%"></div>
-                </div>
+              <!-- Main Tabs -->
+              <div class="main-tabs">
+                <button class="main-tab ${mainTab === 'dashboard' ? 'active' : ''}" onClick=${() => setMainTab('dashboard')}>📊 Dashboard</button>
+                <button class="main-tab ${mainTab === 'pipeline' ? 'active' : ''}" onClick=${() => setMainTab('pipeline')}>🔄 Pipeline</button>
+                <button class="main-tab ${mainTab === 'timeline' ? 'active' : ''}" onClick=${() => setMainTab('timeline')}>📋 Timeline${tlAll.length ? html`<span class="tab-count">(${tlAll.length})</span>` : ''}</button>
               </div>
 
-              <!-- 完成燈號 or 資訊卡 -->
-              ${focusCards ? null : isComplete ? html`<${LightSummary} s=${s} />` : html`
+              <!-- Tab: Dashboard -->
+              ${mainTab === 'dashboard' && html`
+              ${isComplete ? html`<${LightSummary} s=${s} />` : html`
                 <div class="cards">
                   <div class="card">
                     <h3>🔧 環境</h3>
@@ -1329,19 +1379,69 @@
                     <div class="row"><span class="label">當前階段</span><span class="value">${getCurrent(s) || '—'}</span></div>
                   </div>
                 </div>
+
+                <!-- Mini Pipeline -->
+                <div class="mini-pipeline">
+                  ${ALL_STAGES.map((stage, i) => html`
+                    ${i > 0 && html`<span class="mini-arrow">›</span>`}
+                    <div class="mini-stage ${getStatus(stage, s)}">
+                      <span class="mini-stage-label">${SM[stage].emoji} ${stage}</span>
+                    </div>
+                  `)}
+                </div>
+                <div class="progress-bar" style="margin-top:2px">
+                  <div class="progress-fill ${isComplete ? 'complete' : ''}" style="width:${progress}%"></div>
+                </div>
               `}
 
-              <!-- Timeline -->
-              ${!focusCards && html`
-              <div class="timeline ${tlOpen ? '' : 'collapsed'}">
-                <h3 class="tl-toggle" onClick=${() => setTlOpen(!tlOpen)}>
-                  <span>📋 Timeline ${(timelineEvents[active] || []).length ? `(${(timelineEvents[active] || []).length})` : ''}</span>
-                  <span class="arrow">${tlOpen ? '▼' : '▶'}</span>
-                </h3>
+              <!-- Mini Timeline -->
+              <div class="mini-tl">
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                  <h4>📋 最近事件</h4>
+                  ${tlAll.length > 0 && html`<button class="tl-clear" onClick=${clearTimeline}>清除</button>`}
+                </div>
+                ${tlAll.length ? tlAll.slice(0, 5).map(ev => html`
+                  <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
+                `) : html`<div style="color:var(--subtext0);font-size:10px">無事件</div>`}
+              </div>
+              `}
+
+              <!-- Tab: Pipeline -->
+              ${mainTab === 'pipeline' && html`
+              ${theme === 'pixel' ? html`<${OfficeView} s=${s} tick=${tick} />` : html`
+                <div class="snake">
+                  ${ROW1.map(stage => html`<${AgentCard} stage=${stage} s=${s} tick=${tick} />`)}
+                  <div class="snake-turn ${getStatus('REVIEW', s) === 'active' ? 'flowing' : getStatus('REVIEW', s) === 'pass' ? 'done' : ''}">↓</div>
+                  <div class="snake-row2">
+                    ${row2Reversed.map(stage => html`<${AgentCard} stage=${stage} s=${s} tick=${tick} />`)}
+                  </div>
+                </div>
+              `}
+              <div class="${isComplete ? 'celebrate' : ''}" style="position:relative">
+                <div class="progress-bar">
+                  <div class="progress-fill ${isComplete ? 'complete' : ''}" style="width:${progress}%"></div>
+                </div>
+              </div>
+              `}
+
+              <!-- Tab: Timeline -->
+              ${mainTab === 'timeline' && html`
+              <div class="tl-full">
+                <div class="tl-tabs">
+                  ${[['all', '全部'], ['agent', '🔧 工具'], ['pipeline', '🔄 Pipeline'], ['quality', '✅ 品質'], ['task', '📋 任務']].map(([v, label]) => html`
+                    <button class="tl-tab ${tlTab === v ? 'active' : ''}" onClick=${() => setTlTab(v)}>${label}</button>
+                  `)}
+                </div>
+                <div class="tl-filter">
+                  ${[[0, '全部'], [10, '10m'], [30, '30m'], [60, '1h']].map(([v, label]) => html`
+                    <button class="tl-chip ${tlFilter === v ? 'active' : ''}" onClick=${() => setTlFilter(v)}>${label}</button>
+                  `)}
+                  ${tlAll.length > 0 && html`<button class="tl-clear" onClick=${clearTimeline}>清除</button>`}
+                </div>
                 <div class="tl-items">
-                  ${(timelineEvents[active] || []).length ? (timelineEvents[active] || []).slice(0, 30).map(ev => html`
-                    <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.text}</span></div>
-                  `) : html`<div style="color:var(--subtext0);font-size:11px;padding:6px 0">等待事件流…</div>`}
+                  ${tlFiltered.length ? tlFiltered.slice(0, 50).map(ev => html`
+                    <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
+                  `) : html`<div style="color:var(--subtext0);font-size:11px;padding:6px 0">${(tlFilter || tlTab !== 'all') ? '此篩選條件下無事件' : '等待事件流…'}</div>`}
                 </div>
               </div>
               `}

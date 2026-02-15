@@ -43,14 +43,42 @@ function broadcast(msg) {
   }
 }
 
+/** 事件類型→分類映射（前端 Tab 篩選用） */
+function eventCat(type) {
+  if (type.startsWith('stage.') || type.startsWith('pipeline.')) return 'pipeline';
+  if (type.startsWith('quality.') || type === 'tool.blocked' || type === 'tool.guarded') return 'quality';
+  if (type === 'tool.used' || type === 'delegation.start') return 'agent';
+  return 'task';
+}
+
+/** Agent→emoji 映射（pipeline stage 對應） */
+const AGENT_EMOJI = {
+  planner: '📋', architect: '🏛️', designer: '🎨', developer: '🏗️',
+  'code-reviewer': '🔍', tester: '🧪', qa: '✅', 'e2e-runner': '🌐',
+  'doc-updater': '📝',
+};
+
 /**
  * 格式化 timeline 事件為結構化物件（用於前端推送）
  * 使用 formatter.js 的 formatEventText 統一文字描述
  */
-function formatEvent(event) {
+function formatEvent(event, sessionId) {
   const t = new Date(event.timestamp).toLocaleTimeString('zh-TW', { hour12: false });
   const d = event.data || {};
-  const emoji = EMOJI_MAP[event.type] || '📌';
+  let emoji = EMOJI_MAP[event.type] || '📌';
+
+  // tool.used/delegation.start：用當前 agent 的 emoji 取代通用 🔧
+  if (event.type === 'tool.used' || event.type === 'delegation.start') {
+    const s = sessions[sessionId];
+    if (s?.delegationActive && s?.currentStage) {
+      const sm = { PLAN: 'planner', ARCH: 'architect', DESIGN: 'designer', DEV: 'developer', REVIEW: 'code-reviewer', TEST: 'tester', QA: 'qa', E2E: 'e2e-runner', DOCS: 'doc-updater' };
+      const agent = sm[s.currentStage];
+      if (agent && AGENT_EMOJI[agent]) emoji = AGENT_EMOJI[agent];
+    } else {
+      emoji = '🤖'; // 主 agent
+    }
+  }
+
   const text = formatEventText(event);
 
   // 判斷事件狀態類型（前端 CSS 用）
@@ -63,7 +91,7 @@ function formatEvent(event) {
     type = 'fail';
   }
 
-  return { time: t, type, emoji, text };
+  return { time: t, ts: event.timestamp, type, cat: eventCat(event.type), emoji, text };
 }
 
 /**
@@ -74,10 +102,10 @@ function startTimelineConsumer(sessionId) {
 
   const consumer = createConsumer({
     name: `dashboard-${sessionId.slice(0, 8)}`,
-    types: ['pipeline', 'quality', 'task'],
+    types: ['pipeline', 'quality', 'task', 'agent'],
     handlers: {
       '*': (event) => {
-        const formatted = formatEvent(event);
+        const formatted = formatEvent(event, sessionId);
         broadcast({
           type: 'timeline',
           sessionId,
