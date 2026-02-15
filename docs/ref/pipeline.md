@@ -815,9 +815,10 @@ Hooks ──emit()──→ Timeline（JSONL）──watch()──→ Dashboard 
 | `scripts/lib/timeline/schema.js` | 23 種事件類型、6 分類、envelope 建構/驗證 |
 | `scripts/lib/timeline/timeline.js` | emit / query / queryLast / watch / cleanup / listSessions |
 | `scripts/lib/timeline/consumer.js` | createConsumer 宣告式訂閱（分類展開、錯誤隔離、replay） |
+| `scripts/lib/timeline/formatter.js` | 三模式格式化（full/compact/summary）+ 統計 + 事件聚合 |
 | `scripts/lib/timeline/index.js` | 統一 re-export 入口 |
 
-### 8.3 事件類型（22 種 × 5 分類）
+### 8.3 事件類型（23 種 × 6 分類）
 
 | 分類 | 事件 | 數量 |
 |------|------|:----:|
@@ -825,7 +826,10 @@ Hooks ──emit()──→ Timeline（JSONL）──watch()──→ Dashboard 
 | **task** | task.classified · prompt.received · delegation.start · task.incomplete | 4 |
 | **pipeline** | stage.start · stage.complete · stage.retry · pipeline.complete · pipeline.incomplete | 5 |
 | **quality** | tool.blocked · tool.guarded · quality.lint · quality.format · quality.test-needed | 5 |
+| **agent** | tool.used · delegation.start | 2 |
 | **remote** | ask.question · ask.answered · turn.summary · say.sent · say.completed · compact.suggested · compact.executed | 7 |
+
+> **注意**：`delegation.start` 同時屬於 `task` 和 `agent` 兩個分類
 
 ### 8.4 儲存格式
 
@@ -859,3 +863,4 @@ consumer.start(sessionId, { replay: true });
 | 3 | ✅ 完成 | Dashboard 整合 Timeline consumer（server.js 事件推播 + UI 事件面板） |
 | 4 | ✅ 完成 | Remote 整合 Timeline consumer（bot.js 事件推播 + `/timeline` 查詢） |
 | 5 | ✅ 完成 | 清理收斂（Phase 狀態同步、文件對齊） |
+| 6 | ✅ 完成 | 完整事件追蹤（tool.used 記錄 + delegation 詳情 + formatter 顯示層 + `/vibe:timeline` skill） |
