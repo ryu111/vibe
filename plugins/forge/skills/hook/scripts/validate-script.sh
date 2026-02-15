@@ -37,6 +37,17 @@ for FILE in "${FILES[@]}"; do
     echo -e "${BOLD}驗證 Script: ${FILE}${NC}" >&2
     echo "" >&2
 
+    # 推導被驗證腳本所屬 plugin 的根目錄（向上尋找 .claude-plugin/）
+    _dir="$(cd "$(dirname "$FILE")" && pwd)"
+    TARGET_PLUGIN_ROOT="$_dir"
+    while [[ "$_dir" != "/" ]]; do
+        if [[ -d "$_dir/.claude-plugin" ]]; then
+            TARGET_PLUGIN_ROOT="$_dir"
+            break
+        fi
+        _dir="$(dirname "$_dir")"
+    done
+
     # 判斷腳本類型
     EXT="${FILE##*.}"
 
@@ -158,7 +169,7 @@ for FILE in "${FILES[@]}"; do
             while IFS= read -r src_line; do
                 [[ -z "$src_line" ]] && continue
                 src_path=$(echo "$src_line" | sed 's/source "//;s/"//')
-                resolved=$(echo "$src_path" | sed "s|\\\${SCRIPT_DIR}|$(dirname "$FILE")|g" | sed "s|\\\${PLUGIN_ROOT}|${PLUGIN_ROOT}|g" | sed "s|\\\${CLAUDE_PLUGIN_ROOT}|${PLUGIN_ROOT}|g")
+                resolved=$(echo "$src_path" | sed "s|\\\${SCRIPT_DIR}|$(dirname "$FILE")|g" | sed "s|\\\${PLUGIN_ROOT}|${TARGET_PLUGIN_ROOT}|g" | sed "s|\\\${CLAUDE_PLUGIN_ROOT}|${TARGET_PLUGIN_ROOT}|g")
                 if [[ -f "$resolved" ]]; then
                     v_pass "V-SC-09" "source 檔案存在: ${src_path}"
                 else

@@ -42,6 +42,9 @@ for FILE in "${FILES[@]}"; do
     echo -e "${BOLD}驗證 Agent: ${FILE}${NC}" >&2
     echo "" >&2
 
+    # 推導被驗證 agent 所屬 plugin 的根目錄（agents/{name}.md → 往上 2 層）
+    TARGET_PLUGIN_ROOT="$(cd "$(dirname "$FILE")/.." && pwd)"
+
     # --- V-AG-01: .md 檔案存在 ---
     v_file_exists "V-AG-01" "$FILE" "Agent .md" || continue
 
@@ -268,7 +271,7 @@ for f in extra: print(f)
     if [[ -n "$HOOK_REFS" ]]; then
         while IFS= read -r ref; do
             [[ -z "$ref" ]] && continue
-            actual_path=$(echo "$ref" | sed "s|\\\${CLAUDE_PLUGIN_ROOT}|${PLUGIN_ROOT}|")
+            actual_path=$(echo "$ref" | sed "s|\\\${CLAUDE_PLUGIN_ROOT}|${TARGET_PLUGIN_ROOT}|")
             if [[ -f "$actual_path" ]]; then
                 if [[ -x "$actual_path" ]]; then
                     v_pass "V-AG-18" "腳本存在且可執行: ${ref}"
