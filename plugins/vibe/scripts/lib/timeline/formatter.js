@@ -106,8 +106,10 @@ function formatEventText(event) {
       const v = d.verdict && d.verdict !== 'UNKNOWN' ? ` [${d.verdict}]` : '';
       return `${d.stage || '?'} 完成 (${d.agentType || '?'}) → ${d.nextStage || 'END'}${v}`;
     }
+    case 'stage.start':
+      return `${d.stage || '?'} 階段開始 (${d.agentType || '?'})`;
     case 'stage.retry':
-      return `${d.stage || '?'} FAIL:${d.severity || '?'} (第 ${d.retryCount || '?'} 輪回退)`;
+      return `${d.stage || '?'} FAIL:${d.severity || '?'} → ${d.retryTarget || 'DEV'} (第 ${d.retryCount || '?'} 輪回退)`;
     case 'pipeline.complete':
       return `Pipeline 完成! [${(d.completedStages || []).join('→')}]`;
     case 'pipeline.incomplete':

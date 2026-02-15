@@ -48,6 +48,8 @@ function eventCat(type) {
   if (type.startsWith('stage.') || type.startsWith('pipeline.')) return 'pipeline';
   if (type.startsWith('quality.') || type === 'tool.blocked' || type === 'tool.guarded') return 'quality';
   if (type === 'tool.used' || type === 'delegation.start') return 'agent';
+  if (type === 'session.start' || type === 'task.classified' || type === 'prompt.received' || type === 'task.incomplete') return 'pipeline';
+  if (type.startsWith('ask.') || type.startsWith('compact.') || type.startsWith('say.') || type === 'turn.summary') return 'task';
   return 'task';
 }
 
@@ -67,15 +69,21 @@ function formatEvent(event, sessionId) {
   const d = event.data || {};
   let emoji = EMOJI_MAP[event.type] || '📌';
 
-  // tool.used/delegation.start：用當前 agent 的 emoji 取代通用 🔧
+  // tool.used/delegation.start：用 agent 的 emoji（優先從事件 data 讀取，fallback 到 session 現態）
   if (event.type === 'tool.used' || event.type === 'delegation.start') {
-    const s = sessions[sessionId];
-    if (s?.delegationActive && s?.currentStage) {
-      const sm = { PLAN: 'planner', ARCH: 'architect', DESIGN: 'designer', DEV: 'developer', REVIEW: 'code-reviewer', TEST: 'tester', QA: 'qa', E2E: 'e2e-runner', DOCS: 'doc-updater' };
-      const agent = sm[s.currentStage];
+    const sm = { PLAN: 'planner', ARCH: 'architect', DESIGN: 'designer', DEV: 'developer', REVIEW: 'code-reviewer', TEST: 'tester', QA: 'qa', E2E: 'e2e-runner', DOCS: 'doc-updater' };
+    // 優先使用事件 data 中的 stage（replay 歷史事件時不受 session 現態影響）
+    const stage = d.stage || (event.type === 'delegation.start' ? d.agentType && Object.entries(sm).find(([, a]) => a === d.agentType)?.[0] : null);
+    const isDelegation = d.delegationActive || (event.type === 'delegation.start');
+    if (isDelegation && stage) {
+      const agent = sm[stage];
       if (agent && AGENT_EMOJI[agent]) emoji = AGENT_EMOJI[agent];
-    } else {
+    } else if (!isDelegation && event.type === 'tool.used') {
       emoji = '🤖'; // 主 agent
+    } else {
+      // delegation.start 用 agentType 直接查
+      const agent = d.agentType;
+      if (agent && AGENT_EMOJI[agent]) emoji = AGENT_EMOJI[agent];
     }
   }
 
@@ -102,7 +110,7 @@ function startTimelineConsumer(sessionId) {
 
   const consumer = createConsumer({
     name: `dashboard-${sessionId.slice(0, 8)}`,
-    types: ['pipeline', 'quality', 'task', 'agent'],
+    types: ['session', 'pipeline', 'quality', 'task', 'agent', 'remote'],
     handlers: {
       '*': (event) => {
         const formatted = formatEvent(event, sessionId);

@@ -7,10 +7,14 @@
  * 不阻擋任何工具執行。
  */
 'use strict';
+const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { increment } = require(path.join(__dirname, '..', 'lib', 'flow', 'counter.js'));
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
+
+const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
 /**
  * 從 tool_input 提取關鍵資訊（避免記錄完整 content/command）
@@ -57,7 +61,17 @@ process.stdin.on('end', () => {
 
     // 1. tool.used 事件（Task 由 delegation-tracker 處理）
     if (toolName && toolName !== 'Task') {
-      emit(EVENT_TYPES.TOOL_USED, sessionId, extractToolInfo(toolName, toolInput));
+      const info = extractToolInfo(toolName, toolInput);
+      // 嵌入當前 stage 和 delegation 狀態（供 replay 時正確顯示 emoji）
+      try {
+        const stateFile = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
+        if (fs.existsSync(stateFile)) {
+          const st = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+          if (st.currentStage) info.stage = st.currentStage;
+          if (st.delegationActive) info.delegationActive = true;
+        }
+      } catch (_) {}
+      emit(EVENT_TYPES.TOOL_USED, sessionId, info);
     }
 
     // 2. Compact 計數與提醒（原有邏輯）

@@ -42,7 +42,16 @@ process.stdin.on('end', () => {
     const shortAgent = agentType.includes(':') ? agentType.split(':')[1] : agentType;
     const stage = NAMESPACED_AGENT_TO_STAGE[shortAgent] || '';
 
-    // Emit delegation event（含描述和 prompt 預覽）
+    // Emit stage start + delegation event
+    if (stage) {
+      emit(EVENT_TYPES.STAGE_START, sessionId, {
+        stage,
+        agentType: shortAgent,
+      });
+      // 記錄 currentStage 到 state（供 suggest-compact 的 tool.used 事件使用）
+      state.currentStage = stage;
+      fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+    }
     emit(EVENT_TYPES.DELEGATION_START, sessionId, {
       agentType: shortAgent,
       stage,

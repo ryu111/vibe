@@ -300,13 +300,14 @@ process.stdin.on('end', () => {
         // 記錄待重驗階段（DEV 完成後會讀取此標記，強制重跑品質檢查）
         state.pendingRetry = { stage: currentStage, severity: verdict.severity, round: retryCount + 1 };
 
-        // Emit stage retry event
+        // Emit stage retry event（含回退目標）
         emit(EVENT_TYPES.STAGE_RETRY, sessionId, {
           stage: currentStage,
           agentType,
           verdict: verdict.verdict,
           severity: verdict.severity,
           retryCount: retryCount + 1,
+          retryTarget: 'DEV',
         });
 
         const devPlugin = devInfo && devInfo.plugin ? `${devInfo.plugin}:` : '';

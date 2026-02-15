@@ -199,8 +199,9 @@
     .mini-arrow { color: var(--surface2); font-size: 8px; flex-shrink: 0; }
 
     /* Dashboard mini timeline */
-    .mini-tl { margin-top: 12px; }
+    .mini-tl { margin-top: 12px; flex: 1; min-height: 0; display: flex; flex-direction: column; }
     .mini-tl h4 { font-size: 10px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+    .mini-tl .tl-items-wrap { flex: 1; overflow-y: auto; min-height: 0; }
     .mini-tl .tl-item { font-size: 10px; }
     /* Clear button */
     .tl-clear { background: none; border: 1px solid var(--surface2); color: var(--subtext0); border-radius: 4px; padding: 2px 8px; font-size: 9px; font-family: inherit; cursor: pointer; transition: all 0.15s; margin-left: auto; }
@@ -1170,7 +1171,7 @@
             if (m.type === 'timeline' && m.sessionId && m.event) {
               setTimelineEvents(prev => {
                 const list = prev[m.sessionId] || [];
-                return { ...prev, [m.sessionId]: [m.event, ...list].slice(0, 50) };
+                return { ...prev, [m.sessionId]: [m.event, ...list].slice(0, 200) };
               });
             }
           };
@@ -1370,21 +1371,29 @@
                 <div class="cards">
                   <div class="card">
                     <h3>🔧 環境</h3>
-                    <div class="row"><span class="label">語言</span><span class="value">${s.environment?.languages?.primary || '—'}</span></div>
-                    <div class="row"><span class="label">框架</span><span class="value">${s.environment?.framework ? s.environment.framework.name + ' ' + (s.environment.framework.version || '') : '—'}</span></div>
-                    <div class="row"><span class="label">套件管理</span><span class="value">${s.environment?.packageManager?.name || '—'}</span></div>
-                    <div class="row"><span class="label">Linter</span><span class="value">${s.environment?.tools?.linter || '—'}</span></div>
-                    <div class="row"><span class="label">Formatter</span><span class="value">${s.environment?.tools?.formatter || '—'}</span></div>
-                    <div class="row"><span class="label">測試框架</span><span class="value">${s.environment?.tools?.test || '—'}</span></div>
+                    ${(() => {
+                      const e = s.environment;
+                      const hasEnv = e && (e.languages?.primary || e.framework || e.packageManager?.name || e.tools?.linter || e.tools?.test);
+                      if (!hasEnv) return html`<div class="row" style="color:var(--subtext0);font-size:10px">未偵測到開發環境（plugin / meta 專案）</div>`;
+                      return html`
+                        <div class="row"><span class="label">語言</span><span class="value">${e.languages?.primary || '—'}</span></div>
+                        <div class="row"><span class="label">框架</span><span class="value">${e.framework ? e.framework.name + ' ' + (e.framework.version || '') : '—'}</span></div>
+                        <div class="row"><span class="label">套件管理</span><span class="value">${e.packageManager?.name || '—'}</span></div>
+                        <div class="row"><span class="label">Linter</span><span class="value">${e.tools?.linter || '—'}</span></div>
+                        <div class="row"><span class="label">Formatter</span><span class="value">${e.tools?.formatter || '—'}</span></div>
+                        <div class="row"><span class="label">測試框架</span><span class="value">${e.tools?.test || '—'}</span></div>
+                      `;
+                    })()}
                   </div>
                   <div class="card">
                     <h3>📊 指標</h3>
                     <div class="row"><span class="label">Pipeline</span><span class="value">${typeLabel(s.pipelineId || s.taskType)}</span></div>
                     <div class="row"><span class="label">進度</span><span class="value">${progress}%</span></div>
-                    <div class="row"><span class="label">已完成</span><span class="value">${(s.completed || []).length} agents</span></div>
+                    <div class="row"><span class="label">已完成</span><span class="value">${(s.completed || []).length} / ${(s.expectedStages || []).length} 階段</span></div>
                     <div class="row"><span class="label">重試次數</span><span class="value">${Object.values(s.retries || {}).reduce((a, b) => a + b, 0)}</span></div>
-                    <div class="row"><span class="label">委派中</span><span class="value">${s.delegationActive ? '⚡ Active' : '—'}</span></div>
-                    <div class="row"><span class="label">當前階段</span><span class="value">${getCurrent(s) || '—'}</span></div>
+                    <div class="row"><span class="label">委派中</span><span class="value">${s.delegationActive ? '⚡ Active' : '待機'}</span></div>
+                    <div class="row"><span class="label">當前階段</span><span class="value">${getCurrent(s) || (progress === 100 ? '✅ 完成' : '等待分類')}</span></div>
+                    ${s.skippedStages?.length > 0 && html`<div class="row"><span class="label">已跳過</span><span class="value" style="color:var(--subtext0)">${s.skippedStages.join(', ')}</span></div>`}
                   </div>
                 </div>
 
@@ -1408,9 +1417,11 @@
                   <h4>📋 最近事件</h4>
                   ${tlAll.length > 0 && html`<button class="tl-clear" onClick=${clearTimeline}>清除</button>`}
                 </div>
-                ${tlAll.length ? tlAll.slice(0, 5).map(ev => html`
-                  <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
-                `) : html`<div style="color:var(--subtext0);font-size:10px">無事件</div>`}
+                <div class="tl-items-wrap">
+                  ${tlAll.length ? tlAll.map(ev => html`
+                    <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
+                  `) : html`<div style="color:var(--subtext0);font-size:10px">無事件</div>`}
+                </div>
               </div>
               `}
 
@@ -1447,7 +1458,7 @@
                   ${tlAll.length > 0 && html`<button class="tl-clear" onClick=${clearTimeline}>清除</button>`}
                 </div>
                 <div class="tl-items">
-                  ${tlFiltered.length ? tlFiltered.slice(0, 50).map(ev => html`
+                  ${tlFiltered.length ? tlFiltered.map(ev => html`
                     <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
                   `) : html`<div style="color:var(--subtext0);font-size:11px;padding:6px 0">${(tlFilter || tlTab !== 'all') ? '此篩選條件下無事件' : '等待事件流…'}</div>`}
                 </div>
