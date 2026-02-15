@@ -11,6 +11,7 @@
 const { emit, query, queryLast, watch, cleanup, listSessions, getPath, MAX_EVENTS } = require('./timeline');
 const { EVENT_TYPES, CATEGORIES, VALID_TYPES, createEnvelope, validate, getTypesByCategory } = require('./schema');
 const { createConsumer } = require('./consumer');
+const { formatTimeline, formatLine, formatToolDetail, formatEventText, generateStats, EMOJI_MAP } = require('./formatter');
 
 module.exports = {
   // timeline.js
@@ -33,4 +34,12 @@ module.exports = {
 
   // consumer.js
   createConsumer,
+
+  // formatter.js
+  formatTimeline,
+  formatLine,
+  formatToolDetail,
+  formatEventText,
+  generateStats,
+  EMOJI_MAP,
 };
