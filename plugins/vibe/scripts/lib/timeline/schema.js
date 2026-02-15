@@ -6,7 +6,7 @@
  * envelope 建構函式和驗證邏輯。
  *
  * @module timeline/schema
- * @exports {Object} EVENT_TYPES - 22 種事件類型常數
+ * @exports {Object} EVENT_TYPES - 23 種事件類型常數
  * @exports {Object} CATEGORIES - 事件分類群組
  * @exports {function} createEnvelope - 建構統一 envelope
  * @exports {function} validate - 驗證事件格式
@@ -14,7 +14,7 @@
 'use strict';
 const crypto = require('crypto');
 
-// ── 22 種事件類型（5 大類） ─────────────────────────────
+// ── 23 種事件類型（6 大類） ─────────────────────────────
 
 const EVENT_TYPES = {
   // Session 生命週期
@@ -32,6 +32,9 @@ const EVENT_TYPES = {
   STAGE_RETRY:         'stage.retry',
   PIPELINE_COMPLETE:   'pipeline.complete',
   PIPELINE_INCOMPLETE: 'pipeline.incomplete',
+
+  // Agent 行為追蹤
+  TOOL_USED:           'tool.used',
 
   // Quality 品質守衛
   TOOL_BLOCKED:        'tool.blocked',
@@ -55,6 +58,7 @@ const EVENT_TYPES = {
 const CATEGORIES = {
   session:  ['session.start'],
   task:     ['task.classified', 'prompt.received', 'delegation.start', 'task.incomplete'],
+  agent:    ['tool.used', 'delegation.start'],
   pipeline: ['stage.start', 'stage.complete', 'stage.retry', 'pipeline.complete', 'pipeline.incomplete'],
   quality:  ['tool.blocked', 'tool.guarded', 'quality.lint', 'quality.format', 'quality.test-needed'],
   remote:   ['ask.question', 'ask.answered', 'turn.summary', 'say.sent', 'say.completed', 'compact.suggested', 'compact.executed'],

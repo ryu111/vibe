@@ -812,7 +812,7 @@ Hooks ──emit()──→ Timeline（JSONL）──watch()──→ Dashboard 
 
 | 檔案 | 功能 |
 |------|------|
-| `scripts/lib/timeline/schema.js` | 22 種事件類型、5 分類、envelope 建構/驗證 |
+| `scripts/lib/timeline/schema.js` | 23 種事件類型、6 分類、envelope 建構/驗證 |
 | `scripts/lib/timeline/timeline.js` | emit / query / queryLast / watch / cleanup / listSessions |
 | `scripts/lib/timeline/consumer.js` | createConsumer 宣告式訂閱（分類展開、錯誤隔離、replay） |
 | `scripts/lib/timeline/index.js` | 統一 re-export 入口 |

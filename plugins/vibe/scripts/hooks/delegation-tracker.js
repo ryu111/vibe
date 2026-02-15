@@ -42,10 +42,12 @@ process.stdin.on('end', () => {
     const shortAgent = agentType.includes(':') ? agentType.split(':')[1] : agentType;
     const stage = NAMESPACED_AGENT_TO_STAGE[shortAgent] || '';
 
-    // Emit delegation event
+    // Emit delegation event（含描述和 prompt 預覽）
     emit(EVENT_TYPES.DELEGATION_START, sessionId, {
       agentType: shortAgent,
       stage,
+      description: (toolInput.description || '').slice(0, 60),
+      promptPreview: (toolInput.prompt || '').slice(0, 120),
     });
 
     process.exit(0); // 永遠放行 Task
