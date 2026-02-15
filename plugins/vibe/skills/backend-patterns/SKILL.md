@@ -440,3 +440,16 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 ```
+
+---
+
+## 深度參考
+
+需要 API 安全和進階設計模式時，讀取 `references/api-security.md`，涵蓋：
+- JWT vs Session 比較 + JWT 最佳實踐
+- 速率限制模式（Token Bucket + Redis）
+- CORS 安全設定
+- 輸入驗證模式（Zod Schema）
+- API 版本控制策略
+- 錯誤回應標準化（RFC 9457）
+- 冪等性設計 + Webhook 安全

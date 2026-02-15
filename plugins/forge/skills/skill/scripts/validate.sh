@@ -28,6 +28,9 @@ else
     exit 1
 fi
 
+# 推導被驗證 skill 所屬 plugin 的根目錄（skills/{name}/SKILL.md → 往上 2 層）
+TARGET_PLUGIN_ROOT="$(cd "$SKILL_DIR/../.." && pwd)"
+
 echo -e "${BOLD}驗證 Skill: ${SKILL_DIR}${NC}" >&2
 echo "" >&2
 
@@ -259,7 +262,7 @@ else
     while IFS= read -r ref; do
         [[ -z "$ref" ]] && continue
         # 替換 ${CLAUDE_PLUGIN_ROOT} 為實際路徑
-        actual_path=$(echo "$ref" | sed "s|\\\${CLAUDE_PLUGIN_ROOT}|${PLUGIN_ROOT}|")
+        actual_path=$(echo "$ref" | sed "s|\\\${CLAUDE_PLUGIN_ROOT}|${TARGET_PLUGIN_ROOT}|")
         if [[ -f "$actual_path" ]]; then
             if [[ -x "$actual_path" ]]; then
                 v_pass "V-SK-14" "腳本存在且可執行: ${ref}"
@@ -289,13 +292,13 @@ BODY_REFS=$(echo "$BODY" | python3 -c "
 import sys, re
 text = sys.stdin.read()
 # 匹配 \${CLAUDE_PLUGIN_ROOT}/path/to/file
-for m in re.finditer(r'\\\$\{CLAUDE_PLUGIN_ROOT\}/[^\s\x60\")\]]+', text):
+for m in re.finditer(r'\\\$\{CLAUDE_PLUGIN_ROOT\}/[^\s\x60\"\')\];,]+', text):
     print(m.group())
 " 2>/dev/null || true)
 if [[ -n "$BODY_REFS" ]]; then
     while IFS= read -r ref; do
         [[ -z "$ref" ]] && continue
-        actual_path=$(echo "$ref" | sed "s|\\\${CLAUDE_PLUGIN_ROOT}|${PLUGIN_ROOT}|")
+        actual_path=$(echo "$ref" | sed "s|\\\${CLAUDE_PLUGIN_ROOT}|${TARGET_PLUGIN_ROOT}|")
         if [[ -e "$actual_path" ]]; then
             v_pass "V-SK-18" "引用路徑存在: ${ref}"
         else

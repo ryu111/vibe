@@ -233,3 +233,14 @@ const { street, city, zip, country } = shippingAddress;
 3. **吞掉錯誤**：`catch (e) { return null }` 會隱藏 bug，至少要 log。
 4. **Index 檔案膨脹**：`index.ts` 只做 re-export，不放邏輯。
 5. **注釋取代可讀性**：與其寫 `// 計算折扣後的價格`，不如命名為 `calculateDiscountedPrice()`。
+
+---
+
+## 深度參考
+
+需要各語言具體慣例時，讀取 `references/language-conventions.md`，涵蓋：
+- TypeScript / JavaScript 命名、Import 排序、目錄結構
+- Python 命名、Import 排序（isort）、目錄結構
+- Go 命名、Import 排序、目錄結構
+- Rust 命名慣例
+- 通用原則（註解慣例、TODO 標籤、Git Commit Message 格式）

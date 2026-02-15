@@ -1,6 +1,8 @@
 ---
 name: evolve
 description: 知識進化 — 將 instincts 聚類並進化為 skills 或 agents。從觀察紀錄提取碎片化知識，逐步進化為可重用的能力。
+argument-hint: "[搜尋關鍵字或主題，如：error handling / API 設計 / 測試模式]"
+allowed-tools: Read, Write, Grep, Glob, Task, Skill
 ---
 
 ## 你的角色

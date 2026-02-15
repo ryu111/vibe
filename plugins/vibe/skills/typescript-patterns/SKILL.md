@@ -487,3 +487,15 @@ type UserWithEmail = UserBase & { email: string };
 ```
 
 建議優先使用 `type`，除非需要 declaration merging（如擴展第三方庫的型別）。
+
+---
+
+## 深度參考
+
+需要更進階的型別模式時，讀取 `references/advanced-types.md`，涵蓋：
+- 條件型別 + infer 推斷模式
+- 模板字面值型別（事件名、CSS 值、路徑參數提取）
+- Mapped Types key remapping（as 子句）
+- Branded Types 完整範例
+- 遞迴型別（DeepReadonly、DeepPartial）
+- TypeScript 5.0-5.5 版本特性對照表

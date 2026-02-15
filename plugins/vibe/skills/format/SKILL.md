@@ -22,6 +22,30 @@ allowed-tools: Read, Bash, Grep, Glob
    - 無指定路徑 → 格式化整個專案
 5. **呈現結果**：摘要被格式化的檔案數量
 
+---
+
+## 參考：支援語言工具表
+
+| 語言 | Formatter | 設定檔偵測 |
+|------|-----------|-----------|
+| TypeScript/JavaScript | Prettier | `.prettierrc` / `prettier.config.*` |
+| JSON/CSS/HTML/YAML | Prettier | 同上 |
+| Python | Ruff format | `pyproject.toml [tool.ruff]` / `ruff.toml` |
+| Go | gofmt | 內建，無需設定 |
+| Rust | rustfmt | `rustfmt.toml` / `.rustfmt.toml` |
+| SQL | sql-formatter | `.sql-formatter.json` |
+
+## 參考：輸出格式
+
+```
+## 格式化結果
+
+- **工具**：prettier
+- **範圍**：src/（12 個檔案）
+- **已格式化**：5 個檔案
+- **未變更**：7 個檔案（已符合格式）
+```
+
 ## 使用者要求
 
 $ARGUMENTS

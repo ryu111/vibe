@@ -37,6 +37,26 @@ allowed-tools: Read, Bash, Grep, Glob
 |------|:------:|---------|
 ```
 
+## 參考：框架覆蓋率指令
+
+| 框架 | 指令 | 輸出格式 |
+|------|------|---------|
+| Jest | `npx jest --coverage` | text / lcov / html |
+| Vitest | `npx vitest run --coverage` | text / istanbul |
+| pytest | `pytest --cov --cov-report=term-missing` | terminal + 未覆蓋行 |
+| go test | `go test -cover -coverprofile=cover.out ./...` | terminal + profile |
+| Bun | `bun test --coverage` | text |
+| nyc (Mocha) | `npx nyc mocha` | text / lcov |
+
+## 參考：覆蓋率目標
+
+| 層級 | 目標 | 說明 |
+|------|:----:|------|
+| 整體 | 80% | 所有模組加權平均 |
+| 關鍵路徑 | 100% | auth、payment、data mutation |
+| UI 元件 | 60-70% | 渲染邏輯 + 互動 |
+| 工具函式 | 90% | 純函式、helpers |
+
 ## 使用者要求
 
 $ARGUMENTS

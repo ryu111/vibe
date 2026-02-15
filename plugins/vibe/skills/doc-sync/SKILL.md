@@ -1,6 +1,8 @@
 ---
 name: doc-sync
 description: 文件同步 — 偵測程式碼與文件不同步，生成或更新文件。涵蓋 README、API docs、JSDoc、CHANGELOG。
+argument-hint: "[偵測範圍，如：最近 N 個 commit / 指定模組 / 整個專案]"
+allowed-tools: Read, Write, Edit, Bash, Grep, Glob, Task, AskUserQuestion
 ---
 
 ## 你的角色

@@ -404,3 +404,16 @@ CREATE INDEX idx_data_name ON table ((data->>'name'));
 - 快取總數（Redis）+ 定期更新
 - 用估算值：`SELECT reltuples FROM pg_class WHERE relname = 'table_name'`
 - 顯示「約 XXX 筆」而非精確數字
+
+---
+
+## 深度參考
+
+需要查詢最佳化和 Redis 進階模式時，讀取 `references/query-optimization.md`，涵蓋：
+- EXPLAIN ANALYZE 解讀指南（關鍵指標、掃描型別排序）
+- 索引策略（B-tree / GIN / BRIN / 部分索引 / 覆蓋索引）
+- N+1 問題解法（Eager Loading、DataLoader）
+- 進階查詢模式（Cursor 分頁、遞迴 CTE、Window Functions）
+- Redis 資料結構選擇表
+- Cache-Aside 模式 + 分散式鎖實作
+- 連線池設定建議

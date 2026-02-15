@@ -75,3 +75,7 @@ memory: project
 3. **可行修復**：建議必須是具體的程式碼修改，而非抽象指引
 4. **不誇大**：只報告真實可利用的漏洞
 5. **使用繁體中文**：所有輸出使用繁體中文
+6. **結論標記**：報告最後一行**必須**輸出 Pipeline 結論標記（用於自動回退判斷）：
+   - 無 CRITICAL/HIGH：`<!-- PIPELINE_VERDICT: PASS -->`
+   - 有 HIGH：`<!-- PIPELINE_VERDICT: FAIL:HIGH -->`
+   - 有 CRITICAL：`<!-- PIPELINE_VERDICT: FAIL:CRITICAL -->`

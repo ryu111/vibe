@@ -498,3 +498,16 @@ it('should fetch user data', async () => {
 ### 5. E2E 測試過度依賴固定資料
 
 E2E 測試依賴「資料庫必須有 user ID=123」會導致環境差異失敗。應該在測試開始時建立所需資料，結束時清理，或使用動態查詢而非硬編碼 ID。
+
+---
+
+## 深度參考
+
+需要進階測試技術時，讀取 `references/advanced-testing.md`，涵蓋：
+- Property-Based Testing（fast-check / hypothesis）
+- Snapshot Testing 使用時機和注意事項
+- Contract Testing（Pact 消費者驅動契約）
+- Mocking 進階模式（Jest / Vitest / pytest）
+- 測試資料管理（Factory / Builder Pattern）
+- 效能測試和基準測試
+- 測試品質指標

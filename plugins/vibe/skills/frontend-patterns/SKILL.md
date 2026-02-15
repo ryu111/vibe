@@ -308,3 +308,15 @@ function SignUpForm() {
 4. **hydration mismatch**：Server/Client 渲染結果不同（如 `Date.now()`、`window.innerWidth`），用 `useEffect` 延遲 client-only 內容。
 5. **過度最佳化**：不要預設加 `memo` / `useMemo` / `useCallback`，先用 Profiler 確認瓶頸。
 6. **`<div>` 取代 `<button>`**：失去鍵盤導航（Tab/Enter/Space）、螢幕閱讀器無法辨識、需手動加 `role`/`tabIndex`/`onKeyDown`。
+
+---
+
+## 深度參考
+
+需要 React Server Components 模式時，讀取 `references/server-components.md`，涵蓋：
+- Server vs Client 元件決策流程
+- 資料擷取模式（直接查詢、平行、Streaming + Suspense）
+- Server Actions（表單處理、樂觀更新）
+- Server/Client 邊界組合模式
+- 效能最佳化策略
+- 安全注意事項（RSC 漏洞修復）

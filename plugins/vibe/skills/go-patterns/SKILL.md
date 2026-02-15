@@ -556,3 +556,14 @@ func fixed() []Result {
 }
 ```
 
+---
+
+## 深度參考
+
+需要泛型進階模式時，讀取 `references/generics-cookbook.md`，涵蓋：
+- 自訂約束介面（聯合約束、近似約束 `~`）
+- 標準庫泛型工具（slices、maps、cmp 套件）
+- 泛型 Result / Optional / Cache 型別
+- 泛型 Map-Filter-Reduce 管線
+- Go 1.18-1.25 泛型演進對照表
+

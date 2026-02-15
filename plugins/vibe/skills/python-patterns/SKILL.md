@@ -436,3 +436,16 @@ class User(BaseModel):
 class User(BaseModel):
     model_config = {"strict": True}
 ```
+
+---
+
+## 深度參考
+
+需要 Python 3.12+ 新語法時，讀取 `references/modern-typing.md`，涵蓋：
+- 新型別參數語法（`def f[T]`、`class C[T]`）
+- type 陳述式（延遲求值型別別名）
+- ParamSpec / TypeVarTuple 新語法
+- Python 3.13 TypeIs、ReadOnly TypedDict、TypeVar 預設值
+- match/case 模式匹配進階用法
+- 結構化並發（TaskGroup）
+- 版本特性對照表（3.10-3.14）
