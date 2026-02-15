@@ -636,7 +636,13 @@
     const html = htm.bind(h);
 
     // --- 常量 ---
-    const TYPE_LABELS = { research: '研究探索', quickfix: '快速修復', bugfix: '修復 Bug', feature: '新功能開發', refactor: '重構', test: '測試', tdd: 'TDD 開發' };
+    const TYPE_LABELS = {
+      // 舊 taskType（向後相容）
+      research: '研究探索', quickfix: '快速修復', bugfix: '修復 Bug', feature: '新功能開發', refactor: '重構', test: '測試', tdd: 'TDD 開發',
+      // 新 pipelineId (v1.0.33+)
+      none: '問答/研究', fix: '快速修復', 'quick-dev': '快速開發', standard: '標準開發', full: '完整開發',
+      'test-first': 'TDD 開發', 'ui-only': 'UI 調整', 'review-only': '程式碼審查', 'docs-only': '文件更新', security: '安全修復'
+    };
     const typeLabel = t => TYPE_LABELS[t] || t || '—';
     const ROW1 = ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW'];
     const ROW2 = ['TEST', 'QA', 'E2E', 'DOCS'];
@@ -1068,11 +1074,11 @@
         return { stage, agent: SM[stage].agent, label: SM[stage].label, status, verdict: r?.verdict || (status === 'skipped' ? 'SKIP' : '—'), retries: s.retries?.[stage] || 0 };
       });
       if (format === 'json') {
-        const report = { sessionId: active, taskType: s.taskType, progress: pct(s) + '%', environment: s.environment, stages, timeline: events.slice(0, 50).map(e => ({ time: e.time, text: e.text, type: e.type })), exportedAt: new Date().toISOString() };
+        const report = { sessionId: active, pipelineId: s.pipelineId, taskType: s.taskType, progress: pct(s) + '%', environment: s.environment, stages, timeline: events.slice(0, 50).map(e => ({ time: e.time, text: e.text, type: e.type })), exportedAt: new Date().toISOString() };
         const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `pipeline-${active?.slice(0, 8) || 'report'}.json`; a.click();
       } else {
-        const lines = [`# Pipeline Report\n`, `- **Session**: ${active}`, `- **Type**: ${typeLabel(s.taskType)}`, `- **Progress**: ${pct(s)}%`, `- **Exported**: ${new Date().toISOString()}\n`, `## Stages\n`, `| Stage | Agent | Verdict | Retries |`, `|-------|-------|---------|---------|`];
+        const lines = [`# Pipeline Report\n`, `- **Session**: ${active}`, `- **Pipeline**: ${typeLabel(s.pipelineId || s.taskType)}`, `- **Progress**: ${pct(s)}%`, `- **Exported**: ${new Date().toISOString()}\n`, `## Stages\n`, `| Stage | Agent | Verdict | Retries |`, `|-------|-------|---------|---------|`];
         for (const st of stages) lines.push(`| ${st.stage} | ${st.agent} | ${st.verdict} | ${st.retries} |`);
         if (events.length) { lines.push(`\n## Timeline\n`); for (const ev of events.slice(0, 30)) lines.push(`- \`${ev.time}\` ${ev.text}`); }
         const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
@@ -1112,7 +1118,7 @@
           else idle.push([id, s]);
         }
         const sortFn = sort === 'progress' ? (a, b) => pct(b[1]) - pct(a[1])
-          : sort === 'type' ? (a, b) => (a[1].taskType || '').localeCompare(b[1].taskType || '')
+          : sort === 'type' ? (a, b) => (a[1].pipelineId || a[1].taskType || '').localeCompare(b[1].pipelineId || b[1].taskType || '')
           : (a, b) => new Date(b[1].lastTransition || 0) - new Date(a[1].lastTransition || 0);
         pipe.sort(sortFn);
         return { pipeline: pipe, zombie, idle };
@@ -1245,7 +1251,9 @@
               setEvents(ev => [{ time: t, text: `${meta.emoji} ${meta.label}（${agent}）→ ${v || '完成'}${sev ? ' ['+sev+']' : ''}`, type: v?.toLowerCase() || 'info' }, ...ev]); }
           }
           if (curr.delegationActive && !prev.delegationActive) { const cur = getCurrent(curr); if (cur && SM[cur]) setEvents(ev => [{ time: t, text: `${SM[cur].emoji} ${SM[cur].label}（${SM[cur].agent}）開始工作...`, type: 'active' }, ...ev]); }
-          if (curr.taskType && !prev.taskType) setEvents(ev => [{ time: t, text: `🏷️ 任務分類：${typeLabel(curr.taskType)}（${curr.expectedStages?.length || 0} 階段）`, type: 'info' }, ...ev]);
+          const currType = curr.pipelineId || curr.taskType;
+          const prevType = prev.pipelineId || prev.taskType;
+          if (currType && !prevType) setEvents(ev => [{ time: t, text: `🏷️ 任務分類：${typeLabel(currType)}（${curr.expectedStages?.length || 0} 階段）`, type: 'info' }, ...ev]);
           for (const stage of Object.keys(curr.retries || {}).filter(k => (curr.retries[k] || 0) > (prev.retries?.[k] || 0)))
             setEvents(ev => [{ time: t, text: `🔁 ${stage} 重試 #${curr.retries[stage]}`, type: 'fail' }, ...ev]);
           if (pct(curr) === 100 && pct(prev) < 100) setEvents(ev => [{ time: t, text: `🎉 Pipeline 完成！所有階段通過`, type: 'pass' }, ...ev]);
@@ -1284,7 +1292,7 @@
                   <div class="sc ${id === active ? 'active' : ''}" data-pct="${pct(ss)}%" onClick=${() => selectSession(id)}>
                     <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
                     <div class="sc-id">${isLive(ss) && html`<span class="live-dot"></span>`}${sid(id)}</div>
-                    <div class="sc-meta">${typeLabel(ss.taskType)} · ${pct(ss)}% · ${elapsed(ss.startedAt || ss.lastTransition)}</div>
+                    <div class="sc-meta">${typeLabel(ss.pipelineId || ss.taskType)} · ${pct(ss)}% · ${elapsed(ss.startedAt || ss.lastTransition)}</div>
                     <div class="sc-bar"><div class="sc-bar-fill" style="width:${pct(ss)}%"></div></div>
                     ${ss.resources && html`
                       <div class="sc-res">
@@ -1302,7 +1310,7 @@
                   <div class="sc idle ${id === active ? 'active' : ''}" data-pct="—" onClick=${() => selectSession(id)}>
                     <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
                     <div class="sc-id">${sid(id)}</div>
-                    <div class="sc-meta">${ss.taskType ? typeLabel(ss.taskType) : '初始化'}</div>
+                    <div class="sc-meta">${(ss.pipelineId || ss.taskType) ? typeLabel(ss.pipelineId || ss.taskType) : '初始化'}</div>
                   </div>
                 `)}
               `}
@@ -1316,7 +1324,7 @@
                   <div class="sc zombie ${id === active ? 'active' : ''}" data-pct="💀" onClick=${() => selectSession(id)}>
                     <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
                     <div class="sc-id">💀 ${sid(id)}</div>
-                    <div class="sc-meta">${typeLabel(ss.taskType)} · ${elapsed(ss.lastTransition)} 未活動</div>
+                    <div class="sc-meta">${typeLabel(ss.pipelineId || ss.taskType)} · ${elapsed(ss.lastTransition)} 未活動</div>
                     <div class="zombie-sub">${hasPipeline(ss) ? `${pct(ss)}% 停滯` : '無 pipeline'}</div>
                   </div>
                 `)}
@@ -1331,7 +1339,7 @@
             ${s ? html`
               <h1>
                 🎯 Pipeline — ${sid(active)}
-                ${s.taskType && html`<span class="task-badge">${typeLabel(s.taskType)}</span>`}
+                ${(s.pipelineId || s.taskType) && html`<span class="task-badge">${typeLabel(s.pipelineId || s.taskType)}</span>`}
                 ${isComplete && html`<span style="margin-left:4px">🎉</span>`}
                 <div class="toolbar">
                   <button class="tool-btn ${theme === 'pixel' ? 'active' : ''}" onClick=${() => setTheme(t => t === 'default' ? 'pixel' : 'default')} title="像素風 (P)">🎮 像素</button>
@@ -1371,7 +1379,7 @@
                   </div>
                   <div class="card">
                     <h3>📊 指標</h3>
-                    <div class="row"><span class="label">任務類型</span><span class="value">${typeLabel(s.taskType)}</span></div>
+                    <div class="row"><span class="label">Pipeline</span><span class="value">${typeLabel(s.pipelineId || s.taskType)}</span></div>
                     <div class="row"><span class="label">進度</span><span class="value">${progress}%</span></div>
                     <div class="row"><span class="label">已完成</span><span class="value">${(s.completed || []).length} agents</span></div>
                     <div class="row"><span class="label">重試次數</span><span class="value">${Object.values(s.retries || {}).reduce((a, b) => a + b, 0)}</span></div>

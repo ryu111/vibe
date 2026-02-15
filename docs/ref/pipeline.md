@@ -98,9 +98,71 @@ plugins/vibe/pipeline.json     ← stage 順序 + provides 統一定義
 
 ---
 
-## 3. 統一 Pipeline 定義
+## 3. Pipeline Catalog — 10 種可組合工作流模板
 
-### 3.1 統一 pipeline.json（所有 stages + provides 集中在一個檔案）
+### 3.0 核心設計
+
+從 v1.0.33 起，Pipeline 從「全有或全無」升級為「組合式模板」架構：
+
+- **10 種 pipeline 模板**：定義在 `registry.js` 的 `PIPELINES` 常量
+- **自動選擇**：task-classifier 根據使用者意圖選擇適合的 pipeline
+- **顯式覆寫**：使用者可用 `[pipeline:xxx]` 語法指定 pipeline（如 `[pipeline:tdd] 實作 XXX 功能`）
+- **動態階段子集**：每個 pipeline 使用全域 9 階段的子集，stage-transition 只在子集內運作
+
+### 3.1 Pipeline 模板定義
+
+| Pipeline ID | 階段子集 | 描述 | 強制性 | 典型用途 |
+|------------|---------|------|:-----:|---------|
+| **full** | `['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS']` | 完整開發（含 UI） | ✅ | 新功能 + UI/UX 設計 |
+| **standard** | `['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS']` | 標準開發（無 UI） | ✅ | 後端 API、CLI 工具、大重構 |
+| **quick-dev** | `['DEV', 'REVIEW', 'TEST']` | 快速開發 | ✅ | bugfix、小改動、補測試 |
+| **fix** | `['DEV']` | 快速修復 | ❌ | hotfix、config、一行修改 |
+| **test-first** | `['TEST', 'DEV', 'TEST']` | TDD 開發 | ✅ | TDD 工作流（先寫測試→實作→測試） |
+| **ui-only** | `['DESIGN', 'DEV', 'QA']` | UI 調整 | ✅ | 純 UI/樣式調整（不改邏輯） |
+| **review-only** | `['REVIEW']` | 程式碼審查 | ❌ | 單純審查現有程式碼 |
+| **docs-only** | `['DOCS']` | 文件更新 | ❌ | 純文件更新（不改程式碼） |
+| **security** | `['DEV', 'REVIEW', 'TEST']` | 安全修復 | ✅ | 安全漏洞修復（REVIEW 含安全審查） |
+| **none** | `[]` | 無 Pipeline | ❌ | 問答、研究、trivial |
+
+**欄位說明**：
+- **階段子集**：該 pipeline 使用的 stage 列表（從全域 9 階段中挑選）
+- **強制性（enforced）**：
+  - ✅ 強制 — pipeline-guard 硬阻擋 Main Agent 直接操作（必須透過 delegation）
+  - ❌ 非強制 — 只作為建議，允許 Main Agent 直接操作
+- **典型用途**：自動分類的參考場景
+
+### 3.2 使用方式
+
+#### 自動分類（預設模式）
+
+task-classifier 根據使用者 prompt 的關鍵字和語意自動選擇 pipeline：
+
+| 使用者意圖 | 自動選擇 |
+|----------|---------|
+| 「加一個登入功能，要有 UI」 | `full` |
+| 「實作 RESTful API /users 端點」 | `standard` |
+| 「修一下按鈕的顏色」 | `ui-only` |
+| 「修復 XXX bug」 | `quick-dev` |
+| 「改一下 config」 | `fix` |
+| 「我想用 TDD 方式寫這個功能」 | `test-first` |
+| 「審查一下 auth.js」 | `review-only` |
+| 「更新 README」 | `docs-only` |
+| 「修復 SQL injection 漏洞」 | `security` |
+| 「解釋一下這段程式碼」 | `none` |
+
+#### 顯式指定（覆寫模式）
+
+在 prompt 中使用 `[pipeline:xxx]` 語法強制指定 pipeline（不區分大小寫）：
+
+```
+[pipeline:tdd] 實作計算器的加法功能
+[pipeline:full] 做一個 Todo App
+[pipeline:quick-dev] 修這個 bug
+```
+
+顯式指定的優先級**高於**自動分類，即使 prompt 語意不匹配也會使用指定的 pipeline。
+
+### 3.3 統一 pipeline.json（全域 9 階段 + pipeline ID 列表）
 
 ```json
 // plugins/vibe/pipeline.json
@@ -109,6 +171,7 @@ plugins/vibe/pipeline.json     ← stage 順序 + provides 統一定義
   "stageLabels": {
     "PLAN": "規劃",
     "ARCH": "架構",
+    "DESIGN": "設計",
     "DEV": "開發",
     "REVIEW": "審查",
     "TEST": "測試",
@@ -116,9 +179,11 @@ plugins/vibe/pipeline.json     ← stage 順序 + provides 統一定義
     "E2E": "端對端測試",
     "DOCS": "文件整理"
   },
+  "pipelines": ["full", "standard", "quick-dev", "fix", "test-first", "ui-only", "review-only", "docs-only", "security", "none"],
   "provides": {
     "PLAN":   { "agent": "planner",        "skill": "/vibe:scope" },
     "ARCH":   { "agent": "architect",      "skill": "/vibe:architect" },
+    "DESIGN": { "agent": "designer",       "skill": "/vibe:design" },
     "DEV":    { "agent": "developer",      "skill": null },
     "REVIEW": { "agent": "code-reviewer",  "skill": "/vibe:review" },
     "TEST":   { "agent": "tester",         "skill": "/vibe:tdd" },
@@ -129,7 +194,12 @@ plugins/vibe/pipeline.json     ← stage 順序 + provides 統一定義
 }
 ```
 
-> 所有 stage 定義（`stages` + `stageLabels`）和 agent 映射（`provides`）統一在 `plugins/vibe/pipeline.json`。只有在**新增全新的 pipeline stage** 時才需要修改 `stages`。
+**設計原則**：
+- `stages` 和 `stageLabels`：全域 9 階段定義（新增全新 stage 時才修改）
+- `pipelines`：可用的 pipeline ID 列表（純聲明，供 dashboard/pipeline-discovery 使用）
+- `provides`：stage → agent/skill 映射（9 個 stage 的完整映射）
+
+> **PIPELINES 完整定義**在 `registry.js`（stages 子集、enforced、label、description），`pipeline.json` 只聲明 ID 列表。
 
 ### 3.2 pipeline.json 設計原則
 
@@ -218,26 +288,39 @@ module.exports = { discoverPipeline, findNextStage };
 
 **腳本**：`scripts/hooks/task-classifier.js`
 
-關鍵字分類（7 類型），保守預設（quickfix），feature 需正向匹配：
+**三層分類架構**（v1.0.33 — Pipeline Catalog）：
 
-```
-research / quickfix / bugfix / feature / refactor / test / tdd
-```
+1. **Layer 1：顯式覆寫**（最高優先級）
+   - 解析 `[pipeline:xxx]` 語法（不區分大小寫）
+   - 信心度 1.0，立即確定 pipeline
 
-Stage 對應：
+2. **Layer 2：Regex 分類**（中優先級）
+   - 關鍵字匹配（trivial、research、feature、bugfix、refactor、test、tdd 等）
+   - 映射到 10 種 pipeline ID
+   - 信心度 0.7~0.95
 
-| 類型 | 階段 |
-|------|------|
-| research | （空） |
-| quickfix | DEV |
-| bugfix | DEV → TEST |
-| feature | PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS |
-| refactor | ARCH → DEV → REVIEW |
-| test | TEST |
-| tdd | TEST → DEV → REVIEW |
+3. **Layer 3：LLM 語意判斷**（低優先級，選配）
+   - 當 Layer 2 信心度低於閾值時（預設 0.7）
+   - 透過 LLM 語意推斷（延後實作）
 
-首次分類為開發型任務（feature/refactor/tdd）時，透過 `systemMessage` 注入完整 pipeline 委派規則。
-支援中途重新分類（漸進式升級）：升級時合併階段，降級時阻擋以保持 pipeline 不中斷。
+**Pipeline 選擇映射**（Layer 2 regex → pipeline ID）：
+
+| Regex 分類 | Pipeline ID | 階段 |
+|-----------|-------------|------|
+| trivial / research | `none` | （空） |
+| quickfix | `fix` | DEV |
+| bugfix | `quick-dev` | DEV → REVIEW → TEST |
+| feature（前端框架） | `full` | PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS |
+| feature（後端/其他） | `standard` | PLAN → ARCH → DEV → REVIEW → TEST → DOCS |
+| refactor | `standard` | PLAN → ARCH → DEV → REVIEW → TEST → DOCS |
+| test | `review-only` 或 `none` | REVIEW 或（空） |
+| tdd | `test-first` | TEST → DEV → TEST |
+| ui | `ui-only` | DESIGN → DEV → QA |
+| security | `security` | DEV → REVIEW → TEST |
+| docs | `docs-only` | DOCS |
+
+首次分類為開發型任務（enforced pipeline）時，透過 `systemMessage` 注入完整 pipeline 委派規則。
+支援中途重新分類（漸進式升級）：優先級高的 pipeline 可覆蓋低的，反之阻擋（以 `PIPELINE_PRIORITY` 判斷）。
 
 **知識 Skills 自動注入**（v1.0.21）：
 

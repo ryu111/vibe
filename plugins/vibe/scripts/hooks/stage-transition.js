@@ -12,10 +12,10 @@ const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
 
-const { discoverPipeline, findNextStage } = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-discovery.js'));
+const { discoverPipeline, findNextStage, findNextStageInPipeline } = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-discovery.js'));
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
-const { FRONTEND_FRAMEWORKS } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
+const { FRONTEND_FRAMEWORKS, PIPELINES } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
 
 // 智慧回退配置
 const MAX_RETRIES = parseInt(process.env.CLAUDE_PIPELINE_MAX_RETRIES || '3', 10);
@@ -154,16 +154,17 @@ process.stdin.on('end', () => {
 
     // 讀取 state file
     const statePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
-    let state = { completed: [], expectedStages: [] };
+    let state = { completed: [], expectedStages: [], pipelineId: null, stageIndex: 0 };
     if (fs.existsSync(statePath)) {
       try {
         state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
       } catch (_) {}
     }
 
-    // 初始化 stageResults 和 retries
+    // 初始化欄位
     if (!state.stageResults) state.stageResults = {};
     if (!state.retries) state.retries = {};
+    if (typeof state.stageIndex !== 'number') state.stageIndex = 0;
 
     // 解析 agent 結論
     const verdict = parseVerdict(transcriptPath);
@@ -180,8 +181,23 @@ process.stdin.on('end', () => {
     const retryCount = state.retries[currentStage] || 0;
     const { shouldRetry, reason } = shouldRetryStage(currentStage, verdict, retryCount);
 
-    // 查找下一步
-    const nextStage = findNextStage(pipeline.stageOrder, pipeline.stageMap, currentStage);
+    // 取得 pipeline 階段子集（從 state.pipelineId 或 fallback 到全局）
+    const pipelineId = state.pipelineId || null;
+    const pipelineStages = pipelineId && PIPELINES[pipelineId]
+      ? PIPELINES[pipelineId].stages
+      : pipeline.stageOrder;
+
+    // 更新 stageIndex 到 currentStage 的位置（每次階段完成時同步）
+    // 修復：stageIndex 只允許單調遞增（避免 TDD 雙 TEST 時被覆蓋為 0）
+    const currentIndex = pipelineStages.indexOf(currentStage);
+    if (currentIndex >= 0 && currentIndex >= (state.stageIndex || 0)) {
+      state.stageIndex = currentIndex;
+    }
+
+    // 查找下一步（在 pipeline 子集內，用更新後的 stageIndex）
+    const nextResult = findNextStageInPipeline(pipelineStages, pipeline.stageMap, currentStage, state.stageIndex);
+    const nextStage = nextResult.stage;
+    const nextStageIndex = nextResult.index;
     const currentLabel = pipeline.stageLabels[currentStage] || currentStage;
 
     // 已完成階段列表
@@ -196,16 +212,45 @@ process.stdin.on('end', () => {
 
     // ===== 自動 enforce pipeline =====
     // 當手動觸發 scope/architect 後，task-classifier 可能沒分類為 feature，
-    // 導致 pipelineEnforced=false。若已完成 PLAN+ARCH 且下一步是 DEV，
-    // 自動升級為 feature pipeline，確保 pipeline-guard 阻擋 Main Agent 直接寫碼。
-    const DEV_OR_LATER = ['DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'];
-    if (!state.pipelineEnforced && nextStage && DEV_OR_LATER.includes(nextStage)) {
-      state.pipelineEnforced = true;
-      if (!state.taskType || state.taskType === 'quickfix' || state.taskType === 'research') {
-        state.taskType = 'feature';
+    // 導致 pipelineEnforced=false。若已完成 PLAN+ARCH 且下一步進入實作階段，
+    // 自動升級為 standard pipeline。
+    if (!state.pipelineEnforced && nextStage) {
+      // 判斷是否為進入實作階段（有 pipelineId 則檢查該 pipeline 是否 enforced）
+      let shouldEnforce = false;
+      if (pipelineId && PIPELINES[pipelineId]) {
+        shouldEnforce = PIPELINES[pipelineId].enforced;
+        // 修復：已完成 PLAN+ARCH 但 pipeline non-enforced → 升級到 enforced pipeline
+        if (!shouldEnforce && completedStages.includes('PLAN') && completedStages.includes('ARCH')) {
+          shouldEnforce = true;
+          // 升級 pipelineId 到 enforced 版本
+          const isFrontend = FRONTEND_FRAMEWORKS.some(f => {
+            const frameworkName = (state.environment?.framework?.name || '').toLowerCase();
+            return frameworkName.includes(f);
+          });
+          state.pipelineId = isFrontend ? 'full' : 'standard';
+          state.expectedStages = PIPELINES[state.pipelineId].stages;
+        }
+      } else {
+        // 無 pipelineId（手動觸發）→ 若下一步是實作相關階段則 enforce
+        const IMPL_STAGES = ['DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'];
+        shouldEnforce = IMPL_STAGES.includes(nextStage);
       }
-      if (!state.expectedStages || !state.expectedStages.includes('REVIEW')) {
-        state.expectedStages = pipeline.stageOrder;
+
+      if (shouldEnforce) {
+        state.pipelineEnforced = true;
+        if (!state.pipelineId) {
+          // 根據環境偵測選擇 standard 或 full
+          const envInfo = state.environment || {};
+          const frameworkName = (envInfo.framework && envInfo.framework.name) || '';
+          const isFrontend = FRONTEND_FRAMEWORKS.includes(frameworkName);
+          state.pipelineId = isFrontend ? 'full' : 'standard';
+        }
+        if (!state.taskType || state.taskType === 'quickfix' || state.taskType === 'research') {
+          state.taskType = 'feature';
+        }
+        if (!state.expectedStages || state.expectedStages.length === 0) {
+          state.expectedStages = PIPELINES[state.pipelineId].stages;
+        }
       }
     }
 
@@ -237,41 +282,54 @@ process.stdin.on('end', () => {
 
     if (shouldRetry) {
       // ===== 智慧回退：回到 DEV 修復 =====
-      state.retries[currentStage] = retryCount + 1;
-
-      // 記錄待重驗階段（DEV 完成後會讀取此標記，強制重跑品質檢查）
-      state.pendingRetry = { stage: currentStage, severity: verdict.severity, round: retryCount + 1 };
-
-      // Emit stage retry event
-      emit(EVENT_TYPES.STAGE_RETRY, sessionId, {
-        stage: currentStage,
-        agentType,
-        verdict: verdict.verdict,
-        severity: verdict.severity,
-        retryCount: retryCount + 1,
-      });
-
+      // 檢查 pipeline 是否包含 DEV 階段
+      const hasDev = pipelineStages.includes('DEV');
       const devInfo = pipeline.stageMap['DEV'];
-      const devPlugin = devInfo && devInfo.plugin ? `${devInfo.plugin}:` : '';
-      const devAgent = devInfo ? devInfo.agent : 'developer';
-      const devMethod = devInfo && devInfo.skill
-        ? `使用 Skill 工具呼叫 ${devInfo.skill}`
-        : `使用 Task 工具委派給 ${devPlugin}${devAgent} agent（subagent_type: "${devPlugin}${devAgent}"）`;
 
-      // 回退後重新執行的 stage 資訊
-      const retryInfo = pipeline.stageMap[currentStage];
-      const retrySkill = retryInfo && retryInfo.skill ? retryInfo.skill : null;
-      const retryAgent = retryInfo && retryInfo.agent ? retryInfo.agent : null;
-      const retryPlugin = retryInfo && retryInfo.plugin ? `${retryInfo.plugin}:` : '';
-      const retryMethod = retrySkill
-        ? `使用 Skill 工具呼叫 ${retrySkill}`
-        : `使用 Task 工具委派給 ${retryPlugin}${retryAgent} agent（subagent_type: "${retryPlugin}${retryAgent}"）`;
+      if (!hasDev || !devInfo) {
+        // 短 pipeline 不含 DEV → 無法回退，強制繼續
+        const forcedNote = `\n⚠️ 警告：${currentStage} FAIL:${verdict.severity}，但 pipeline 不含 DEV 階段，無法回退。強制繼續。`;
+        message = `⛔ [Pipeline 無法回退] ${currentStage} 失敗但無 DEV 階段${forcedNote}
+已完成：${completedStr}`;
+        // 清除 pendingRetry（避免殘留）
+        delete state.pendingRetry;
+      } else {
+        // 正常回退
+        state.retries[currentStage] = retryCount + 1;
 
-      message = `🔄 [Pipeline 回退] ${currentStage} FAIL:${verdict.severity}（${retryCount + 1}/${MAX_RETRIES}）
+        // 記錄待重驗階段（DEV 完成後會讀取此標記，強制重跑品質檢查）
+        state.pendingRetry = { stage: currentStage, severity: verdict.severity, round: retryCount + 1 };
+
+        // Emit stage retry event
+        emit(EVENT_TYPES.STAGE_RETRY, sessionId, {
+          stage: currentStage,
+          agentType,
+          verdict: verdict.verdict,
+          severity: verdict.severity,
+          retryCount: retryCount + 1,
+        });
+
+        const devPlugin = devInfo && devInfo.plugin ? `${devInfo.plugin}:` : '';
+        const devAgent = devInfo ? devInfo.agent : 'developer';
+        const devMethod = devInfo && devInfo.skill
+          ? `使用 Skill 工具呼叫 ${devInfo.skill}`
+          : `使用 Task 工具委派給 ${devPlugin}${devAgent} agent（subagent_type: "${devPlugin}${devAgent}"）`;
+
+        // 回退後重新執行的 stage 資訊
+        const retryInfo = pipeline.stageMap[currentStage];
+        const retrySkill = retryInfo && retryInfo.skill ? retryInfo.skill : null;
+        const retryAgent = retryInfo && retryInfo.agent ? retryInfo.agent : null;
+        const retryPlugin = retryInfo && retryInfo.plugin ? `${retryInfo.plugin}:` : '';
+        const retryMethod = retrySkill
+          ? `使用 Skill 工具呼叫 ${retrySkill}`
+          : `使用 Task 工具委派給 ${retryPlugin}${retryAgent} agent（subagent_type: "${retryPlugin}${retryAgent}"）`;
+
+        message = `🔄 [Pipeline 回退] ${currentStage} FAIL:${verdict.severity}（${retryCount + 1}/${MAX_RETRIES}）
 回退原因：${reason}
 執行：${devMethod}
 修復後 stage-transition 會指示重跑 ${currentStage}。禁止 AskUserQuestion。
 已完成：${completedStr}`;
+      }
 
     } else if (state.pendingRetry && currentStage === 'DEV') {
       // ===== 回退修復完成 → 強制重跑品質檢查 =====
@@ -301,15 +359,19 @@ process.stdin.on('end', () => {
         forcedNote = `\n⚠️ 注意：${currentStage} 仍有 ${verdict.severity} 問題未修復（已達 ${MAX_RETRIES} 輪回退上限），強制繼續。`;
       }
 
-      // 智慧跳過：找下一個適用的 stage
+      // 智慧跳過：找下一個適用的 stage（只在 pipeline 子集內運作）
       let nextStageCandidate = nextStage;
+      let candidateIndex = nextStageIndex;
       const skippedStages = [];
       if (!state.skippedStages) state.skippedStages = [];
 
       while (nextStageCandidate) {
+        // 只對 pipeline 包含的可跳過階段生效
+        const isInPipeline = pipelineStages.includes(nextStageCandidate);
+
         // 前端框架或明確標記 needsDesign → 不跳過 DESIGN
         // 否則跳過（純後端/CLI 專案不需視覺設計）
-        if (nextStageCandidate === 'DESIGN') {
+        if (nextStageCandidate === 'DESIGN' && isInPipeline) {
           const needsDesign = state.needsDesign === true;
           const isFrontend = FRONTEND_FRAMEWORKS.includes(frameworkName);
           if (!needsDesign && !isFrontend) {
@@ -317,24 +379,31 @@ process.stdin.on('end', () => {
             if (!state.skippedStages.includes('DESIGN')) {
               state.skippedStages.push('DESIGN');
             }
-            nextStageCandidate = findNextStage(pipeline.stageOrder, pipeline.stageMap, nextStageCandidate);
+            const nextResult = findNextStageInPipeline(pipelineStages, pipeline.stageMap, nextStageCandidate, candidateIndex);
+            nextStageCandidate = nextResult.stage;
+            candidateIndex = nextResult.index;
             continue;
           }
         }
 
         // 純 API 專案跳過 E2E（瀏覽器測試無意義）
-        if (nextStageCandidate === 'E2E' && isApiOnly) {
+        if (nextStageCandidate === 'E2E' && isApiOnly && isInPipeline) {
           skippedStages.push('E2E（純 API 專案不需瀏覽器測試）');
           if (!state.skippedStages.includes('E2E')) {
             state.skippedStages.push('E2E');
           }
-          nextStageCandidate = findNextStage(pipeline.stageOrder, pipeline.stageMap, nextStageCandidate);
+          const nextResult = findNextStageInPipeline(pipelineStages, pipeline.stageMap, nextStageCandidate, candidateIndex);
+          nextStageCandidate = nextResult.stage;
+          candidateIndex = nextResult.index;
           continue;
         }
         break;
       }
 
       if (nextStageCandidate) {
+        // 更新 stageIndex（TDD 雙 TEST 追蹤）
+        state.stageIndex = candidateIndex;
+
         // Emit stage complete event (with nextStage)
         emit(EVENT_TYPES.STAGE_COMPLETE, sessionId, {
           stage: currentStage,

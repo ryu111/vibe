@@ -21,7 +21,7 @@
       "tags": ["planning", "quality", "patterns", "monitoring", "remote-control"],
       "expected": {
         "skills": [
-          "scope", "architect", "design", "checkpoint", "context-status", "env-detect", "cancel", "timeline",
+          "scope", "architect", "design", "checkpoint", "context-status", "env-detect", "cancel", "pipeline", "timeline",
           "review", "lint", "format", "security", "tdd", "e2e", "qa", "coverage", "verify",
           "coding-standards", "frontend-patterns", "backend-patterns", "db-patterns",
           "typescript-patterns", "python-patterns", "go-patterns", "testing-patterns",

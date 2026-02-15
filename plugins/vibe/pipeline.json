@@ -21,5 +21,17 @@
     "QA":     { "agent": "qa",             "skill": "/vibe:qa" },
     "E2E":    { "agent": "e2e-runner",     "skill": "/vibe:e2e" },
     "DOCS":   { "agent": "doc-updater",    "skill": "/vibe:doc-sync" }
-  }
+  },
+  "pipelines": [
+    "full",
+    "standard",
+    "quick-dev",
+    "fix",
+    "test-first",
+    "ui-only",
+    "review-only",
+    "docs-only",
+    "security",
+    "none"
+  ]
 }

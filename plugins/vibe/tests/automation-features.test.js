@@ -77,6 +77,7 @@ test('PLAN 完成後建立 vibe-pipeline/plan tag', () => {
 
   const statePath = createTempState(sessionId, {
     initialized: true,
+    pipelineId: 'standard',
     taskType: 'feature',
     pipelineEnforced: true,
     expectedStages: ['PLAN', 'ARCH', 'DEV'],
@@ -109,6 +110,7 @@ test('回退場景不建立 checkpoint（shouldRetry=true）', () => {
 
   const statePath = createTempState(sessionId, {
     initialized: true,
+    pipelineId: 'standard',
     taskType: 'feature',
     pipelineEnforced: true,
     expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
@@ -154,6 +156,7 @@ test('多個階段完成後各自有 tag', () => {
   // PLAN 完成
   let statePath = createTempState(sessionId, {
     initialized: true,
+    pipelineId: 'standard',
     taskType: 'feature',
     pipelineEnforced: true,
     expectedStages: ['PLAN', 'ARCH', 'DEV'],
@@ -207,6 +210,7 @@ test('REVIEW → TEST 包含安全提示', () => {
   const sessionId = 'test-hints-1';
   const statePath = createTempState(sessionId, {
     initialized: true,
+    pipelineId: 'standard',
     taskType: 'feature',
     pipelineEnforced: true,
     expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA'],
@@ -236,6 +240,7 @@ test('TEST → QA 包含覆蓋率提示', () => {
   const sessionId = 'test-hints-2';
   const statePath = createTempState(sessionId, {
     initialized: true,
+    pipelineId: 'standard',
     taskType: 'feature',
     pipelineEnforced: true,
     expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA'],
@@ -265,6 +270,7 @@ test('DEV → REVIEW 無額外提示（DEV 不在 POST_STAGE_HINTS 中）', () =
   const sessionId = 'test-hints-3';
   const statePath = createTempState(sessionId, {
     initialized: true,
+    pipelineId: 'standard',
     taskType: 'feature',
     pipelineEnforced: true,
     expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST'],
@@ -537,6 +543,7 @@ test('Pipeline 完成訊息包含 verify 指令', () => {
   const sessionId = 'test-complete-1';
   const statePath = createTempState(sessionId, {
     initialized: true,
+    pipelineId: 'standard',
     taskType: 'feature',
     pipelineEnforced: true,
     expectedStages: ['DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
@@ -566,6 +573,7 @@ test('Pipeline 完成訊息包含 AskUserQuestion 指令', () => {
   const sessionId = 'test-complete-2';
   const statePath = createTempState(sessionId, {
     initialized: true,
+    pipelineId: 'standard',
     taskType: 'feature',
     pipelineEnforced: true,
     expectedStages: ['DEV', 'DOCS'],
@@ -595,6 +603,7 @@ test('Pipeline 完成訊息包含 evolve 建議', () => {
   const sessionId = 'test-complete-3';
   const statePath = createTempState(sessionId, {
     initialized: true,
+    pipelineId: 'standard',
     taskType: 'feature',
     pipelineEnforced: true,
     expectedStages: ['DEV', 'DOCS'],
@@ -625,6 +634,7 @@ test('Pipeline 完成後 pipelineEnforced 設為 false', () => {
   const sessionId = 'test-complete-4';
   const statePath = createTempState(sessionId, {
     initialized: true,
+    pipelineId: 'standard',
     taskType: 'feature',
     pipelineEnforced: true,
     expectedStages: ['DOCS'],

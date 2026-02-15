@@ -13,6 +13,7 @@ const os = require('os');
 const { discoverPipeline } = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-discovery.js'));
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
+const { PIPELINES } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
@@ -65,9 +66,37 @@ process.stdin.on('end', () => {
 
     // 比較期望 vs 已完成（排除已跳過的階段）
     const skipped = state.skippedStages || [];
-    const missing = state.expectedStages.filter(s =>
-      pipeline.stageMap[s] && !completedStages.includes(s) && !skipped.includes(s)
-    );
+
+    // TDD pipeline 特殊處理：用 stageIndex 判斷是否完成（而非 stage name 出現次數）
+    const pipelineId = state.pipelineId || null;
+    const pipelineStages = pipelineId && PIPELINES[pipelineId]
+      ? PIPELINES[pipelineId].stages
+      : state.expectedStages;
+
+    let missing = [];
+    if (pipelineId && PIPELINES[pipelineId]) {
+      // 有 pipelineId → 用 stageIndex 判斷（優先）或 completedStages 比對
+      const stageIndex = state.stageIndex;
+      if (typeof stageIndex === 'number' && stageIndex >= 0) {
+        // stageIndex 是最後完成的階段的位置，如果 stageIndex >= pipelineStages.length - 1 表示已完成
+        if (stageIndex < pipelineStages.length - 1) {
+          // 還有未完成的階段（從 stageIndex + 1 到結尾）
+          missing = pipelineStages.slice(stageIndex + 1).filter(s =>
+            pipeline.stageMap[s] && !skipped.includes(s)
+          );
+        }
+      } else {
+        // 無 stageIndex → 用 stage name 比對 pipelineStages（非 expectedStages）
+        missing = pipelineStages.filter(s =>
+          pipeline.stageMap[s] && !completedStages.includes(s) && !skipped.includes(s)
+        );
+      }
+    } else {
+      // 無 pipelineId（legacy 模式）→ 用 stage name 比對
+      missing = state.expectedStages.filter(s =>
+        pipeline.stageMap[s] && !completedStages.includes(s) && !skipped.includes(s)
+      );
+    }
 
     if (missing.length === 0) {
       // 全部完成或無遺漏 → 清理 state file

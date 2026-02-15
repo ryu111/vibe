@@ -154,6 +154,7 @@ test('前進場景：PLAN → ARCH（有 skill 的階段）', () => {
   const sessionId = 'test-ns-1';
   const statePath = createTempState(sessionId, {
     initialized: true,
+    pipelineId: 'standard',
     taskType: 'feature',
     pipelineEnforced: true,
     expectedStages: ['PLAN', 'ARCH', 'DEV'],
@@ -199,6 +200,7 @@ test('前進場景：ARCH → DEV（無 skill 的階段，Task 委派）', () =>
   const sessionId = 'test-ns-1b';
   const statePath = createTempState(sessionId, {
     initialized: true,
+    pipelineId: 'standard',
     taskType: 'feature',
     pipelineEnforced: true,
     expectedStages: ['PLAN', 'ARCH', 'DEV'],
@@ -248,6 +250,7 @@ test('回退場景：REVIEW FAIL:HIGH → DEV（namespaced 格式）', () => {
   const sessionId = 'test-ns-2';
   const statePath = createTempState(sessionId, {
     initialized: true,
+    pipelineId: 'standard',
     taskType: 'feature',
     pipelineEnforced: true,
     expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
@@ -310,6 +313,7 @@ test('回退場景：修復後重新執行 REVIEW（namespaced 格式）', () =>
   const sessionId = 'test-ns-3';
   const statePath = createTempState(sessionId, {
     initialized: true,
+    pipelineId: 'standard',
     taskType: 'feature',
     pipelineEnforced: true,
     expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
@@ -373,6 +377,7 @@ test('缺漏 ARCH 和 DEV 階段（混合格式）', () => {
   const sessionId = 'test-ns-4';
   const statePath = createTempState(sessionId, {
     initialized: true,
+    pipelineId: 'standard',
     taskType: 'feature',
     pipelineEnforced: true,
     expectedStages: ['PLAN', 'ARCH', 'DEV'],
@@ -423,14 +428,19 @@ test('全部完成：無輸出且刪除 state file', () => {
   const sessionId = 'test-ns-5';
   const statePath = createTempState(sessionId, {
     initialized: true,
+    pipelineId: 'standard',
     taskType: 'feature',
     pipelineEnforced: true,
-    expectedStages: ['PLAN', 'ARCH', 'DEV'],
-    completed: ['vibe:planner', 'vibe:architect', 'vibe:developer'],
+    expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
+    completed: ['vibe:planner', 'vibe:architect', 'vibe:developer', 'vibe:code-reviewer', 'vibe:tester', 'vibe:doc-updater'],
+    stageIndex: 5, // DOCS 是 standard pipeline 的最後一個階段（index 5）
     stageResults: {
       PLAN: { verdict: 'PASS' },
       ARCH: { verdict: 'PASS' },
       DEV: { verdict: 'PASS' },
+      REVIEW: { verdict: 'PASS' },
+      TEST: { verdict: 'PASS' },
+      DOCS: { verdict: 'PASS' },
     },
     retries: {},
   });
@@ -515,11 +525,13 @@ test('非強制 pipeline：不檢查', () => {
 test('ARCH→DESIGN 前進：前端框架不跳過 DESIGN', () => {
   const sessionId = `pipeline-test-design-frontend-${Date.now()}`;
   const statePath = createTempState(sessionId, {
+    pipelineId: 'full',
     pipelineEnforced: true,
     taskType: 'feature',
     expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     completed: ['vibe:planner'], // stage-transition.js 依賴 completed (agentType 列表)
     currentStage: 'ARCH',
+    stageIndex: 1, // ARCH 在 full pipeline 的 index
     environment: { framework: { name: 'react' } },
     stageResults: { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } },
     retries: {},
@@ -564,11 +576,13 @@ test('ARCH→DESIGN 前進：前端框架不跳過 DESIGN', () => {
 test('ARCH→DESIGN 前進：後端框架跳過 DESIGN', () => {
   const sessionId = `pipeline-test-design-backend-${Date.now()}`;
   const statePath = createTempState(sessionId, {
+    pipelineId: 'full',
     pipelineEnforced: true,
     taskType: 'feature',
     expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     completed: ['vibe:planner'], // stage-transition.js 依賴 completed (agentType 列表)
     currentStage: 'ARCH',
+    stageIndex: 1, // ARCH 在 full pipeline 的 index
     environment: { framework: { name: 'express' } },
     stageResults: { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } },
     retries: {},
@@ -612,11 +626,13 @@ test('ARCH→DESIGN 前進：後端框架跳過 DESIGN', () => {
 test('ARCH→DESIGN 前進：needsDesign=true 強制不跳過', () => {
   const sessionId = `pipeline-test-design-forced-${Date.now()}`;
   const statePath = createTempState(sessionId, {
+    pipelineId: 'full',
     pipelineEnforced: true,
     taskType: 'feature',
     expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     completed: ['vibe:planner'], // stage-transition.js 依賴 completed (agentType 列表)
     currentStage: 'ARCH',
+    stageIndex: 1, // ARCH 在 full pipeline 的 index
     environment: { framework: { name: 'express' } }, // 後端框架
     needsDesign: true, // 強制需要設計
     stageResults: { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } },

@@ -664,6 +664,183 @@ test('繼續：繼續 → quickfix（default）', () => {
 });
 
 // ═══════════════════════════════════════════════
+// Part 1f: classifyWithConfidence 三層架構測試
+// ═══════════════════════════════════════════════
+
+const { extractExplicitPipeline, classifyWithConfidence } = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'classifier.js'));
+
+console.log('\n🧪 Part 1f: classifyWithConfidence — Layer 1 顯式覆寫');
+console.log('═'.repeat(50));
+
+test('Layer 1: [pipeline:quick-dev] → quick-dev, 1.0, explicit', () => {
+  const result = classifyWithConfidence('[pipeline:quick-dev] 修復認證問題');
+  assert.strictEqual(result.pipeline, 'quick-dev');
+  assert.strictEqual(result.confidence, 1.0);
+  assert.strictEqual(result.source, 'explicit');
+});
+
+test('Layer 1: [pipeline:full] 大小寫不敏感 → full', () => {
+  const result = classifyWithConfidence('建立完整系統 [Pipeline:Full]');
+  assert.strictEqual(result.pipeline, 'full');
+  assert.strictEqual(result.confidence, 1.0);
+  assert.strictEqual(result.source, 'explicit');
+});
+
+test('Layer 1: [PIPELINE:SECURITY] 全大寫 → security', () => {
+  const result = classifyWithConfidence('[PIPELINE:SECURITY] 修復 XSS 漏洞');
+  assert.strictEqual(result.pipeline, 'security');
+  assert.strictEqual(result.confidence, 1.0);
+});
+
+test('Layer 1: [pipeline:invalid-name] → 降級到 Layer 2', () => {
+  const result = classifyWithConfidence('[pipeline:invalid-name] fix typo');
+  assert.strictEqual(result.source, 'regex'); // 降級到 Layer 2
+  assert.strictEqual(result.pipeline, 'fix'); // quickfix → fix
+});
+
+test('Layer 1: 語法位置不限（結尾）→ 正確解析', () => {
+  const result = classifyWithConfidence('修復認證 [pipeline:security]');
+  assert.strictEqual(result.pipeline, 'security');
+  assert.strictEqual(result.confidence, 1.0);
+});
+
+test('Layer 1: 語法位置不限（中間）→ 正確解析', () => {
+  const result = classifyWithConfidence('修復認證 [pipeline:security] 很急');
+  assert.strictEqual(result.pipeline, 'security');
+  assert.strictEqual(result.confidence, 1.0);
+});
+
+test('extractExplicitPipeline: 正常解析', () => {
+  assert.strictEqual(extractExplicitPipeline('[pipeline:quick-dev] 修復問題'), 'quick-dev');
+});
+
+test('extractExplicitPipeline: 無標記 → null', () => {
+  assert.strictEqual(extractExplicitPipeline('修復問題'), null);
+});
+
+test('extractExplicitPipeline: 不合法 ID → null', () => {
+  assert.strictEqual(extractExplicitPipeline('[pipeline:invalid]'), null);
+});
+
+console.log('\n🧪 Part 1g: classifyWithConfidence — Layer 2 Regex 分類');
+console.log('═'.repeat(50));
+
+test('Layer 2: 建立完整 REST API → standard, >= 0.7', () => {
+  const result = classifyWithConfidence('建立一個完整的 REST API server');
+  assert.strictEqual(result.pipeline, 'standard'); // feature → standard
+  assert.ok(result.confidence >= 0.7);
+  assert.strictEqual(result.source, 'regex');
+});
+
+test('Layer 2: 問答「什麼是 pipeline?」 → none, >= 0.9', () => {
+  const result = classifyWithConfidence('什麼是 pipeline?');
+  assert.strictEqual(result.pipeline, 'none'); // research → none
+  assert.ok(result.confidence >= 0.9);
+  assert.strictEqual(result.source, 'regex');
+});
+
+test('Layer 2: TDD 開發 → test-first, >= 0.7', () => {
+  const result = classifyWithConfidence('用 TDD 方式開發使用者認證');
+  assert.strictEqual(result.pipeline, 'test-first'); // tdd → test-first
+  assert.ok(result.confidence >= 0.7);
+  assert.strictEqual(result.source, 'regex');
+});
+
+test('Layer 2: bugfix → quick-dev, >= 0.7', () => {
+  const result = classifyWithConfidence('修復登入失敗的問題');
+  assert.strictEqual(result.pipeline, 'quick-dev'); // bugfix → quick-dev
+  assert.ok(result.confidence >= 0.7);
+});
+
+test('Layer 2: quickfix → fix, >= 0.7', () => {
+  const result = classifyWithConfidence('fix typo in variable name');
+  assert.strictEqual(result.pipeline, 'fix'); // quickfix → fix
+  assert.ok(result.confidence >= 0.7);
+});
+
+test('Layer 2: refactor → standard, >= 0.7', () => {
+  const result = classifyWithConfidence('refactor 使用者認證模組');
+  assert.strictEqual(result.pipeline, 'standard'); // refactor → standard
+  assert.ok(result.confidence >= 0.7);
+});
+
+test('Layer 2: Strong question → none, 0.95', () => {
+  const result = classifyWithConfidence('這是什麼東西？');
+  assert.strictEqual(result.pipeline, 'none');
+  assert.strictEqual(result.confidence, 0.95);
+  assert.strictEqual(result.source, 'regex');
+});
+
+test('Layer 2: Trivial → fix, 0.9', () => {
+  const result = classifyWithConfidence('做一個 hello world');
+  assert.strictEqual(result.pipeline, 'fix');
+  assert.strictEqual(result.confidence, 0.9);
+});
+
+test('Layer 2: Weak explore → none, 0.6 (低信心度)', () => {
+  const result = classifyWithConfidence('看看現在的狀態');
+  assert.strictEqual(result.pipeline, 'none');
+  assert.strictEqual(result.confidence, 0.6);
+  assert.strictEqual(result.source, 'pending-llm'); // 信心度 < 0.7 標記為 pending-llm
+});
+
+test('Layer 2: Action keyword → 0.8', () => {
+  const result = classifyWithConfidence('implement user authentication');
+  assert.strictEqual(result.pipeline, 'standard'); // feature → standard
+  assert.strictEqual(result.confidence, 0.8);
+});
+
+test('Layer 2: 預設 quickfix → fix, 0.7', () => {
+  const result = classifyWithConfidence('隨便改改');
+  assert.strictEqual(result.pipeline, 'fix');
+  assert.strictEqual(result.confidence, 0.7);
+});
+
+test('Layer 2: 空字串 → fix, 0.7', () => {
+  const result = classifyWithConfidence('');
+  assert.strictEqual(result.pipeline, 'fix');
+  assert.strictEqual(result.confidence, 0.7);
+});
+
+console.log('\n🧪 Part 1h: classifyWithConfidence — taskType→pipeline 映射');
+console.log('═'.repeat(50));
+
+test('映射: research → none', () => {
+  const result = classifyWithConfidence('什麼是 TDD？');
+  assert.strictEqual(result.pipeline, 'none');
+});
+
+test('映射: quickfix → fix', () => {
+  const result = classifyWithConfidence('改個變數名');
+  assert.strictEqual(result.pipeline, 'fix');
+});
+
+test('映射: bugfix → quick-dev', () => {
+  const result = classifyWithConfidence('fix authentication bug');
+  assert.strictEqual(result.pipeline, 'quick-dev');
+});
+
+test('映射: feature → standard', () => {
+  const result = classifyWithConfidence('implement OAuth login');
+  assert.strictEqual(result.pipeline, 'standard');
+});
+
+test('映射: refactor → standard', () => {
+  const result = classifyWithConfidence('refactor database layer');
+  assert.strictEqual(result.pipeline, 'standard');
+});
+
+test('映射: test → quick-dev', () => {
+  const result = classifyWithConfidence('write tests for authentication');
+  assert.strictEqual(result.pipeline, 'quick-dev');
+});
+
+test('映射: tdd → test-first', () => {
+  const result = classifyWithConfidence('test-first development for API');
+  assert.strictEqual(result.pipeline, 'test-first');
+});
+
+// ═══════════════════════════════════════════════
 // Part 2: check-console-log 檔案過濾邏輯
 // ═══════════════════════════════════════════════
 

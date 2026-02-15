@@ -88,4 +88,38 @@ function findNextStage(stageOrder, stageMap, currentStage) {
   return null;
 }
 
-module.exports = { discoverPipeline, findNextStage };
+/**
+ * 在指定 pipeline 的階段子集中查找下一個已安裝的 stage
+ * 支援 TDD 雙 TEST 追蹤（用 stageIndex）
+ * @param {string[]} pipelineStages - pipeline 模板的階段列表（如 ['TEST','DEV','TEST']）
+ * @param {Object} stageMap - 已安裝的 stage 映射
+ * @param {string} currentStage - 當前 stage
+ * @param {number} [currentIndex] - 當前在 pipelineStages 中的位置（TDD 用，選填）
+ * @returns {{ stage: string|null, index: number }} - 下一個 stage 和它在 pipelineStages 中的 index
+ */
+function findNextStageInPipeline(pipelineStages, stageMap, currentStage, currentIndex) {
+  // 如果提供了 stageIndex（TDD 雙 TEST 場景），優先使用
+  if (typeof currentIndex === 'number' && currentIndex >= 0) {
+    // 從 currentIndex 的下一個位置開始查找
+    for (let i = currentIndex + 1; i < pipelineStages.length; i++) {
+      const stage = pipelineStages[i];
+      if (stageMap[stage]) {
+        return { stage, index: i };
+      }
+    }
+    return { stage: null, index: -1 }; // pipeline 結束
+  }
+
+  // 否則用 currentStage 在 pipelineStages 中的位置
+  const idx = pipelineStages.indexOf(currentStage);
+  if (idx === -1) return { stage: null, index: -1 };
+  for (let i = idx + 1; i < pipelineStages.length; i++) {
+    const stage = pipelineStages[i];
+    if (stageMap[stage]) {
+      return { stage, index: i };
+    }
+  }
+  return { stage: null, index: -1 };
+}
+
+module.exports = { discoverPipeline, findNextStage, findNextStageInPipeline };

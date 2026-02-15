@@ -1,13 +1,22 @@
 #!/usr/bin/env node
 /**
- * classifier.js — 兩階段級聯分類器（Cascading Classifier）
+ * classifier.js — 三層級聯分類器（Three-Layer Cascading Classifier）
  *
  * 設計原則：
  *   誤觸 pipeline（false positive）代價 >> 漏觸 pipeline（false negative）
  *   → 疑問句永遠優先於動作關鍵字
  *   → 使用者可用 /vibe:scope 明確啟動 pipeline，不需靠分類器猜
  *
- * 分類流程：
+ * 三層架構（Phase 2 實作 Layer 1+2，Layer 3 延後到 Phase 5）：
+ *   Layer 1:  Explicit Pipeline — [pipeline:xxx] 語法（100% 信心度）
+ *   Layer 2:  Regex Classifier — 疑問/trivial/動作關鍵字（70~95% 信心度）
+ *     ├─ Strong Question Guard — 多層疑問信號（最高優先級）
+ *     ├─ Trivial Detection — hello world / poc / demo
+ *     ├─ Weak Explore — 看看 / 查看 / 說明 等探索詞
+ *     └─ Action Keywords — tdd / feature / refactor / bugfix
+ *   Layer 3:  LLM Fallback — 低信心度時呼叫 LLM 語意判斷（Phase 5）
+ *
+ * 分類流程（舊版 classify）：
  *   Phase 1:  Strong Question Guard — 多層疑問信號（最高優先級）
  *   Phase 2:  Trivial Detection — hello world / poc / demo
  *   Phase 3:  Weak Explore — 看看 / 查看 / 說明 等探索詞
@@ -17,6 +26,8 @@
  * @module flow/classifier
  */
 'use strict';
+
+const { PIPELINES, TASKTYPE_TO_PIPELINE } = require('../registry.js');
 
 // ═══════════════════════════════════════════════
 // Phase 1: 強疑問信號（任何命中 → research）
@@ -78,7 +89,7 @@ const ACTION_PATTERNS = [
 ];
 
 /**
- * 兩階段級聯分類
+ * 兩階段級聯分類（舊版介面，向後相容）
  * @param {string} prompt - 使用者輸入（原始文字）
  * @returns {string} 任務類型：research|quickfix|tdd|test|refactor|feature|bugfix
  */
@@ -104,9 +115,120 @@ function classify(prompt) {
   return 'quickfix';
 }
 
+// ═══════════════════════════════════════════════
+// Layer 1: 顯式 Pipeline 覆寫
+// ═══════════════════════════════════════════════
+
+/**
+ * 解析顯式 pipeline 語法 [pipeline:xxx]
+ * @param {string} prompt - 使用者輸入（原始文字）
+ * @returns {string|null} pipeline ID 或 null（大小寫不敏感）
+ */
+function extractExplicitPipeline(prompt) {
+  if (!prompt) return null;
+
+  // 匹配 [pipeline:xxx] 語法（大小寫不敏感）
+  const match = prompt.match(/\[pipeline:([a-z0-9-]+)\]/i);
+  if (!match) return null;
+
+  const pipelineId = match[1].toLowerCase();
+
+  // 驗證是否為合法 pipeline ID
+  if (!PIPELINES[pipelineId]) {
+    return null; // 不合法的 ID 忽略，降級到 Layer 2
+  }
+
+  return pipelineId;
+}
+
+// ═══════════════════════════════════════════════
+// Layer 2: Regex 分類 + 信心度評分
+// ═══════════════════════════════════════════════
+
+/**
+ * 將 taskType 映射到 pipeline ID
+ * @param {string} taskType - classify() 回傳的任務類型
+ * @returns {string} pipeline ID
+ */
+function mapTaskTypeToPipeline(taskType) {
+  return TASKTYPE_TO_PIPELINE[taskType] || 'fix';
+}
+
+/**
+ * 計算信心度（根據分類結果）
+ * @param {string} taskType - classify() 回傳的任務類型
+ * @param {string} prompt - 原始 prompt（用於判斷是否命中特定規則）
+ * @returns {number} 信心度 0~1
+ */
+function calculateConfidence(taskType, prompt) {
+  const p = prompt.toLowerCase();
+
+  // Strong question guard 命中 → 最高信心度
+  if (taskType === 'research' && isStrongQuestion(p)) {
+    return 0.95;
+  }
+
+  // Trivial 命中 → 高信心度
+  if (taskType === 'quickfix' && TRIVIAL.test(p)) {
+    return 0.9;
+  }
+
+  // Weak explore 命中 → 低信心度（可能需要 Layer 3）
+  if (taskType === 'research' && WEAK_EXPLORE.test(p)) {
+    return 0.6;
+  }
+
+  // Action keywords 命中 → 中高信心度
+  const actionMatch = ACTION_PATTERNS.find(({ pattern }) => pattern.test(p));
+  if (actionMatch) {
+    return 0.8;
+  }
+
+  // 預設 quickfix → 中信心度
+  return 0.7;
+}
+
+/**
+ * 三層分類（新版介面）
+ * @param {string} prompt - 使用者輸入（原始文字）
+ * @returns {{ pipeline: string, confidence: number, source: 'explicit'|'regex'|'pending-llm' }}
+ */
+function classifyWithConfidence(prompt) {
+  if (!prompt) {
+    return { pipeline: 'fix', confidence: 0.7, source: 'regex' };
+  }
+
+  // Layer 1: 顯式覆寫
+  const explicitPipeline = extractExplicitPipeline(prompt);
+  if (explicitPipeline) {
+    return { pipeline: explicitPipeline, confidence: 1.0, source: 'explicit' };
+  }
+
+  // Layer 2: Regex 分類
+  const taskType = classify(prompt);
+  const pipeline = mapTaskTypeToPipeline(taskType);
+  const confidence = calculateConfidence(taskType, prompt);
+
+  // Layer 3 佔位（Phase 5 實作）
+  // 信心度 < 0.7 時標記為 pending-llm，但目前不實際呼叫 LLM
+  const source = confidence < 0.7 ? 'pending-llm' : 'regex';
+
+  return { pipeline, confidence, source };
+}
+
+// ═══════════════════════════════════════════════
+// 匯出
+// ═══════════════════════════════════════════════
+
 module.exports = {
+  // 舊版介面（向後相容）
   classify,
   isStrongQuestion,
+
+  // 新版介面（Phase 2）
+  extractExplicitPipeline,
+  classifyWithConfidence,
+
   // 匯出常量供測試驗證
   STRONG_QUESTION,
   TRIVIAL,

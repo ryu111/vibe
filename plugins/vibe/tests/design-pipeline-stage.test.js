@@ -118,6 +118,7 @@ console.log('\n🧪 Part 2: Stage Transition 跳過邏輯');
 test('前端框架（react）→ DESIGN 不跳過', () => {
   const sessionId = `design-test-frontend-${Date.now()}`;
   const statePath = createTempState(sessionId, {
+    pipelineId: 'full',
     pipelineEnforced: true,
     taskType: 'feature',
     expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
@@ -169,6 +170,7 @@ test('前端框架（react）→ DESIGN 不跳過', () => {
 test('前端框架（vue）→ DESIGN 不跳過', () => {
   const sessionId = `design-test-vue-${Date.now()}`;
   const statePath = createTempState(sessionId, {
+    pipelineId: 'full',
     pipelineEnforced: true,
     taskType: 'feature',
     expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
@@ -217,6 +219,7 @@ test('前端框架（vue）→ DESIGN 不跳過', () => {
 test('後端框架（express）→ DESIGN 跳過，skippedStages 包含 DESIGN', () => {
   const sessionId = `design-test-backend-${Date.now()}`;
   const statePath = createTempState(sessionId, {
+    pipelineId: 'full',
     pipelineEnforced: true,
     taskType: 'feature',
     expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
@@ -266,6 +269,7 @@ test('後端框架（express）→ DESIGN 跳過，skippedStages 包含 DESIGN',
 test('needsDesign=true（後端框架也不跳過）', () => {
   const sessionId = `design-test-forced-${Date.now()}`;
   const statePath = createTempState(sessionId, {
+    pipelineId: 'full',
     pipelineEnforced: true,
     taskType: 'feature',
     expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
@@ -315,6 +319,7 @@ test('needsDesign=true（後端框架也不跳過）', () => {
 test('無框架資訊 → DESIGN 跳過', () => {
   const sessionId = `design-test-noframework-${Date.now()}`;
   const statePath = createTempState(sessionId, {
+    pipelineId: 'full',
     pipelineEnforced: true,
     taskType: 'feature',
     expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
@@ -362,6 +367,7 @@ test('無框架資訊 → DESIGN 跳過', () => {
 test('E2E 跳過也正確記錄到 skippedStages', () => {
   const sessionId = `design-test-e2e-skip-${Date.now()}`;
   const statePath = createTempState(sessionId, {
+    pipelineId: 'full',
     pipelineEnforced: true,
     taskType: 'feature',
     expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
@@ -420,6 +426,7 @@ console.log('\n🧪 Part 3: Pipeline Check 跳過排除');
 test('skippedStages 包含 DESIGN → 不計入 missing', () => {
   const sessionId = `design-test-pipeline-check-${Date.now()}`;
   const statePath = createTempState(sessionId, {
+    pipelineId: 'full',
     pipelineEnforced: true,
     taskType: 'feature',
     expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
@@ -466,6 +473,7 @@ test('skippedStages 包含 DESIGN → 不計入 missing', () => {
 test('空 skippedStages 不影響計算', () => {
   const sessionId = `design-test-empty-skip-${Date.now()}`;
   const statePath = createTempState(sessionId, {
+    pipelineId: 'full',
     pipelineEnforced: true,
     taskType: 'feature',
     expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
@@ -504,6 +512,7 @@ test('空 skippedStages 不影響計算', () => {
 test('部分跳過：DESIGN 跳過但 E2E 沒跳過', () => {
   const sessionId = `design-test-partial-skip-${Date.now()}`;
   const statePath = createTempState(sessionId, {
+    pipelineId: 'full',
     pipelineEnforced: true,
     taskType: 'feature',
     expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
@@ -548,49 +557,37 @@ test('部分跳過：DESIGN 跳過但 E2E 沒跳過', () => {
 console.log('\n🧪 Part 4: Task Classifier 階段映射');
 // ═══════════════════════════════════════════════
 
-test('feature 類型 STAGE_MAPS 包含 DESIGN', () => {
-  const classifierPath = path.join(PLUGIN_ROOT, 'scripts', 'hooks', 'task-classifier.js');
-  const content = fs.readFileSync(classifierPath, 'utf8');
-
-  // 檢查 STAGE_MAPS.feature 是否包含 DESIGN
-  const featureMatch = content.match(/feature:\s*\[([^\]]+)\]/);
-  assert.ok(featureMatch, '應有 feature 的 STAGE_MAPS 定義');
-  const featureStages = featureMatch[1];
-  assert.ok(featureStages.includes('DESIGN'), 'feature 應包含 DESIGN 階段');
+test('feature 類型對應的 pipeline（full/standard）包含 DESIGN', () => {
+  // feature → standard（無 UI）或 full（含 UI）
+  // full pipeline 應包含 DESIGN
+  assert.ok(REGISTRY.PIPELINES['full'], '應有 full pipeline');
+  const fullStages = REGISTRY.PIPELINES['full'].stages;
+  assert.ok(fullStages.includes('DESIGN'), 'full pipeline 應包含 DESIGN');
 
   // 確認順序：ARCH → DESIGN → DEV
-  const stageOrder = featureStages.match(/'(\w+)'/g).map(s => s.replace(/'/g, ''));
-  const archIdx = stageOrder.indexOf('ARCH');
-  const designIdx = stageOrder.indexOf('DESIGN');
-  const devIdx = stageOrder.indexOf('DEV');
+  const archIdx = fullStages.indexOf('ARCH');
+  const designIdx = fullStages.indexOf('DESIGN');
+  const devIdx = fullStages.indexOf('DEV');
   assert.ok(archIdx >= 0 && designIdx >= 0 && devIdx >= 0, '應包含 ARCH, DESIGN, DEV');
   assert.ok(archIdx < designIdx && designIdx < devIdx, 'DESIGN 應在 ARCH 和 DEV 之間');
 });
 
-test('非 feature 類型不包含 DESIGN', () => {
-  const classifierPath = path.join(PLUGIN_ROOT, 'scripts', 'hooks', 'task-classifier.js');
-  const content = fs.readFileSync(classifierPath, 'utf8');
+test('非 feature 類型對應的 pipeline 不包含 DESIGN', () => {
+  // quickfix → fix pipeline 不應包含 DESIGN
+  assert.ok(REGISTRY.PIPELINES['fix'], '應有 fix pipeline');
+  const fixStages = REGISTRY.PIPELINES['fix'].stages;
+  assert.ok(!fixStages.includes('DESIGN'), 'fix pipeline 不應包含 DESIGN');
 
-  // quickfix 不應包含 DESIGN
-  const quickfixMatch = content.match(/quickfix:\s*\[([^\]]+)\]/);
-  if (quickfixMatch) {
-    const quickfixStages = quickfixMatch[1];
-    assert.ok(!quickfixStages.includes('DESIGN'), 'quickfix 不應包含 DESIGN');
-  }
+  // bugfix → quick-dev pipeline 不應包含 DESIGN
+  assert.ok(REGISTRY.PIPELINES['quick-dev'], '應有 quick-dev pipeline');
+  const quickDevStages = REGISTRY.PIPELINES['quick-dev'].stages;
+  assert.ok(!quickDevStages.includes('DESIGN'), 'quick-dev pipeline 不應包含 DESIGN');
 
-  // bugfix 不應包含 DESIGN
-  const bugfixMatch = content.match(/bugfix:\s*\[([^\]]+)\]/);
-  if (bugfixMatch) {
-    const bugfixStages = bugfixMatch[1];
-    assert.ok(!bugfixStages.includes('DESIGN'), 'bugfix 不應包含 DESIGN');
-  }
-
-  // refactor 不應包含 DESIGN
-  const refactorMatch = content.match(/refactor:\s*\[([^\]]+)\]/);
-  if (refactorMatch) {
-    const refactorStages = refactorMatch[1];
-    assert.ok(!refactorStages.includes('DESIGN'), 'refactor 不應包含 DESIGN');
-  }
+  // refactor → standard pipeline（如果是 feature 對應的話）可能包含 DESIGN
+  // 但通常 refactor 會對應到 standard（無 UI），standard 不包含 DESIGN
+  assert.ok(REGISTRY.PIPELINES['standard'], '應有 standard pipeline');
+  const standardStages = REGISTRY.PIPELINES['standard'].stages;
+  assert.ok(!standardStages.includes('DESIGN'), 'standard pipeline 不應包含 DESIGN（無 UI 開發）');
 });
 
 // ═══════════════════════════════════════════════
@@ -634,19 +631,19 @@ test('pipeline.json provides 包含 DESIGN entry（designer + /vibe:design）', 
 console.log('\n🧪 Part 6: Dashboard Config（config.json）');
 // ═══════════════════════════════════════════════
 
-test('dashboard config taskRoutes feature 包含 DESIGN', () => {
+test('dashboard config taskRoutes full 包含 DESIGN', () => {
   const configJson = JSON.parse(fs.readFileSync(
     path.join(PROJECT_ROOT, 'dashboard', 'config.json'), 'utf8'
   ));
 
   assert.ok(configJson.taskRoutes, '應有 taskRoutes 欄位');
-  const featureRoute = configJson.taskRoutes.find(r => r.type === 'feature');
-  assert.ok(featureRoute, '應有 feature route');
-  assert.ok(featureRoute.stages.includes('DESIGN'), 'feature route 應包含 DESIGN');
+  const fullRoute = configJson.taskRoutes.find(r => r.type === 'full');
+  assert.ok(fullRoute, '應有 full route');
+  assert.ok(fullRoute.stages.includes('DESIGN'), 'full route 應包含 DESIGN');
 
   // 確認順序：ARCH → DESIGN → DEV
-  assert.ok(featureRoute.stages.includes('ARCH → DESIGN → DEV'),
-    'feature route 應有 ARCH → DESIGN → DEV 順序');
+  assert.ok(fullRoute.stages.includes('ARCH → DESIGN → DEV'),
+    'full route 應有 ARCH → DESIGN → DEV 順序');
 });
 
 test('dashboard config stageConfig 有 DESIGN entry', () => {
@@ -766,6 +763,7 @@ console.log('\n🧪 Part 8: 邊界案例與錯誤處理');
 test('空值框架（framework: { name: "" }）→ 視為無框架，跳過 DESIGN', () => {
   const sessionId = `design-test-empty-framework-${Date.now()}`;
   const statePath = createTempState(sessionId, {
+    pipelineId: 'full',
     pipelineEnforced: true,
     taskType: 'feature',
     expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
@@ -810,6 +808,7 @@ test('空值框架（framework: { name: "" }）→ 視為無框架，跳過 DESI
 test('needsDesign=false 明確設為 false（後端框架）→ 跳過 DESIGN', () => {
   const sessionId = `design-test-explicit-false-${Date.now()}`;
   const statePath = createTempState(sessionId, {
+    pipelineId: 'full',
     pipelineEnforced: true,
     taskType: 'feature',
     expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
@@ -856,6 +855,7 @@ test('前端框架大小寫變化（React vs react）→ 正確辨識', () => {
   // 測試 FRONTEND_FRAMEWORKS 是小寫，檢查實際比對邏輯
   const sessionId = `design-test-case-${Date.now()}`;
   const statePath = createTempState(sessionId, {
+    pipelineId: 'full',
     pipelineEnforced: true,
     taskType: 'feature',
     expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
@@ -913,6 +913,7 @@ test('前端框架大小寫變化（React vs react）→ 正確辨識', () => {
 test('多個階段跳過：DESIGN + E2E 同時跳過', () => {
   const sessionId = `design-test-multi-skip-${Date.now()}`;
   const statePath = createTempState(sessionId, {
+    pipelineId: 'full',
     pipelineEnforced: true,
     taskType: 'feature',
     expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],

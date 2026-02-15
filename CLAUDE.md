@@ -9,13 +9,13 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.31 | 全方位開發工作流 | 32 | 11 | 22 | 42 |
+| **vibe** | 1.0.33 | 全方位開發工作流 | 33 | 11 | 22 | 42 |
 
 ### vibe plugin 功能模組
 
 | 模組 | 功能 | Skills | Agents |
 |------|------|:------:|:------:|
-| 規劃 | Pipeline 工作流管理、規劃、架構設計 | 6 | 3 (planner/architect/developer) |
+| 規劃 | Pipeline 工作流管理、規劃、架構設計 | 7 | 3 (planner/architect/developer) |
 | 設計 | UI/UX 設計系統生成（ui-ux-pro-max 整合） | 1 | 1 (designer) |
 | 品質 | lint、format、review、security、TDD、E2E、QA | 9 | 6 (code-reviewer/security-reviewer/tester/build-error-resolver/e2e-runner/qa) |
 | 知識 | 語言/框架模式庫（純知識） | 8 | 0 |
@@ -87,7 +87,7 @@ plugins/vibe/
 │       ├── dashboard/       # server-manager
 │       ├── remote/          # telegram, transcript, bot-manager
 │       └── timeline/        # schema, timeline, consumer（統一事件流）
-├── skills/                  # 31 個 skill 目錄
+├── skills/                  # 33 個 skill 目錄
 ├── agents/                  # 11 個 agent 定義
 ├── server.js                # Dashboard HTTP+WebSocket server
 ├── bot.js                   # Telegram daemon
@@ -97,7 +97,34 @@ plugins/vibe/
 
 ## Pipeline 委派架構
 
-9 階段工作流，由 hooks 驅動（無 orchestrator agent）：
+### Pipeline Catalog（10 種工作流模板）
+
+統一在 `registry.js` 的 `PIPELINES` 常量定義 10 種可組合的 pipeline 模板，task-classifier 根據使用者意圖自動選擇：
+
+| Pipeline ID | 階段 | 描述 | 強制性 |
+|------------|------|------|:-----:|
+| **full** | PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS | 新功能（含 UI） | ✅ |
+| **standard** | PLAN → ARCH → DEV → REVIEW → TEST → DOCS | 新功能（無 UI）、大重構 | ✅ |
+| **quick-dev** | DEV → REVIEW → TEST | bugfix + 補測試、小改動 | ✅ |
+| **fix** | DEV | hotfix、config、一行修改 | ❌ |
+| **test-first** | TEST → DEV → TEST | TDD 工作流（雙 TEST 循環） | ✅ |
+| **ui-only** | DESIGN → DEV → QA | 純 UI/樣式調整 | ✅ |
+| **review-only** | REVIEW | 程式碼審查 | ❌ |
+| **docs-only** | DOCS | 純文件更新 | ❌ |
+| **security** | DEV → REVIEW → TEST | 安全修復（REVIEW 含安全審查） | ✅ |
+| **none** | （空） | 問答、研究、trivial | ❌ |
+
+**使用方式**：
+- **自動分類**：task-classifier 根據關鍵字和語意判斷，自動選擇 pipeline
+- **顯式指定**：在 prompt 中使用 `[pipeline:xxx]` 語法（如 `[pipeline:tdd] 實作 XXX 功能`）
+
+**強制性**（enforced）：
+- ✅ 強制：pipeline-guard 硬阻擋 Main Agent 直接操作，必須透過 delegation
+- ❌ 非強制：允許 Main Agent 直接操作，pipeline 只作為建議
+
+### 9 階段工作流
+
+完整 pipeline 由 hooks 驅動（無 orchestrator agent）：
 
 ```
 PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS

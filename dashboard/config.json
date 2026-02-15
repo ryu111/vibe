@@ -1,22 +1,26 @@
 {
   "taskRoutes": [
-    { "type": "research", "label": "研究探索", "stages": "—", "color": "var(--text-muted)" },
-    { "type": "quickfix", "label": "小改動", "stages": "DEV", "color": "var(--yellow)" },
-    { "type": "bugfix", "label": "修 Bug", "stages": "DEV → TEST", "color": "var(--orange)" },
-    { "type": "feature", "label": "新功能", "stages": "PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → DOCS", "color": "var(--green)" },
-    { "type": "refactor", "label": "重構", "stages": "ARCH → DEV → REVIEW", "color": "var(--cyan)" },
-    { "type": "test", "label": "補測試", "stages": "TEST", "color": "var(--pink)" },
-    { "type": "docs", "label": "寫文件", "stages": "DOCS", "color": "var(--green)" },
-    { "type": "tdd", "label": "TDD", "stages": "TEST → DEV → REVIEW", "color": "var(--purple)" }
+    { "type": "none", "label": "問答/研究", "stages": "—", "color": "var(--text-muted)" },
+    { "type": "fix", "label": "快速修復", "stages": "DEV", "color": "var(--yellow)" },
+    { "type": "quick-dev", "label": "快速開發", "stages": "DEV → REVIEW → TEST", "color": "var(--orange)" },
+    { "type": "standard", "label": "標準開發", "stages": "PLAN → ARCH → DEV → REVIEW → TEST → DOCS", "color": "var(--cyan)" },
+    { "type": "full", "label": "完整開發", "stages": "PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS", "color": "var(--green)" },
+    { "type": "test-first", "label": "TDD 開發", "stages": "TEST → DEV → TEST", "color": "var(--purple)" },
+    { "type": "ui-only", "label": "UI 調整", "stages": "DESIGN → DEV → QA", "color": "var(--pink)" },
+    { "type": "security", "label": "安全修復", "stages": "DEV → REVIEW → TEST", "color": "var(--red)" },
+    { "type": "review-only", "label": "程式碼審查", "stages": "REVIEW", "color": "var(--blue)" },
+    { "type": "docs-only", "label": "文件更新", "stages": "DOCS", "color": "var(--green)" }
   ],
 
   "taskRoutesCompact": [
-    { "label": "研究探索", "stages": "—", "color": "var(--text-muted)" },
-    { "label": "小改動", "stages": "DEV", "color": "var(--yellow)" },
-    { "label": "修 Bug", "stages": "DEV → TEST", "color": "var(--orange)" },
-    { "label": "新功能", "stages": "全流程", "color": "var(--green)" },
-    { "label": "重構", "stages": "ARCH → DEV → REVIEW", "color": "var(--cyan)" },
-    { "label": "TDD", "stages": "TEST → DEV → REVIEW", "color": "var(--purple)" }
+    { "label": "問答/研究", "stages": "—", "color": "var(--text-muted)" },
+    { "label": "快速修復", "stages": "DEV", "color": "var(--yellow)" },
+    { "label": "快速開發", "stages": "DEV → REVIEW → TEST", "color": "var(--orange)" },
+    { "label": "標準開發", "stages": "PLAN → ARCH → DEV → REVIEW → TEST → DOCS", "color": "var(--cyan)" },
+    { "label": "完整開發", "stages": "全 9 階段", "color": "var(--green)" },
+    { "label": "TDD 開發", "stages": "TEST → DEV → TEST", "color": "var(--purple)" },
+    { "label": "UI 調整", "stages": "DESIGN → DEV → QA", "color": "var(--pink)" },
+    { "label": "安全修復", "stages": "DEV → REVIEW → TEST", "color": "var(--red)" }
   ],
 
   "flowPhases": [

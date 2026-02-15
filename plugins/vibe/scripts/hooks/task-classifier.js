@@ -16,47 +16,17 @@ const os = require('os');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
-// 各任務類型對應的 pipeline 階段
-const STAGE_MAPS = {
-  research: [],
-  quickfix: ['DEV'],
-  bugfix: ['DEV', 'TEST'],
-  feature: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-  refactor: ['ARCH', 'DEV', 'REVIEW'],
-  test: ['TEST'],
-  tdd: ['TEST', 'DEV', 'REVIEW'],
-};
-
-const TYPE_LABELS = {
-  research: '研究探索',
-  quickfix: '快速修復',
-  bugfix: '修復 Bug',
-  feature: '新功能開發',
-  refactor: '重構',
-  test: '測試',
-  tdd: 'TDD 開發',
-};
-
-// 任務類型優先級（越大 = pipeline 越完整）
-const TYPE_PRIORITY = {
-  research: 0,
-  quickfix: 1,
-  test: 2,
-  bugfix: 3,
-  refactor: 4,
-  tdd: 5,
-  feature: 6,
-};
-
-// 需要完整 pipeline 委派的任務類型（單一定義點 — pipeline-guard/pipeline-check 讀 state.pipelineEnforced）
-const FULL_PIPELINE_TYPES = ['feature', 'refactor', 'tdd'];
-
-const { NAMESPACED_AGENT_TO_STAGE } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
+const {
+  NAMESPACED_AGENT_TO_STAGE,
+  PIPELINES,
+  PIPELINE_PRIORITY,
+  TASKTYPE_TO_PIPELINE,
+} = require(path.join(__dirname, '..', 'lib', 'registry.js'));
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 
-// 分類邏輯提取至 scripts/lib/flow/classifier.js（兩階段級聯分類器）
-const { classify } = require(path.join(__dirname, '..', 'lib', 'flow', 'classifier.js'));
+// 分類邏輯提取至 scripts/lib/flow/classifier.js（三層級聯分類器）
+const { classifyWithConfidence } = require(path.join(__dirname, '..', 'lib', 'flow', 'classifier.js'));
 
 // 語言/框架 → 知識 skill 映射
 const KNOWLEDGE_SKILLS = {
@@ -133,10 +103,34 @@ function buildKnowledgeHints(envInfo) {
 }
 
 /**
- * 判斷是否為升級（新類型的 pipeline 更大）
+ * 動態生成 PIPELINE_LABELS（從 PIPELINES.label 讀取）
  */
-function isUpgrade(oldType, newType) {
-  return (TYPE_PRIORITY[newType] || 0) > (TYPE_PRIORITY[oldType] || 0);
+const PIPELINE_LABELS = Object.fromEntries(
+  Object.entries(PIPELINES).map(([id, p]) => [id, p.label])
+);
+
+/**
+ * pipeline ID → legacy taskType 反推映射（向後相容）
+ * 修復：顯式定義避免多對一覆蓋（feature/refactor → standard, bugfix/test → quick-dev）
+ */
+const PIPELINE_TO_TASKTYPE = {
+  'full': 'feature',
+  'standard': 'feature',
+  'quick-dev': 'bugfix',
+  'fix': 'quickfix',
+  'test-first': 'tdd',
+  'ui-only': 'feature',
+  'review-only': 'quickfix',
+  'docs-only': 'quickfix',
+  'security': 'bugfix',
+  'none': 'research',
+};
+
+/**
+ * 判斷是否為升級（新 pipeline 的優先級更高）
+ */
+function isUpgrade(oldPipelineId, newPipelineId) {
+  return (PIPELINE_PRIORITY[newPipelineId] || 0) > (PIPELINE_PRIORITY[oldPipelineId] || 0);
 }
 
 /**
@@ -155,17 +149,17 @@ function getCompletedStages(completedAgents) {
  * 產生 pipeline 委派規則（systemMessage 用）
  * 精簡版：pipeline-guard 已硬阻擋 Write/Edit，這裡只需核心指令
  */
-function buildPipelineRules(stages, pipelineRules) {
+function buildPipelineRules(pipelineId, stages, pipelineRules) {
   const stageStr = stages.join(' → ');
   const firstStage = stages[0];
+  const pipelineLabel = PIPELINE_LABELS[pipelineId] || pipelineId;
 
   const parts = [];
   parts.push(`⛔ PIPELINE 模式 — 你是管理者，不是執行者。`);
+  parts.push(`Pipeline: ${pipelineLabel}（${stageStr}）`);
   parts.push(`禁止 Write/Edit/EnterPlanMode（pipeline-guard 硬阻擋）。使用 Task/Skill 委派 sub-agent。`);
   if (pipelineRules && pipelineRules.length > 0) {
     parts.push(...pipelineRules);
-  } else {
-    parts.push(`階段：${stageStr}`);
   }
   parts.push(`每階段完成後 stage-transition 指示下一步，照做即可。禁止 AskUserQuestion。`);
   parts.push(`立即委派 ${firstStage} 階段。`);
@@ -176,32 +170,35 @@ function buildPipelineRules(stages, pipelineRules) {
 /**
  * 初始分類輸出（首次分類）
  */
-function outputInitialClassification(type, label, stages, state) {
+function outputInitialClassification(pipelineId, stages, state) {
+  const pipelineLabel = PIPELINE_LABELS[pipelineId] || pipelineId;
+  const pipelineEnforced = PIPELINES[pipelineId]?.enforced || false;
+
   if (stages.length === 0) {
-    // 無需 pipeline（research）— 仍注入知識提示
+    // 無需 pipeline（none）— 仍注入知識提示
     const envInfo = state && state.environment;
     const knowledgeHints = buildKnowledgeHints(envInfo);
-    const context = `[任務分類] 類型：${label} — 無需 pipeline，直接回答。` +
+    const context = `[任務分類] Pipeline: ${pipelineLabel} — 無需 pipeline，直接回答。` +
       (knowledgeHints ? `\n${knowledgeHints}` : '');
     console.log(JSON.stringify({ additionalContext: context }));
     return;
   }
 
-  if (FULL_PIPELINE_TYPES.includes(type)) {
+  if (pipelineEnforced) {
     // 完整 pipeline 任務 → 注入強制委派規則 + 知識提示（systemMessage）
     const pipelineRules = (state && state.pipelineRules) || [];
     const envInfo = state && state.environment;
     const knowledgeHints = buildKnowledgeHints(envInfo);
     console.log(JSON.stringify({
-      systemMessage: buildPipelineRules(stages, pipelineRules) + knowledgeHints,
+      systemMessage: buildPipelineRules(pipelineId, stages, pipelineRules) + knowledgeHints,
     }));
   } else {
-    // 輕量 pipeline（quickfix/bugfix/test）→ 資訊提示 + 知識提示
+    // 輕量 pipeline（fix/review-only/docs-only）→ 資訊提示 + 知識提示
     const stageStr = stages.join(' → ');
     const envInfo = state && state.environment;
     const knowledgeHints = buildKnowledgeHints(envInfo);
     console.log(JSON.stringify({
-      additionalContext: `[任務分類] 類型：${label}\n建議階段：${stageStr}${knowledgeHints}`,
+      additionalContext: `[任務分類] Pipeline: ${pipelineLabel}\n建議階段：${stageStr}${knowledgeHints}`,
     }));
   }
 }
@@ -210,7 +207,11 @@ function outputInitialClassification(type, label, stages, state) {
  * 升級輸出（中途升級到更大型 pipeline）
  * 使用 systemMessage 強注入委派規則
  */
-function outputUpgrade(oldLabel, newLabel, remainingStages, skippedStages, state) {
+function outputUpgrade(oldPipelineId, newPipelineId, remainingStages, skippedStages, state) {
+  const oldLabel = PIPELINE_LABELS[oldPipelineId] || oldPipelineId;
+  const newLabel = PIPELINE_LABELS[newPipelineId] || newPipelineId;
+  const pipelineEnforced = PIPELINES[newPipelineId]?.enforced || false;
+
   if (remainingStages.length === 0) {
     console.log(JSON.stringify({
       additionalContext: `[Pipeline 升級] ${oldLabel} → ${newLabel} — 所有階段已完成。`,
@@ -224,13 +225,20 @@ function outputUpgrade(oldLabel, newLabel, remainingStages, skippedStages, state
     ? `\n⏭️ 已完成的階段自動跳過：${skippedStages.join('、')}`
     : '';
 
-  // 升級時用 systemMessage（強）— 精簡版，pipeline-guard 硬阻擋已保障
-  console.log(JSON.stringify({
-    systemMessage: `⛔ [Pipeline 升級] ${oldLabel} → ${newLabel}\n` +
-      `切換管理者模式。禁止 Write/Edit（pipeline-guard 硬阻擋）。\n` +
-      `剩餘階段：${stageStr}${skipNote}\n` +
-      `立即委派 ${firstStage} 階段。`,
-  }));
+  if (pipelineEnforced) {
+    // 升級到 enforced pipeline 用 systemMessage（強）— 精簡版，pipeline-guard 硬阻擋已保障
+    console.log(JSON.stringify({
+      systemMessage: `⛔ [Pipeline 升級] ${oldLabel} → ${newLabel}\n` +
+        `切換管理者模式。禁止 Write/Edit（pipeline-guard 硬阻擋）。\n` +
+        `剩餘階段：${stageStr}${skipNote}\n` +
+        `立即委派 ${firstStage} 階段。`,
+    }));
+  } else {
+    // 升級到輕量 pipeline 用 additionalContext
+    console.log(JSON.stringify({
+      additionalContext: `[Pipeline 升級] ${oldLabel} → ${newLabel}\n建議階段：${stageStr}${skipNote}`,
+    }));
+  }
 }
 
 let input = '';
@@ -244,9 +252,12 @@ process.stdin.on('end', () => {
     // Emit prompt received event
     emit(EVENT_TYPES.PROMPT_RECEIVED, sessionId, {});
 
-    const newType = classify(prompt);
-    const newStages = STAGE_MAPS[newType] || [];
-    const newLabel = TYPE_LABELS[newType] || newType;
+    // 使用新的 classifyWithConfidence（回傳 { pipeline, confidence, source }）
+    const result = classifyWithConfidence(prompt);
+    const newPipelineId = result.pipeline;
+    const newStages = PIPELINES[newPipelineId]?.stages || [];
+    const newPipelineEnforced = PIPELINES[newPipelineId]?.enforced || false;
+    const newTaskType = PIPELINE_TO_TASKTYPE[newPipelineId] || 'quickfix'; // 向後相容
 
     const statePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
 
@@ -258,35 +269,38 @@ process.stdin.on('end', () => {
       } catch (_) {}
     }
 
-    // 無 state file 或無 taskType → 初始分類
-    if (!state || !state.taskType) {
+    // 無 state file 或無 pipelineId → 初始分類
+    if (!state || !state.pipelineId) {
       if (state) {
-        state.taskType = newType;
+        state.pipelineId = newPipelineId;
+        state.taskType = newTaskType; // 向後相容
         state.expectedStages = newStages;
-        state.pipelineEnforced = FULL_PIPELINE_TYPES.includes(newType);
+        state.pipelineEnforced = newPipelineEnforced;
+        state.classificationConfidence = result.confidence; // debug 用
+        state.classificationSource = result.source; // debug 用
         fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
       }
       // Emit initial classification
       emit(EVENT_TYPES.TASK_CLASSIFIED, sessionId, {
-        taskType: newType,
+        pipelineId: newPipelineId,
+        taskType: newTaskType,
         expectedStages: newStages,
         reclassified: false,
       });
-      outputInitialClassification(newType, newLabel, newStages, state);
+      outputInitialClassification(newPipelineId, newStages, state);
       return;
     }
 
-    // ===== 已有 taskType → 重新分類邏輯 =====
-    const oldType = state.taskType;
-    const oldLabel = TYPE_LABELS[oldType] || oldType;
+    // ===== 已有 pipelineId → 重新分類邏輯 =====
+    const oldPipelineId = state.pipelineId;
 
-    // 相同類型 → 不重複注入（避免每次 prompt 都觸發）
-    if (oldType === newType) {
+    // 相同 pipeline → 不重複注入（避免每次 prompt 都觸發）
+    if (oldPipelineId === newPipelineId) {
       return;
     }
 
     // 降級 → 阻擋，保持現有 pipeline 不中斷
-    if (!isUpgrade(oldType, newType)) {
+    if (!isUpgrade(oldPipelineId, newPipelineId)) {
       return;
     }
 
@@ -298,36 +312,32 @@ process.stdin.on('end', () => {
     // 記錄重新分類歷史
     if (!state.reclassifications) state.reclassifications = [];
     state.reclassifications.push({
-      from: oldType,
-      to: newType,
+      from: oldPipelineId,
+      to: newPipelineId,
       at: new Date().toISOString(),
       skippedStages,
     });
 
     // 更新 state
-    state.taskType = newType;
+    state.pipelineId = newPipelineId;
+    state.taskType = newTaskType; // 向後相容
     state.expectedStages = newStages;
-    state.pipelineEnforced = FULL_PIPELINE_TYPES.includes(newType);
+    state.pipelineEnforced = newPipelineEnforced;
+    state.classificationConfidence = result.confidence; // debug 用
+    state.classificationSource = result.source; // debug 用
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
 
     // Emit upgrade classification
     emit(EVENT_TYPES.TASK_CLASSIFIED, sessionId, {
-      taskType: newType,
+      pipelineId: newPipelineId,
+      taskType: newTaskType,
       expectedStages: newStages,
       reclassified: true,
-      from: oldType,
+      from: oldPipelineId,
     });
 
-    // 輸出升級指令（只有強制 pipeline 類型才用 systemMessage）
-    if (state.pipelineEnforced) {
-      outputUpgrade(oldLabel, newLabel, remainingStages, skippedStages, state);
-    } else {
-      // 輕量升級（research → quickfix 等）→ additionalContext
-      const stageStr = newStages.join(' → ');
-      console.log(JSON.stringify({
-        additionalContext: `[任務分類升級] ${oldLabel} → ${newLabel}\n建議階段：${stageStr}`,
-      }));
-    }
+    // 輸出升級指令
+    outputUpgrade(oldPipelineId, newPipelineId, remainingStages, skippedStages, state);
   } catch (err) {
     hookLogger.error('task-classifier', err);
   }

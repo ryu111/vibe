@@ -67,6 +67,7 @@ process.stdin.on('end', () => {
       && fs.existsSync(path.join(openspecDir, 'config.yaml'));
 
     // 寫入 state file（不含 taskType — 由 task-classifier 設定）
+    // expectedStages 初始化為空陣列，由 task-classifier 根據 pipelineId 設定
     if (!fs.existsSync(CLAUDE_DIR)) {
       fs.mkdirSync(CLAUDE_DIR, { recursive: true });
     }
@@ -74,7 +75,8 @@ process.stdin.on('end', () => {
       sessionId,
       initialized: true,
       completed: [],
-      expectedStages: installedStages,
+      expectedStages: [],  // 改為空陣列，等待 task-classifier 設定
+      pipelineId: null,     // 新增 pipelineId 欄位
       pipelineRules,
       environment: env,
       openspecEnabled,

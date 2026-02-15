@@ -52,6 +52,45 @@ const TOOL_EMOJI = [
 // 前端框架 — 需要視覺設計階段（共用常量）
 const FRONTEND_FRAMEWORKS = ['next.js', 'nuxt', 'remix', 'astro', 'svelte', 'vue', 'react', 'angular'];
 
+// Pipeline 模板定義 — 10 種工作流模板
+const PIPELINES = {
+  'full':       { stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'], enforced: true,  label: '完整開發', description: '新功能（含 UI）' },
+  'standard':   { stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],                       enforced: true,  label: '標準開發', description: '新功能（無 UI）、大重構' },
+  'quick-dev':  { stages: ['DEV', 'REVIEW', 'TEST'],                                               enforced: true,  label: '快速開發', description: 'bugfix + 補測試、小改動' },
+  'fix':        { stages: ['DEV'],                                                                  enforced: false, label: '快速修復', description: 'hotfix、config、一行修改' },
+  'test-first': { stages: ['TEST', 'DEV', 'TEST'],                                                  enforced: true,  label: 'TDD 開發', description: 'TDD 工作流' },
+  'ui-only':    { stages: ['DESIGN', 'DEV', 'QA'],                                                  enforced: true,  label: 'UI 調整',  description: '純 UI/樣式調整' },
+  'review-only':{ stages: ['REVIEW'],                                                               enforced: false, label: '程式碼審查', description: '程式碼審查' },
+  'docs-only':  { stages: ['DOCS'],                                                                 enforced: false, label: '文件更新', description: '純文件更新' },
+  'security':   { stages: ['DEV', 'REVIEW', 'TEST'],                                                enforced: true,  label: '安全修復', description: '安全修復（REVIEW 含安全審查）' },
+  'none':       { stages: [],                                                                       enforced: false, label: '無 Pipeline', description: '問答、研究、trivial' },
+};
+
+// Pipeline 優先級映射 — 數字越高代表流程越完整
+const PIPELINE_PRIORITY = {
+  'none': 0,
+  'docs-only': 1,
+  'review-only': 1,
+  'fix': 2,
+  'ui-only': 3,
+  'security': 3,
+  'quick-dev': 4,
+  'test-first': 5,
+  'standard': 6,
+  'full': 7,
+};
+
+// 舊 taskType → pipeline ID 映射（向後相容）
+const TASKTYPE_TO_PIPELINE = {
+  'research': 'none',
+  'quickfix': 'fix',
+  'bugfix': 'quick-dev',
+  'feature': 'standard',
+  'refactor': 'standard',
+  'test': 'quick-dev',
+  'tdd': 'test-first',
+};
+
 module.exports = {
   STAGES,
   STAGE_ORDER,
@@ -59,4 +98,7 @@ module.exports = {
   NAMESPACED_AGENT_TO_STAGE,
   TOOL_EMOJI,
   FRONTEND_FRAMEWORKS,
+  PIPELINES,
+  PIPELINE_PRIORITY,
+  TASKTYPE_TO_PIPELINE,
 };

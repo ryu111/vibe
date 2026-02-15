@@ -21,7 +21,8 @@ const path = require('path');
 
 const SKILL_MODULE_MAP = {
   scope: 'Flow', architect: 'Flow', checkpoint: 'Flow',
-  'context-status': 'Flow', 'env-detect': 'Flow', cancel: 'Flow',
+  'context-status': 'Flow', 'env-detect': 'Flow', cancel: 'Flow', pipeline: 'Flow', timeline: 'Flow',
+  design: 'Design',
   review: 'Sentinel', lint: 'Sentinel', format: 'Sentinel',
   security: 'Sentinel', tdd: 'Sentinel', e2e: 'Sentinel',
   qa: 'Sentinel', coverage: 'Sentinel', verify: 'Sentinel',
@@ -33,10 +34,12 @@ const SKILL_MODULE_MAP = {
   dashboard: 'Dashboard',
   remote: 'Remote', 'remote-config': 'Remote',
   'hook-diag': '診斷',
+  health: '維護',
 };
 
 const AGENT_MODULE_MAP = {
   planner: 'Flow', architect: 'Flow', developer: 'Flow',
+  designer: 'Design',
   'code-reviewer': 'Sentinel', 'security-reviewer': 'Sentinel',
   tester: 'Sentinel', 'build-error-resolver': 'Sentinel',
   'e2e-runner': 'Sentinel', qa: 'Sentinel',
@@ -46,6 +49,7 @@ const AGENT_MODULE_MAP = {
 const AGENT_SHORT_DESC = {
   planner: '需求分析 + 分階段計畫',
   architect: '架構方案 + 介面設計',
+  designer: 'UI/UX 設計系統 + mockup',
   developer: '按計畫實作 + 寫測試',
   'code-reviewer': 'CRITICAL→LOW 品質報告',
   'security-reviewer': 'OWASP Top 10 安全報告',
@@ -58,11 +62,13 @@ const AGENT_SHORT_DESC = {
 
 const MODULE_INFO = [
   { key: 'Flow',      desc: '開發工作流 + Pipeline 管理' },
+  { key: 'Design',    desc: 'UI/UX 設計系統生成' },
   { key: 'Sentinel',  desc: '品質全鏈守衛' },
   { key: 'Patterns',  desc: '語言/框架模式庫' },
   { key: 'Evolve',    desc: '知識進化 + 文件同步' },
   { key: 'Dashboard', desc: 'Pipeline 即時儀表板' },
   { key: 'Remote',    desc: 'Telegram 遠端控制' },
+  { key: '維護',      desc: 'RAM 健康檢查' },
   { key: '診斷',      desc: 'Hook 錯誤診斷' },
 ];
 
@@ -369,7 +375,23 @@ function generateVibeDoc(specs, metaPath) {
 
   // ━━━ §3 Pipeline ━━━
   d.push(hr);
-  d.push(`## 3. Pipeline ${pipelineJson.stages.length} 階段`);
+  // 動態計算 pipeline 數量
+  const { PIPELINES: REGISTRY_PIPELINES } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'registry.js'));
+  const pipelineCount = Object.keys(REGISTRY_PIPELINES).length;
+  d.push(`## 3. Pipeline Catalog — ${pipelineCount} 種可組合工作流`);
+  d.push('');
+  d.push('從 v1.0.33 起，Pipeline 從「全有或全無」升級為「組合式模板」架構。task-classifier 根據使用者意圖自動選擇適合的 pipeline，或使用者可用 `[pipeline:xxx]` 語法顯式指定。');
+  d.push('');
+  d.push('| Pipeline ID | 階段 | 描述 | 強制 |');
+  d.push('|------------|------|------|:----:|');
+  // 動態生成表格（從 registry.js PIPELINES）
+  for (const [id, cfg] of Object.entries(REGISTRY_PIPELINES)) {
+    const stagesStr = cfg.stages.length === 0 ? '（空）' : cfg.stages.join('→');
+    const enforced = cfg.enforced ? '✅' : '❌';
+    d.push(`| **${id}** | ${stagesStr} | ${cfg.description} | ${enforced} |`);
+  }
+  d.push('');
+  d.push('### 全域 9 階段（完整流程）');
   d.push('');
   d.push('```');
   d.push(pipelineJson.stages.join(' → '));
