@@ -113,33 +113,20 @@ test('無殘留 GitHub Dark 色值', () => {
 
 // Spec Requirement: Tokyo Night 色系定義 → Scenario: colorToRgba 映射與色系同步
 
-test('colorToRgba 映射值與 Tokyo Night 色系一致（檢查 generate.js 原始碼）', () => {
-  // colorToRgba 只在 JS 中使用，不會出現在 HTML 產出
-  // 改為檢查 generate.js 原始碼
+test('colorToRgba 已改為動態計算（檢查 _utils.js buildColorToRgba 存在）', () => {
+  // colorToRgba 在 v1.0.30 改為動態從主題 colors 計算
+  // 驗證 _utils.js 的 buildColorToRgba 函式存在
+  const utilsPath = path.join(ROOT, 'dashboard', 'themes', '_utils.js');
+  assert(fs.existsSync(utilsPath), '找不到 themes/_utils.js');
+
+  const utilsContent = fs.readFileSync(utilsPath, 'utf-8');
+  assert(/function buildColorToRgba\(/.test(utilsContent), '找不到 buildColorToRgba 函式');
+  assert(/hexToRgba\(hex,\s*alpha\)/.test(utilsContent), 'buildColorToRgba 未使用 hexToRgba 函式');
+
+  // 驗證 generate.js 使用動態初始化
   const generatePath = path.join(ROOT, 'dashboard', 'scripts', 'generate.js');
   const generateContent = fs.readFileSync(generatePath, 'utf-8');
-
-  const colorToRgbaMatch = generateContent.match(/const colorToRgba\s*=\s*\{([\s\S]*?)\};/);
-  assert(colorToRgbaMatch, '找不到 colorToRgba 定義（在 generate.js 中）');
-
-  const rgbaContent = colorToRgbaMatch[1];
-
-  // Tokyo Night 色值 → rgba 映射（驗證 RGB 部分）
-  const rgbaMap = {
-    '#7aa2f7': /122,162,247/,  // accent
-    '#9ece6a': /158,206,106/,  // green
-    '#e0af68': /224,175,104/,  // yellow
-    '#f7768e': /247,118,142/,  // red
-    '#bb9af7': /187,154,247/,  // purple
-    '#ff9e64': /255,158,100/,  // orange
-    '#7dcfff': /125,207,255/,  // cyan
-    '#ff007c': /255,0,124/,    // pink
-    '#c0caf5': /192,202,245/,  // text（用於 muted）
-  };
-
-  for (const [hex, rgbRegex] of Object.entries(rgbaMap)) {
-    assert(rgbRegex.test(rgbaContent), `colorToRgba 缺少或 RGB 值錯誤：${hex} → rgba(${rgbRegex.source},...)`);
-  }
+  assert(/colorToRgba\s*=\s*buildColorToRgba\(theme\.colors\)/.test(generateContent), 'generate.js 未動態初始化 colorToRgba');
 });
 
 test('卡片級元素使用 var(--radius)', () => {

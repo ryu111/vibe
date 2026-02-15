@@ -1,0 +1,36 @@
+/* Minimal Ink layout.css — No TOC + Max Width 800px */
+
+body {
+  max-width: 800px;
+  margin: 0 auto;
+  padding-left: 2rem; /* 覆蓋 _base.css.js 的 280px（minimal-ink 隱藏 TOC） */
+}
+
+/* 隱藏 TOC */
+.toc {
+  display: none;
+}
+
+/* 移除卡片 shadow，保留極簡邊框 */
+.plugin-card,
+.agent-card,
+.pipe-stage,
+.guard-card,
+details {
+  box-shadow: none;
+  border-width: 1px;
+}
+
+/* 極簡分隔線（針對折疊面板） */
+details {
+  margin: 3rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Mobile 保持相同 */
+@media (max-width: 639px) {
+  body {
+    max-width: 100%;
+    padding: 1rem;
+  }
+}

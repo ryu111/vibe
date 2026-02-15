@@ -1,0 +1,41 @@
+{
+  "name": "nord",
+  "displayName": "Nord",
+  "description": "冷灰藍底 + 柔和霜色，北歐冷調",
+  "category": "dark",
+  "layout": "timeline",
+  "colors": {
+    "--bg": "#2e3440",
+    "--surface": "#3b4252",
+    "--surface2": "#343a48",
+    "--border": "#4c566a",
+    "--border-highlight": "#5e6779",
+    "--text": "#d8dee9",
+    "--text-muted": "#7b88a1",
+    "--accent": "#88c0d0",
+    "--green": "#a3be8c",
+    "--yellow": "#ebcb8b",
+    "--red": "#bf616a",
+    "--purple": "#b48ead",
+    "--orange": "#d08770",
+    "--cyan": "#8fbcbb",
+    "--pink": "#b48ead"
+  },
+  "tokens": {
+    "--radius": "8px",
+    "--card-shadow": "0 1px 4px rgba(0,0,0,0.2)"
+  },
+  "tweaks": {
+    "toc": "top-breadcrumb",
+    "fontFamily": "\"Inter\", sans-serif",
+    "codeFontFamily": "\"Fira Code\", monospace",
+    "pipelineDirection": "horizontal",
+    "maxWidth": "100%",
+    "cardStyle": "bordered",
+    "spacing": {
+      "cardGap": "1.5rem",
+      "sectionGap": "2rem",
+      "padding": "1.5rem"
+    }
+  }
+}

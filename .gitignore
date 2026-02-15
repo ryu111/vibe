@@ -14,6 +14,7 @@ dashboard/.claude/
 dashboard/data/progress.json
 dashboard/dashboard.html
 dashboard/data/meta.json
+dashboard/themes/*/preview.html
 
 # Node
 node_modules/

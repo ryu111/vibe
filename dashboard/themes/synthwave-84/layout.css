@@ -1,0 +1,20 @@
+/* Synthwave '84 layout.css — Bento Grid Layout */
+
+/* Desktop: 隱藏 TOC（Bento 不需要導航） */
+@media (min-width: 1024px) {
+  body {
+    max-width: 100%;
+    padding-left: 2rem; /* 覆蓋 _base.css.js 的 280px */
+  }
+
+  .toc {
+    display: none;
+  }
+}
+
+/* Tablet & Mobile: 隱藏 TOC */
+@media (max-width: 1023px) {
+  .toc {
+    display: none;
+  }
+}

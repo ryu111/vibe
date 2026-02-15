@@ -1,0 +1,46 @@
+/* Solarized Dark layout.css — Top Tab TOC */
+
+/* Desktop: TOC 改為頂部水平 Tab */
+@media (min-width: 1024px) {
+  body {
+    padding-left: 2rem; /* 覆蓋 _base.css.js 的 280px */
+  }
+
+  .toc {
+    position: sticky;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: auto;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    border-right: none;
+    padding: 0.75rem 1rem;
+    z-index: 100;
+    display: flex;
+    gap: 1.5rem;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .toc .toc-title {
+    flex-shrink: 0;
+  }
+
+  .toc a {
+    padding: 0.5rem 1rem;
+    border-radius: calc(var(--radius) / 2);
+    display: inline-block;
+  }
+
+  .toc a:hover {
+    background: var(--surface2);
+  }
+}
+
+/* Mobile: 隱藏 TOC */
+@media (max-width: 639px) {
+  .toc {
+    display: none;
+  }
+}

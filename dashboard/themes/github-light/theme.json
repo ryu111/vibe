@@ -1,0 +1,41 @@
+{
+  "name": "github-light",
+  "displayName": "GitHub Light",
+  "description": "純白底 + GitHub 語意色，亮色資訊密集",
+  "category": "light",
+  "layout": "dual-col",
+  "colors": {
+    "--bg": "#ffffff",
+    "--surface": "#f6f8fa",
+    "--surface2": "#eef1f5",
+    "--border": "#d0d7de",
+    "--border-highlight": "#afb8c1",
+    "--text": "#1f2328",
+    "--text-muted": "#656d76",
+    "--accent": "#0969da",
+    "--green": "#1a7f37",
+    "--yellow": "#9a6700",
+    "--red": "#cf222e",
+    "--purple": "#8250df",
+    "--orange": "#bc4c00",
+    "--cyan": "#0550ae",
+    "--pink": "#bf3989"
+  },
+  "tokens": {
+    "--radius": "6px",
+    "--card-shadow": "0 1px 0 rgba(27,31,36,0.04)"
+  },
+  "tweaks": {
+    "toc": "top-breadcrumb",
+    "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "codeFontFamily": "\"SF Mono\", \"Consolas\", monospace",
+    "pipelineDirection": "vertical",
+    "maxWidth": "1400px",
+    "cardStyle": "bordered",
+    "spacing": {
+      "cardGap": "1rem",
+      "sectionGap": "1.5rem",
+      "padding": "1.25rem"
+    }
+  }
+}

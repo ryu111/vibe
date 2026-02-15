@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vibe Dashboard 主題選擇器</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #1a1b26;
+      color: #c0caf5;
+      padding: 2rem;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 0.5rem;
+      color: #7aa2f7;
+    }
+
+    .subtitle {
+      font-size: 1.125rem;
+      color: #565f89;
+      margin-bottom: 3rem;
+    }
+
+    .theme-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 3rem;
+    }
+
+    .theme-card {
+      background: #24283b;
+      border: 1px solid #3b4261;
+      border-radius: 10px;
+      padding: 1.5rem;
+      cursor: pointer;
+      transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .theme-card:hover {
+      border-color: #545c7e;
+      transform: translateY(-4px);
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+    }
+
+    .theme-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .theme-name {
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+
+    .theme-category {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+
+    .category-dark {
+      background: rgba(122, 162, 247, 0.15);
+      color: #7aa2f7;
+    }
+
+    .category-light {
+      background: rgba(224, 175, 104, 0.15);
+      color: #e0af68;
+    }
+
+    .theme-description {
+      color: #565f89;
+      margin-bottom: 1rem;
+      font-size: 0.9375rem;
+    }
+
+    .theme-meta {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.875rem;
+      color: #565f89;
+    }
+
+    .theme-meta span {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .color-preview {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      display: flex;
+    }
+
+    .color-preview div {
+      flex: 1;
+    }
+
+    footer {
+      text-align: center;
+      color: #565f89;
+      font-size: 0.875rem;
+      padding-top: 2rem;
+      border-top: 1px solid #3b4261;
+    }
+
+    footer a {
+      color: #7aa2f7;
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 768px) {
+      .theme-grid {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 2rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎨 Vibe Dashboard 主題選擇器</h1>
+    <p class="subtitle">10 種視覺主題 × 5 種佈局模式 — 點擊卡片預覽主題</p>
+
+    <div class="theme-grid" id="themeGrid"></div>
+
+    <footer>
+      <p>Vibe Dashboard Theme Variants — 由 Vibe Pipeline 自動產生</p>
+    </footer>
+  </div>
+
+  <script>
+    const themes = [
+      {
+        name: 'tokyo-night',
+        displayName: 'Tokyo Night',
+        description: '深靛藍底 + 霓虹色系，基準款深色主題',
+        category: 'dark',
+        layout: 'single-col',
+        colors: ['#7aa2f7', '#9ece6a', '#e0af68', '#f7768e', '#bb9af7', '#ff9e64', '#7dcfff', '#ff007c']
+      },
+      {
+        name: 'polar-dawn',
+        displayName: 'Polar Dawn',
+        description: '冰白底 + 北歐藍灰，亮色基準款',
+        category: 'light',
+        layout: 'single-col',
+        colors: ['#4a7cf7', '#38a169', '#d69e2e', '#e53e3e', '#805ad5', '#dd6b20', '#0bc5ea', '#d53f8c']
+      },
+      {
+        name: 'catppuccin-mocha',
+        displayName: 'Catppuccin Mocha',
+        description: '暖褐底 + 柔和粉彩，暖色調深色主題',
+        category: 'dark',
+        layout: 'single-col',
+        colors: ['#89b4fa', '#a6e3a1', '#f9e2af', '#f38ba8', '#cba6f7', '#fab387', '#89dceb', '#f5c2e7']
+      },
+      {
+        name: 'solarized-dark',
+        displayName: 'Solarized Dark',
+        description: '青藍底 + 對比色系，經典工程師友善配色',
+        category: 'dark',
+        layout: 'single-col',
+        colors: ['#268bd2', '#859900', '#b58900', '#dc322f', '#6c71c4', '#cb4b16', '#2aa198', '#d33682']
+      },
+      {
+        name: 'github-light',
+        displayName: 'GitHub Light',
+        description: '純白底 + GitHub 語意色，亮色資訊密集',
+        category: 'light',
+        layout: 'dual-col',
+        colors: ['#0969da', '#1a7f37', '#9a6700', '#cf222e', '#8250df', '#bc4c00', '#0550ae', '#bf3989']
+      },
+      {
+        name: 'dracula',
+        displayName: 'Dracula',
+        description: '紫黑底 + 螢光亮色，暗色極簡',
+        category: 'dark',
+        layout: 'single-col',
+        colors: ['#bd93f9', '#50fa7b', '#f1fa8c', '#ff5555', '#bd93f9', '#ffb86c', '#8be9fd', '#ff79c6']
+      },
+      {
+        name: 'minimal-ink',
+        displayName: 'Minimal Ink',
+        description: '近白底 + 純黑灰，極簡單欄',
+        category: 'light',
+        layout: 'single-col',
+        colors: ['#171717', '#16a34a', '#ca8a04', '#dc2626', '#7c3aed', '#ea580c', '#0891b2', '#db2777']
+      },
+      {
+        name: 'synthwave-84',
+        displayName: "Synthwave '84",
+        description: '深紫底 + 霓虹粉青，賽博龐克',
+        category: 'dark',
+        layout: 'bento',
+        colors: ['#fc28a8', '#72f1b8', '#f3e06d', '#fe4450', '#c792ea', '#ff8b39', '#36f9f6', '#fc28a8']
+      },
+      {
+        name: 'nord',
+        displayName: 'Nord',
+        description: '冷灰藍底 + 柔和霜色，北歐冷調',
+        category: 'dark',
+        layout: 'timeline',
+        colors: ['#88c0d0', '#a3be8c', '#ebcb8b', '#bf616a', '#b48ead', '#d08770', '#8fbcbb', '#b48ead']
+      },
+      {
+        name: 'one-dark-pro',
+        displayName: 'One Dark Pro',
+        description: '深灰底 + VS Code 色系，IDE 風格',
+        category: 'dark',
+        layout: 'triple-col',
+        colors: ['#61afef', '#98c379', '#e5c07b', '#e06c75', '#c678dd', '#d19a66', '#56b6c2', '#c678dd']
+      }
+    ];
+
+    const layoutLabels = {
+      'single-col': '單欄',
+      'dual-col': '雙欄',
+      'triple-col': '三欄',
+      'bento': 'Bento',
+      'timeline': '時間軸'
+    };
+
+    function renderThemes() {
+      const grid = document.getElementById('themeGrid');
+
+      themes.forEach(theme => {
+        const card = document.createElement('div');
+        card.className = 'theme-card';
+        card.onclick = () => window.open(`${theme.name}/preview.html`, '_blank');
+
+        const colorPreview = theme.colors.map(color =>
+          `<div style="background: ${color};"></div>`
+        ).join('');
+
+        card.innerHTML = `
+          <div class="theme-header">
+            <div class="theme-name">${theme.displayName}</div>
+            <div class="theme-category category-${theme.category}">
+              ${theme.category === 'dark' ? '🌙 深色' : '☀️ 亮色'}
+            </div>
+          </div>
+          <div class="theme-description">${theme.description}</div>
+          <div class="theme-meta">
+            <span>📐 ${layoutLabels[theme.layout]}</span>
+            <span>🎨 ${theme.colors.length} 色</span>
+          </div>
+          <div class="color-preview">${colorPreview}</div>
+        `;
+
+        grid.appendChild(card);
+      });
+    }
+
+    renderThemes();
+  </script>
+</body>
+</html>

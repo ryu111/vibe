@@ -1,0 +1,41 @@
+{
+  "name": "synthwave-84",
+  "displayName": "Synthwave '84",
+  "description": "深紫底 + 霓虹粉青，賽博龐克",
+  "category": "dark",
+  "layout": "bento",
+  "colors": {
+    "--bg": "#262335",
+    "--surface": "#34294f",
+    "--surface2": "#2e2346",
+    "--border": "#495495",
+    "--border-highlight": "#5a67a8",
+    "--text": "#e0d7ff",
+    "--text-muted": "#7a6fa8",
+    "--accent": "#fc28a8",
+    "--green": "#72f1b8",
+    "--yellow": "#f3e06d",
+    "--red": "#fe4450",
+    "--purple": "#c792ea",
+    "--orange": "#ff8b39",
+    "--cyan": "#36f9f6",
+    "--pink": "#fc28a8"
+  },
+  "tokens": {
+    "--radius": "2px",
+    "--card-shadow": "0 0 15px rgba(252,40,168,0.15), 0 0 30px rgba(54,249,246,0.05)"
+  },
+  "tweaks": {
+    "toc": "none",
+    "fontFamily": "\"Courier Prime\", \"Courier New\", monospace",
+    "codeFontFamily": "\"Fira Code\", monospace",
+    "pipelineDirection": "horizontal",
+    "maxWidth": "100%",
+    "cardStyle": "neon",
+    "spacing": {
+      "cardGap": "1rem",
+      "sectionGap": "1rem",
+      "padding": "1.5rem"
+    }
+  }
+}
