@@ -171,7 +171,7 @@
     .agent-panel-stats { display: flex; gap: 12px; }
     .agent-panel-stat { font-size: 10px; color: var(--subtext0); }
     .agent-panel-stat .num { font-weight: 700; color: var(--text); }
-    .agent-sep { height: 0; border-top: 1px solid var(--surface1); margin: 4px 0; }
+    .agent-sep { height: 0; border-top: 1px dashed var(--surface2); margin: 2px 0; }
     /* Grid 對齊：[燈] [名稱] [職責] [model] [狀態] [chips] [時長] */
     .agent-row { display: grid; grid-template-columns: 16px 140px 68px 54px 64px 1fr 44px; column-gap: 6px; align-items: center; padding: 4px 4px; font-size: 11px; border-bottom: 1px solid rgba(69,71,90,0.15); transition: background 0.15s; }
     .agent-row:last-child { border-bottom: none; }
@@ -197,9 +197,31 @@
     .ac-chip.st-skipped { color: var(--overlay0); text-decoration: line-through; }
     .ac-chip.st-idle { color: var(--overlay0); }
     .agent-extra { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; }
-    .ac-chip.skill { font-size: 9px; padding: 2px 6px; opacity: 0.4; transition: opacity 0.3s; }
-    .ac-chip.skill-on { opacity: 1; background: rgba(166,227,161,0.15); color: var(--green); font-weight: 600; }
+    .ac-chip.skill { font-size: 9px; padding: 2px 6px; opacity: 0.4; transition: opacity 0.3s, background 0.3s; border: 1px solid rgba(69,71,90,0.2); }
+    .ac-chip.skill-on { opacity: 1; background: rgba(166,227,161,0.15); color: var(--green); font-weight: 600; border-color: rgba(166,227,161,0.3); }
     .agent-dur { font-size: 10px; color: var(--subtext0); text-align: right; font-variant-numeric: tabular-nums; }
+    /* Agent 分組標籤 */
+    .agent-group-label { font-size: 9px; color: var(--overlay0); text-transform: uppercase; letter-spacing: 1.2px; padding: 6px 4px 2px; }
+    /* MCP 統計 */
+    .mcp-stats { background: var(--surface0); border-radius: 10px; padding: 12px 16px; border: 1px solid var(--surface1); }
+    .mcp-stats h3 { font-size: 11px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+    .mcp-stats h3 .mcp-total { font-size: 9px; font-weight: 400; }
+    .mcp-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 11px; }
+    .mcp-row .mcp-server { font-weight: 600; min-width: 90px; color: var(--cyan); }
+    .mcp-row .mcp-count { min-width: 36px; text-align: right; font-variant-numeric: tabular-nums; color: var(--subtext0); }
+    .mcp-row .mcp-bar { flex: 1; height: 4px; background: var(--surface1); border-radius: 2px; overflow: hidden; }
+    .mcp-row .mcp-fill { height: 100%; background: var(--cyan); border-radius: 2px; transition: width 0.5s; }
+    .mcp-row .mcp-methods { font-size: 9px; color: var(--overlay0); max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* 響應式 Agent Panel */
+    @media (max-width: 1100px) {
+      .agent-row { grid-template-columns: 14px 110px 56px 48px 56px 1fr 38px; font-size: 10px; }
+      .ac-chip { font-size: 8px; padding: 1px 5px; }
+      .ac-chip.skill { font-size: 8px; }
+    }
+    @media (max-width: 800px) {
+      .agent-row { grid-template-columns: 14px 90px 48px 48px 48px 36px; font-size: 10px; }
+      .agent-extra { display: none; }
+    }
 
     /* Info Cards */
     .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -1144,6 +1166,7 @@
           </div>
           ${groups.map((g, gi) => html`
             ${gi > 0 && html`<div class="agent-sep"></div>`}
+            <div class="agent-group-label">${g.label}</div>
             ${g.items.map(a => {
               // 時長：完成 → 顯示耗時 / 活躍 → 獨立即時計時
               let durText = '—';
@@ -1166,6 +1189,44 @@
               </div>
             `})}
           `)}
+        </div>
+      `;
+    }
+
+    // --- MCP 統計面板 ---
+    function MCPStats({ events }) {
+      const stats = useMemo(() => {
+        const servers = {};
+        for (const ev of events) {
+          if (!ev.text) continue;
+          // 偵測 MCP 格式：server:method（例如 chrome:computer、claude-mem:search）
+          const m = ev.text.match(/^([a-z][a-z0-9_-]*):/i);
+          if (!m) continue;
+          const server = m[1];
+          if (!servers[server]) servers[server] = { count: 0, methods: {} };
+          servers[server].count++;
+          const method = ev.text.slice(server.length + 1).split(' ')[0];
+          if (method) servers[server].methods[method] = (servers[server].methods[method] || 0) + 1;
+        }
+        return Object.entries(servers).sort((a, b) => b[1].count - a[1].count);
+      }, [events]);
+      if (stats.length === 0) return null;
+      const total = stats.reduce((sum, [, s]) => sum + s.count, 0);
+      const maxCount = stats[0]?.[1]?.count || 1;
+      return html`
+        <div class="mcp-stats">
+          <h3>🔌 MCP 活動<span class="mcp-total">${total} calls</span></h3>
+          ${stats.map(([server, s]) => {
+            const topMethods = Object.entries(s.methods).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([m]) => m).join(', ');
+            return html`
+              <div class="mcp-row">
+                <span class="mcp-server">${server}</span>
+                <span class="mcp-count">${s.count}</span>
+                <div class="mcp-bar"><div class="mcp-fill" style="width:${(s.count / maxCount * 100)}%"></div></div>
+                <span class="mcp-methods">${topMethods}</span>
+              </div>
+            `;
+          })}
         </div>
       `;
     }
@@ -1488,6 +1549,7 @@
               <!-- Tab: Dashboard -->
               ${mainTab === 'dashboard' && html`
               <${AgentStatus} s=${s} tick=${tick} />
+              <${MCPStats} events=${tlAll} />
               ${!isComplete && html`
                 <div class="cards">
                   <div class="card">
