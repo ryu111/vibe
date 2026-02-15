@@ -74,9 +74,19 @@ function formatToolDetail(data) {
     case 'EnterPlanMode':
       return 'EnterPlanMode';
     default:
-      // MCP 工具：取最後一段作為簡稱
+      // MCP 工具：顯示 server:method（例如 chrome:computer、claude-mem:search）
       if (tool.startsWith('mcp__')) {
         const parts = tool.split('__');
+        if (parts.length >= 3) {
+          let server = parts[1];
+          // Plugin MCP: plugin_{name}_{suffix} → 提取 {name}
+          if (server.startsWith('plugin_')) {
+            server = server.replace(/^plugin_/, '').replace(/_mcp.*$/, '');
+          }
+          // 常用縮寫
+          server = server.replace('claude-in-chrome', 'chrome');
+          return `${server}:${parts[parts.length - 1]}`;
+        }
         return `MCP:${parts[parts.length - 1]}`;
       }
       return tool;

@@ -46,6 +46,20 @@ function extractToolInfo(toolName, toolInput) {
     case 'AskUserQuestion':
       info.questionCount = (toolInput.questions || []).length;
       break;
+    default:
+      // MCP 工具：額外記錄 server 和 method
+      if (toolName.startsWith('mcp__')) {
+        const parts = toolName.split('__');
+        if (parts.length >= 3) {
+          let server = parts[1];
+          if (server.startsWith('plugin_')) {
+            server = server.replace(/^plugin_/, '').replace(/_mcp.*$/, '');
+          }
+          info.mcpServer = server;
+          info.mcpMethod = parts[parts.length - 1];
+        }
+      }
+      break;
   }
   return info;
 }
