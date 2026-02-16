@@ -15,7 +15,7 @@ const os = require('os');
 
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
-const { NAMESPACED_AGENT_TO_STAGE } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
+const { AGENT_TO_STAGE } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
 let input = '';
@@ -40,7 +40,7 @@ process.stdin.on('end', () => {
     const toolInput = data.tool_input || {};
     const agentType = toolInput.subagent_type || '';
     const shortAgent = agentType.includes(':') ? agentType.split(':')[1] : agentType;
-    const stage = NAMESPACED_AGENT_TO_STAGE[shortAgent] || '';
+    const stage = AGENT_TO_STAGE[shortAgent] || '';
 
     // Emit stage start + delegation event
     if (stage) {

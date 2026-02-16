@@ -1161,10 +1161,11 @@
       // 每個 agent 獨立計時器（agent 變 active 時記錄起始時間）
       const timers = useRef({});
       const agents = AGENT_ROSTER.map(a => getAgentInfo(a, s, askPending));
-      // 同步計時器狀態
+      // 同步計時器狀態（只在 running 時計時，delegating/waiting 暫停）
       agents.forEach(a => {
-        if (a.isActive && !timers.current[a.id]) timers.current[a.id] = Date.now();
-        else if (!a.isActive) delete timers.current[a.id];
+        const shouldTimer = a.status === 'running';
+        if (shouldTimer && !timers.current[a.id]) timers.current[a.id] = Date.now();
+        else if (!shouldTimer) delete timers.current[a.id];
       });
       const running = agents.filter(a => ['running', 'delegating'].includes(a.status)).length;
       const done = agents.filter(a => a.status === 'completed').length;
@@ -1190,7 +1191,7 @@
               // 時長：完成 → 顯示耗時 / 活躍 → 獨立即時計時
               let durText = '—';
               if (a.dur) durText = fmtSec(a.dur);
-              else if (a.isActive && timers.current[a.id]) {
+              else if (a.status === 'running' && timers.current[a.id]) {
                 durText = fmtSec(Math.round((Date.now() - timers.current[a.id]) / 1000));
               }
               return html`
