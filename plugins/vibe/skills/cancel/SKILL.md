@@ -35,21 +35,85 @@ allowed-tools: Read, Write
 - `pipelineEnforced` → `false`（停止 pipeline-guard 阻擋）
 - `delegationActive` → `false`（重設委派狀態）
 
-### 4. 自動蒐集誤判語料
+### 4. 取消原因回饋（Correction Loop）
 
-當解除的是 pipeline 且 `pipelineEnforced` 原本為 `true` 時，這是分類器誤判的強信號。
-自動記錄到語料檔，供 evolve 進化分類器規則：
+**條件**：解除的是 pipeline 且原 `pipelineEnforced` 為 `true`
+
+使用 AskUserQuestion 詢問取消原因（multiSelect: false）：
+
+| 選項 | label | description |
+|------|-------|-------------|
+| A | 分類錯誤 | 分類器選擇的 pipeline 不正確，我要指定正確的 |
+| B | 不需要 pipeline | 這個任務不需要走 pipeline 流程 |
+| C | 跳過回饋 | 不提供回饋，直接繼續 |
+
+**如果選擇 A（分類錯誤）**：
+
+使用第二個 AskUserQuestion 讓使用者選擇正確的 pipeline（multiSelect: false）：
+
+| 選項 | label | description |
+|------|-------|-------------|
+| 1 | full | 完整開發（9 階段，含 UI 設計） |
+| 2 | standard | 標準開發（6 階段，無 UI） |
+| 3 | quick-dev | 快速開發（3 階段：DEV→REVIEW→TEST） |
+| 4 | fix | 快速修復（1 階段：DEV） |
+
+如果 4 個選項不夠，使用者可在 Other 中輸入其他 pipeline ID（test-first/ui-only/review-only/docs-only/security/none）。
+
+### 5. 自動蒐集誤判語料
+
+當解除的是 pipeline 且 `pipelineEnforced` 原本為 `true` 時，記錄到語料檔和統計檔。
 
 **語料檔路徑**：`~/.claude/classifier-corpus.jsonl`
 
 讀取 pipeline-state 中的資訊，追加一行 JSONL：
 ```json
-{"prompt":"觸發 pipeline 的原始 prompt（從 state 或 transcript 取得）","actual":"state.taskType","cancelled":true,"completedStages":[],"timestamp":"ISO"}
+{
+  "prompt": "觸發 pipeline 的原始 prompt（從 state 或 transcript 取得）",
+  "actual": "state.taskType",
+  "pipelineId": "state.pipelineId",
+  "cancelled": true,
+  "reason": "classification-error | no-pipeline-needed | skipped",
+  "expectedPipeline": "使用者選擇的正確 pipeline（僅 reason=classification-error 時有值）",
+  "layer": "state 中記錄的分類 layer（1/2/3）",
+  "confidence": "state 中記錄的分類信心度",
+  "source": "state.classificationSource",
+  "matchedRule": "匹配的規則名稱（如有）",
+  "completedStages": [],
+  "timestamp": "ISO"
+}
 ```
 
-使用 Write 工具追加（如果檔案不存在則建立）。這步驟靜默執行，不需要告知使用者。
+**統計檔路徑**：`~/.claude/classifier-stats.json`
 
-### 5. 確認結果
+讀取現有統計檔（不存在則初始化），更新 `recentWindow` 滑動窗口：
+
+```json
+{
+  "recentWindow": [
+    {
+      "pipelineId": "state.pipelineId",
+      "layer": 2,
+      "source": "regex",
+      "corrected": true,
+      "expectedPipeline": "full",
+      "timestamp": "ISO"
+    }
+  ],
+  "totalClassifications": 42,
+  "totalCorrections": 3
+}
+```
+
+更新規則：
+- **分類錯誤**（reason=classification-error）：`corrected=true` + `expectedPipeline` 填入使用者選擇 + `totalCorrections` +1
+- **不需要 pipeline / 跳過**：`corrected=false`
+- `totalClassifications` +1
+- `recentWindow` 保留最近 50 筆（超過時移除最舊的）
+
+使用 Write 工具追加 corpus / 覆寫 stats（如果檔案不存在則建立）。這步驟靜默執行，不需要告知使用者。
+
+### 6. 確認結果
 
 告知使用者：
 - 已解除哪些鎖定
@@ -69,6 +133,7 @@ allowed-tools: Read, Write
 - 已完成的 pipeline 階段記錄會保留（不刪除 state file，只重設 flag）
 - 這是單次操作 — 下一個 session 的 task-guard 和 pipeline 會重新啟動
 - 如果只是暫時困難，建議先嘗試其他方式推進任務
+- 回饋是可選的 — 使用者可選「跳過回饋」快速退出
 
 ## 使用者要求
 

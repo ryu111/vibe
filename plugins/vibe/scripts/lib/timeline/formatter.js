@@ -103,8 +103,19 @@ function formatEventText(event) {
       return 'Session 啟動';
     case 'prompt.received':
       return '收到使用者輸入';
-    case 'task.classified':
+    case 'task.classified': {
+      // Phase 3 新格式（有 layer 欄位）vs 舊格式向後相容
+      if (d.layer !== undefined) {
+        const conf = typeof d.confidence === 'number' ? d.confidence.toFixed(2) : '?';
+        const rule = d.matchedRule ? ` [${d.matchedRule}]` : '';
+        const base = `分類=${d.pipelineId || d.taskType || '?'} L${d.layer}(${conf})${rule}`;
+        if (d.reclassified && d.from) {
+          return `升級 ${d.from}→${d.pipelineId || '?'} L${d.layer}(${conf})${rule}`;
+        }
+        return base;
+      }
       return `分類=${d.taskType || '?'}, 預期階段=[${(d.expectedStages || []).join(',')}]`;
+    }
     case 'ask.question':
       return `詢問使用者 (${d.questionCount || '?'} 題)`;
     case 'delegation.start': {

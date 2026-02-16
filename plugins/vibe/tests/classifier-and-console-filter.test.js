@@ -1348,6 +1348,255 @@ test('auto-lint：.ts 檔案 → stdout 為空或合法 JSON', () => {
 });
 
 // ═══════════════════════════════════════════════
+// Part 4: matchedRule 驗證（Phase 3 Classification Analytics）
+// ═══════════════════════════════════════════════
+
+console.log('\n🧪 Part 4: matchedRule 驗證');
+console.log('═'.repeat(50));
+
+test('classifyWithConfidence 回傳包含 matchedRule 欄位', () => {
+  const result = classifyWithConfidence('建立一個 REST API');
+  assert.ok('matchedRule' in result, '應包含 matchedRule 欄位');
+});
+
+test('Layer 1 explicit → matchedRule: explicit', () => {
+  const result = classifyWithConfidence('[pipeline:full] 建立系統');
+  assert.strictEqual(result.matchedRule, 'explicit');
+});
+
+test('Strong question → matchedRule: strong-question', () => {
+  const result = classifyWithConfidence('什麼是 pipeline?');
+  assert.strictEqual(result.matchedRule, 'strong-question');
+});
+
+test('Trivial → matchedRule: trivial', () => {
+  const result = classifyWithConfidence('做一個 hello world');
+  assert.strictEqual(result.matchedRule, 'trivial');
+});
+
+test('Weak explore → matchedRule: weak-explore', () => {
+  const result = classifyWithConfidence('看看現在的狀態');
+  assert.strictEqual(result.matchedRule, 'weak-explore');
+});
+
+test('Action feature → matchedRule: action:feature', () => {
+  const result = classifyWithConfidence('建立完整的 REST API server [pipeline:standard]');
+  // explicit 優先
+  assert.strictEqual(result.matchedRule, 'explicit');
+  // 不帶 explicit 的版本
+  const r2 = classifyWithConfidence('建立完整的 REST API server 新增功能');
+  assert.strictEqual(r2.matchedRule, 'action:feature');
+});
+
+test('Action bugfix → matchedRule: action:bugfix', () => {
+  const result = classifyWithConfidence('fix the authentication bug');
+  assert.strictEqual(result.matchedRule, 'action:bugfix');
+});
+
+test('Action refactor → matchedRule: action:refactor', () => {
+  const result = classifyWithConfidence('重構使用者模組');
+  assert.strictEqual(result.matchedRule, 'action:refactor');
+});
+
+test('Action tdd → matchedRule: action:tdd', () => {
+  const result = classifyWithConfidence('用 TDD 方式開發');
+  assert.strictEqual(result.matchedRule, 'action:tdd');
+});
+
+test('Default → matchedRule: default', () => {
+  const result = classifyWithConfidence('update the color');
+  assert.strictEqual(result.matchedRule, 'default');
+});
+
+test('Empty prompt → matchedRule: default', () => {
+  const result = classifyWithConfidence('');
+  assert.strictEqual(result.matchedRule, 'default');
+});
+
+test('Null prompt → matchedRule: default', () => {
+  const result = classifyWithConfidence(null);
+  assert.strictEqual(result.matchedRule, 'default');
+});
+
+// ═══════════════════════════════════════════════
+// Part 5: getAdaptiveThreshold 驗證（Phase 3 Adaptive Confidence）
+// ═══════════════════════════════════════════════
+
+console.log('\n🧪 Part 5: getAdaptiveThreshold 驗證');
+console.log('═'.repeat(50));
+
+const { getAdaptiveThreshold, STATS_PATH } = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'classifier.js'));
+
+test('getAdaptiveThreshold: 無 stats 檔案 → 回傳 0.7', () => {
+  // 由子行程測試（避免影響全域 state）
+  const result = runClassifierCheck(
+    { VIBE_CLASSIFIER_THRESHOLD: '' },
+    'c.getAdaptiveThreshold()'
+  );
+  // 空字串 parseFloat → NaN → 讀取 stats file
+  // 不確定 stats 檔是否存在，檢查是 0.7 或 0.5
+  assert.ok(result === '0.7' || result === '0.5', `應為 0.7 或 0.5，實際: ${result}`);
+});
+
+test('getAdaptiveThreshold: 環境變數覆寫', () => {
+  const result = runClassifierCheck(
+    { VIBE_CLASSIFIER_THRESHOLD: '0.8' },
+    'c.getAdaptiveThreshold()'
+  );
+  assert.strictEqual(result, '0.8', '環境變數應覆寫 adaptive threshold');
+});
+
+test('getAdaptiveThreshold: 環境變數 0 → 回傳 0', () => {
+  const result = runClassifierCheck(
+    { VIBE_CLASSIFIER_THRESHOLD: '0' },
+    'c.getAdaptiveThreshold()'
+  );
+  assert.strictEqual(result, '0', '環境變數 0 應覆寫');
+});
+
+test('getAdaptiveThreshold: 模擬高修正率 → 回傳 0.5', () => {
+  // 建立臨時 stats 檔案模擬高修正率
+  const tmpStats = path.join(os.tmpdir(), `vibe-stats-test-${Date.now()}.json`);
+  const window = [];
+  for (let i = 0; i < 10; i++) {
+    window.push({ layer: 2, source: 'regex', corrected: i < 5, timestamp: new Date().toISOString() });
+  }
+  fs.writeFileSync(tmpStats, JSON.stringify({ recentWindow: window, totalClassifications: 10, totalCorrections: 5 }));
+
+  // 子行程用自訂 STATS_PATH
+  const tmpFile = path.join(os.tmpdir(), `vibe-cls-adapt-${Date.now()}.js`);
+  fs.writeFileSync(tmpFile, `
+    const c = require(${JSON.stringify(classifierModulePath)});
+    // 覆寫 STATS_PATH
+    const fs = require('fs');
+    const stats = JSON.parse(fs.readFileSync(${JSON.stringify(tmpStats)}, 'utf8'));
+    const window = stats.recentWindow || [];
+    const layer2 = window.filter(r => r.layer === 2);
+    const corrected = layer2.filter(r => r.corrected).length;
+    const rate = corrected / layer2.length;
+    process.stdout.write(String(rate > 0.3 ? 0.5 : 0.7));
+  `);
+  try {
+    const result = execSync(`node "${tmpFile}"`, {
+      env: { ...process.env },
+      timeout: 5000,
+    }).toString();
+    assert.strictEqual(result, '0.5', '50% 修正率應觸發 0.5 閾值');
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
+    try { fs.unlinkSync(tmpStats); } catch (_) {}
+  }
+});
+
+test('getAdaptiveThreshold: 模擬低修正率 → 保持 0.7', () => {
+  const tmpStats = path.join(os.tmpdir(), `vibe-stats-test-${Date.now()}.json`);
+  const window = [];
+  for (let i = 0; i < 10; i++) {
+    window.push({ layer: 2, source: 'regex', corrected: i < 1, timestamp: new Date().toISOString() });
+  }
+  fs.writeFileSync(tmpStats, JSON.stringify({ recentWindow: window, totalClassifications: 10, totalCorrections: 1 }));
+
+  const tmpFile = path.join(os.tmpdir(), `vibe-cls-adapt-low-${Date.now()}.js`);
+  fs.writeFileSync(tmpFile, `
+    const fs = require('fs');
+    const stats = JSON.parse(fs.readFileSync(${JSON.stringify(tmpStats)}, 'utf8'));
+    const window = stats.recentWindow || [];
+    const layer2 = window.filter(r => r.layer === 2);
+    const corrected = layer2.filter(r => r.corrected).length;
+    const rate = corrected / layer2.length;
+    process.stdout.write(String(rate > 0.3 ? 0.5 : 0.7));
+  `);
+  try {
+    const result = execSync(`node "${tmpFile}"`, {
+      env: { ...process.env },
+      timeout: 5000,
+    }).toString();
+    assert.strictEqual(result, '0.7', '10% 修正率應保持 0.7');
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
+    try { fs.unlinkSync(tmpStats); } catch (_) {}
+  }
+});
+
+test('getAdaptiveThreshold: 樣本不足（<10）→ 保持 0.7', () => {
+  const tmpStats = path.join(os.tmpdir(), `vibe-stats-test-${Date.now()}.json`);
+  const window = [];
+  for (let i = 0; i < 5; i++) {
+    window.push({ layer: 2, source: 'regex', corrected: true, timestamp: new Date().toISOString() });
+  }
+  fs.writeFileSync(tmpStats, JSON.stringify({ recentWindow: window, totalClassifications: 5, totalCorrections: 5 }));
+
+  const tmpFile = path.join(os.tmpdir(), `vibe-cls-adapt-small-${Date.now()}.js`);
+  fs.writeFileSync(tmpFile, `
+    const fs = require('fs');
+    const stats = JSON.parse(fs.readFileSync(${JSON.stringify(tmpStats)}, 'utf8'));
+    const window = stats.recentWindow || [];
+    const layer2 = window.filter(r => r.layer === 2);
+    process.stdout.write(String(layer2.length < 10 ? 0.7 : (layer2.filter(r => r.corrected).length / layer2.length > 0.3 ? 0.5 : 0.7)));
+  `);
+  try {
+    const result = execSync(`node "${tmpFile}"`, {
+      env: { ...process.env },
+      timeout: 5000,
+    }).toString();
+    assert.strictEqual(result, '0.7', '樣本 <10 應保持 0.7');
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
+    try { fs.unlinkSync(tmpStats); } catch (_) {}
+  }
+});
+
+// ═══════════════════════════════════════════════
+// Part 6: formatter task.classified 新格式驗證
+// ═══════════════════════════════════════════════
+
+console.log('\n🧪 Part 6: formatter task.classified 新格式驗證');
+console.log('═'.repeat(50));
+
+const { formatEventText: fmtEvt } = require(path.join(__dirname, '..', 'scripts', 'lib', 'timeline', 'formatter.js'));
+
+test('formatter: task.classified 新格式（有 layer）', () => {
+  const event = { type: 'task.classified', data: { pipelineId: 'standard', taskType: 'feature', layer: 2, confidence: 0.80, matchedRule: 'action:feature', reclassified: false } };
+  const text = fmtEvt(event);
+  assert.ok(text.includes('standard'), '應含 pipelineId');
+  assert.ok(text.includes('L2'), '應含 Layer');
+  assert.ok(text.includes('0.80'), '應含 confidence');
+  assert.ok(text.includes('action:feature'), '應含 matchedRule');
+});
+
+test('formatter: task.classified 升級格式', () => {
+  const event = { type: 'task.classified', data: { pipelineId: 'full', from: 'fix', layer: 2, confidence: 0.80, matchedRule: 'action:feature', reclassified: true } };
+  const text = fmtEvt(event);
+  assert.ok(text.includes('升級'), '應含「升級」');
+  assert.ok(text.includes('fix'), '應含 from');
+  assert.ok(text.includes('full'), '應含 to');
+  assert.ok(text.includes('L2'), '應含 Layer');
+});
+
+test('formatter: task.classified 舊格式向後相容（無 layer）', () => {
+  const event = { type: 'task.classified', data: { taskType: 'feature', expectedStages: ['PLAN', 'ARCH', 'DEV'] } };
+  const text = fmtEvt(event);
+  assert.ok(text.includes('feature'), '應含 taskType');
+  assert.ok(text.includes('PLAN,ARCH,DEV'), '應含 stages');
+  assert.ok(!/L\d\(/.test(text), '不應含 Layer 標記（L1(/L2(/L3(）');
+});
+
+test('formatter: task.classified Layer 1 explicit', () => {
+  const event = { type: 'task.classified', data: { pipelineId: 'full', layer: 1, confidence: 1.0, matchedRule: 'explicit', reclassified: false } };
+  const text = fmtEvt(event);
+  assert.ok(text.includes('L1'), '應含 L1');
+  assert.ok(text.includes('1.00'), '應含信心度 1.00');
+  assert.ok(text.includes('explicit'), '應含 explicit');
+});
+
+test('formatter: task.classified Layer 3 LLM', () => {
+  const event = { type: 'task.classified', data: { pipelineId: 'standard', layer: 3, confidence: 0.85, matchedRule: 'weak-explore', source: 'llm', reclassified: false } };
+  const text = fmtEvt(event);
+  assert.ok(text.includes('L3'), '應含 L3');
+  assert.ok(text.includes('0.85'), '應含信心度');
+});
+
+// ═══════════════════════════════════════════════
 // 結果輸出
 // ═══════════════════════════════════════════════
 

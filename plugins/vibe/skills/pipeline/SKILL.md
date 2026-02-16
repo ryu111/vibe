@@ -8,6 +8,32 @@ argument-hint: "[可選：pipeline 模板名稱，如 full]"
 
 你是 Vibe Pipeline 的路由專家，協助使用者根據任務類型選擇最適合的工作流模板。
 
+## 雙模式操作
+
+### 無參數模式（互動式選擇器）
+
+當使用者呼叫 `/vibe:pipeline` 不帶參數時，使用 AskUserQuestion 提供互動式 pipeline 選擇（multiSelect: false）：
+
+| 選項 | label | description |
+|------|-------|-------------|
+| 1 | full（完整開發） | 9 階段含 UI 設計，適合新功能（含前端） |
+| 2 | standard（標準開發） | 6 階段無 UI，適合 API、後端、重構 |
+| 3 | quick-dev（快速開發） | 3 階段 DEV→REVIEW→TEST，適合 bugfix + 補測試 |
+| 4 | fix（快速修復） | 1 階段 DEV，適合 hotfix、一行修改 |
+
+使用者可在 Other 中輸入其他 pipeline ID（test-first/ui-only/review-only/docs-only/security/none）。
+
+**選擇後的行為**：
+- 告知使用者已選擇的 pipeline 詳情（階段列表、是否 enforced）
+- 提示使用者在下一個 prompt 中加上 `[pipeline:xxx]` 語法來觸發選擇的 pipeline
+- 例如：「你選擇了 `full` pipeline。在下一個需求 prompt 中加上 `[pipeline:full]`，例如：`實作登入功能 [pipeline:full]`」
+
+**Pipeline 進行中**：如果 pipeline 正在進行中（`pipelineEnforced=true`），提示使用者先用 `/cancel` 退出目前 pipeline 再選擇新模板。不支援 pipeline 進行中切換。
+
+### 有參數模式（詳情查看）
+
+當使用者呼叫 `/vibe:pipeline <name>` 帶參數時，顯示指定 pipeline 的詳細資訊（現有行為）。
+
 ## Pipeline 模板目錄（10 種）
 
 ### 1. `full`（完整開發）
@@ -182,16 +208,19 @@ alias vc-sonnet='claude --model sonnet --plugin-dir ~/projects/vibe/plugins/vibe
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
 | `VIBE_CLASSIFIER_MODEL` | `claude-sonnet-4-20250514` | Layer 3 LLM 分類模型 |
-| `VIBE_CLASSIFIER_THRESHOLD` | `0.7` | Layer 2→3 降級閾值（設 `0` 完全停用 Layer 3） |
+| `VIBE_CLASSIFIER_THRESHOLD` | `0.7`（自適應） | Layer 2→3 降級閾值（設 `0` 完全停用 Layer 3） |
 
 **閾值行為**：
 - `0` — Layer 3 永不觸發（所有分類由 regex 決定）
+- `0.5` — 自適應降低後的閾值（Layer 2 修正率 > 30% 時自動觸發）
 - `0.7`（預設）— 只有低信心度分類（如弱探索詞）觸發 LLM
 - `1.0` — 幾乎所有分類都觸發 LLM（除了顯式 `[pipeline:xxx]`）
+
+**自適應閾值**：系統會追蹤 `/cancel` 時的分類錯誤回饋，當 Layer 2 修正率超過 30% 時自動將閾值從 0.7 降至 0.5。`VIBE_CLASSIFIER_THRESHOLD` 環境變數可覆蓋自適應行為。
 
 **Session 快取**：同一 session 內 Layer 3 結果會快取到 pipeline state，避免重複 API 呼叫。Pipeline 完成後自動清除。
 
 ## 參數說明
 
 - 如果提供參數（如 `/vibe:pipeline full`），則顯示該 pipeline 的詳細資訊
-- 如果沒有參數，則顯示完整的 10 種模板目錄
+- 如果沒有參數，則啟動互動式選擇器讓使用者選擇 pipeline

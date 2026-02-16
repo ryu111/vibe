@@ -94,30 +94,32 @@ const ACTION_PATTERNS = [
 ];
 
 /**
+ * 詳細分類（內部函式）— 回傳 taskType + matchedRule
+ * @param {string} prompt - 使用者輸入（原始文字）
+ * @returns {{ taskType: string, matchedRule: string }}
+ */
+function classifyDetailed(prompt) {
+  if (!prompt) return { taskType: 'quickfix', matchedRule: 'default' };
+  const p = prompt.toLowerCase();
+
+  if (isStrongQuestion(p)) return { taskType: 'research', matchedRule: 'strong-question' };
+  if (TRIVIAL.test(p)) return { taskType: 'quickfix', matchedRule: 'trivial' };
+  if (WEAK_EXPLORE.test(p)) return { taskType: 'research', matchedRule: 'weak-explore' };
+
+  for (const { type, pattern } of ACTION_PATTERNS) {
+    if (pattern.test(p)) return { taskType: type, matchedRule: `action:${type}` };
+  }
+
+  return { taskType: 'quickfix', matchedRule: 'default' };
+}
+
+/**
  * 兩階段級聯分類（舊版介面，向後相容）
  * @param {string} prompt - 使用者輸入（原始文字）
  * @returns {string} 任務類型：research|quickfix|tdd|test|refactor|feature|bugfix
  */
 function classify(prompt) {
-  if (!prompt) return 'quickfix';
-  const p = prompt.toLowerCase();
-
-  // Phase 1: 強疑問信號 — 最高優先級，無法被動作關鍵字覆蓋
-  if (isStrongQuestion(p)) return 'research';
-
-  // Phase 2: Trivial 偵測（hello world, poc, demo 等簡單意圖）
-  if (TRIVIAL.test(p)) return 'quickfix';
-
-  // Phase 3: 弱探索信號（在 trivial 之後）
-  if (WEAK_EXPLORE.test(p)) return 'research';
-
-  // Phase 4: 動作分類（only if NOT question, NOT trivial, NOT exploration）
-  for (const { type, pattern } of ACTION_PATTERNS) {
-    if (pattern.test(p)) return type;
-  }
-
-  // 預設：quickfix（保守 — 僅 DEV 階段，不鎖定 pipeline 模式）
-  return 'quickfix';
+  return classifyDetailed(prompt).taskType;
 }
 
 // ═══════════════════════════════════════════════
@@ -200,24 +202,25 @@ function calculateConfidence(taskType, prompt) {
  */
 function classifyWithConfidence(prompt) {
   if (!prompt) {
-    return { pipeline: 'fix', confidence: 0.7, source: 'regex' };
+    return { pipeline: 'fix', confidence: 0.7, source: 'regex', matchedRule: 'default' };
   }
 
   // Layer 1: 顯式覆寫
   const explicitPipeline = extractExplicitPipeline(prompt);
   if (explicitPipeline) {
-    return { pipeline: explicitPipeline, confidence: 1.0, source: 'explicit' };
+    return { pipeline: explicitPipeline, confidence: 1.0, source: 'explicit', matchedRule: 'explicit' };
   }
 
-  // Layer 2: Regex 分類
-  const taskType = classify(prompt);
+  // Layer 2: Regex 分類（取得 matchedRule）
+  const { taskType, matchedRule } = classifyDetailed(prompt);
   const pipeline = mapTaskTypeToPipeline(taskType);
   const confidence = calculateConfidence(taskType, prompt);
 
   // Layer 3: 低信心度時標記為 pending-llm（由 task-classifier hook 觸發 LLM 呼叫）
-  const source = confidence < LLM_CONFIDENCE_THRESHOLD ? 'pending-llm' : 'regex';
+  const threshold = getAdaptiveThreshold();
+  const source = confidence < threshold ? 'pending-llm' : 'regex';
 
-  return { pipeline, confidence, source };
+  return { pipeline, confidence, source, matchedRule };
 }
 
 // ═══════════════════════════════════════════════
@@ -230,7 +233,7 @@ const LLM_MODEL = process.env.VIBE_CLASSIFIER_MODEL || 'claude-sonnet-4-20250514
 /** Layer 3 LLM 呼叫逾時（ms，Sonnet 比 Haiku 稍慢） */
 const LLM_TIMEOUT = 10000;
 
-/** Layer 2→3 降級閾值（環境變數可覆寫，設 1.0 可完全停用 Layer 3） */
+/** @deprecated 由 getAdaptiveThreshold() 取代 — 保留供測試向後相容 */
 const LLM_CONFIDENCE_THRESHOLD = (() => {
   const v = parseFloat(process.env.VIBE_CLASSIFIER_THRESHOLD);
   return Number.isNaN(v) ? 0.7 : v;
@@ -326,6 +329,50 @@ function buildPipelineCatalogHint() {
 }
 
 // ═══════════════════════════════════════════════
+// Adaptive Confidence（動態閾值）
+// ═══════════════════════════════════════════════
+
+/** classifier-stats.json 路徑 */
+const STATS_PATH = require('path').join(require('os').homedir(), '.claude', 'classifier-stats.json');
+
+/**
+ * 計算自適應 Layer 2→3 降級閾值
+ *
+ * 優先級：VIBE_CLASSIFIER_THRESHOLD 環境變數 > 自適應 > 預設 0.7
+ *
+ * 自適應邏輯：讀取 classifier-stats.json 的 recentWindow 滑動窗口，
+ * 計算 Layer 2 分類的修正率（corrected=true 的比例）。
+ * - 樣本 < 10 → 不啟用，保持 0.7
+ * - 修正率 > 30% → 降為 0.5（觸發更多 Layer 3）
+ * - 否則 → 保持 0.7
+ *
+ * @returns {number} 閾值 0~1
+ */
+function getAdaptiveThreshold() {
+  // 環境變數最高優先
+  const envVal = parseFloat(process.env.VIBE_CLASSIFIER_THRESHOLD);
+  if (!Number.isNaN(envVal)) return envVal;
+
+  // 讀取統計檔案
+  try {
+    const fs = require('fs');
+    if (!fs.existsSync(STATS_PATH)) return 0.7;
+    const stats = JSON.parse(fs.readFileSync(STATS_PATH, 'utf8'));
+    const window = stats.recentWindow || [];
+
+    // 只計算 Layer 2 的修正率
+    const layer2 = window.filter(r => r.layer === 2);
+    if (layer2.length < 10) return 0.7;
+
+    const corrected = layer2.filter(r => r.corrected).length;
+    const rate = corrected / layer2.length;
+    return rate > 0.3 ? 0.5 : 0.7;
+  } catch (_) {
+    return 0.7;
+  }
+}
+
+// ═══════════════════════════════════════════════
 // 匯出
 // ═══════════════════════════════════════════════
 
@@ -338,6 +385,9 @@ module.exports = {
   extractExplicitPipeline,
   classifyWithConfidence,
 
+  // Adaptive Confidence
+  getAdaptiveThreshold,
+
   // Layer 3 LLM
   classifyWithLLM,
   buildPipelineCatalogHint,
@@ -349,5 +399,6 @@ module.exports = {
   ACTION_PATTERNS,
   LLM_MODEL,
   LLM_TIMEOUT,
-  LLM_CONFIDENCE_THRESHOLD,
+  LLM_CONFIDENCE_THRESHOLD, // deprecated: 保留供既有測試向後相容
+  STATS_PATH,
 };

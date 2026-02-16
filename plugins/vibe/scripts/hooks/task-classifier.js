@@ -131,6 +131,20 @@ const PIPELINE_TO_TASKTYPE = {
 };
 
 /**
+ * 根據分類來源推導 Layer（1=explicit, 2=regex, 3=llm）
+ * @param {{ source: string }} result - classifyWithConfidence 回傳值
+ * @returns {number} 1|2|3
+ */
+function determineLayer(result) {
+  switch (result.source) {
+    case 'explicit': return 1;
+    case 'regex': case 'regex-low': case 'pending-llm': return 2;
+    case 'llm': case 'llm-cached': return 3;
+    default: return 2;
+  }
+}
+
+/**
  * 判斷是否為升級（新 pipeline 的優先級更高）
  */
 function isUpgrade(oldPipelineId, newPipelineId) {
@@ -155,6 +169,7 @@ function resetPipelineState(state) {
   delete state.taskType;
   delete state.reclassifications;
   delete state.llmClassification;
+  delete state.correctionCount;
   state.completed = [];
   state.stageResults = {};
   state.retries = {};
@@ -354,12 +369,16 @@ process.stdin.on('end', () => {
         state.classificationSource = result.source; // debug 用
         fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
       }
-      // Emit initial classification
+      // Emit initial classification（含 layer/confidence/source/matchedRule）
       emit(EVENT_TYPES.TASK_CLASSIFIED, sessionId, {
         pipelineId: newPipelineId,
         taskType: newTaskType,
         expectedStages: newStages,
         reclassified: false,
+        layer: determineLayer(result),
+        confidence: result.confidence,
+        source: result.source,
+        matchedRule: result.matchedRule,
       });
       outputInitialClassification(newPipelineId, newStages, state, { catalogHint });
       return;
@@ -401,13 +420,17 @@ process.stdin.on('end', () => {
     state.classificationSource = result.source; // debug 用
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
 
-    // Emit upgrade classification
+    // Emit upgrade classification（含 layer/confidence/source/matchedRule）
     emit(EVENT_TYPES.TASK_CLASSIFIED, sessionId, {
       pipelineId: newPipelineId,
       taskType: newTaskType,
       expectedStages: newStages,
       reclassified: true,
       from: oldPipelineId,
+      layer: determineLayer(result),
+      confidence: result.confidence,
+      source: result.source,
+      matchedRule: result.matchedRule,
     });
 
     // 輸出升級指令
