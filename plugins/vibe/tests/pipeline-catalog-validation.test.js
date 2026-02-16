@@ -891,6 +891,732 @@ for (const scenario of SCENARIOS) {
 })();
 
 // ═══════════════════════════════════════════════════════════════
+//  特殊場景 X6: TDD 雙 TEST 含 FAIL 重試
+//  Pipeline: test-first [TEST, DEV, TEST]
+//  TEST₁ PASS → DEV PASS → TEST₂ FAIL:HIGH → DEV 修復 → TEST₂ 重做 PASS
+// ═══════════════════════════════════════════════════════════════
+
+(() => {
+  const sid = 'catalog-X6';
+  console.log(`\n${'═'.repeat(65)}`);
+  console.log('  特殊場景 X6: TDD 雙 TEST 含 FAIL 重試');
+  console.log('  Pipeline: test-first [TEST, DEV, TEST]');
+  console.log(`${'═'.repeat(65)}`);
+
+  cleanState(sid);
+  cleanTimeline(sid);
+  initState(sid);
+
+  // 分類為 test-first
+  runHook('task-classifier', {
+    session_id: sid, prompt: '用 TDD 方式實作密碼強度驗證 [pipeline:test-first]',
+  });
+  let s = readState(sid);
+  test('X6: pipelineId = test-first', () => {
+    assert.strictEqual(s.context.pipelineId, 'test-first');
+  });
+  test('X6: expectedStages = [TEST, DEV, TEST]', () => {
+    assert.deepStrictEqual(s.context.expectedStages, ['TEST', 'DEV', 'TEST']);
+  });
+  console.log(`    └─ pipeline=test-first, stages=[TEST, DEV, TEST]`);
+
+  // ─── TEST₁: PASS ───
+  log('STEP', 'TEST₁ 階段（PASS）');
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:tester', prompt: 'write failing tests first' },
+  });
+  let tp = createMockTranscript(sid, 'PASS');
+  runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:tester',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  s = readState(sid);
+  test('X6: TEST₁ PASS → stageResults[TEST].verdict = PASS', () => {
+    assert.strictEqual(s.progress.stageResults.TEST.verdict, 'PASS');
+  });
+  test('X6: TEST₁ PASS → stageIndex >= 0', () => {
+    // stageIndex 被設為 resolved next stage index（DEV=1），非 current stage
+    assert(s.progress.stageIndex >= 0, `stageIndex=${s.progress.stageIndex}`);
+  });
+  test('X6: TEST₁ PASS → phase = CLASSIFIED', () => {
+    assert.strictEqual(s.phase, 'CLASSIFIED');
+  });
+  console.log(`    └─ stageIndex=${s.progress.stageIndex}, phase=${s.phase}`);
+
+  // ─── DEV: PASS ───
+  log('STEP', 'DEV 階段（PASS）');
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:developer', prompt: 'implement to make tests pass' },
+  });
+  tp = createMockTranscript(sid, 'PASS');
+  runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:developer',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  s = readState(sid);
+  test('X6: DEV PASS → stageIndex >= 1', () => {
+    assert(s.progress.stageIndex >= 1, `stageIndex=${s.progress.stageIndex}`);
+  });
+  test('X6: DEV PASS → phase = CLASSIFIED', () => {
+    assert.strictEqual(s.phase, 'CLASSIFIED');
+  });
+  const devStageIndex = s.progress.stageIndex;
+  console.log(`    └─ stageIndex=${devStageIndex}, phase=${s.phase}`);
+
+  // ─── TEST₂: FAIL:HIGH（觸發回退）───
+  log('STEP', 'TEST₂ 階段（FAIL:HIGH → 回退 DEV）');
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:tester', prompt: 'run tests again' },
+  });
+  tp = createMockTranscript(sid, 'FAIL:HIGH');
+  runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:tester',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  s = readState(sid);
+  test('X6: TEST₂ FAIL → phase = RETRYING', () => {
+    assert.strictEqual(s.phase, 'RETRYING');
+  });
+  test('X6: TEST₂ FAIL → pendingRetry.stage = TEST', () => {
+    assert(s.progress.pendingRetry, 'pendingRetry 缺失');
+    assert.strictEqual(s.progress.pendingRetry.stage, 'TEST');
+  });
+  test('X6: TEST₂ FAIL → retries[TEST] >= 1', () => {
+    assert(s.progress.retries.TEST >= 1, `retries=${JSON.stringify(s.progress.retries)}`);
+  });
+  test('X6: TEST₂ FAIL → stageIndex >= devStageIndex（單調遞增）', () => {
+    assert(s.progress.stageIndex >= devStageIndex,
+      `stageIndex=${s.progress.stageIndex} < devStageIndex=${devStageIndex}`);
+  });
+  console.log(`    ├─ phase=${s.phase}, retries=${JSON.stringify(s.progress.retries)}`);
+  console.log(`    └─ pendingRetry=${JSON.stringify(s.progress.pendingRetry)}, stageIndex=${s.progress.stageIndex}`);
+
+  // ─── DEV 修復 ───
+  log('STEP', 'DEV 修復（回退重做）');
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:developer', prompt: 'fix failing tests' },
+  });
+  tp = createMockTranscript(sid, 'PASS');
+  runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:developer',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  s = readState(sid);
+  test('X6: DEV 修復 → pendingRetry 被消費（null）', () => {
+    assert.strictEqual(s.progress.pendingRetry, null, `pendingRetry=${JSON.stringify(s.progress.pendingRetry)}`);
+  });
+  test('X6: DEV 修復 → phase = CLASSIFIED（準備重驗 TEST）', () => {
+    assert.strictEqual(s.phase, 'CLASSIFIED');
+  });
+  console.log(`    └─ phase=${s.phase}, pendingRetry=${s.progress.pendingRetry}`);
+
+  // ─── TEST₂ 重做: PASS ───
+  log('STEP', 'TEST₂ 重做（PASS → COMPLETE）');
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:tester', prompt: 'rerun tests after fix' },
+  });
+  tp = createMockTranscript(sid, 'PASS');
+  runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:tester',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  s = readState(sid);
+  test('X6: TEST₂ 重做 PASS → phase = COMPLETE', () => {
+    assert.strictEqual(s.phase, 'COMPLETE');
+  });
+  test('X6: TEST₂ 重做 → stageResults[TEST].verdict = PASS', () => {
+    assert.strictEqual(s.progress.stageResults.TEST.verdict, 'PASS');
+  });
+  console.log(`    └─ phase=${s.phase}, verdict=PASS`);
+
+  // Pipeline check
+  runHook('pipeline-check', { session_id: sid, stop_hook_active: false });
+  test('X6: pipeline-check → state 已刪除', () => {
+    assert.strictEqual(readState(sid), null);
+  });
+  log('COMPLETE', 'TDD 雙 TEST 含 FAIL 重試流程完整 ✓');
+
+  cleanState(sid);
+  cleanTimeline(sid);
+})();
+
+// ═══════════════════════════════════════════════════════════════
+//  特殊場景 X7: MAX_RETRIES 耗盡（強制繼續）
+//  Pipeline: quick-dev [DEV, REVIEW, TEST]
+//  DEV PASS → REVIEW FAIL × (MAX_RETRIES+1) → 強制繼續 TEST
+// ═══════════════════════════════════════════════════════════════
+
+(() => {
+  const sid = 'catalog-X7';
+  const { MAX_RETRIES } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'registry.js'));
+  console.log(`\n${'═'.repeat(65)}`);
+  console.log(`  特殊場景 X7: MAX_RETRIES 耗盡（MAX_RETRIES=${MAX_RETRIES}）`);
+  console.log('  Pipeline: quick-dev [DEV, REVIEW, TEST]');
+  console.log(`${'═'.repeat(65)}`);
+
+  cleanState(sid);
+  cleanTimeline(sid);
+  initState(sid);
+
+  // 分類為 quick-dev
+  runHook('task-classifier', {
+    session_id: sid, prompt: '修復並測試 hash 邏輯 [pipeline:quick-dev]',
+  });
+  let s = readState(sid);
+  test('X7: pipelineId = quick-dev', () => {
+    assert.strictEqual(s.context.pipelineId, 'quick-dev');
+  });
+
+  // ─── DEV: PASS ───
+  log('STEP', 'DEV 階段（PASS）');
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:developer', prompt: 'dev' },
+  });
+  let tp = createMockTranscript(sid, 'PASS');
+  runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:developer',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  s = readState(sid);
+  test('X7: DEV PASS → phase = CLASSIFIED', () => {
+    assert.strictEqual(s.phase, 'CLASSIFIED');
+  });
+  console.log(`    └─ phase=${s.phase}`);
+
+  // ─── REVIEW: 連續 FAIL × MAX_RETRIES 輪回退 ───
+  for (let round = 0; round < MAX_RETRIES; round++) {
+    log('STEP', `REVIEW FAIL 回退 第 ${round + 1}/${MAX_RETRIES} 輪`);
+
+    // REVIEW FAIL
+    runHook('delegation-tracker', {
+      session_id: sid, tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:code-reviewer', prompt: `review round ${round + 1}` },
+    });
+    tp = createMockTranscript(sid, 'FAIL:HIGH');
+    runHook('stage-transition', {
+      session_id: sid, agent_type: 'vibe:code-reviewer',
+      agent_transcript_path: tp, stop_hook_active: false,
+    });
+    cleanTranscript(sid);
+    s = readState(sid);
+    test(`X7: REVIEW FAIL 第 ${round + 1} 輪 → phase = RETRYING`, () => {
+      assert.strictEqual(s.phase, 'RETRYING');
+    });
+    test(`X7: REVIEW FAIL 第 ${round + 1} 輪 → retries[REVIEW] = ${round + 1}`, () => {
+      assert.strictEqual(s.progress.retries.REVIEW, round + 1);
+    });
+    console.log(`    ├─ retries[REVIEW]=${s.progress.retries.REVIEW}, pendingRetry=${JSON.stringify(s.progress.pendingRetry)}`);
+
+    // DEV 修復
+    runHook('delegation-tracker', {
+      session_id: sid, tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:developer', prompt: `fix round ${round + 1}` },
+    });
+    tp = createMockTranscript(sid, 'PASS');
+    runHook('stage-transition', {
+      session_id: sid, agent_type: 'vibe:developer',
+      agent_transcript_path: tp, stop_hook_active: false,
+    });
+    cleanTranscript(sid);
+    s = readState(sid);
+    test(`X7: DEV 修復第 ${round + 1} 輪 → pendingRetry 被消費`, () => {
+      assert.strictEqual(s.progress.pendingRetry, null);
+    });
+    console.log(`    └─ DEV 修復完成，phase=${s.phase}`);
+  }
+
+  // ─── REVIEW: 第 MAX_RETRIES+1 次 FAIL → 強制繼續 ───
+  log('STEP', `REVIEW 第 ${MAX_RETRIES + 1} 次 FAIL（retries=${MAX_RETRIES} → 強制繼續）`);
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:code-reviewer', prompt: 'final review' },
+  });
+  tp = createMockTranscript(sid, 'FAIL:HIGH');
+  const forcedResult = runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:code-reviewer',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  s = readState(sid);
+
+  test('X7: MAX_RETRIES 耗盡 → phase 不是 RETRYING', () => {
+    assert.notStrictEqual(s.phase, 'RETRYING',
+      `retries=${MAX_RETRIES} 後應強制前進，但 phase=${s.phase}`);
+  });
+  test(`X7: retries[REVIEW] = ${MAX_RETRIES}（不再增加）`, () => {
+    assert.strictEqual(s.progress.retries.REVIEW, MAX_RETRIES);
+  });
+  test('X7: 強制繼續 → systemMessage 含 ⚠️ 強制繼續', () => {
+    assert(forcedResult.json && forcedResult.json.systemMessage,
+      'systemMessage 缺失');
+    assert(forcedResult.json.systemMessage.includes('強制繼續'),
+      `systemMessage 不含強制繼續: ${forcedResult.json.systemMessage.slice(0, 80)}`);
+  });
+  console.log(`    ├─ phase=${s.phase}, retries[REVIEW]=${s.progress.retries.REVIEW}`);
+  console.log(`    └─ 強制繼續 ✓`);
+
+  // ─── TEST: PASS → COMPLETE ───
+  log('STEP', 'TEST 階段（PASS → COMPLETE）');
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:tester', prompt: 'test' },
+  });
+  tp = createMockTranscript(sid, 'PASS');
+  runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:tester',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  s = readState(sid);
+  test('X7: TEST PASS → phase = COMPLETE', () => {
+    assert.strictEqual(s.phase, 'COMPLETE');
+  });
+
+  runHook('pipeline-check', { session_id: sid, stop_hook_active: false });
+  test('X7: pipeline-check → state 已刪除', () => {
+    assert.strictEqual(readState(sid), null);
+  });
+  log('COMPLETE', 'MAX_RETRIES 耗盡強制繼續流程完整 ✓');
+
+  cleanState(sid);
+  cleanTimeline(sid);
+})();
+
+// ═══════════════════════════════════════════════════════════════
+//  特殊場景 X8: 級聯回退（多個品質階段連續 FAIL）
+//  Pipeline: standard [PLAN, ARCH, DEV, REVIEW, TEST, DOCS]
+//  DEV PASS → REVIEW FAIL → DEV 修復 → REVIEW PASS
+//  → TEST FAIL → DEV 修復 → TEST PASS → DOCS → COMPLETE
+// ═══════════════════════════════════════════════════════════════
+
+(() => {
+  const sid = 'catalog-X8';
+  console.log(`\n${'═'.repeat(65)}`);
+  console.log('  特殊場景 X8: 級聯回退（REVIEW FAIL + TEST FAIL）');
+  console.log('  Pipeline: standard [PLAN, ARCH, DEV, REVIEW, TEST, DOCS]');
+  console.log(`${'═'.repeat(65)}`);
+
+  cleanState(sid);
+  cleanTimeline(sid);
+
+  // 預設已完成 PLAN 和 ARCH，直接從 DEV 開始（減少不必要的重複測試）
+  initState(sid, {
+    phase: 'CLASSIFIED',
+    context: {
+      pipelineId: 'standard',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
+    },
+    progress: {
+      currentStage: 'ARCH',
+      stageIndex: 1,
+      completedAgents: ['vibe:planner', 'vibe:architect'],
+      stageResults: {
+        PLAN: { verdict: 'PASS', severity: null },
+        ARCH: { verdict: 'PASS', severity: null },
+      },
+    },
+    meta: {
+      classificationSource: 'explicit',
+      classificationConfidence: 1,
+      matchedRule: 'explicit',
+      layer: 1,
+    },
+  });
+
+  // ─── DEV: PASS ───
+  log('STEP', 'DEV 階段（PASS）');
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:developer', prompt: 'implement feature' },
+  });
+  let tp = createMockTranscript(sid, 'PASS');
+  runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:developer',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  let s = readState(sid);
+  test('X8: DEV PASS → phase = CLASSIFIED', () => {
+    assert.strictEqual(s.phase, 'CLASSIFIED');
+  });
+  console.log(`    └─ phase=${s.phase}, stageIndex=${s.progress.stageIndex}`);
+
+  // ─── REVIEW: FAIL:HIGH → 回退 DEV ───
+  log('STEP', 'REVIEW 階段（FAIL:HIGH → 回退 DEV）');
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:code-reviewer', prompt: 'review code' },
+  });
+  tp = createMockTranscript(sid, 'FAIL:HIGH');
+  runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:code-reviewer',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  s = readState(sid);
+  test('X8: REVIEW FAIL → phase = RETRYING', () => {
+    assert.strictEqual(s.phase, 'RETRYING');
+  });
+  test('X8: REVIEW FAIL → pendingRetry.stage = REVIEW', () => {
+    assert(s.progress.pendingRetry, 'pendingRetry 缺失');
+    assert.strictEqual(s.progress.pendingRetry.stage, 'REVIEW');
+  });
+  console.log(`    └─ phase=${s.phase}, pendingRetry=${JSON.stringify(s.progress.pendingRetry)}`);
+
+  // ─── DEV 修復（第一次回退）───
+  log('STEP', 'DEV 修復（REVIEW 回退）');
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:developer', prompt: 'fix review issues' },
+  });
+  tp = createMockTranscript(sid, 'PASS');
+  runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:developer',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  s = readState(sid);
+  test('X8: DEV 修復 → pendingRetry 消費（null）', () => {
+    assert.strictEqual(s.progress.pendingRetry, null);
+  });
+  console.log(`    └─ pendingRetry=${s.progress.pendingRetry}, phase=${s.phase}`);
+
+  // ─── REVIEW 重做: PASS ───
+  log('STEP', 'REVIEW 重做（PASS）');
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:code-reviewer', prompt: 'review again' },
+  });
+  tp = createMockTranscript(sid, 'PASS');
+  runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:code-reviewer',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  s = readState(sid);
+  test('X8: REVIEW 重做 PASS → stageResults[REVIEW].verdict = PASS', () => {
+    assert.strictEqual(s.progress.stageResults.REVIEW.verdict, 'PASS');
+  });
+  test('X8: REVIEW 重做 PASS → phase = CLASSIFIED', () => {
+    assert.strictEqual(s.phase, 'CLASSIFIED');
+  });
+  console.log(`    └─ phase=${s.phase}, REVIEW verdict=PASS`);
+
+  // ─── TEST: FAIL:HIGH → 回退 DEV ───
+  log('STEP', 'TEST 階段（FAIL:HIGH → 回退 DEV）');
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:tester', prompt: 'run tests' },
+  });
+  tp = createMockTranscript(sid, 'FAIL:HIGH');
+  runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:tester',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  s = readState(sid);
+  test('X8: TEST FAIL → phase = RETRYING', () => {
+    assert.strictEqual(s.phase, 'RETRYING');
+  });
+  test('X8: TEST FAIL → pendingRetry.stage = TEST', () => {
+    assert(s.progress.pendingRetry, 'pendingRetry 缺失');
+    assert.strictEqual(s.progress.pendingRetry.stage, 'TEST');
+  });
+  test('X8: 兩次回退 → retries 包含 REVIEW 和 TEST', () => {
+    assert(s.progress.retries.REVIEW >= 1, `retries[REVIEW]=${s.progress.retries.REVIEW}`);
+    assert(s.progress.retries.TEST >= 1, `retries[TEST]=${s.progress.retries.TEST}`);
+  });
+  console.log(`    └─ phase=${s.phase}, retries=${JSON.stringify(s.progress.retries)}`);
+
+  // ─── DEV 修復（第二次回退）───
+  log('STEP', 'DEV 修復（TEST 回退）');
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:developer', prompt: 'fix test issues' },
+  });
+  tp = createMockTranscript(sid, 'PASS');
+  runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:developer',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  s = readState(sid);
+  test('X8: DEV 修復（TEST 回退）→ pendingRetry 消費', () => {
+    assert.strictEqual(s.progress.pendingRetry, null);
+  });
+  console.log(`    └─ pendingRetry=${s.progress.pendingRetry}, phase=${s.phase}`);
+
+  // ─── TEST 重做: PASS ───
+  log('STEP', 'TEST 重做（PASS）');
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:tester', prompt: 'rerun tests' },
+  });
+  tp = createMockTranscript(sid, 'PASS');
+  runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:tester',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  s = readState(sid);
+  test('X8: TEST 重做 PASS → stageResults[TEST].verdict = PASS', () => {
+    assert.strictEqual(s.progress.stageResults.TEST.verdict, 'PASS');
+  });
+  test('X8: TEST 重做 PASS → phase = CLASSIFIED', () => {
+    assert.strictEqual(s.phase, 'CLASSIFIED');
+  });
+  console.log(`    └─ phase=${s.phase}, TEST verdict=PASS`);
+
+  // ─── DOCS: PASS → COMPLETE ───
+  log('STEP', 'DOCS 階段（PASS → COMPLETE）');
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:doc-updater', prompt: 'update docs' },
+  });
+  tp = createMockTranscript(sid, 'PASS');
+  runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:doc-updater',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  s = readState(sid);
+  test('X8: DOCS PASS → phase = COMPLETE', () => {
+    assert.strictEqual(s.phase, 'COMPLETE');
+  });
+
+  runHook('pipeline-check', { session_id: sid, stop_hook_active: false });
+  test('X8: pipeline-check → state 已刪除', () => {
+    assert.strictEqual(readState(sid), null);
+  });
+
+  // Timeline 驗證
+  const events = readTimeline(sid);
+  const retryEvents = events.filter(e => e.type === 'stage.retry');
+  test('X8: timeline 包含 2 個 stage.retry 事件', () => {
+    assert.strictEqual(retryEvents.length, 2,
+      `期望 2 個 stage.retry，實際 ${retryEvents.length}`);
+  });
+  console.log(`    └─ stage.retry 事件: ${retryEvents.length}`);
+  log('COMPLETE', '級聯回退流程完整 ✓');
+
+  cleanState(sid);
+  cleanTimeline(sid);
+})();
+
+// ═══════════════════════════════════════════════════════════════
+//  特殊場景 X9: 跨 pipeline 升級保留 pendingRetry
+//  fix [DEV] → COMPLETE → 重新分類 quick-dev → REVIEW FAIL
+//  → pendingRetry 設定 → 升級 standard → pendingRetry 保留
+// ═══════════════════════════════════════════════════════════════
+
+(() => {
+  const sid = 'catalog-X9';
+  console.log(`\n${'═'.repeat(65)}`);
+  console.log('  特殊場景 X9: 跨 pipeline 升級保留 pendingRetry');
+  console.log('  fix → quick-dev → REVIEW FAIL → 升級 standard');
+  console.log(`${'═'.repeat(65)}`);
+
+  cleanState(sid);
+  cleanTimeline(sid);
+  initState(sid);
+
+  // ─── 初始分類 fix ───
+  log('STEP', '初始分類 → fix');
+  runHook('task-classifier', {
+    session_id: sid, prompt: '修正設定檔錯字 [pipeline:fix]',
+  });
+  let s = readState(sid);
+  test('X9: 初始 pipelineId = fix', () => {
+    assert.strictEqual(s.context.pipelineId, 'fix');
+  });
+  console.log(`    └─ pipeline=fix, stages=[DEV]`);
+
+  // ─── DEV PASS → COMPLETE ───
+  log('STEP', 'DEV 階段（PASS → COMPLETE）');
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:developer', prompt: 'fix config' },
+  });
+  let tp = createMockTranscript(sid, 'PASS');
+  runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:developer',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  s = readState(sid);
+  test('X9: DEV PASS → phase = COMPLETE', () => {
+    assert.strictEqual(s.phase, 'COMPLETE');
+  });
+  console.log(`    └─ phase=COMPLETE`);
+
+  // ─── 升級為 quick-dev ───
+  log('STEP', '升級 → quick-dev');
+  runHook('task-classifier', {
+    session_id: sid, prompt: '其實還需要 review 和測試 [pipeline:quick-dev]',
+  });
+  s = readState(sid);
+  test('X9: 升級後 pipelineId = quick-dev', () => {
+    assert.strictEqual(s.context.pipelineId, 'quick-dev');
+  });
+  test('X9: 升級後 phase = CLASSIFIED', () => {
+    assert.strictEqual(s.phase, 'CLASSIFIED');
+  });
+  console.log(`    └─ pipeline=quick-dev, phase=${s.phase}`);
+
+  // ─── quick-dev 的 DEV 已完成，跳到 REVIEW ───
+  // REVIEW FAIL → 設定 pendingRetry
+  log('STEP', 'REVIEW 階段（FAIL:HIGH → pendingRetry）');
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:code-reviewer', prompt: 'review' },
+  });
+  tp = createMockTranscript(sid, 'FAIL:HIGH');
+  runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:code-reviewer',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  s = readState(sid);
+  test('X9: REVIEW FAIL → phase = RETRYING', () => {
+    assert.strictEqual(s.phase, 'RETRYING');
+  });
+  test('X9: REVIEW FAIL → pendingRetry 已設定', () => {
+    assert(s.progress.pendingRetry, 'pendingRetry 缺失');
+    assert.strictEqual(s.progress.pendingRetry.stage, 'REVIEW');
+  });
+  const pendingRetryBefore = JSON.parse(JSON.stringify(s.progress.pendingRetry));
+  const retriesBefore = JSON.parse(JSON.stringify(s.progress.retries));
+  console.log(`    ├─ phase=${s.phase}, pendingRetry=${JSON.stringify(pendingRetryBefore)}`);
+  console.log(`    └─ retries=${JSON.stringify(retriesBefore)}`);
+
+  // ─── 升級為 standard（RETRYING → RECLASSIFY → CLASSIFIED）───
+  log('STEP', '升級 → standard（保留 pendingRetry）');
+  runHook('task-classifier', {
+    session_id: sid, prompt: '這需要完整的功能開發流程 [pipeline:standard]',
+  });
+  s = readState(sid);
+  test('X9: 升級後 pipelineId = standard', () => {
+    assert.strictEqual(s.context.pipelineId, 'standard');
+  });
+  test('X9: 升級後 phase = CLASSIFIED', () => {
+    assert.strictEqual(s.phase, 'CLASSIFIED');
+  });
+  test('X9: 升級後 pendingRetry 被保留', () => {
+    assert(s.progress.pendingRetry, 'pendingRetry 在升級後不應消失');
+    assert.strictEqual(s.progress.pendingRetry.stage, pendingRetryBefore.stage);
+  });
+  test('X9: 升級後 retries 被保留', () => {
+    assert.strictEqual(s.progress.retries.REVIEW, retriesBefore.REVIEW,
+      `retries[REVIEW] 應保留: 期望 ${retriesBefore.REVIEW}, 實際 ${s.progress.retries.REVIEW}`);
+  });
+  test('X9: reclassifications 記錄升級歷史', () => {
+    assert(s.meta.reclassifications.length >= 1,
+      `reclassifications 應有記錄: ${JSON.stringify(s.meta.reclassifications)}`);
+    const lastReclass = s.meta.reclassifications[s.meta.reclassifications.length - 1];
+    assert.strictEqual(lastReclass.to, 'standard');
+  });
+  console.log(`    ├─ pipeline=standard, pendingRetry=${JSON.stringify(s.progress.pendingRetry)}`);
+  console.log(`    └─ retries=${JSON.stringify(s.progress.retries)}, reclassifications=${s.meta.reclassifications.length}`);
+
+  log('COMPLETE', '跨 pipeline 升級保留 pendingRetry ✓');
+
+  cleanState(sid);
+  cleanTimeline(sid);
+})();
+
+// ═══════════════════════════════════════════════════════════════
+//  特殊場景 X10: review-only 無 DEV 安全閥
+//  Pipeline: review-only [REVIEW]
+//  REVIEW FAIL:HIGH → 無 DEV 可回退 → 強制完成
+// ═══════════════════════════════════════════════════════════════
+
+(() => {
+  const sid = 'catalog-X10';
+  console.log(`\n${'═'.repeat(65)}`);
+  console.log('  特殊場景 X10: review-only 無 DEV 安全閥');
+  console.log('  Pipeline: review-only [REVIEW]');
+  console.log(`${'═'.repeat(65)}`);
+
+  cleanState(sid);
+  cleanTimeline(sid);
+  initState(sid);
+
+  // 分類為 review-only
+  runHook('task-classifier', {
+    session_id: sid, prompt: '審查 PR #99 的程式碼 [pipeline:review-only]',
+  });
+  let s = readState(sid);
+  test('X10: pipelineId = review-only', () => {
+    assert.strictEqual(s.context.pipelineId, 'review-only');
+  });
+  test('X10: expectedStages = [REVIEW]', () => {
+    assert.deepStrictEqual(s.context.expectedStages, ['REVIEW']);
+  });
+  console.log(`    └─ pipeline=review-only, stages=[REVIEW]`);
+
+  // ─── REVIEW: FAIL:HIGH ───
+  log('STEP', 'REVIEW 階段（FAIL:HIGH → 無 DEV 可回退）');
+  runHook('delegation-tracker', {
+    session_id: sid, tool_name: 'Task',
+    tool_input: { subagent_type: 'vibe:code-reviewer', prompt: 'review PR #99' },
+  });
+  let tp = createMockTranscript(sid, 'FAIL:HIGH');
+  const failResult = runHook('stage-transition', {
+    session_id: sid, agent_type: 'vibe:code-reviewer',
+    agent_transcript_path: tp, stop_hook_active: false,
+  });
+  cleanTranscript(sid);
+  s = readState(sid);
+
+  test('X10: REVIEW FAIL 無 DEV → phase 不是 RETRYING', () => {
+    assert.notStrictEqual(s.phase, 'RETRYING',
+      `應強制完成而非 RETRYING，phase=${s.phase}`);
+  });
+  test('X10: REVIEW FAIL 無 DEV → phase = COMPLETE', () => {
+    assert.strictEqual(s.phase, 'COMPLETE');
+  });
+  test('X10: systemMessage 含無法回退提示', () => {
+    assert(failResult.json && failResult.json.systemMessage,
+      'systemMessage 缺失');
+    assert(failResult.json.systemMessage.includes('無法回退'),
+      `systemMessage 不含無法回退: ${failResult.json.systemMessage.slice(0, 100)}`);
+  });
+  test('X10: pendingRetry 未設定（null）', () => {
+    assert.strictEqual(s.progress.pendingRetry, null,
+      `pendingRetry 應為 null，實際: ${JSON.stringify(s.progress.pendingRetry)}`);
+  });
+  test('X10: stageResults[REVIEW].verdict = FAIL', () => {
+    assert(s.progress.stageResults.REVIEW, 'stageResults[REVIEW] 缺失');
+    assert.strictEqual(s.progress.stageResults.REVIEW.verdict, 'FAIL');
+  });
+  console.log(`    ├─ phase=${s.phase}, pendingRetry=${s.progress.pendingRetry}`);
+  console.log(`    └─ 無法回退，強制完成 ✓`);
+
+  // Pipeline check 應清理 state（因為已 COMPLETE）
+  runHook('pipeline-check', { session_id: sid, stop_hook_active: false });
+  test('X10: pipeline-check → state 已刪除', () => {
+    assert.strictEqual(readState(sid), null);
+  });
+  log('COMPLETE', 'review-only 無 DEV 安全閥流程完整 ✓');
+
+  cleanState(sid);
+  cleanTimeline(sid);
+})();
+
+// ═══════════════════════════════════════════════════════════════
 //  結果摘要
 // ═══════════════════════════════════════════════════════════════
 
