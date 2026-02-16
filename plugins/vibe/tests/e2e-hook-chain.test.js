@@ -1864,6 +1864,236 @@ console.log('══════════════════════�
 })();
 
 // ═══════════════════════════════════════════════
+// Scenario T: TDD 雙 TEST 循環（test-first pipeline）
+// TEST → DEV → TEST（第二次 FAIL → DEV → TEST PASS → 完成）
+// ═══════════════════════════════════════════════
+
+console.log('\n🔁 Scenario T: TDD 雙 TEST 循環（test-first pipeline）');
+console.log('═══════════════════════════════════════════════════════');
+
+(() => {
+  const sid = 'test-tdd-loop';
+  try {
+    initState(sid, {
+      pipelineId: 'test-first',
+      taskType: 'tdd',
+      expectedStages: ['TEST', 'DEV', 'TEST'],
+      pipelineEnforced: true,
+      completed: [],
+      stageIndex: 0,
+    });
+
+    const transcriptPath = path.join(CLAUDE_DIR, `test-transcript-${sid}.jsonl`);
+
+    // ── Step 1: 第一次 TEST（寫紅燈測試）→ PASS → 前進到 DEV ──
+    fs.writeFileSync(transcriptPath, JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ text: '紅燈測試已寫 <!-- PIPELINE_VERDICT: PASS -->' }] },
+    }) + '\n');
+
+    const r1 = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:tester',
+      agent_transcript_path: transcriptPath,
+    });
+
+    test('T1: 第一次 TEST PASS → 前進到 DEV', () => {
+      assert.ok(r1.json && r1.json.systemMessage, '應有 systemMessage');
+      assert.ok(r1.json.systemMessage.includes('DEV'), '應前進到 DEV');
+    });
+
+    // ── Step 2: DEV 完成 → 前進到第二次 TEST ──
+    const r2 = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:developer',
+    });
+
+    test('T2: DEV 完成 → 前進到第二次 TEST', () => {
+      assert.ok(r2.json && r2.json.systemMessage, '應有 systemMessage');
+      assert.ok(r2.json.systemMessage.includes('TEST'), '應前進到 TEST');
+    });
+
+    test('T3: stageIndex 追蹤正確（DEV=索引 1 之後）', () => {
+      const s = readState(sid);
+      // DEV 完成後 stageIndex 已被 resolveNextStage 更新到第二個 TEST 的索引 2
+      assert.strictEqual(s.stageIndex, 2, 'stageIndex 應為 2（第二個 TEST）');
+    });
+
+    // ── Step 3: 第二次 TEST FAIL:CRITICAL → 回退到 DEV ──
+    fs.writeFileSync(transcriptPath, JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ text: '測試失敗 <!-- PIPELINE_VERDICT: FAIL:CRITICAL -->' }] },
+    }) + '\n');
+
+    runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:tester',
+      agent_transcript_path: transcriptPath,
+    });
+
+    test('T4: 第二次 TEST FAIL → pendingRetry.stage=TEST', () => {
+      const s = readState(sid);
+      assert.ok(s.pendingRetry, '應有 pendingRetry');
+      assert.strictEqual(s.pendingRetry.stage, 'TEST');
+    });
+
+    // ── Step 4: DEV 修復 → 回退重驗 TEST ──
+    const r4 = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:developer',
+    });
+
+    test('T5: DEV 修復 → 回退重驗指向 TEST', () => {
+      assert.ok(r4.json.systemMessage.includes('回退重驗'), '應包含回退重驗');
+      assert.ok(r4.json.systemMessage.includes('TEST'), '應指向 TEST');
+    });
+
+    // ── Step 5: 第二次 TEST PASS → pipeline 完成 ──
+    fs.writeFileSync(transcriptPath, JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ text: '綠燈 <!-- PIPELINE_VERDICT: PASS -->' }] },
+    }) + '\n');
+
+    const r5 = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:tester',
+      agent_transcript_path: transcriptPath,
+    });
+
+    test('T6: 第二次 TEST PASS → pipeline 完成', () => {
+      assert.ok(r5.json && r5.json.systemMessage, '應有 systemMessage');
+      // Pipeline 完成或無下一步
+      assert.ok(
+        r5.json.systemMessage.includes('Pipeline 完成') || r5.json.systemMessage.includes('完成'),
+        '應包含完成訊息'
+      );
+    });
+
+    // 清理 transcript
+    try { fs.unlinkSync(transcriptPath); } catch (_) {}
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
+// Scenario U: Pipeline 升級保留 pendingRetry
+// quick-dev REVIEW FAIL → pendingRetry → 升級到 standard → DEV → 重驗 REVIEW
+// ═══════════════════════════════════════════════
+
+console.log('\n⬆️ Scenario U: Pipeline 升級保留 pendingRetry');
+console.log('═══════════════════════════════════════════════════════');
+
+(() => {
+  const sid = 'test-upgrade-pending';
+  try {
+    // 初始化 quick-dev pipeline，已有 pendingRetry
+    initState(sid, {
+      pipelineId: 'quick-dev',
+      taskType: 'test',
+      expectedStages: ['DEV', 'REVIEW', 'TEST'],
+      pipelineEnforced: true,
+      completed: ['vibe:developer', 'vibe:code-reviewer'],
+      stageIndex: 1,
+      retries: { REVIEW: 1 },
+      pendingRetry: { stage: 'REVIEW', severity: 'HIGH', round: 1 },
+      lastTransition: new Date().toISOString(),
+    });
+
+    // 升級到 standard（使用者送了 feature 意圖的 prompt）
+    runHook('task-classifier', {
+      session_id: sid,
+      prompt: '[pipeline:standard] 實作完整的使用者認證系統',
+    });
+
+    test('U1: 升級到 standard pipeline', () => {
+      const s = readState(sid);
+      assert.strictEqual(s.pipelineId, 'standard', '應升級到 standard');
+    });
+
+    test('U2: pendingRetry 在升級後保留', () => {
+      const s = readState(sid);
+      assert.ok(s.pendingRetry, 'pendingRetry 應保留');
+      assert.strictEqual(s.pendingRetry.stage, 'REVIEW');
+      assert.strictEqual(s.pendingRetry.round, 1);
+    });
+
+    // DEV 修復完成 → 應觸發回退重驗
+    const r = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:developer',
+    });
+
+    test('U3: DEV 完成 → 回退重驗 REVIEW（跨 pipeline 保留）', () => {
+      assert.ok(r.json && r.json.systemMessage, '應有 systemMessage');
+      assert.ok(r.json.systemMessage.includes('回退重驗'), '應包含回退重驗');
+      assert.ok(r.json.systemMessage.includes('REVIEW'), '應指向 REVIEW');
+    });
+
+    test('U4: pendingRetry 被消費', () => {
+      const s = readState(sid);
+      assert.ok(!s.pendingRetry, 'pendingRetry 應被消費');
+    });
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
+// Scenario V: review-only — 無 DEV 階段的 REVIEW FAIL
+// ═══════════════════════════════════════════════
+
+console.log('\n📝 Scenario V: review-only — 無 DEV 階段的 FAIL 處理');
+console.log('═══════════════════════════════════════════════════════');
+
+(() => {
+  const sid = 'test-review-only-fail';
+  try {
+    initState(sid, {
+      pipelineId: 'review-only',
+      taskType: 'quickfix',
+      expectedStages: ['REVIEW'],
+      pipelineEnforced: false,
+      completed: [],
+      stageIndex: 0,
+    });
+
+    const transcriptPath = path.join(CLAUDE_DIR, `test-transcript-${sid}.jsonl`);
+
+    // REVIEW FAIL:CRITICAL — 但 pipeline 無 DEV 階段
+    fs.writeFileSync(transcriptPath, JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ text: '嚴重問題 <!-- PIPELINE_VERDICT: FAIL:CRITICAL -->' }] },
+    }) + '\n');
+
+    const r = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:code-reviewer',
+      agent_transcript_path: transcriptPath,
+    });
+
+    test('V1: review-only FAIL → 無法回退訊息', () => {
+      assert.ok(r.json && r.json.systemMessage, '應有 systemMessage');
+      assert.ok(r.json.systemMessage.includes('無法回退'), '應包含無法回退');
+    });
+
+    test('V2: 強制繼續（不卡死）', () => {
+      assert.ok(r.json.systemMessage.includes('強制繼續'), '應包含強制繼續');
+    });
+
+    test('V3: 無 pendingRetry（無 DEV 可回退）', () => {
+      const s = readState(sid);
+      assert.ok(!s.pendingRetry, '不應有 pendingRetry');
+    });
+
+    // 清理 transcript
+    try { fs.unlinkSync(transcriptPath); } catch (_) {}
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
 // 結果輸出
 // ═══════════════════════════════════════════════
 
