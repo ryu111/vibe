@@ -11,6 +11,9 @@
 'use strict';
 const assert = require('assert');
 const path = require('path');
+const os = require('os');
+const fs = require('fs');
+const { execSync } = require('child_process');
 
 let passed = 0;
 let failed = 0;
@@ -850,7 +853,7 @@ test('映射: tdd → test-first', () => {
 // Part 1i: Layer 3 LLM Fallback — 介面驗證
 // ═══════════════════════════════════════════════
 
-const { classifyWithLLM, buildPipelineCatalogHint } = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'classifier.js'));
+const { classifyWithLLM, buildPipelineCatalogHint, LLM_MODEL, LLM_TIMEOUT, LLM_CONFIDENCE_THRESHOLD } = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'classifier.js'));
 
 console.log('\n🧪 Part 1i: Layer 3 LLM Fallback — 介面驗證');
 console.log('═'.repeat(50));
@@ -949,6 +952,216 @@ test('Layer 3 不觸發: explicit pipeline → explicit', () => {
 });
 
 // ═══════════════════════════════════════════════
+// Part 1j: Layer 3 環境變數與常量驗證
+// ═══════════════════════════════════════════════
+
+console.log('\n🧪 Part 1j: Layer 3 環境變數與常量驗證');
+console.log('═'.repeat(50));
+
+test('LLM_MODEL 預設值: claude-sonnet-4-20250514', () => {
+  assert.strictEqual(LLM_MODEL, 'claude-sonnet-4-20250514');
+});
+
+test('LLM_TIMEOUT 預設值: 10000', () => {
+  assert.strictEqual(LLM_TIMEOUT, 10000);
+});
+
+test('LLM_CONFIDENCE_THRESHOLD 預設值: 0.7', () => {
+  assert.strictEqual(LLM_CONFIDENCE_THRESHOLD, 0.7);
+});
+
+// 子行程驗證：module-level const 需要新 Node 進程才能覆寫
+const classifierModulePath = require.resolve(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'classifier.js'));
+
+function runClassifierCheck(envVars, expression) {
+  const tmpFile = path.join(os.tmpdir(), `vibe-cls-test-${Date.now()}-${Math.random().toString(36).slice(2)}.js`);
+  fs.writeFileSync(tmpFile, `const c = require(${JSON.stringify(classifierModulePath)});\nprocess.stdout.write(String(${expression}));`);
+  try {
+    return execSync(`node "${tmpFile}"`, {
+      env: { ...process.env, ...envVars },
+      timeout: 5000,
+    }).toString();
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
+  }
+}
+
+test('VIBE_CLASSIFIER_MODEL 環境變數覆寫', () => {
+  const result = runClassifierCheck(
+    { VIBE_CLASSIFIER_MODEL: 'claude-haiku-4-5-20251001' },
+    'c.LLM_MODEL'
+  );
+  assert.strictEqual(result, 'claude-haiku-4-5-20251001');
+});
+
+test('VIBE_CLASSIFIER_THRESHOLD=0.5 覆寫', () => {
+  const result = runClassifierCheck(
+    { VIBE_CLASSIFIER_THRESHOLD: '0.5' },
+    'c.LLM_CONFIDENCE_THRESHOLD'
+  );
+  assert.strictEqual(result, '0.5');
+});
+
+test('VIBE_CLASSIFIER_THRESHOLD=0 → Layer 3 永不觸發（所有信心度 >= 0）', () => {
+  const result = runClassifierCheck(
+    { VIBE_CLASSIFIER_THRESHOLD: '0' },
+    'c.classifyWithConfidence("看看現在的狀態").source'
+  );
+  assert.strictEqual(result, 'regex', '閾值 0 時不應觸發 pending-llm');
+});
+
+test('VIBE_CLASSIFIER_THRESHOLD=1.0 → weak explore 觸發 pending-llm', () => {
+  const result = runClassifierCheck(
+    { VIBE_CLASSIFIER_THRESHOLD: '1.0' },
+    'c.classifyWithConfidence("看看現在的狀態").source'
+  );
+  assert.strictEqual(result, 'pending-llm', '閾值 1.0 時信心度 0.6 < 1.0 應觸發');
+});
+
+test('VIBE_CLASSIFIER_THRESHOLD=1.0 → strong question 也觸發 pending-llm', () => {
+  const result = runClassifierCheck(
+    { VIBE_CLASSIFIER_THRESHOLD: '1.0' },
+    'c.classifyWithConfidence("什麼是 pipeline?").source'
+  );
+  assert.strictEqual(result, 'pending-llm', '閾值 1.0 時信心度 0.95 < 1.0 應觸發');
+});
+
+test('VIBE_CLASSIFIER_THRESHOLD=1.0 → explicit pipeline 不觸發（信心度 1.0）', () => {
+  const result = runClassifierCheck(
+    { VIBE_CLASSIFIER_THRESHOLD: '1.0' },
+    'c.classifyWithConfidence("[pipeline:full] 建立系統").source'
+  );
+  assert.strictEqual(result, 'explicit', '顯式 pipeline 信心度 1.0 不受閾值影響');
+});
+
+test('VIBE_CLASSIFIER_THRESHOLD=NaN → 降級為預設 0.7', () => {
+  const result = runClassifierCheck(
+    { VIBE_CLASSIFIER_THRESHOLD: 'not-a-number' },
+    'c.LLM_CONFIDENCE_THRESHOLD'
+  );
+  assert.strictEqual(result, '0.7', 'NaN 應降級為預設值 0.7');
+});
+
+// ═══════════════════════════════════════════════
+// Part 1k: Session 快取驗證（task-classifier Layer 3 整合）
+// ═══════════════════════════════════════════════
+
+console.log('\n🧪 Part 1k: Session 快取驗證');
+console.log('═'.repeat(50));
+
+const CLAUDE_TEST_DIR = path.join(os.homedir(), '.claude');
+const TC_SCRIPT = path.join(__dirname, '..', 'scripts', 'hooks', 'task-classifier.js');
+
+function runTaskClassifier(stdinData, envOverrides = {}) {
+  const input = JSON.stringify(stdinData);
+  const testEnv = { ...process.env, ...envOverrides };
+  // 確保測試不呼叫真實 LLM API + 使用預設閾值
+  delete testEnv.ANTHROPIC_API_KEY;
+  delete testEnv.VIBE_CLASSIFIER_THRESHOLD;
+  delete testEnv.VIBE_CLASSIFIER_MODEL;
+  try {
+    const stdout = execSync(
+      `echo '${input.replace(/'/g, "'\\''")}' | node "${TC_SCRIPT}"`,
+      { stdio: ['pipe', 'pipe', 'pipe'], timeout: 15000, env: testEnv }
+    ).toString().trim();
+    return { stdout, exitCode: 0 };
+  } catch (err) {
+    return {
+      stdout: err.stdout ? err.stdout.toString().trim() : '',
+      exitCode: err.status || 1,
+    };
+  }
+}
+
+function createTestState(sessionId, overrides = {}) {
+  const p = path.join(CLAUDE_TEST_DIR, `pipeline-state-${sessionId}.json`);
+  const state = {
+    sessionId, initialized: true, completed: [], expectedStages: [],
+    pipelineRules: [],
+    environment: { languages: { primary: null, secondary: [] }, framework: null, packageManager: null, tools: {} },
+    openspecEnabled: false, stageResults: {}, retries: {}, skippedStages: [],
+    stageIndex: 0, delegationActive: false, pipelineEnforced: false, ...overrides,
+  };
+  fs.writeFileSync(p, JSON.stringify(state, null, 2));
+  return p;
+}
+
+function readTestState(sessionId) {
+  return JSON.parse(fs.readFileSync(path.join(CLAUDE_TEST_DIR, `pipeline-state-${sessionId}.json`), 'utf8'));
+}
+
+function cleanupTestState(sessionId) {
+  const files = [
+    path.join(CLAUDE_TEST_DIR, `pipeline-state-${sessionId}.json`),
+    path.join(CLAUDE_TEST_DIR, `timeline-${sessionId}.jsonl`),
+  ];
+  for (const f of files) {
+    try { fs.unlinkSync(f); } catch (_) {}
+  }
+}
+
+test('reset 清除 llmClassification（pipeline 完成後新分類重設）', () => {
+  const sid = 'test-reset-llm-' + Date.now();
+  try {
+    createTestState(sid, {
+      pipelineId: 'fix',
+      taskType: 'quickfix',
+      expectedStages: ['DEV'],
+      stageResults: { DEV: { verdict: 'PASS' } },
+      llmClassification: { pipeline: 'standard', confidence: 0.85, source: 'llm' },
+    });
+    runTaskClassifier({ session_id: sid, prompt: 'implement authentication' });
+    const state = readTestState(sid);
+    assert.strictEqual(state.llmClassification, undefined, 'reset 後 llmClassification 應被刪除');
+    assert.deepStrictEqual(state.retries, {}, 'reset 後 retries 應為空物件');
+  } finally {
+    cleanupTestState(sid);
+  }
+});
+
+test('LLM 失敗不寫入快取（無 API key + weak explore prompt）', () => {
+  const sid = 'test-no-cache-' + Date.now();
+  try {
+    createTestState(sid);
+    runTaskClassifier({ session_id: sid, prompt: '看看現在的狀態' });
+    const state = readTestState(sid);
+    assert.strictEqual(state.llmClassification, undefined, 'LLM 失敗時不應寫入快取');
+    assert.ok(state.pipelineId, '應有 pipelineId（降級分類）');
+    assert.strictEqual(state.classificationSource, 'regex-low', 'source 應為 regex-low');
+  } finally {
+    cleanupTestState(sid);
+  }
+});
+
+test('快取命中直接使用（不呼叫 LLM API）', () => {
+  const sid = 'test-cache-hit-' + Date.now();
+  try {
+    createTestState(sid, {
+      llmClassification: { pipeline: 'standard', confidence: 0.85, source: 'llm' },
+    });
+    runTaskClassifier({ session_id: sid, prompt: '看看現在的狀態' });
+    const state = readTestState(sid);
+    assert.strictEqual(state.pipelineId, 'standard', '快取命中應使用快取的 pipeline');
+    assert.strictEqual(state.classificationSource, 'llm-cached', 'source 應為 llm-cached');
+  } finally {
+    cleanupTestState(sid);
+  }
+});
+
+test('首次分類無快取時正常分類', () => {
+  const sid = 'test-first-cls-' + Date.now();
+  try {
+    createTestState(sid);
+    runTaskClassifier({ session_id: sid, prompt: 'implement user authentication' });
+    const state = readTestState(sid);
+    assert.strictEqual(state.pipelineId, 'standard', 'feature 類型應映射到 standard pipeline');
+    assert.strictEqual(state.classificationSource, 'regex', '高信心度應為 regex（不觸發 LLM）');
+  } finally {
+    cleanupTestState(sid);
+  }
+});
+
+// ═══════════════════════════════════════════════
 // Part 2: check-console-log 檔案過濾邏輯
 // ═══════════════════════════════════════════════
 
@@ -1024,7 +1237,6 @@ test('不排除：logger.js（不是 hook-logger.js）', () => {
 console.log('\n🧪 Part 3: 品質守衛 hooks stdin→stdout 驗證');
 console.log('═'.repeat(50));
 
-const { execSync } = require('child_process');
 const PLUGIN_ROOT = path.join(__dirname, '..');
 
 function runSentinelHook(hookName, stdinData) {

@@ -154,6 +154,43 @@ A: 這是 TDD 工作流的特殊設計 — 先寫測試（第一個 TEST）→ �
 **Q: 如何跳過 Pipeline？**
 A: 使用 `[pipeline:none]` 或 `/cancel` 指令退出 Pipeline 模式。
 
+## Main Agent 路由器模式
+
+Pipeline 架構允許 Main Agent 使用較輕量的模型（如 Sonnet）作為路由器：
+
+**推薦配置**：
+```bash
+# 直接用 --model 參數
+claude --model sonnet --plugin-dir ~/projects/vibe/plugins/vibe
+
+# 或建立 alias
+alias vc-sonnet='claude --model sonnet --plugin-dir ~/projects/vibe/plugins/vibe --plugin-dir ~/projects/vibe/plugins/forge'
+```
+
+**安全保障**：
+- **pipeline-guard** 硬阻擋 Main Agent 直接寫碼（exit 2）
+- **品質 sub-agents**（code-reviewer/tester）使用各自的指定模型，不受 Main Agent 模型影響
+- **三層分類器** Layer 3 使用獨立模型（預設 Sonnet），與 Main Agent 模型無關
+
+**成本效益**：
+- Sonnet 速度更快、成本更低
+- Main Agent 只負責路由和委派，不需要 Opus 的深度推理
+- 所有實際工作由特化 sub-agents 完成
+
+## Layer 3 環境變數
+
+| 變數 | 預設值 | 說明 |
+|------|--------|------|
+| `VIBE_CLASSIFIER_MODEL` | `claude-sonnet-4-20250514` | Layer 3 LLM 分類模型 |
+| `VIBE_CLASSIFIER_THRESHOLD` | `0.7` | Layer 2→3 降級閾值（設 `0` 完全停用 Layer 3） |
+
+**閾值行為**：
+- `0` — Layer 3 永不觸發（所有分類由 regex 決定）
+- `0.7`（預設）— 只有低信心度分類（如弱探索詞）觸發 LLM
+- `1.0` — 幾乎所有分類都觸發 LLM（除了顯式 `[pipeline:xxx]`）
+
+**Session 快取**：同一 session 內 Layer 3 結果會快取到 pipeline state，避免重複 API 呼叫。Pipeline 完成後自動清除。
+
 ## 參數說明
 
 - 如果提供參數（如 `/vibe:pipeline full`），則顯示該 pipeline 的詳細資訊

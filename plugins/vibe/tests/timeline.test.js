@@ -49,11 +49,11 @@ function cleanupTestFile() {
 section('Part 1: Schema — 事件類型與 envelope');
 
 // 1.1 EVENT_TYPES 完整性
-assert(Object.keys(EVENT_TYPES).length === 22, 'EVENT_TYPES 有 22 種事件');
+assert(Object.keys(EVENT_TYPES).length === 23, 'EVENT_TYPES 有 23 種事件');
 
 // 1.2 CATEGORIES 覆蓋所有事件
 const allCatTypes = Object.values(CATEGORIES).flat();
-assert(allCatTypes.length === 22, 'CATEGORIES 涵蓋全部 22 種事件');
+assert(new Set(allCatTypes).size === 23, 'CATEGORIES 涵蓋全部 23 種事件（去重後）');
 
 // 1.3 CATEGORIES 和 EVENT_TYPES 一致
 const allEventValues = new Set(Object.values(EVENT_TYPES));
@@ -65,7 +65,7 @@ assert(
 );
 
 // 1.4 VALID_TYPES 是 Set
-assert(VALID_TYPES instanceof Set && VALID_TYPES.size === 22, 'VALID_TYPES 是 22 元素 Set');
+assert(VALID_TYPES instanceof Set && VALID_TYPES.size === 23, 'VALID_TYPES 是 23 元素 Set');
 
 // 1.5 createEnvelope
 const env = createEnvelope('session.start', 'sess-1', { foo: 'bar' });

@@ -14,7 +14,11 @@
  *     ├─ Trivial Detection — hello world / poc / demo
  *     ├─ Weak Explore — 看看 / 查看 / 說明 等探索詞
  *     └─ Action Keywords — tdd / feature / refactor / bugfix
- *   Layer 3:  LLM Fallback — 低信心度時呼叫 Haiku 語意分類（ANTHROPIC_API_KEY 降級為 context 注入）
+ *   Layer 3:  LLM Fallback — 低信心度時呼叫 Sonnet 語意分類（ANTHROPIC_API_KEY 降級為 context 注入）
+ *
+ * 環境變數：
+ *   VIBE_CLASSIFIER_MODEL     — Layer 3 LLM 模型（預設 claude-sonnet-4-20250514）
+ *   VIBE_CLASSIFIER_THRESHOLD — Layer 2→3 降級閾值（預設 0.7，設 1.0 可完全停用 Layer 3）
  *
  * 分類流程（舊版 classify）：
  *   Phase 1:  Strong Question Guard — 多層疑問信號（最高優先級）
@@ -210,22 +214,27 @@ function classifyWithConfidence(prompt) {
   const pipeline = mapTaskTypeToPipeline(taskType);
   const confidence = calculateConfidence(taskType, prompt);
 
-  // Layer 3 佔位（Phase 5 實作）
-  // 信心度 < 0.7 時標記為 pending-llm，但目前不實際呼叫 LLM
-  const source = confidence < 0.7 ? 'pending-llm' : 'regex';
+  // Layer 3: 低信心度時標記為 pending-llm（由 task-classifier hook 觸發 LLM 呼叫）
+  const source = confidence < LLM_CONFIDENCE_THRESHOLD ? 'pending-llm' : 'regex';
 
   return { pipeline, confidence, source };
 }
 
 // ═══════════════════════════════════════════════
-// Layer 3: LLM Fallback（Haiku 語意分類）
+// Layer 3: LLM Fallback（Sonnet 語意分類）
 // ═══════════════════════════════════════════════
 
-/** LLM 分類使用的模型（Haiku：便宜、快速、分類任務足夠） */
-const LLM_MODEL = 'claude-haiku-4-5-20251001';
+/** Layer 3 LLM 模型（環境變數可覆寫，預設 Sonnet） */
+const LLM_MODEL = process.env.VIBE_CLASSIFIER_MODEL || 'claude-sonnet-4-20250514';
 
-/** LLM 呼叫逾時（ms） */
-const LLM_TIMEOUT = 8000;
+/** Layer 3 LLM 呼叫逾時（ms，Sonnet 比 Haiku 稍慢） */
+const LLM_TIMEOUT = 10000;
+
+/** Layer 2→3 降級閾值（環境變數可覆寫，設 1.0 可完全停用 Layer 3） */
+const LLM_CONFIDENCE_THRESHOLD = (() => {
+  const v = parseFloat(process.env.VIBE_CLASSIFIER_THRESHOLD);
+  return Number.isNaN(v) ? 0.7 : v;
+})();
 
 /**
  * 呼叫 Anthropic API 進行語意分類
@@ -338,4 +347,7 @@ module.exports = {
   TRIVIAL,
   WEAK_EXPLORE,
   ACTION_PATTERNS,
+  LLM_MODEL,
+  LLM_TIMEOUT,
+  LLM_CONFIDENCE_THRESHOLD,
 };

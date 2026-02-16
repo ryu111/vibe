@@ -154,6 +154,7 @@ function resetPipelineState(state) {
   delete state.pipelineId;
   delete state.taskType;
   delete state.reclassifications;
+  delete state.llmClassification;
   state.completed = [];
   state.stageResults = {};
   state.retries = {};
@@ -284,6 +285,7 @@ process.stdin.on('end', () => {
     const data = JSON.parse(input);
     const prompt = data.prompt || data.user_prompt || data.content || '';
     const sessionId = data.session_id || 'unknown';
+    const statePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
 
     // Emit prompt received event
     emit(EVENT_TYPES.PROMPT_RECEIVED, sessionId, {});
@@ -291,18 +293,34 @@ process.stdin.on('end', () => {
     // 使用新的 classifyWithConfidence（回傳 { pipeline, confidence, source }）
     const result = classifyWithConfidence(prompt);
 
-    // Layer 3: LLM Fallback — 低信心度時呼叫 Haiku 語意分類
+    // Layer 3: LLM Fallback — 低信心度時呼叫 Sonnet 語意分類（含 session 快取）
     let catalogHint = '';
     if (result.source === 'pending-llm') {
-      const llmResult = await classifyWithLLM(prompt);
-      if (llmResult) {
-        result.pipeline = llmResult.pipeline;
-        result.confidence = llmResult.confidence;
-        result.source = llmResult.source;
+      // Session 快取：同一 session 不重複呼叫 LLM API
+      const stateForCache = fs.existsSync(statePath)
+        ? JSON.parse(fs.readFileSync(statePath, 'utf8'))
+        : null;
+      if (stateForCache && stateForCache.llmClassification) {
+        // 快取命中
+        result.pipeline = stateForCache.llmClassification.pipeline;
+        result.confidence = stateForCache.llmClassification.confidence;
+        result.source = 'llm-cached';
       } else {
-        // LLM 不可用 → 降級回 regex + 注入 pipeline 目錄提示
-        result.source = 'regex-low';
-        catalogHint = buildPipelineCatalogHint();
+        const llmResult = await classifyWithLLM(prompt);
+        if (llmResult) {
+          result.pipeline = llmResult.pipeline;
+          result.confidence = llmResult.confidence;
+          result.source = llmResult.source;
+          // 寫入 session 快取
+          if (stateForCache) {
+            stateForCache.llmClassification = llmResult;
+            fs.writeFileSync(statePath, JSON.stringify(stateForCache, null, 2));
+          }
+        } else {
+          // LLM 不可用 → 降級回 regex + 注入 pipeline 目錄提示
+          result.source = 'regex-low';
+          catalogHint = buildPipelineCatalogHint();
+        }
       }
     }
 
@@ -310,8 +328,6 @@ process.stdin.on('end', () => {
     const newStages = PIPELINES[newPipelineId]?.stages || [];
     const newPipelineEnforced = PIPELINES[newPipelineId]?.enforced || false;
     const newTaskType = PIPELINE_TO_TASKTYPE[newPipelineId] || 'quickfix'; // 向後相容
-
-    const statePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
 
     // 讀取現有 state
     let state = null;

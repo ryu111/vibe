@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.35 | 全方位開發工作流 | 33 | 11 | 22 | 42 |
+| **vibe** | 1.0.40 | 全方位開發工作流 | 33 | 11 | 22 | 42 |
 
 ### vibe plugin 功能模組
 
@@ -225,7 +225,15 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 | Hook/Script 語言 | JS（與 ECC 一致） | 零編譯、hook 原生支援 |
 | 目標平台 | macOS only | 不需跨平台 |
 | Pipeline 機制 | hooks-only（無 orchestrator） | sub-agent 不能生 sub-agent |
+| Main Agent 模型 | Sonnet 路由器（推薦） | pipeline-guard 保障品質，Main Agent 只負責委派 |
 | 規格管理 | OpenSpec 目錄慣例（原生實作） | 結構化 proposal/design/specs/tasks，累積知識庫 |
+
+### Main Agent 路由器模式
+
+推薦 Main Agent 使用 Sonnet（`claude --model sonnet`），所有實際工作由特化 sub-agents 完成。
+
+- **安全保障**：pipeline-guard 硬阻擋 Main Agent 寫碼 | sub-agents 使用各自指定模型
+- **環境變數**：`VIBE_CLASSIFIER_MODEL`（Layer 3 LLM 模型，預設 Sonnet）| `VIBE_CLASSIFIER_THRESHOLD`（Layer 2→3 閾值，設 `0` 停用 LLM）
 
 ## 文檔體系
 
