@@ -272,7 +272,36 @@ process.stdin.on('end', () => {
     // ── 重新分類 ──
     const oldPipelineId = state.pipelineId;
     if (oldPipelineId === newPipelineId) return; // 同級
-    if (!isUpgrade(oldPipelineId, newPipelineId)) return; // 降級
+
+    if (!isUpgrade(oldPipelineId, newPipelineId)) {
+      // 降級：如果舊 pipeline 過時（超過 10 分鐘無 stage transition），重設
+      const lastTransition = state.lastTransition ? new Date(state.lastTransition).getTime() : 0;
+      const STALE_MS = 10 * 60 * 1000; // 10 分鐘
+      const isStale = (Date.now() - lastTransition) > STALE_MS;
+
+      if (isStale && !isPipelineComplete(state)) {
+        resetPipelineState(state);
+        state.pipelineId = newPipelineId;
+        state.taskType = newTaskType;
+        state.expectedStages = newStages;
+        state.pipelineEnforced = newPipelineEnforced;
+        state.classificationConfidence = result.confidence;
+        state.classificationSource = result.source;
+        fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+
+        emit(EVENT_TYPES.TASK_CLASSIFIED, sessionId, {
+          pipelineId: newPipelineId, taskType: newTaskType,
+          expectedStages: newStages, reclassified: true, from: oldPipelineId,
+          staleReset: true,
+          layer: determineLayer(result), confidence: result.confidence,
+          source: result.source, matchedRule: result.matchedRule,
+        });
+
+        outputInitialClassification(newPipelineId, newStages, state, { catalogHint });
+        return;
+      }
+      return; // 非過時降級 → 保持原 pipeline
+    }
 
     // 升級
     const completedStages = getCompletedStages(state.completed);

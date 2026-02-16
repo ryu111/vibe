@@ -78,6 +78,19 @@ process.stdin.on('end', () => {
       );
     }
 
+    // pendingRetry 優先：回退重驗的目標階段必須先完成
+    if (state.pendingRetry && state.pendingRetry.stage) {
+      const retryTarget = state.pendingRetry.stage;
+      // 確保 retryTarget 在 missing 最前面
+      if (!missing.includes(retryTarget)) {
+        missing.unshift(retryTarget);
+      } else {
+        // 移到最前面（優先提示）
+        missing = missing.filter(s => s !== retryTarget);
+        missing.unshift(retryTarget);
+      }
+    }
+
     if (missing.length === 0) {
       // 全部完成 → 清理 state file
       try { fs.unlinkSync(statePath); } catch (_) {}

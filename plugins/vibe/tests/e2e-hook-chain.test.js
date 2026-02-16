@@ -476,13 +476,20 @@ console.log('═'.repeat(55));
       assert.strictEqual(gateResult.exitCode, 2);
     });
 
-    // Step 4: 降級應被忽略
+    // Step 4: 降級應被忽略（需設 lastTransition 避免 stale 重設）
+    const stateBeforeDowngrade = readState(sid);
+    stateBeforeDowngrade.lastTransition = new Date().toISOString();
+    fs.writeFileSync(
+      path.join(CLAUDE_DIR, `pipeline-state-${sid}.json`),
+      JSON.stringify(stateBeforeDowngrade, null, 2)
+    );
+
     runHook('task-classifier', {
       session_id: sid,
       prompt: '查看一下測試狀態',
     });
 
-    test('D6: 降級（feature → research）被忽略', () => {
+    test('D6: 降級（feature → research）被忽略（非過時 pipeline）', () => {
       const state = readState(sid);
       assert.strictEqual(state.taskType, 'feature', '維持 feature 不降級');
     });
@@ -1199,6 +1206,238 @@ console.log('══════════════════════�
         assert.strictEqual(result.exitCode, 0);
       });
     }
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
+// Scenario N: pipeline-check pendingRetry 優先（v1.0.43 修復）
+// 驗證：REVIEW FAIL → DEV 修復後，pipeline-check 的 block 訊息
+//       應以 REVIEW 為第一優先（而非跳到 TEST）
+// ═══════════════════════════════════════════════
+
+console.log('\n🔄 Scenario N: pipeline-check pendingRetry 優先');
+console.log('═══════════════════════════════════════════════════════');
+
+(() => {
+  const sid = 'e2e-pending-retry-check';
+  try {
+    // 模擬 REVIEW FAIL → DEV 修復後的 state
+    // pendingRetry 標記存在，表示 REVIEW 需要重跑
+    initState(sid, {
+      taskType: 'feature',
+      pipelineId: 'full',
+      pipelineEnforced: true,
+      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      completed: ['vibe:planner', 'vibe:architect', 'vibe:developer', 'vibe:code-reviewer'],
+      stageResults: {
+        PLAN: { verdict: 'PASS' },
+        ARCH: { verdict: 'PASS' },
+        DEV: { verdict: 'UNKNOWN' },
+        REVIEW: { verdict: 'FAIL', severity: 'CRITICAL' },
+      },
+      stageIndex: 4, // REVIEW 完成位置
+      pendingRetry: { stage: 'REVIEW', severity: 'CRITICAL', round: 1 },
+      retries: { REVIEW: 1 },
+    });
+
+    // pipeline-check 的 block 訊息應以 REVIEW 為首
+    const checkResult = runHook('pipeline-check', {
+      session_id: sid,
+      stop_hook_active: false,
+    });
+
+    test('N1: pipeline-check 回應 decision=block', () => {
+      assert.ok(checkResult.json);
+      assert.strictEqual(checkResult.json.decision, 'block');
+    });
+
+    test('N2: block 訊息第一個遺漏階段是 REVIEW（pendingRetry 優先）', () => {
+      const reason = checkResult.json.reason;
+      // 「缺：REVIEW（...）, TEST（...）, ...」— REVIEW 應在 TEST 前面
+      const reviewIdx = reason.indexOf('REVIEW');
+      const testIdx = reason.indexOf('TEST');
+      assert.ok(reviewIdx >= 0, 'block 訊息應包含 REVIEW');
+      assert.ok(testIdx >= 0, 'block 訊息應包含 TEST');
+      assert.ok(reviewIdx < testIdx, 'REVIEW 應在 TEST 前面（pendingRetry 優先）');
+    });
+
+    test('N3: REVIEW 不會重複出現在 missing 列表中', () => {
+      const reason = checkResult.json.reason;
+      // 計算 REVIEW 在 「缺：」 後面出現的次數
+      const missingSection = reason.split('缺：')[1] || '';
+      const matches = missingSection.match(/REVIEW/g) || [];
+      // REVIEW 應只出現一次作為 stage 名稱（在 missingLabels 中）
+      // 加上 missingHints 中可能再提一次 → 最多 2 次
+      assert.ok(matches.length <= 2, `REVIEW 不應重複出現：找到 ${matches.length} 次`);
+    });
+
+    // N4: 沒有 pendingRetry 時，TEST 在 REVIEW 前面（因為用 stageIndex 計算）
+    const state = readState(sid);
+    delete state.pendingRetry;
+    // stageIndex=4 → slice(5) 從 TEST 開始，REVIEW 不在 missing 中
+    fs.writeFileSync(
+      path.join(CLAUDE_DIR, `pipeline-state-${sid}.json`),
+      JSON.stringify(state, null, 2)
+    );
+
+    const checkResult2 = runHook('pipeline-check', {
+      session_id: sid,
+      stop_hook_active: false,
+    });
+
+    test('N4: 無 pendingRetry 時，遺漏列表按 stageIndex 正常計算', () => {
+      assert.ok(checkResult2.json);
+      assert.strictEqual(checkResult2.json.decision, 'block');
+      const reason = checkResult2.json.reason;
+      // stageIndex=4（REVIEW）→ slice(5) = TEST, QA, E2E, DOCS
+      assert.ok(reason.includes('TEST'), '應包含 TEST');
+      // REVIEW 不在遺漏中（stageIndex 計算跳過已完成的）
+    });
+
+    // N5: pendingRetry stage 不在 stageIndex 計算的 missing 中 → unshift 新增
+    const state2 = readState(sid);
+    state2.pendingRetry = { stage: 'REVIEW', severity: 'HIGH', round: 1 };
+    state2.stageIndex = 4; // REVIEW 位置
+    fs.writeFileSync(
+      path.join(CLAUDE_DIR, `pipeline-state-${sid}.json`),
+      JSON.stringify(state2, null, 2)
+    );
+
+    const checkResult3 = runHook('pipeline-check', {
+      session_id: sid,
+      stop_hook_active: false,
+    });
+
+    test('N5: pendingRetry stage 不在 missing 時也會被 unshift', () => {
+      assert.ok(checkResult3.json);
+      const reason = checkResult3.json.reason;
+      const reviewIdx = reason.indexOf('REVIEW');
+      assert.ok(reviewIdx >= 0, 'REVIEW 應被 unshift 到 missing');
+    });
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
+// Scenario O: task-classifier stale pipeline 重設（v1.0.43 修復）
+// 驗證：過時的 enforced pipeline 在降級分類時自動重設
+// ═══════════════════════════════════════════════
+
+console.log('\n🕰️ Scenario O: task-classifier stale pipeline 重設');
+console.log('═══════════════════════════════════════════════════════');
+
+(() => {
+  const sid = 'e2e-stale-pipeline';
+  try {
+    // O1: 過時 pipeline（lastTransition 超過 10 分鐘）+ 降級 → 應重設
+    const staleTime = new Date(Date.now() - 15 * 60 * 1000).toISOString(); // 15 分鐘前
+    initState(sid, {
+      pipelineId: 'standard',
+      taskType: 'feature',
+      pipelineEnforced: true,
+      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
+      completed: ['vibe:planner'],
+      stageResults: {},
+      lastTransition: staleTime,
+    });
+
+    // 降級分類（research 任務）
+    const r1 = runHook('task-classifier', {
+      session_id: sid,
+      prompt: '查看目前的程式碼結構',
+    });
+
+    test('O1: 過時 pipeline + 降級 → 重設為新分類', () => {
+      const state = readState(sid);
+      assert.notStrictEqual(state.pipelineId, 'standard', '應重設 pipeline');
+      assert.strictEqual(state.pipelineEnforced, false, 'research 不 enforce');
+    });
+
+    test('O2: 重設後 completed 被清空', () => {
+      const state = readState(sid);
+      assert.deepStrictEqual(state.completed, [], 'completed 應為空');
+    });
+
+    test('O3: 重設後 pendingRetry 被清除', () => {
+      const state = readState(sid);
+      assert.strictEqual(state.pendingRetry, false, 'pendingRetry 應為 false');
+    });
+
+    // O4: 新鮮 pipeline（lastTransition 剛剛）+ 降級 → 不應重設
+    const freshTime = new Date().toISOString(); // 現在
+    initState(sid, {
+      pipelineId: 'standard',
+      taskType: 'feature',
+      pipelineEnforced: true,
+      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
+      completed: ['vibe:planner', 'vibe:architect'],
+      stageResults: {},
+      lastTransition: freshTime,
+    });
+
+    runHook('task-classifier', {
+      session_id: sid,
+      prompt: '這段程式碼是什麼意思？',
+    });
+
+    test('O4: 新鮮 pipeline + 降級 → 保持原 pipeline', () => {
+      const state = readState(sid);
+      assert.strictEqual(state.pipelineId, 'standard', '應保持 standard');
+      assert.strictEqual(state.pipelineEnforced, true, '應保持 enforced');
+    });
+
+    test('O5: 原 completed 記錄保留', () => {
+      const state = readState(sid);
+      assert.ok(state.completed.includes('vibe:planner'), 'planner 應保留');
+      assert.ok(state.completed.includes('vibe:architect'), 'architect 應保留');
+    });
+
+    // O6: 無 lastTransition 欄位（舊格式 state）→ 視為過時
+    initState(sid, {
+      pipelineId: 'standard',
+      taskType: 'feature',
+      pipelineEnforced: true,
+      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
+      completed: ['vibe:planner'],
+      stageResults: {},
+      // 故意不設 lastTransition
+    });
+
+    runHook('task-classifier', {
+      session_id: sid,
+      prompt: '看看這個 API 怎麼用',
+    });
+
+    test('O6: 無 lastTransition → 視為過時，降級重設', () => {
+      const state = readState(sid);
+      assert.notStrictEqual(state.pipelineId, 'standard', '應重設');
+      assert.strictEqual(state.pipelineEnforced, false);
+    });
+
+    // O7: 已完成的 pipeline + 降級 → 正常流程（isPipelineComplete 先觸發重設）
+    initState(sid, {
+      pipelineId: 'fix',
+      taskType: 'quickfix',
+      pipelineEnforced: false,
+      expectedStages: ['DEV'],
+      completed: ['vibe:developer'],
+      stageResults: { DEV: { verdict: 'PASS' } },
+      lastTransition: staleTime,
+    });
+
+    runHook('task-classifier', {
+      session_id: sid,
+      prompt: '這是什麼？',
+    });
+
+    test('O7: 已完成 pipeline → isPipelineComplete 先重設，新分類正常套用', () => {
+      const state = readState(sid);
+      // isPipelineComplete 先清除 pipelineId → 進入初始分類路徑
+      assert.strictEqual(state.taskType, 'research');
+    });
   } finally {
     cleanState(sid);
   }
