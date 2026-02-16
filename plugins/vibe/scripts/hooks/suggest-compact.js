@@ -81,8 +81,10 @@ process.stdin.on('end', () => {
         const stateFile = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
         if (fs.existsSync(stateFile)) {
           const st = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-          if (st.currentStage) info.stage = st.currentStage;
-          if (st.delegationActive) info.delegationActive = true;
+          // FSM 結構：progress.currentStage + phase === 'DELEGATING'
+          const stage = st.progress?.currentStage || st.currentStage;
+          if (stage) info.stage = stage;
+          if (st.phase === 'DELEGATING' || st.delegationActive) info.delegationActive = true;
         }
       } catch (_) {}
       emit(EVENT_TYPES.TOOL_USED, sessionId, info);

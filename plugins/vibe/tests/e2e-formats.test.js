@@ -64,7 +64,9 @@ function createPipelineState(state) {
  * 方法：設定環境變數讓 telegram.js 的 getCredentials 回傳假 credentials，
  * 但用 mock 攔截 sendMessage
  */
-function runHook(scriptName, stdinData) {
+function runHook(scriptSpec, stdinData) {
+  const [scriptName, ...argParts] = scriptSpec.split(' ');
+  const args = argParts.join(' ');
   const mockDir = path.join(CLAUDE_DIR, 'mock-plugin');
   const mockScriptsLib = path.join(mockDir, 'scripts', 'lib');
   const mockScriptsLibRemote = path.join(mockDir, 'scripts', 'lib', 'remote');
@@ -136,7 +138,7 @@ module.exports = {
   // 執行 hook
   try {
     execSync(
-      `echo '${JSON.stringify(stdinData).replace(/'/g, "'\\''")}' | CLAUDE_PLUGIN_ROOT="${mockDir}" node "${destHook}"`,
+      `echo '${JSON.stringify(stdinData).replace(/'/g, "'\\''")}' | CLAUDE_PLUGIN_ROOT="${mockDir}" node "${destHook}"${args ? ' ' + args : ''}`,
       { encoding: 'utf8', timeout: 10000, stdio: ['pipe', 'pipe', 'pipe'] }
     );
   } catch (_) {
@@ -152,30 +154,30 @@ module.exports = {
 }
 
 // ═══════════════════════════════════════════════
-console.log('\n\u{1F9EA} P1. \u4F7F\u7528\u8005\u8F38\u5165\u8F49\u767C (remote-prompt-forward.js)');
+console.log('\n\u{1F9EA} P1. \u4F7F\u7528\u8005\u8F38\u5165\u8F49\u767C (remote-hub.js prompt-forward)');
 // ═══════════════════════════════════════════════
 
 test('\u77ED\u8A0A\u606F\u8F49\u767C\uFF1A\u{1F464} + \u539F\u6587', () => {
-  const msgs = runHook('remote-prompt-forward.js', { prompt: '\u5E6B\u6211\u5BE6\u4F5C\u8A8D\u8B49\u529F\u80FD' });
+  const msgs = runHook('remote-hub.js prompt-forward', { prompt: '\u5E6B\u6211\u5BE6\u4F5C\u8A8D\u8B49\u529F\u80FD' });
   assert.strictEqual(msgs.length, 1);
   assert.strictEqual(msgs[0].text, '\u{1F464} \u5E6B\u6211\u5BE6\u4F5C\u8A8D\u8B49\u529F\u80FD');
 });
 
 test('\u7A7A\u767D prompt \u4E0D\u767C\u9001', () => {
-  const msgs = runHook('remote-prompt-forward.js', { prompt: '' });
+  const msgs = runHook('remote-hub.js prompt-forward', { prompt: '' });
   assert.strictEqual(msgs.length, 0);
 });
 
 test('\u8D85\u9577 prompt \u622A\u65B7 + \u201C\u2026 (\u622A\u65B7)\u201D', () => {
   const longPrompt = '\u6D4B'.repeat(4000);
-  const msgs = runHook('remote-prompt-forward.js', { prompt: longPrompt });
+  const msgs = runHook('remote-hub.js prompt-forward', { prompt: longPrompt });
   assert.strictEqual(msgs.length, 1);
   assert.ok(msgs[0].text.endsWith('\n\u2026 (\u622A\u65B7)'));
   assert.ok(msgs[0].text.startsWith('\u{1F464} '));
 });
 
 // ═══════════════════════════════════════════════
-console.log('\n\u{1F9EA} P2. \u56DE\u5408\u52D5\u4F5C\u6458\u8981 (remote-receipt.js)');
+console.log('\n\u{1F9EA} P2. \u56DE\u5408\u52D5\u4F5C\u6458\u8981 (remote-hub.js receipt)');
 // ═══════════════════════════════════════════════
 
 test('\u6709\u6587\u5B57 + \u6709\u5DE5\u5177\uFF1A\u{1F4CB} \u56DE\u5408\uFF1A\u{1F916}\u56DE\u61C9 + \u5DE5\u5177\u7D71\u8A08', () => {
@@ -188,7 +190,7 @@ test('\u6709\u6587\u5B57 + \u6709\u5DE5\u5177\uFF1A\u{1F4CB} \u56DE\u5408\uFF1A\
       { type: 'tool_use', name: 'Bash', input: { command: 'npm test' } },
     ]},
   ]);
-  const msgs = runHook('remote-receipt.js', {
+  const msgs = runHook('remote-hub.js receipt', {
     stop_hook_active: false,
     transcript_path: transcript,
   });
@@ -204,7 +206,7 @@ test('\u7D14\u6587\u5B57\u56DE\u8986\uFF1A\u53EA\u6709 \u{1F916}\u56DE\u61C9', (
   const transcript = createTranscript([
     { type: 'assistant', content: [{ type: 'text', text: '\u53EA\u6709\u6587\u5B57' }] },
   ]);
-  const msgs = runHook('remote-receipt.js', {
+  const msgs = runHook('remote-hub.js receipt', {
     stop_hook_active: false,
     transcript_path: transcript,
   });
@@ -220,7 +222,7 @@ test('\u7D14\u5DE5\u5177\u64CD\u4F5C\uFF1A\u7121 \u{1F916}\u56DE\u61C9', () => {
       { type: 'tool_use', name: 'Bash', input: { command: 'pwd' } },
     ]},
   ]);
-  const msgs = runHook('remote-receipt.js', {
+  const msgs = runHook('remote-hub.js receipt', {
     stop_hook_active: false,
     transcript_path: transcript,
   });
@@ -233,7 +235,7 @@ test('stop_hook_active=true \u4E0D\u767C\u9001', () => {
   const transcript = createTranscript([
     { type: 'assistant', content: [{ type: 'text', text: 'test' }] },
   ]);
-  const msgs = runHook('remote-receipt.js', {
+  const msgs = runHook('remote-hub.js receipt', {
     stop_hook_active: true,
     transcript_path: transcript,
   });
@@ -241,7 +243,7 @@ test('stop_hook_active=true \u4E0D\u767C\u9001', () => {
 });
 
 test('\u7121 transcript \u4E0D\u767C\u9001', () => {
-  const msgs = runHook('remote-receipt.js', {
+  const msgs = runHook('remote-hub.js receipt', {
     stop_hook_active: false,
     transcript_path: '/nonexistent.jsonl',
   });
@@ -249,7 +251,7 @@ test('\u7121 transcript \u4E0D\u767C\u9001', () => {
 });
 
 // ═══════════════════════════════════════════════
-console.log('\n\u{1F9EA} P4. Pipeline stage \u5B8C\u6210 (remote-sender.js)');
+console.log('\n\u{1F9EA} P4. Pipeline stage \u5B8C\u6210 (remote-hub.js sender)');
 // ═══════════════════════════════════════════════
 
 test('PASS stage\uFF1A\u542B emoji + STAGE + \u2705 + \u9032\u5EA6\u689D', () => {
@@ -261,12 +263,12 @@ test('PASS stage\uFF1A\u542B emoji + STAGE + \u2705 + \u9032\u5EA6\u689D', () =>
     lastTransition: Date.now() - 5 * 60000,
   });
 
-  // remote-sender.js 讀 stdin，不用 CLAUDE_PLUGIN_ROOT
+  // remote-hub.js sender 讀 stdin，不用 CLAUDE_PLUGIN_ROOT
   // 但它硬編碼 CLAUDE_DIR = ~/.claude，E2E 用 mock 困難
   // 改用純函式驗證（已在 unit test 中覆蓋）
   // 這裡驗證整合格式
   const { buildProgressBar, formatDuration, STAGE_ORDER } = require(
-    path.join(SCRIPTS_DIR, 'hooks', 'remote-sender.js')
+    path.join(SCRIPTS_DIR, 'hooks', 'remote-hub.js')
   );
 
   const bar = buildProgressBar(['PLAN', 'ARCH'], { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } }, STAGE_ORDER);
@@ -287,7 +289,7 @@ test('PASS stage\uFF1A\u542B emoji + STAGE + \u2705 + \u9032\u5EA6\u689D', () =>
 
 test('FAIL stage + retry\uFF1A\u542B \u274C + retry N/3', () => {
   const { buildProgressBar, STAGE_ORDER } = require(
-    path.join(SCRIPTS_DIR, 'hooks', 'remote-sender.js')
+    path.join(SCRIPTS_DIR, 'hooks', 'remote-hub.js')
   );
 
   const bar = buildProgressBar(
@@ -308,7 +310,7 @@ console.log('\n\u{1F9EA} P5. Pipeline \u5B8C\u6210');
 
 test('\u5168\u90E8 PASS\uFF1A\u{1F389} + \u2705 + \u8017\u6642', () => {
   const { buildProgressBar, formatDuration, STAGE_ORDER } = require(
-    path.join(SCRIPTS_DIR, 'hooks', 'remote-sender.js')
+    path.join(SCRIPTS_DIR, 'hooks', 'remote-hub.js')
   );
 
   const all = STAGE_ORDER;
@@ -329,7 +331,7 @@ test('\u5168\u90E8 PASS\uFF1A\u{1F389} + \u2705 + \u8017\u6642', () => {
 });
 
 test('\u6709 FAIL\uFF1A\u{1F389} + \u274C', () => {
-  const { STAGE_ORDER } = require(path.join(SCRIPTS_DIR, 'hooks', 'remote-sender.js'));
+  const { STAGE_ORDER } = require(path.join(SCRIPTS_DIR, 'hooks', 'remote-hub.js'));
   const results = {};
   for (const s of STAGE_ORDER) results[s] = { verdict: 'PASS' };
   results['REVIEW'] = { verdict: 'FAIL' };
@@ -342,11 +344,11 @@ test('\u6709 FAIL\uFF1A\u{1F389} + \u274C', () => {
 });
 
 // ═══════════════════════════════════════════════
-console.log('\n\u{1F9EA} P6. AskUserQuestion \u901A\u77E5 (remote-ask-intercept.js)');
+console.log('\n\u{1F9EA} P6. AskUserQuestion \u901A\u77E5 (remote-hub.js ask-intercept)');
 // ═══════════════════════════════════════════════
 
 test('\u55AE\u9078\uFF1Ainline keyboard + \u6587\u5B57\u683C\u5F0F', () => {
-  const msgs = runHook('remote-ask-intercept.js', {
+  const msgs = runHook('remote-hub.js ask-intercept', {
     tool_name: 'AskUserQuestion',
     tool_input: {
       questions: [{
@@ -372,7 +374,7 @@ test('\u55AE\u9078\uFF1Ainline keyboard + \u6587\u5B57\u683C\u5F0F', () => {
 });
 
 test('\u591A\u9078\uFF1Ainline keyboard \u542B \u2714 \u78BA\u8A8D \u6309\u9215', () => {
-  const msgs = runHook('remote-ask-intercept.js', {
+  const msgs = runHook('remote-hub.js ask-intercept', {
     tool_name: 'AskUserQuestion',
     tool_input: {
       questions: [{
@@ -392,7 +394,7 @@ test('\u591A\u9078\uFF1Ainline keyboard \u542B \u2714 \u78BA\u8A8D \u6309\u9215'
 });
 
 test('\u975E AskUserQuestion \u4E0D\u8655\u7406', () => {
-  const msgs = runHook('remote-ask-intercept.js', {
+  const msgs = runHook('remote-hub.js ask-intercept', {
     tool_name: 'Write',
     tool_input: {},
   });
@@ -404,7 +406,7 @@ console.log('\n\u{1F9EA} \u5171\u7528\u51FD\u5F0F\u8F14\u52A9\u6AA2\u67E5');
 // ═══════════════════════════════════════════════
 
 test('\u5DE5\u5177\u884C\u683C\u5F0F\u5B8C\u6574\u6027', () => {
-  const { formatToolLine } = require(path.join(SCRIPTS_DIR, 'hooks', 'remote-receipt.js'));
+  const { formatToolLine } = require(path.join(SCRIPTS_DIR, 'hooks', 'remote-hub.js'));
   const line = formatToolLine({ write: 2, edit: 3, bash: 1, task: 0, search: 5, read: 3 });
   // 驗證不含 task（為 0）
   assert.ok(!line.includes('\u{1F916}'));
@@ -418,7 +420,7 @@ test('\u5DE5\u5177\u884C\u683C\u5F0F\u5B8C\u6574\u6027', () => {
 
 test('\u9032\u5EA6\u689D\u542B\u7BAD\u982D\u5206\u9694', () => {
   const { buildProgressBar, STAGE_ORDER } = require(
-    path.join(SCRIPTS_DIR, 'hooks', 'remote-sender.js')
+    path.join(SCRIPTS_DIR, 'hooks', 'remote-hub.js')
   );
   const bar = buildProgressBar(['PLAN'], {}, STAGE_ORDER);
   assert.ok(bar.includes('\u2192'));

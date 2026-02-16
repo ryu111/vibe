@@ -87,8 +87,8 @@ test('pipeline-init 偵測 openspec/ 目錄存在時設 openspecEnabled=true', (
   });
 
   const state = readState(sessionId);
-  assert.strictEqual(state.openspecEnabled, true, 'openspecEnabled 應為 true');
-  assert.strictEqual(state.initialized, true, 'initialized 應為 true');
+  assert.strictEqual(state.context.openspecEnabled, true, 'openspecEnabled 應為 true');
+  assert.strictEqual(state.meta.initialized, true, 'initialized 應為 true');
   cleanup(statePath);
 });
 
@@ -104,7 +104,7 @@ test('pipeline-init 偵測 openspec/ 不存在時設 openspecEnabled=false', () 
   });
 
   const state = readState(sessionId);
-  assert.strictEqual(state.openspecEnabled, false, 'openspecEnabled 應為 false');
+  assert.strictEqual(state.context.openspecEnabled, false, 'openspecEnabled 應為 false');
   cleanup(statePath);
 });
 
@@ -116,14 +116,38 @@ test('PLAN→ARCH 轉場注入 OpenSpec 提示（openspecEnabled=true）', () =>
   const sessionId = 'test-openspec-plan-to-arch';
   const statePath = createTempState(sessionId, {
     sessionId,
-    initialized: true,
-    completed: [],
-    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-    pipelineEnforced: true,
-    taskType: 'feature',
-    openspecEnabled: true,
-    environment: {},
-    lastTransition: new Date().toISOString(),
+    phase: 'DELEGATING',
+    context: {
+      pipelineId: 'full',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      openspecEnabled: true,
+      environment: {},
+      needsDesign: false,
+      pipelineRules: [],
+    },
+    progress: {
+      currentStage: 'PLAN',
+      stageIndex: 0,
+      completedAgents: [],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      classifiedAt: new Date().toISOString(),
+      lastTransition: new Date().toISOString(),
+      classificationSource: null,
+      classificationConfidence: null,
+      matchedRule: null,
+      layer: null,
+      reclassifications: [],
+      llmClassification: null,
+      correctionCount: 0,
+      cancelled: false,
+    },
   });
 
   const output = runHook('stage-transition', {
@@ -149,14 +173,38 @@ test('ARCH→DEV 轉場注入 OpenSpec 提示（openspecEnabled=true）', () => 
   const sessionId = 'test-openspec-arch-to-dev';
   const statePath = createTempState(sessionId, {
     sessionId,
-    initialized: true,
-    completed: ['planner'],
-    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-    pipelineEnforced: true,
-    taskType: 'feature',
-    openspecEnabled: true,
-    environment: {},
-    lastTransition: new Date().toISOString(),
+    phase: 'DELEGATING',
+    context: {
+      pipelineId: 'full',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      openspecEnabled: true,
+      environment: {},
+      needsDesign: false,
+      pipelineRules: [],
+    },
+    progress: {
+      currentStage: 'ARCH',
+      stageIndex: 1,
+      completedAgents: ['planner'],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      classifiedAt: new Date().toISOString(),
+      lastTransition: new Date().toISOString(),
+      classificationSource: null,
+      classificationConfidence: null,
+      matchedRule: null,
+      layer: null,
+      reclassifications: [],
+      llmClassification: null,
+      correctionCount: 0,
+      cancelled: false,
+    },
   });
 
   const output = runHook('stage-transition', {
@@ -182,14 +230,38 @@ test('PLAN→ARCH 轉場無 OpenSpec 提示（openspecEnabled=false）', () => {
   const sessionId = 'test-openspec-disabled-transition';
   const statePath = createTempState(sessionId, {
     sessionId,
-    initialized: true,
-    completed: [],
-    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-    pipelineEnforced: true,
-    taskType: 'feature',
-    openspecEnabled: false,
-    environment: {},
-    lastTransition: new Date().toISOString(),
+    phase: 'DELEGATING',
+    context: {
+      pipelineId: 'full',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      openspecEnabled: false,
+      environment: {},
+      needsDesign: false,
+      pipelineRules: [],
+    },
+    progress: {
+      currentStage: 'PLAN',
+      stageIndex: 0,
+      completedAgents: [],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      classifiedAt: new Date().toISOString(),
+      lastTransition: new Date().toISOString(),
+      classificationSource: null,
+      classificationConfidence: null,
+      matchedRule: null,
+      layer: null,
+      reclassifications: [],
+      llmClassification: null,
+      correctionCount: 0,
+      cancelled: false,
+    },
   });
 
   const output = runHook('stage-transition', {
@@ -211,14 +283,38 @@ test('DEV→REVIEW 轉場注入 OpenSpec 規格對照提示', () => {
   const sessionId = 'test-openspec-dev-to-review';
   const statePath = createTempState(sessionId, {
     sessionId,
-    initialized: true,
-    completed: ['planner', 'architect'],
-    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-    pipelineEnforced: true,
-    taskType: 'feature',
-    openspecEnabled: true,
-    environment: {},
-    lastTransition: new Date().toISOString(),
+    phase: 'DELEGATING',
+    context: {
+      pipelineId: 'full',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      openspecEnabled: true,
+      environment: {},
+      needsDesign: false,
+      pipelineRules: [],
+    },
+    progress: {
+      currentStage: 'DEV',
+      stageIndex: 3,
+      completedAgents: ['planner', 'architect'],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      classifiedAt: new Date().toISOString(),
+      lastTransition: new Date().toISOString(),
+      classificationSource: null,
+      classificationConfidence: null,
+      matchedRule: null,
+      layer: null,
+      reclassifications: [],
+      llmClassification: null,
+      correctionCount: 0,
+      cancelled: false,
+    },
   });
 
   const output = runHook('stage-transition', {
@@ -244,14 +340,38 @@ test('REVIEW→TEST 轉場注入 OpenSpec Scenario 測試提示', () => {
   const sessionId = 'test-openspec-review-to-test';
   const statePath = createTempState(sessionId, {
     sessionId,
-    initialized: true,
-    completed: ['planner', 'architect', 'developer'],
-    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-    pipelineEnforced: true,
-    taskType: 'feature',
-    openspecEnabled: true,
-    environment: {},
-    lastTransition: new Date().toISOString(),
+    phase: 'DELEGATING',
+    context: {
+      pipelineId: 'full',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      openspecEnabled: true,
+      environment: {},
+      needsDesign: false,
+      pipelineRules: [],
+    },
+    progress: {
+      currentStage: 'REVIEW',
+      stageIndex: 4,
+      completedAgents: ['planner', 'architect', 'developer'],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      classifiedAt: new Date().toISOString(),
+      lastTransition: new Date().toISOString(),
+      classificationSource: null,
+      classificationConfidence: null,
+      matchedRule: null,
+      layer: null,
+      reclassifications: [],
+      llmClassification: null,
+      correctionCount: 0,
+      cancelled: false,
+    },
   });
 
   const output = runHook('stage-transition', {
@@ -277,14 +397,38 @@ test('TEST→QA 轉場無 OpenSpec 提示（QA 無 OpenSpec 指引）', () => {
   const sessionId = 'test-openspec-test-to-qa';
   const statePath = createTempState(sessionId, {
     sessionId,
-    initialized: true,
-    completed: ['planner', 'architect', 'developer', 'code-reviewer'],
-    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-    pipelineEnforced: true,
-    taskType: 'feature',
-    openspecEnabled: true,
-    environment: {},
-    lastTransition: new Date().toISOString(),
+    phase: 'DELEGATING',
+    context: {
+      pipelineId: 'full',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      openspecEnabled: true,
+      environment: {},
+      needsDesign: false,
+      pipelineRules: [],
+    },
+    progress: {
+      currentStage: 'TEST',
+      stageIndex: 5,
+      completedAgents: ['planner', 'architect', 'developer', 'code-reviewer'],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      classifiedAt: new Date().toISOString(),
+      lastTransition: new Date().toISOString(),
+      classificationSource: null,
+      classificationConfidence: null,
+      matchedRule: null,
+      layer: null,
+      reclassifications: [],
+      llmClassification: null,
+      correctionCount: 0,
+      cancelled: false,
+    },
   });
 
   const output = runHook('stage-transition', {
@@ -306,14 +450,38 @@ test('QA→E2E→DOCS 轉場注入 OpenSpec 歸檔提示', () => {
   const sessionId = 'test-openspec-to-docs';
   const statePath = createTempState(sessionId, {
     sessionId,
-    initialized: true,
-    completed: ['planner', 'architect', 'developer', 'code-reviewer', 'tester', 'qa', 'e2e-runner'],
-    expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-    pipelineEnforced: true,
-    taskType: 'feature',
-    openspecEnabled: true,
-    environment: {},
-    lastTransition: new Date().toISOString(),
+    phase: 'DELEGATING',
+    context: {
+      pipelineId: 'full',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      openspecEnabled: true,
+      environment: {},
+      needsDesign: false,
+      pipelineRules: [],
+    },
+    progress: {
+      currentStage: 'E2E',
+      stageIndex: 7,
+      completedAgents: ['planner', 'architect', 'developer', 'code-reviewer', 'tester', 'qa', 'e2e-runner'],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      classifiedAt: new Date().toISOString(),
+      lastTransition: new Date().toISOString(),
+      classificationSource: null,
+      classificationConfidence: null,
+      matchedRule: null,
+      layer: null,
+      reclassifications: [],
+      llmClassification: null,
+      correctionCount: 0,
+      cancelled: false,
+    },
   });
 
   const output = runHook('stage-transition', {

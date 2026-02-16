@@ -1346,73 +1346,70 @@ function runSentinelHook(hookName, stdinData) {
   }
 }
 
-test('auto-lint：.xyz 檔案 → 靜默退出（exit 0, 無 stdout）', () => {
-  const r = runSentinelHook('auto-lint', { tool_input: { file_path: '/tmp/test.xyz' } });
-  assert.strictEqual(r.exitCode, 0);
-  assert.strictEqual(r.stdout, '');
+// auto-lint + auto-format 已合併至 post-edit.js（v1.0.50），改用純函式驗證
+const postEdit = require(path.join(PLUGIN_ROOT, 'scripts', 'hooks', 'post-edit.js'));
+
+test('runLintStep：.xyz 檔案 → null（無對應 linter）', () => {
+  assert.strictEqual(postEdit.runLintStep('/tmp/test.xyz', 'test', 'Write'), null);
 });
 
-test('auto-lint：無 file_path → 靜默退出', () => {
-  const r = runSentinelHook('auto-lint', { tool_input: {} });
-  assert.strictEqual(r.exitCode, 0);
-  assert.strictEqual(r.stdout, '');
+test('runLintStep：null 路徑 → null', () => {
+  assert.strictEqual(postEdit.runLintStep(null, 'test', 'Write'), null);
 });
 
-test('auto-lint：linter=null 語言（.json）→ 靜默退出', () => {
-  const r = runSentinelHook('auto-lint', { tool_input: { file_path: '/tmp/test.json' } });
-  assert.strictEqual(r.exitCode, 0);
-  assert.strictEqual(r.stdout, '');
+test('runLintStep：.json → null（linter=null）', () => {
+  assert.strictEqual(postEdit.runLintStep('/tmp/test.json', 'test', 'Write'), null);
 });
 
-test('auto-format：.xyz 檔案 → 靜默退出', () => {
-  const r = runSentinelHook('auto-format', { tool_input: { file_path: '/tmp/test.xyz' } });
-  assert.strictEqual(r.exitCode, 0);
-  assert.strictEqual(r.stdout, '');
+test('runFormatStep：.xyz 檔案 → undefined（無對應 formatter）', () => {
+  assert.strictEqual(postEdit.runFormatStep('/tmp/test.xyz', 'test', 'Write'), undefined);
 });
 
-test('auto-format：無 file_path → 靜默退出', () => {
-  const r = runSentinelHook('auto-format', { tool_input: {} });
-  assert.strictEqual(r.exitCode, 0);
-  assert.strictEqual(r.stdout, '');
+test('runFormatStep：null 路徑 → undefined', () => {
+  assert.strictEqual(postEdit.runFormatStep(null, 'test', 'Write'), undefined);
 });
 
-test('auto-format：input.file_path 備選路徑（.py）→ 不崩潰', () => {
-  const r = runSentinelHook('auto-format', { input: { file_path: '/tmp/test.py' } });
-  assert.strictEqual(r.exitCode, 0);
+test('runFormatStep：.py → 不崩潰', () => {
+  postEdit.runFormatStep('/tmp/test.py', 'test', 'Write');
+  assert.ok(true);
 });
 
-test('danger-guard：安全指令 → exit 0', () => {
-  const r = runSentinelHook('danger-guard', { tool_input: { command: 'ls -la' } });
-  assert.strictEqual(r.exitCode, 0);
-  assert.strictEqual(r.stderr, '');
+// danger-guard 已合併至 guard-rules.js（v1.0.50），改用 evaluateBashDanger 驗證
+test('evaluateBashDanger：安全指令 → null（允許）', () => {
+  const { evaluateBashDanger } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
+  assert.strictEqual(evaluateBashDanger('ls -la'), null);
 });
 
-test('danger-guard：空指令 → exit 0', () => {
-  const r = runSentinelHook('danger-guard', { tool_input: { command: '' } });
-  assert.strictEqual(r.exitCode, 0);
+test('evaluateBashDanger：空指令 → null（允許）', () => {
+  const { evaluateBashDanger } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
+  assert.strictEqual(evaluateBashDanger(''), null);
 });
 
-test('danger-guard：無 command 欄位 → exit 0', () => {
-  const r = runSentinelHook('danger-guard', { tool_input: {} });
-  assert.strictEqual(r.exitCode, 0);
+test('evaluateBashDanger：npm install → null（允許）', () => {
+  const { evaluateBashDanger } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
+  assert.strictEqual(evaluateBashDanger('npm install'), null);
 });
 
-test('danger-guard：chmod 777 → exit 2 + stderr', () => {
-  const r = runSentinelHook('danger-guard', { tool_input: { command: 'chmod 777 /etc/passwd' } });
-  assert.strictEqual(r.exitCode, 2);
-  assert.ok(r.stderr.includes('danger-guard'), 'stderr 應包含 danger-guard 標識');
-  assert.ok(r.stderr.includes('chmod 777'), 'stderr 應包含攔截原因');
+test('evaluateBashDanger：chmod 777 → block + matchedPattern', () => {
+  const { evaluateBashDanger } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
+  const result = evaluateBashDanger('chmod 777 /etc/passwd');
+  assert.strictEqual(result.decision, 'block');
+  assert.ok(result.message.includes('chmod 777'), 'message 應包含攔截原因');
+  assert.strictEqual(result.matchedPattern, 'chmod 777');
 });
 
-test('danger-guard：DROP TABLE → exit 2 + stderr', () => {
-  const r = runSentinelHook('danger-guard', { tool_input: { command: 'DROP TABLE users' } });
-  assert.strictEqual(r.exitCode, 2);
-  assert.ok(r.stderr.includes('DROP TABLE'));
+test('evaluateBashDanger：DROP TABLE → block', () => {
+  const { evaluateBashDanger } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
+  const result = evaluateBashDanger('DROP TABLE users');
+  assert.strictEqual(result.decision, 'block');
+  assert.ok(result.message.includes('DROP TABLE'));
 });
 
-test('danger-guard：input.command 備選路徑 → 正常處理', () => {
-  const r = runSentinelHook('danger-guard', { input: { command: 'npm install' } });
-  assert.strictEqual(r.exitCode, 0);
+test('evaluateBashDanger：rm -rf / → block', () => {
+  const { evaluateBashDanger } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
+  const result = evaluateBashDanger('rm -rf / ');
+  assert.strictEqual(result.decision, 'block');
+  assert.strictEqual(result.matchedPattern, 'rm -rf /');
 });
 
 test('check-console-log：stop_hook_active=true → 靜默退出', () => {
@@ -1426,14 +1423,9 @@ test('check-console-log：stop_hook_active=false → 正常執行', () => {
   assert.strictEqual(r.exitCode, 0);
 });
 
-test('auto-lint：.ts 檔案 → stdout 為空或合法 JSON', () => {
-  const r = runSentinelHook('auto-lint', { tool_input: { file_path: '/tmp/nonexistent.ts' } });
-  assert.strictEqual(r.exitCode, 0);
-  if (r.stdout) {
-    const parsed = JSON.parse(r.stdout);
-    assert.strictEqual(parsed.continue, true, 'continue 應為 true');
-    assert.ok(parsed.systemMessage, '應有 systemMessage');
-  }
+test('runLintStep：.ts 檔案 → null 或 systemMessage 字串', () => {
+  const result = postEdit.runLintStep('/tmp/nonexistent.ts', 'test', 'Write');
+  assert.ok(result === null || typeof result === 'string', 'null 或 lint 警告字串');
 });
 
 // ═══════════════════════════════════════════════

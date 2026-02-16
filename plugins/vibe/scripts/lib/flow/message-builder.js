@@ -12,6 +12,7 @@
 const { STAGE_CONTEXT, POST_STAGE_HINTS, OPENSPEC_CONTEXT } = require('../registry.js');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 /**
  * 組裝 agent 委派指令
@@ -72,9 +73,14 @@ function buildStageContext(nextStage, currentStage, state, isApiOnly) {
  * 組裝回退訊息
  */
 function buildRetryMessage({ currentStage, verdict, retryCount, maxRetries, devMethod, completedStr }) {
+  const patchPath = path.join(os.homedir(), '.claude', `vibe-patch-${currentStage.toLowerCase()}.patch`);
+  const patchHint = fs.existsSync(patchPath)
+    ? `\n📎 上一階段 diff 快照：${patchPath}（可 Read 了解改動範圍）`
+    : '';
+
   return `🔄 [Pipeline 回退] ${currentStage} FAIL:${verdict.severity}（${retryCount}/${maxRetries}）
 回退原因：${verdict.severity} 等級問題需要修復
-執行：${devMethod}
+執行：${devMethod}${patchHint}
 修復後 stage-transition 會指示重跑 ${currentStage}。禁止 AskUserQuestion。
 已完成：${completedStr}`;
 }

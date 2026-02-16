@@ -20,8 +20,13 @@ const {
   NON_CODE_DOTFILES,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
 
-// v1.0.43: evaluate() 內建前置條件檢查，需要完整 enforced state 才會觸發 block
-const ENFORCED_STATE = { initialized: true, taskType: 'feature', pipelineEnforced: true };
+// v2.0.0 FSM: evaluate() 使用 state-machine 衍生查詢，需要 FSM 結構的 enforced state
+const ENFORCED_STATE = {
+  phase: 'CLASSIFIED',
+  context: { taskType: 'feature' },
+  progress: {},
+  meta: { initialized: true },
+};
 
 let passed = 0;
 let failed = 0;

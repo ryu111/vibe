@@ -2,15 +2,15 @@
 /**
  * task-classifier.js — UserPromptSubmit hook
  *
- * v1.0.43 重構：
- * - 移除散落的 KNOWLEDGE_SKILLS / PIPELINE_TO_TASKTYPE / PIPELINE_LABELS（統一從 registry 讀取）
- * - 簡化 LLM fallback 路徑
- * - 分類時一次決定所有 pipeline 參數（不靠 stage-transition 補救）
+ * v2.0.0 FSM 重構：
+ * - 使用 transition() 取代直接欄位操作
+ * - CLASSIFY/RESET/RECLASSIFY 三種 action
+ * - 移除 resetPipelineState()、isPipelineComplete()（由 state-machine 提供）
  *
  * 行為：
- * - 初始分類：設定 pipelineId/expectedStages/pipelineEnforced/taskType
- * - 重新分類：升級→合併階段 / 同級或降級→靜默忽略
- * - Pipeline 完成後→自動重設，準備接收新任務
+ * - 初始分類：transition(CLASSIFY) → CLASSIFIED 或 IDLE
+ * - 重新分類（升級）：transition(RECLASSIFY)
+ * - Pipeline 完成後：transition(RESET) + transition(CLASSIFY)
  */
 'use strict';
 const fs = require('fs');
@@ -29,6 +29,9 @@ const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timelin
 const {
   classifyWithConfidence, classifyWithLLM, buildPipelineCatalogHint,
 } = require(path.join(__dirname, '..', 'lib', 'flow', 'classifier.js'));
+const {
+  transition, readState, writeState, isComplete, getPhase, getPipelineId, PHASES,
+} = require(path.join(__dirname, '..', 'lib', 'flow', 'state-machine.js'));
 
 // ────────────────── 工具函式 ──────────────────
 
@@ -77,29 +80,6 @@ function isUpgrade(oldId, newId) {
   return (PIPELINE_PRIORITY[newId] || 0) > (PIPELINE_PRIORITY[oldId] || 0);
 }
 
-function isPipelineComplete(state) {
-  if (!state.expectedStages || state.expectedStages.length === 0) return true;
-  return state.expectedStages.every(st => state.stageResults?.[st]?.verdict === 'PASS');
-}
-
-function resetPipelineState(state) {
-  delete state.pipelineId;
-  delete state.taskType;
-  delete state.reclassifications;
-  delete state.llmClassification;
-  delete state.correctionCount;
-  state.completed = [];
-  state.stageResults = {};
-  state.retries = {};
-  state.skippedStages = [];
-  state.expectedStages = [];
-  state.stageIndex = 0;
-  state.currentStage = null;
-  state.delegationActive = false;
-  state.pipelineEnforced = false;
-  state.pendingRetry = false;
-}
-
 function getCompletedStages(completedAgents) {
   const stages = new Set();
   for (const agent of (completedAgents || [])) {
@@ -131,19 +111,20 @@ function outputInitialClassification(pipelineId, stages, state, options = {}) {
   const label = PIPELINES[pipelineId]?.label || pipelineId;
   const pipelineEnforced = PIPELINES[pipelineId]?.enforced || false;
   const catalogHint = options.catalogHint || '';
+  const envInfo = state?.context?.environment || state?.environment || {};
 
   if (stages.length === 0) {
-    const knowledgeHints = buildKnowledgeHints(state && state.environment);
+    const knowledgeHints = buildKnowledgeHints(envInfo);
     const context = `[任務分類] Pipeline: ${label} — 無需 pipeline，直接回答。` +
       (knowledgeHints ? `\n${knowledgeHints}` : '') + catalogHint;
     console.log(JSON.stringify({ additionalContext: context }));
     return;
   }
 
-  const knowledgeHints = buildKnowledgeHints(state && state.environment);
+  const knowledgeHints = buildKnowledgeHints(envInfo);
 
   if (pipelineEnforced) {
-    const pipelineRules = (state && state.pipelineRules) || [];
+    const pipelineRules = state?.context?.pipelineRules || state?.pipelineRules || [];
     console.log(JSON.stringify({
       systemMessage: buildPipelineRules(pipelineId, stages, pipelineRules) + knowledgeHints,
     }));
@@ -195,7 +176,6 @@ process.stdin.on('end', () => {
     const data = JSON.parse(input);
     const prompt = data.prompt || data.user_prompt || data.content || '';
     const sessionId = data.session_id || 'unknown';
-    const statePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
 
     emit(EVENT_TYPES.PROMPT_RECEIVED, sessionId, {});
 
@@ -205,11 +185,10 @@ process.stdin.on('end', () => {
     // Layer 3: LLM Fallback
     let catalogHint = '';
     if (result.source === 'pending-llm') {
-      const stateForCache = fs.existsSync(statePath)
-        ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : null;
+      const stateForCache = readState(sessionId);
 
-      const LLM_CACHE_TTL = 5 * 60 * 1000; // 5 分鐘快取過期
-      const cached = stateForCache && stateForCache.llmClassification;
+      const LLM_CACHE_TTL = 5 * 60 * 1000;
+      const cached = stateForCache?.meta?.llmClassification;
       const cacheValid = cached && cached.timestamp && (Date.now() - cached.timestamp < LLM_CACHE_TTL);
       if (cacheValid) {
         result.pipeline = cached.pipeline;
@@ -221,9 +200,11 @@ process.stdin.on('end', () => {
           result.pipeline = llmResult.pipeline;
           result.confidence = llmResult.confidence;
           result.source = llmResult.source;
+          // LLM 快取寫入 meta
           if (stateForCache) {
-            stateForCache.llmClassification = { ...llmResult, timestamp: Date.now() };
-            fs.writeFileSync(statePath, JSON.stringify(stateForCache, null, 2));
+            stateForCache.meta = stateForCache.meta || {};
+            stateForCache.meta.llmClassification = { ...llmResult, timestamp: Date.now() };
+            writeState(sessionId, stateForCache);
           }
         } else {
           result.source = 'regex-low';
@@ -234,31 +215,32 @@ process.stdin.on('end', () => {
 
     const newPipelineId = result.pipeline;
     const newStages = PIPELINES[newPipelineId]?.stages || [];
-    const newPipelineEnforced = PIPELINES[newPipelineId]?.enforced || false;
     const newTaskType = PIPELINE_TO_TASKTYPE[newPipelineId] || 'quickfix';
 
     // 讀取現有 state
-    let state = null;
-    if (fs.existsSync(statePath)) {
-      try { state = JSON.parse(fs.readFileSync(statePath, 'utf8')); } catch (_) {}
-    }
+    let state = readState(sessionId);
 
-    // 已完成 pipeline → 重設
-    if (state && state.pipelineId && isPipelineComplete(state)) {
-      resetPipelineState(state);
-      fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+    // 已完成 pipeline → RESET
+    if (state && isComplete(state)) {
+      state = transition(state, { type: 'RESET' });
+      writeState(sessionId, state);
     }
 
     // ── 初始分類 ──
-    if (!state || !state.pipelineId) {
+    const currentPipelineId = getPipelineId(state);
+    if (!state || !currentPipelineId) {
       if (state) {
-        state.pipelineId = newPipelineId;
-        state.taskType = newTaskType;
-        state.expectedStages = newStages;
-        state.pipelineEnforced = newPipelineEnforced;
-        state.classificationConfidence = result.confidence;
-        state.classificationSource = result.source;
-        fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+        state = transition(state, {
+          type: 'CLASSIFY',
+          pipelineId: newPipelineId,
+          taskType: newTaskType,
+          expectedStages: newStages,
+          source: result.source,
+          confidence: result.confidence,
+          matchedRule: result.matchedRule,
+          layer: determineLayer(result),
+        });
+        writeState(sessionId, state);
       }
 
       emit(EVENT_TYPES.TASK_CLASSIFIED, sessionId, {
@@ -273,24 +255,29 @@ process.stdin.on('end', () => {
     }
 
     // ── 重新分類 ──
-    const oldPipelineId = state.pipelineId;
-    if (oldPipelineId === newPipelineId) return; // 同級
+    const oldPipelineId = currentPipelineId;
+    if (oldPipelineId === newPipelineId) return;
 
     if (!isUpgrade(oldPipelineId, newPipelineId)) {
       // 降級：如果舊 pipeline 過時（超過 10 分鐘無 stage transition），重設
-      const lastTransition = state.lastTransition ? new Date(state.lastTransition).getTime() : 0;
-      const STALE_MS = 10 * 60 * 1000; // 10 分鐘
+      const lastTransition = state.meta?.lastTransition
+        ? new Date(state.meta.lastTransition).getTime() : 0;
+      const STALE_MS = 10 * 60 * 1000;
       const isStale = (Date.now() - lastTransition) > STALE_MS;
 
-      if (isStale && !isPipelineComplete(state)) {
-        resetPipelineState(state);
-        state.pipelineId = newPipelineId;
-        state.taskType = newTaskType;
-        state.expectedStages = newStages;
-        state.pipelineEnforced = newPipelineEnforced;
-        state.classificationConfidence = result.confidence;
-        state.classificationSource = result.source;
-        fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+      if (isStale && !isComplete(state)) {
+        state = transition(state, { type: 'RESET' });
+        state = transition(state, {
+          type: 'CLASSIFY',
+          pipelineId: newPipelineId,
+          taskType: newTaskType,
+          expectedStages: newStages,
+          source: result.source,
+          confidence: result.confidence,
+          matchedRule: result.matchedRule,
+          layer: determineLayer(result),
+        });
+        writeState(sessionId, state);
 
         emit(EVENT_TYPES.TASK_CLASSIFIED, sessionId, {
           pipelineId: newPipelineId, taskType: newTaskType,
@@ -303,27 +290,28 @@ process.stdin.on('end', () => {
         outputInitialClassification(newPipelineId, newStages, state, { catalogHint });
         return;
       }
-      return; // 非過時降級 → 保持原 pipeline
+      return;
     }
 
     // 升級
-    const completedStages = getCompletedStages(state.completed);
+    const completedStages = getCompletedStages(state.progress?.completedAgents || state.completed);
     const remainingStages = newStages.filter(s => !completedStages.has(s));
-    const skippedStages = newStages.filter(s => completedStages.has(s));
+    const skippedByUpgrade = newStages.filter(s => completedStages.has(s));
 
-    if (!state.reclassifications) state.reclassifications = [];
-    state.reclassifications.push({
-      from: oldPipelineId, to: newPipelineId,
-      at: new Date().toISOString(), skippedStages,
+    state = transition(state, {
+      type: 'RECLASSIFY',
+      oldPipelineId,
+      newPipelineId,
+      newTaskType,
+      newExpectedStages: newStages,
+      remainingStages,
+      skippedByUpgrade,
+      source: result.source,
+      confidence: result.confidence,
+      matchedRule: result.matchedRule,
+      layer: determineLayer(result),
     });
-
-    state.pipelineId = newPipelineId;
-    state.taskType = newTaskType;
-    state.expectedStages = newStages;
-    state.pipelineEnforced = newPipelineEnforced;
-    state.classificationConfidence = result.confidence;
-    state.classificationSource = result.source;
-    fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+    writeState(sessionId, state);
 
     emit(EVENT_TYPES.TASK_CLASSIFIED, sessionId, {
       pipelineId: newPipelineId, taskType: newTaskType,
@@ -332,7 +320,7 @@ process.stdin.on('end', () => {
       source: result.source, matchedRule: result.matchedRule,
     });
 
-    outputUpgrade(oldPipelineId, newPipelineId, remainingStages, skippedStages);
+    outputUpgrade(oldPipelineId, newPipelineId, remainingStages, skippedByUpgrade);
   } catch (err) {
     hookLogger.error('task-classifier', err);
   }

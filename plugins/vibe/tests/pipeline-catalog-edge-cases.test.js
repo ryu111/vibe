@@ -160,26 +160,36 @@ test('currentStage 不在 pipelineStages 中（錯誤輸入）', () => {
 console.log('\n🧪 Part 3: 向後相容（舊 state）');
 
 test('舊 state 沒有 pipelineId → 不崩潰', () => {
-  // 模擬舊 state 只有 taskType 和 expectedStages
+  // 模擬舊 state 只有 taskType 和 expectedStages（FSM 結構）
   const mockOldState = {
-    taskType: 'feature',
-    expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
-    pipelineEnforced: true,
+    phase: 'CLASSIFIED',
+    context: {
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
+    },
+    progress: {},
+    meta: { initialized: true },
   };
   // 檢查是否可以從 expectedStages 推導 pipeline
   // 邏輯在 task-classifier 中：有 pipelineId 優先用，沒有就用 expectedStages fallback
-  assert.ok(Array.isArray(mockOldState.expectedStages));
-  assert.ok(!mockOldState.pipelineId);
+  assert.ok(Array.isArray(mockOldState.context.expectedStages));
+  assert.ok(!mockOldState.context.pipelineId);
 });
 
 test('舊 state 沒有 stageIndex → 降級到 indexOf', () => {
   const mockOldState = {
-    pipelineId: 'test-first',
-    currentStage: 'TEST',
-    // 沒有 stageIndex
+    phase: 'CLASSIFIED',
+    context: {
+      pipelineId: 'test-first',
+    },
+    progress: {
+      currentStage: 'TEST',
+      // 沒有 stageIndex
+    },
+    meta: { initialized: true },
   };
   const stages = PIPELINES['test-first'].stages;
-  const result = findNextStageInPipeline(stages, mockStageMap, mockOldState.currentStage);
+  const result = findNextStageInPipeline(stages, mockStageMap, mockOldState.progress.currentStage);
   // 無 stageIndex → indexOf('TEST') = 0
   assert.strictEqual(result.stage, 'DEV');
   assert.strictEqual(result.index, 1);

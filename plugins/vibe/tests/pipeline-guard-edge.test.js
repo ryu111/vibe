@@ -5,7 +5,7 @@
  * 補充測試 cancel-and-guard.test.js 未覆蓋的邊界案例：
  * - state file 損壞/不完整
  * - NotebookEdit 完整流程
- * - 多重 flag 組合（delegationActive + cancelled）
+ * - 多重 FSM phase 組合
  * - sessionId 異常
  * - hook 錯誤處理（解析失敗時的降級）
  *
@@ -137,13 +137,15 @@ test('State file 為空物件 → 放行（initialized=false）', () => {
   }
 });
 
-test('State file 缺 initialized 欄位 → 放行', () => {
+test('State file 缺 meta.initialized 欄位 → 放行', () => {
   const sessionId = 'test-missing-init-1';
   try {
     writeState(sessionId, {
-      taskType: 'feature',
-      pipelineEnforced: true,
-      // 缺 initialized
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: {
+        // 缺 initialized
+      },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -158,13 +160,13 @@ test('State file 缺 initialized 欄位 → 放行', () => {
   }
 });
 
-test('State file initialized=null → 放行', () => {
+test('State file meta.initialized=null → 放行', () => {
   const sessionId = 'test-null-init-1';
   try {
     writeState(sessionId, {
-      initialized: null,
-      taskType: 'feature',
-      pipelineEnforced: true,
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: { initialized: null },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -179,13 +181,13 @@ test('State file initialized=null → 放行', () => {
   }
 });
 
-test('State file taskType=null → 放行', () => {
+test('State file context.taskType=null → 放行', () => {
   const sessionId = 'test-null-task-1';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: null,
-      pipelineEnforced: true,
+      phase: 'CLASSIFIED',
+      context: { taskType: null },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -200,13 +202,13 @@ test('State file taskType=null → 放行', () => {
   }
 });
 
-test('State file taskType="" → 放行', () => {
+test('State file context.taskType="" → 放行', () => {
   const sessionId = 'test-empty-task-1';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: '',
-      pipelineEnforced: true,
+      phase: 'CLASSIFIED',
+      context: { taskType: '' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -221,13 +223,13 @@ test('State file taskType="" → 放行', () => {
   }
 });
 
-test('State file pipelineEnforced=null → 放行', () => {
+test('State file phase=null → 放行（IDLE fallback）', () => {
   const sessionId = 'test-null-enforced-1';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: null,
+      phase: null,
+      context: { taskType: 'feature' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -243,19 +245,17 @@ test('State file pipelineEnforced=null → 放行', () => {
 });
 
 // ═══════════════════════════════════════════════
-console.log('\n🧪 多重 Flag 組合測試');
+console.log('\n🧪 多重 Phase 組合測試');
 console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
-test('delegationActive=true + cancelled=true → 放行（delegation 優先）', () => {
+test('phase=DELEGATING + cancelled=true → 放行（isDelegating 優先）', () => {
   const sessionId = 'test-multi-1';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: true,
-      cancelled: true,
+      phase: 'DELEGATING',
+      context: { taskType: 'feature' },
+      meta: { initialized: true, cancelled: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -264,21 +264,20 @@ test('delegationActive=true + cancelled=true → 放行（delegation 優先）',
       tool_input: { file_path: 'src/app.js' },
     });
 
-    // delegationActive 檢查在 cancelled 之前
+    // isDelegating 檢查在 isCancelled 之前
     assert.strictEqual(result.exitCode, 0);
   } finally {
     cleanState(sessionId);
   }
 });
 
-test('pipelineEnforced=false + delegationActive=true → 放行（任一放行條件滿足）', () => {
+test('phase=IDLE → 放行（isEnforced=false）', () => {
   const sessionId = 'test-multi-2';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'quickfix',
-      pipelineEnforced: false,
-      delegationActive: true,
+      phase: 'IDLE',
+      context: { taskType: 'quickfix' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -293,13 +292,13 @@ test('pipelineEnforced=false + delegationActive=true → 放行（任一放行�
   }
 });
 
-test('initialized=false + pipelineEnforced=true → 放行（initialized 優先）', () => {
+test('meta.initialized=false + phase=CLASSIFIED → 放行（initialized 優先）', () => {
   const sessionId = 'test-multi-3';
   try {
     writeState(sessionId, {
-      initialized: false,
-      taskType: 'feature',
-      pipelineEnforced: true,
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: { initialized: false },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -314,13 +313,15 @@ test('initialized=false + pipelineEnforced=true → 放行（initialized 優先�
   }
 });
 
-test('taskType=undefined + pipelineEnforced=true → 放行（taskType 優先）', () => {
+test('context.taskType 缺失 + phase=CLASSIFIED → 放行（taskType 優先）', () => {
   const sessionId = 'test-multi-4';
   try {
     writeState(sessionId, {
-      initialized: true,
-      // taskType 缺失
-      pipelineEnforced: true,
+      phase: 'CLASSIFIED',
+      context: {
+        // taskType 缺失
+      },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -344,10 +345,9 @@ test('NotebookEdit — pipeline 啟動 + .ipynb → 阻擋', () => {
   const sessionId = 'test-nb-1';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -368,10 +368,9 @@ test('NotebookEdit — pipeline 啟動 + .md → 放行', () => {
   const sessionId = 'test-nb-2';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -386,14 +385,13 @@ test('NotebookEdit — pipeline 啟動 + .md → 放行', () => {
   }
 });
 
-test('NotebookEdit — delegationActive=true + .ipynb → 放行', () => {
+test('NotebookEdit — phase=DELEGATING + .ipynb → 放行', () => {
   const sessionId = 'test-nb-3';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: true,
+      phase: 'DELEGATING',
+      context: { taskType: 'feature' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -408,15 +406,13 @@ test('NotebookEdit — delegationActive=true + .ipynb → 放行', () => {
   }
 });
 
-test('NotebookEdit — cancelled=true + .ipynb → 放行', () => {
+test('NotebookEdit — meta.cancelled=true + .ipynb → 放行', () => {
   const sessionId = 'test-nb-4';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
-      cancelled: true,
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: { initialized: true, cancelled: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -501,10 +497,9 @@ test('Write — toolInput 缺失 → 阻擋', () => {
   const sessionId = 'test-input-1';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -524,10 +519,9 @@ test('Write — file_path 為非常長的字串 → 正常判斷', () => {
   const sessionId = 'test-input-2';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: { initialized: true },
     });
 
     const longPath = '/very/' + 'long/'.repeat(100) + 'app.js';
@@ -548,10 +542,9 @@ test('Write — file_path 為 Unicode 字元 → 正常判斷', () => {
   const sessionId = 'test-input-3';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -570,10 +563,9 @@ test('AskUserQuestion — 有額外欄位 → 阻擋（忽略額外欄位）', (
   const sessionId = 'test-input-4';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -621,10 +613,9 @@ test('StdIn 缺 tool_name → 放行', () => {
   const sessionId = 'test-stdin-1';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {

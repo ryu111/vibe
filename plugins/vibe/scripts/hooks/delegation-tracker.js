@@ -2,21 +2,19 @@
 /**
  * delegation-tracker.js — PreToolUse hook (matcher: Task)
  *
- * 當 Main Agent 呼叫 Task 工具時，標記 pipeline state 的 delegationActive = true。
- * 這允許 pipeline-guard 放行後續 sub-agent 的 Write/Edit 操作。
- *
- * 因為 plugin hooks 會同時攔截 sub-agent 的 tool calls，
- * 所以需要這個追蹤機制來區分 Main Agent 和 Sub-agent 的操作。
+ * v2.0.0 FSM 重構：
+ * 使用 transition(DELEGATE) 取代 state.delegationActive = true。
+ * phase 從 CLASSIFIED/RETRYING/IDLE → DELEGATING。
  */
 'use strict';
-const fs = require('fs');
 const path = require('path');
-const os = require('os');
 
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 const { AGENT_TO_STAGE } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
-const CLAUDE_DIR = path.join(os.homedir(), '.claude');
+const {
+  transition, readState, writeState, getPhase, PHASES,
+} = require(path.join(__dirname, '..', 'lib', 'flow', 'state-machine.js'));
 
 let input = '';
 process.stdin.on('data', d => input += d);
@@ -25,16 +23,8 @@ process.stdin.on('end', () => {
     const data = JSON.parse(input);
     const sessionId = data.session_id || 'unknown';
 
-    const statePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
-    if (!fs.existsSync(statePath)) {
-      process.exit(0);
-    }
-
-    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-
-    // 標記委派啟動
-    state.delegationActive = true;
-    fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+    const state = readState(sessionId);
+    if (!state) process.exit(0);
 
     // Extract agent info from Task tool input
     const toolInput = data.tool_input || {};
@@ -42,15 +32,24 @@ process.stdin.on('end', () => {
     const shortAgent = agentType.includes(':') ? agentType.split(':')[1] : agentType;
     const stage = AGENT_TO_STAGE[shortAgent] || '';
 
+    // Transition: CLASSIFIED/RETRYING/IDLE → DELEGATING
+    const phase = getPhase(state);
+    if (phase === PHASES.CLASSIFIED || phase === PHASES.RETRYING || phase === PHASES.IDLE) {
+      try {
+        const newState = transition(state, { type: 'DELEGATE', stage, agentType: shortAgent });
+        writeState(sessionId, newState);
+      } catch (err) {
+        // 不合法轉換不阻擋 Task 工具，只記錄
+        hookLogger.error('delegation-tracker', err);
+      }
+    }
+
     // Emit stage start + delegation event
     if (stage) {
       emit(EVENT_TYPES.STAGE_START, sessionId, {
         stage,
         agentType: shortAgent,
       });
-      // 記錄 currentStage 到 state（供 suggest-compact 的 tool.used 事件使用）
-      state.currentStage = stage;
-      fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
     }
     emit(EVENT_TYPES.DELEGATION_START, sessionId, {
       agentType: shortAgent,

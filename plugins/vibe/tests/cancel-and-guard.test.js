@@ -2,8 +2,8 @@
 /**
  * cancel-and-guard.test.js — 測試 cancel 操作的 state 重設 + pipeline-guard 放行驗證
  *
- * Part 1: 模擬 cancel 操作（重設 pipelineEnforced/delegationActive flag）
- * Part 2: 驗證 pipeline-guard.js 在不同 state 條件下的行為（放行 vs 阻擋）
+ * Part 1: 模擬 cancel 操作（重設 FSM phase）
+ * Part 2: 驗證 pipeline-guard.js 在不同 FSM state 條件下的行為（放行 vs 阻擋）
  *
  * 執行：node plugins/vibe/tests/cancel-and-guard.test.js
  */
@@ -102,62 +102,75 @@ function runHook(hookPath, stdinData) {
 console.log('\n🧪 Part 1: Cancel 操作的 state 重設邏輯');
 // ═══════════════════════════════════════════════
 
-test('Pipeline 重設：pipelineEnforced=false, delegationActive=false', () => {
+test('Pipeline 重設：phase=IDLE（cancel 後）', () => {
   const sessionId = 'test-cancel-pipeline-1';
   try {
-    // 初始 state
+    // 初始 state（FSM 結構）
     const initialState = {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: true,
-      completed: ['vibe:planner'],
-      expectedStages: ['PLAN', 'ARCH', 'DEV'],
+      phase: 'DELEGATING',
+      context: {
+        pipelineId: 'standard',
+        taskType: 'feature',
+        expectedStages: ['PLAN', 'ARCH', 'DEV'],
+      },
+      progress: {
+        currentStage: 'ARCH',
+        stageIndex: 1,
+        completedAgents: ['vibe:planner'],
+        stageResults: {},
+        retries: {},
+        skippedStages: [],
+        pendingRetry: null,
+      },
+      meta: {
+        initialized: true,
+        cancelled: false,
+      },
     };
     writeState(sessionId, initialState);
 
     // 模擬 cancel 操作
     const state = readState(sessionId);
-    state.pipelineEnforced = false;
-    state.delegationActive = false;
+    state.phase = 'IDLE';
+    state.meta.cancelled = true;
     writeState(sessionId, state);
 
     // 驗證結果
     const result = readState(sessionId);
-    assert.strictEqual(result.pipelineEnforced, false);
-    assert.strictEqual(result.delegationActive, false);
-    assert.strictEqual(result.completed.length, 1);
-    assert.strictEqual(result.completed[0], 'vibe:planner');
-    assert.strictEqual(result.taskType, 'feature');
-    assert.strictEqual(result.expectedStages.length, 3);
+    assert.strictEqual(result.phase, 'IDLE');
+    assert.strictEqual(result.meta.cancelled, true);
+    assert.strictEqual(result.progress.completedAgents.length, 1);
+    assert.strictEqual(result.progress.completedAgents[0], 'vibe:planner');
+    assert.strictEqual(result.context.taskType, 'feature');
+    assert.strictEqual(result.context.expectedStages.length, 3);
   } finally {
     cleanState(sessionId);
   }
 });
 
-test('Task-guard 重設：cancelled=true', () => {
+test('Task-guard 重設：meta.cancelled=true', () => {
   const sessionId = 'test-cancel-taskguard-1';
   try {
     // 注意：task-guard 用不同的 state file（假設用 task-guard-state-{sessionId}.json）
-    // 這裡為了測試，直接在 pipeline-state 中模擬
+    // 這裡為了測試，直接在 task-guard-state 中模擬
     const stateFile = path.join(CLAUDE_DIR, `task-guard-state-${sessionId}.json`);
 
     // 初始 state
     const initialState = {
       blockCount: 3,
-      cancelled: false,
+      meta: { cancelled: false },
       tasks: [{ text: 'TODO item', completed: false }],
     };
     fs.writeFileSync(stateFile, JSON.stringify(initialState, null, 2));
 
     // 模擬 cancel 操作
     const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-    state.cancelled = true;
+    state.meta.cancelled = true;
     fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
 
     // 驗證結果
     const result = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-    assert.strictEqual(result.cancelled, true);
+    assert.strictEqual(result.meta.cancelled, true);
     assert.strictEqual(result.blockCount, 3);
     assert.strictEqual(result.tasks.length, 1);
 
@@ -172,34 +185,46 @@ test('Task-guard 重設：cancelled=true', () => {
   }
 });
 
-test('只重設 flag，不清除完成記錄', () => {
+test('只重設 phase，不清除完成記錄', () => {
   const sessionId = 'test-cancel-preserve-1';
   try {
     const initialState = {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: true,
-      completed: ['vibe:planner', 'vibe:architect', 'vibe:developer'],
-      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
-      stageResults: {
-        PLAN: { verdict: 'PASS' },
-        ARCH: { verdict: 'PASS' },
+      phase: 'DELEGATING',
+      context: {
+        pipelineId: 'standard',
+        taskType: 'feature',
+        expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
+      },
+      progress: {
+        currentStage: 'DEV',
+        stageIndex: 2,
+        completedAgents: ['vibe:planner', 'vibe:architect', 'vibe:developer'],
+        stageResults: {
+          PLAN: { verdict: 'PASS' },
+          ARCH: { verdict: 'PASS' },
+        },
+        retries: {},
+        skippedStages: [],
+        pendingRetry: null,
+      },
+      meta: {
+        initialized: true,
+        cancelled: false,
       },
     };
     writeState(sessionId, initialState);
 
     // 模擬 cancel
     const state = readState(sessionId);
-    state.pipelineEnforced = false;
-    state.delegationActive = false;
+    state.phase = 'IDLE';
+    state.meta.cancelled = true;
     writeState(sessionId, state);
 
     // 驗證：歷史記錄保留
     const result = readState(sessionId);
-    assert.strictEqual(result.completed.length, 3);
-    assert.strictEqual(result.stageResults.PLAN.verdict, 'PASS');
-    assert.strictEqual(result.stageResults.ARCH.verdict, 'PASS');
+    assert.strictEqual(result.progress.completedAgents.length, 3);
+    assert.strictEqual(result.progress.stageResults.PLAN.verdict, 'PASS');
+    assert.strictEqual(result.progress.stageResults.ARCH.verdict, 'PASS');
   } finally {
     cleanState(sessionId);
   }
@@ -222,13 +247,13 @@ test('放行 — 無 state file', () => {
   assert.strictEqual(result.exitCode, 0);
 });
 
-test('放行 — pipelineEnforced=false', () => {
+test('放行 — phase=IDLE（未強制）', () => {
   const sessionId = 'test-pg-2';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'quickfix',
-      pipelineEnforced: false,
+      phase: 'IDLE',
+      context: { taskType: 'quickfix' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -243,14 +268,13 @@ test('放行 — pipelineEnforced=false', () => {
   }
 });
 
-test('放行 — delegationActive=true（sub-agent 操作）', () => {
+test('放行 — phase=DELEGATING（sub-agent 操作）', () => {
   const sessionId = 'test-pg-3';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: true,
+      phase: 'DELEGATING',
+      context: { taskType: 'feature' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -269,10 +293,9 @@ test('放行 — 非程式碼檔案（.md）', () => {
   const sessionId = 'test-pg-4';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -291,10 +314,9 @@ test('放行 — 非程式碼檔案（.json）', () => {
   const sessionId = 'test-pg-5';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -313,10 +335,9 @@ test('阻擋 — pipeline 啟動 + 未委派 + 程式碼檔案', () => {
   const sessionId = 'test-pg-6';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -333,16 +354,17 @@ test('阻擋 — pipeline 啟動 + 未委派 + 程式碼檔案', () => {
   }
 });
 
-test('放行 — cancel 後（pipelineEnforced 已重設）', () => {
+test('放行 — cancel 後（phase=IDLE + cancelled=true）', () => {
   const sessionId = 'test-pg-7';
   try {
     // 模擬 cancel 後的 state
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: false,  // cancel 重設
-      delegationActive: false,
-      completed: ['vibe:planner', 'vibe:architect'],
+      phase: 'IDLE',
+      context: { taskType: 'feature' },
+      progress: {
+        completedAgents: ['vibe:planner', 'vibe:architect'],
+      },
+      meta: { initialized: true, cancelled: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -358,11 +380,12 @@ test('放行 — cancel 後（pipelineEnforced 已重設）', () => {
   }
 });
 
-test('放行 — 未初始化（initialized=false）', () => {
+test('放行 — 未初始化（meta.initialized=false）', () => {
   const sessionId = 'test-pg-8';
   try {
     writeState(sessionId, {
-      initialized: false,
+      phase: 'IDLE',
+      meta: { initialized: false },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -381,8 +404,11 @@ test('放行 — 無 taskType（分類前）', () => {
   const sessionId = 'test-pg-9';
   try {
     writeState(sessionId, {
-      initialized: true,
-      // taskType 尚未設定
+      phase: 'IDLE',
+      context: {
+        // taskType 尚未設定
+      },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -401,10 +427,9 @@ test('阻擋 — Edit 工具同樣受限', () => {
   const sessionId = 'test-pg-10';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -424,10 +449,9 @@ test('放行 — 程式碼檔案但有其他放行條件（.yml 視為非程式�
   const sessionId = 'test-pg-11';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -446,10 +470,9 @@ test('阻擋 — AskUserQuestion（pipeline 啟動中）', () => {
   const sessionId = 'test-pg-12';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -466,15 +489,13 @@ test('阻擋 — AskUserQuestion（pipeline 啟動中）', () => {
   }
 });
 
-test('放行 — AskUserQuestion（cancelled=true）', () => {
+test('放行 — AskUserQuestion（meta.cancelled=true）', () => {
   const sessionId = 'test-pg-13';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
-      cancelled: true,
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: { initialized: true, cancelled: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -493,10 +514,9 @@ test('阻擋 — EnterPlanMode（無條件阻擋，pipeline 啟動中）', () =>
   const sessionId = 'test-pg-14';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
+      phase: 'CLASSIFIED',
+      context: { taskType: 'feature' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -512,13 +532,13 @@ test('阻擋 — EnterPlanMode（無條件阻擋，pipeline 啟動中）', () =>
   }
 });
 
-test('阻擋 — EnterPlanMode（無條件阻擋，pipelineEnforced=false）', () => {
+test('阻擋 — EnterPlanMode（無條件阻擋，phase=IDLE）', () => {
   const sessionId = 'test-pg-15';
   try {
     writeState(sessionId, {
-      initialized: true,
-      taskType: 'quickfix',
-      pipelineEnforced: false,
+      phase: 'IDLE',
+      context: { taskType: 'quickfix' },
+      meta: { initialized: true },
     });
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {

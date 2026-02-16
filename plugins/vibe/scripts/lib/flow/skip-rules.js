@@ -26,8 +26,9 @@ function shouldSkipStage(stage, state, pipelineStages) {
   const frameworkName = ((envInfo.framework && envInfo.framework.name) || '').toLowerCase();
 
   if (stage === 'DESIGN') {
-    // 明確標記 needsDesign 或偵測到前端框架 → 不跳過
+    // 明確標記 needsDesign 或偵測到前端框架/信號 → 不跳過
     if (state.needsDesign === true) return { skip: false, reason: '' };
+    if (state.frontend && state.frontend.detected) return { skip: false, reason: '' };
     if (FRONTEND_FRAMEWORKS.some(f => frameworkName.includes(f))) return { skip: false, reason: '' };
     return { skip: true, reason: 'DESIGN（純後端/CLI 專案不需視覺設計）' };
   }

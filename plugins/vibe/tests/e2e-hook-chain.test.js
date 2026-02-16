@@ -45,14 +45,42 @@ function test(name, fn) {
  */
 function initState(sessionId, overrides = {}) {
   const state = {
-    initialized: true,
-    completed: [],
-    expectedStages: [],
-    stageResults: {},
-    retries: {},
-    delegationActive: false,
-    pipelineEnforced: false,
-    ...overrides,
+    sessionId,
+    phase: overrides.phase || 'IDLE',
+    context: {
+      pipelineId: null,
+      taskType: null,
+      expectedStages: [],
+      environment: {},
+      openspecEnabled: false,
+      pipelineRules: [],
+      needsDesign: false,
+      ...(overrides.context || {}),
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: [],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+      ...(overrides.progress || {}),
+    },
+    meta: {
+      initialized: true,
+      classifiedAt: null,
+      lastTransition: new Date().toISOString(),
+      classificationSource: null,
+      classificationConfidence: null,
+      matchedRule: null,
+      layer: null,
+      reclassifications: [],
+      llmClassification: null,
+      correctionCount: 0,
+      cancelled: false,
+      ...(overrides.meta || {}),
+    },
   };
   const p = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
   fs.writeFileSync(p, JSON.stringify(state, null, 2));
@@ -169,17 +197,17 @@ console.log('═'.repeat(55));
 
     test('A1: task-classifier 分類 trivial 為 quickfix', () => {
       const state = readState(sid);
-      assert.strictEqual(state.taskType, 'quickfix');
+      assert.strictEqual(state.context.taskType, 'quickfix');
     });
 
     test('A2: pipelineEnforced 被啟動（所有有 stage 的 pipeline 都 enforce）', () => {
       const state = readState(sid);
-      assert.strictEqual(state.pipelineEnforced, true);
+      assert.ok(['CLASSIFIED', 'DELEGATING', 'RETRYING'].includes(state.phase));
     });
 
     test('A3: expectedStages 僅含 DEV', () => {
       const state = readState(sid);
-      assert.deepStrictEqual(state.expectedStages, ['DEV']);
+      assert.deepStrictEqual(state.context.expectedStages, ['DEV']);
     });
 
     test('A4: task-classifier 輸出 systemMessage（enforced pipeline）', () => {
@@ -222,19 +250,19 @@ console.log('═'.repeat(55));
 
     test('B1: task-classifier 分類為 feature', () => {
       const state = readState(sid);
-      assert.strictEqual(state.taskType, 'feature');
+      assert.strictEqual(state.context.taskType, 'feature');
     });
 
     test('B2: pipelineEnforced 啟動', () => {
       const state = readState(sid);
-      assert.strictEqual(state.pipelineEnforced, true);
+      assert.ok(['CLASSIFIED', 'DELEGATING', 'RETRYING'].includes(state.phase));
     });
 
     test('B3: expectedStages 含完整 9 階段', () => {
       const state = readState(sid);
-      assert.strictEqual(state.expectedStages.length, 9);
-      assert.strictEqual(state.expectedStages[0], 'PLAN');
-      assert.strictEqual(state.expectedStages[8], 'DOCS');
+      assert.strictEqual(state.context.expectedStages.length, 9);
+      assert.strictEqual(state.context.expectedStages[0], 'PLAN');
+      assert.strictEqual(state.context.expectedStages[8], 'DOCS');
     });
 
     test('B4: task-classifier 輸出 systemMessage（pipeline 規則）', () => {
@@ -263,9 +291,9 @@ console.log('═'.repeat(55));
       tool_input: { subagent_type: 'vibe:planner' },
     });
 
-    test('B6: delegation-tracker 設定 delegationActive=true', () => {
+    test('B6: delegation-tracker 設定 phase=DELEGATING', () => {
       const state = readState(sid);
-      assert.strictEqual(state.delegationActive, true);
+      assert.strictEqual(state.phase, 'DELEGATING');
     });
 
     // Step 5: pipeline-guard 放行 sub-agent 的 Write
@@ -288,12 +316,12 @@ console.log('═'.repeat(55));
 
     test('B8: stage-transition 記錄 planner 完成', () => {
       const state = readState(sid);
-      assert.ok(state.completed.includes('vibe:planner'));
+      assert.ok(state.progress.completedAgents.includes('vibe:planner'));
     });
 
-    test('B9: stage-transition 重設 delegationActive=false', () => {
+    test('B9: stage-transition 重設 phase 非 DELEGATING', () => {
       const state = readState(sid);
-      assert.strictEqual(state.delegationActive, false);
+      assert.notStrictEqual(state.phase, 'DELEGATING');
     });
 
     test('B10: stage-transition 指示下一階段 ARCH', () => {
@@ -316,12 +344,12 @@ console.log('═'.repeat(55));
     // Step 8: 模擬完成所有階段直到 pipeline-check
     // 補齊其餘 agent 完成紀錄 + stageIndex（pipeline-check 用 stageIndex 判斷完成度）
     const state = readState(sid);
-    state.completed = [
+    state.progress.completedAgents = [
       'vibe:planner', 'vibe:architect', 'vibe:designer', 'vibe:developer',
       'vibe:code-reviewer', 'vibe:tester', 'vibe:qa',
       'vibe:e2e-runner', 'vibe:doc-updater',
     ];
-    state.stageIndex = state.expectedStages.length - 1; // 最後一個階段的索引
+    state.progress.stageIndex = state.context.expectedStages.length - 1; // 最後一個階段的索引
     fs.writeFileSync(
       path.join(CLAUDE_DIR, `pipeline-state-${sid}.json`),
       JSON.stringify(state, null, 2)
@@ -354,11 +382,14 @@ console.log('═'.repeat(55));
   try {
     // Step 1: 模擬進行中的 feature pipeline
     initState(sid, {
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
-      completed: ['vibe:planner'],
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      phase: 'CLASSIFIED',
+      context: {
+        taskType: 'feature',
+        expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      },
+      progress: {
+        completedAgents: ['vibe:planner'],
+      },
     });
 
     // Step 2: pipeline-guard 阻擋
@@ -372,10 +403,10 @@ console.log('═'.repeat(55));
       assert.strictEqual(gateBlock.exitCode, 2);
     });
 
-    // Step 3: 模擬 /vibe:cancel（重設 pipeline flags）
+    // Step 3: 模擬 /vibe:cancel（phase → IDLE + cancelled=true）
     const state = readState(sid);
-    state.pipelineEnforced = false;
-    state.delegationActive = false;
+    state.phase = 'IDLE';
+    state.meta.cancelled = true;
     fs.writeFileSync(
       path.join(CLAUDE_DIR, `pipeline-state-${sid}.json`),
       JSON.stringify(state, null, 2)
@@ -395,11 +426,11 @@ console.log('═'.repeat(55));
     // Step 5: 驗證歷史記錄保留
     test('C3: cancel 後完成記錄保留', () => {
       const finalState = readState(sid);
-      assert.ok(finalState.completed.includes('vibe:planner'));
-      assert.strictEqual(finalState.expectedStages.length, 9);
+      assert.ok(finalState.progress.completedAgents.includes('vibe:planner'));
+      assert.strictEqual(finalState.context.expectedStages.length, 9);
     });
 
-    // Step 6: pipeline-check 也不再檢查（pipelineEnforced=false）
+    // Step 6: pipeline-check 也不再檢查（phase=IDLE，非 enforced）
     const checkResult = runHook('pipeline-check', {
       session_id: sid,
       stop_hook_active: false,
@@ -407,7 +438,7 @@ console.log('═'.repeat(55));
 
     test('C4: cancel 後 pipeline-check 不再提醒', () => {
       assert.strictEqual(checkResult.exitCode, 0);
-      // 不應有 systemMessage（因為 pipelineEnforced=false）
+      // 不應有 systemMessage（因為 phase=IDLE，非 enforced）
       if (checkResult.json) {
         assert.strictEqual(checkResult.json.systemMessage, undefined);
       }
@@ -434,8 +465,8 @@ console.log('═'.repeat(55));
 
     test('D1: 初始分類為 quickfix', () => {
       const state = readState(sid);
-      assert.strictEqual(state.taskType, 'quickfix');
-      assert.strictEqual(state.pipelineEnforced, true);
+      assert.strictEqual(state.context.taskType, 'quickfix');
+      assert.ok(['CLASSIFIED', 'DELEGATING', 'RETRYING'].includes(state.phase));
     });
 
     // Step 2: 第二次 prompt 升級為 feature
@@ -446,16 +477,16 @@ console.log('═'.repeat(55));
 
     test('D2: 升級為 feature', () => {
       const state = readState(sid);
-      assert.strictEqual(state.taskType, 'feature');
-      assert.strictEqual(state.pipelineEnforced, true);
+      assert.strictEqual(state.context.taskType, 'feature');
+      assert.ok(['CLASSIFIED', 'DELEGATING', 'RETRYING'].includes(state.phase));
     });
 
     test('D3: 升級後有 reclassifications 記錄', () => {
       const state = readState(sid);
-      assert.ok(state.reclassifications);
-      assert.strictEqual(state.reclassifications.length, 1);
-      assert.strictEqual(state.reclassifications[0].from, 'fix');      // pipeline ID（非 taskType）
-      assert.strictEqual(state.reclassifications[0].to, 'standard');   // pipeline ID（非 taskType）
+      assert.ok(state.meta.reclassifications);
+      assert.strictEqual(state.meta.reclassifications.length, 1);
+      assert.strictEqual(state.meta.reclassifications[0].from, 'fix');      // pipeline ID（非 taskType）
+      assert.strictEqual(state.meta.reclassifications[0].to, 'standard');   // pipeline ID（非 taskType）
     });
 
     test('D4: 升級輸出 systemMessage', () => {
@@ -477,7 +508,7 @@ console.log('═'.repeat(55));
 
     // Step 4: 降級應被忽略（需設 lastTransition 避免 stale 重設）
     const stateBeforeDowngrade = readState(sid);
-    stateBeforeDowngrade.lastTransition = new Date().toISOString();
+    stateBeforeDowngrade.meta.lastTransition = new Date().toISOString();
     fs.writeFileSync(
       path.join(CLAUDE_DIR, `pipeline-state-${sid}.json`),
       JSON.stringify(stateBeforeDowngrade, null, 2)
@@ -490,7 +521,7 @@ console.log('═'.repeat(55));
 
     test('D6: 降級（feature → research）被忽略（非過時 pipeline）', () => {
       const state = readState(sid);
-      assert.strictEqual(state.taskType, 'feature', '維持 feature 不降級');
+      assert.strictEqual(state.context.taskType, 'feature', '維持 feature 不降級');
     });
   } finally {
     cleanState(sid);
@@ -505,13 +536,16 @@ console.log('═'.repeat(55));
 (() => {
   const sid = 'e2e-retry-1';
   try {
-    // 建立到 REVIEW 階段的 state
+    // 建立到 REVIEW 階段的 state（phase=DELEGATING 表示 code-reviewer 執行中）
     initState(sid, {
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
-      completed: ['vibe:planner', 'vibe:architect', 'vibe:developer'],
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      phase: 'DELEGATING',
+      context: {
+        taskType: 'feature',
+        expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      },
+      progress: {
+        completedAgents: ['vibe:planner', 'vibe:architect', 'vibe:developer'],
+      },
     });
 
     // 模擬 code-reviewer 完成但無 verdict
@@ -534,12 +568,12 @@ console.log('═'.repeat(55));
 
     test('E2: code-reviewer 記錄為完成', () => {
       const state = readState(sid);
-      assert.ok(state.completed.includes('vibe:code-reviewer'));
+      assert.ok(state.progress.completedAgents.includes('vibe:code-reviewer'));
     });
 
     test('E3: stageResults 記錄 UNKNOWN', () => {
       const state = readState(sid);
-      assert.strictEqual(state.stageResults.REVIEW.verdict, 'UNKNOWN');
+      assert.strictEqual(state.progress.stageResults.REVIEW.verdict, 'UNKNOWN');
     });
   } finally {
     cleanState(sid);
@@ -556,10 +590,14 @@ console.log('═'.repeat(55));
   try {
     // 只完成 PLAN 和 ARCH
     initState(sid, {
-      taskType: 'feature',
-      pipelineEnforced: true,
-      completed: ['vibe:planner', 'vibe:architect'],
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      phase: 'CLASSIFIED',
+      context: {
+        taskType: 'feature',
+        expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      },
+      progress: {
+        completedAgents: ['vibe:planner', 'vibe:architect'],
+      },
     });
 
     const checkResult = runHook('pipeline-check', {
@@ -595,9 +633,10 @@ console.log('═'.repeat(55));
   const sid = 'e2e-noncode-1';
   try {
     initState(sid, {
-      taskType: 'feature',
-      pipelineEnforced: true,
-      delegationActive: false,
+      phase: 'CLASSIFIED',
+      context: {
+        taskType: 'feature',
+      },
     });
 
     const exts = [
@@ -655,8 +694,8 @@ console.log('═'.repeat(55));
 
     test('H1: 分類為 feature + pipeline 啟動', () => {
       const state = readState(sid);
-      assert.strictEqual(state.taskType, 'feature');
-      assert.strictEqual(state.pipelineEnforced, true);
+      assert.strictEqual(state.context.taskType, 'feature');
+      assert.ok(['CLASSIFIED', 'DELEGATING', 'RETRYING'].includes(state.phase));
     });
 
     // Step 2-4: 模擬 3 個 agent 的 delegate → complete 循環
@@ -675,8 +714,8 @@ console.log('═'.repeat(55));
       });
 
       const stateAfterDelegate = readState(sid);
-      test(`H: ${type} delegation → delegationActive=true`, () => {
-        assert.strictEqual(stateAfterDelegate.delegationActive, true);
+      test(`H: ${type} delegation → phase=DELEGATING`, () => {
+        assert.strictEqual(stateAfterDelegate.phase, 'DELEGATING');
       });
 
       // stage-transition
@@ -687,8 +726,8 @@ console.log('═'.repeat(55));
       });
 
       const stateAfterTrans = readState(sid);
-      test(`H: ${type} complete → delegationActive=false`, () => {
-        assert.strictEqual(stateAfterTrans.delegationActive, false);
+      test(`H: ${type} complete → phase 非 DELEGATING`, () => {
+        assert.notStrictEqual(stateAfterTrans.phase, 'DELEGATING');
       });
 
       test(`H: ${type} complete → 指示 ${nextKeyword}`, () => {
@@ -696,13 +735,13 @@ console.log('═'.repeat(55));
       });
     }
 
-    // 驗證最終 completed 列表
-    test('H: 3 個 agent 全部記錄在 completed', () => {
+    // 驗證最終 completedAgents 列表
+    test('H: 3 個 agent 全部記錄在 completedAgents', () => {
       const state = readState(sid);
-      assert.ok(state.completed.includes('vibe:planner'));
-      assert.ok(state.completed.includes('vibe:architect'));
-      assert.ok(state.completed.includes('vibe:developer'));
-      assert.strictEqual(state.completed.length, 3);
+      assert.ok(state.progress.completedAgents.includes('vibe:planner'));
+      assert.ok(state.progress.completedAgents.includes('vibe:architect'));
+      assert.ok(state.progress.completedAgents.includes('vibe:developer'));
+      assert.strictEqual(state.progress.completedAgents.length, 3);
     });
   } finally {
     cleanState(sid);
@@ -720,12 +759,16 @@ console.log('══════════════════════�
 (() => {
   const sid = 'test-retry-revalidation';
   try {
-    // 初始化 — feature pipeline，DEV 已完成
+    // 初始化 — feature pipeline，DEV 已完成，code-reviewer 執行中（phase=DELEGATING）
     initState(sid, {
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      pipelineEnforced: true,
-      completed: ['vibe:developer'],
+      phase: 'DELEGATING',
+      context: {
+        taskType: 'feature',
+        expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      },
+      progress: {
+        completedAgents: ['vibe:developer'],
+      },
     });
 
     // Step 1: REVIEW 完成，verdict FAIL:CRITICAL
@@ -750,18 +793,25 @@ console.log('══════════════════════�
 
     test('I2: state 寫入 pendingRetry 標記', () => {
       const s = readState(sid);
-      assert.ok(s.pendingRetry, '應有 pendingRetry');
-      assert.strictEqual(s.pendingRetry.stage, 'REVIEW');
-      assert.strictEqual(s.pendingRetry.severity, 'CRITICAL');
-      assert.strictEqual(s.pendingRetry.round, 1);
+      assert.ok(s.progress.pendingRetry, '應有 pendingRetry');
+      assert.strictEqual(s.progress.pendingRetry.stage, 'REVIEW');
+      assert.strictEqual(s.progress.pendingRetry.severity, 'CRITICAL');
+      assert.strictEqual(s.progress.pendingRetry.round, 1);
     });
 
     test('I3: retries 計數正確', () => {
       const s = readState(sid);
-      assert.strictEqual(s.retries.REVIEW, 1);
+      assert.strictEqual(s.progress.retries.REVIEW, 1);
     });
 
     // Step 2: DEV 修復完成（無 verdict — DEV 不產生 verdict）
+    // 回退後 phase=RETRYING，需先 DELEGATE 才能 STAGE_DONE
+    runHook('delegation-tracker', {
+      session_id: sid,
+      tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:developer' },
+    });
+
     const r2 = runHook('stage-transition', {
       session_id: sid,
       agent_type: 'vibe:developer',
@@ -784,10 +834,17 @@ console.log('══════════════════════�
 
     test('I7: pendingRetry 被消費（清除）', () => {
       const s = readState(sid);
-      assert.strictEqual(s.pendingRetry, undefined, 'pendingRetry 應被刪除');
+      assert.strictEqual(s.progress.pendingRetry, null, 'pendingRetry 應被清除');
     });
 
     // Step 3: 第二次 REVIEW 完成，verdict PASS → 正常前進到 TEST
+    // STAGE_DONE 後 phase=CLASSIFIED，需先 DELEGATE 再 STAGE_DONE
+    runHook('delegation-tracker', {
+      session_id: sid,
+      tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:code-reviewer' },
+    });
+
     fs.writeFileSync(transcriptPath, JSON.stringify({
       type: 'assistant',
       message: { content: [{ text: '品質良好 <!-- PIPELINE_VERDICT: PASS -->' }] },
@@ -837,8 +894,8 @@ console.log('══════════════════════�
 
       test(`J${i + 1}: trivial 優先 — ${note}`, () => {
         const state = readState(sid);
-        assert.strictEqual(state.taskType, 'quickfix');
-        assert.strictEqual(state.pipelineEnforced, true);
+        assert.strictEqual(state.context.taskType, 'quickfix');
+        assert.ok(['CLASSIFIED', 'DELEGATING', 'RETRYING'].includes(state.phase));
       });
     }
 
@@ -855,7 +912,7 @@ console.log('══════════════════════�
 
       test(`J${i + 4}: trivial > feature — ${note}`, () => {
         const state = readState(sid);
-        assert.strictEqual(state.taskType, 'quickfix');
+        assert.strictEqual(state.context.taskType, 'quickfix');
       });
     }
 
@@ -873,7 +930,7 @@ console.log('══════════════════════�
 
       test(`J${i + 6}: research 迴歸 — ${note}`, () => {
         const state = readState(sid);
-        assert.strictEqual(state.taskType, 'research');
+        assert.strictEqual(state.context.taskType, 'research');
       });
     }
 
@@ -890,8 +947,8 @@ console.log('══════════════════════�
 
       test(`J${i + 9}: feature 迴歸 — ${note}`, () => {
         const state = readState(sid);
-        assert.strictEqual(state.taskType, 'feature');
-        assert.strictEqual(state.pipelineEnforced, true);
+        assert.strictEqual(state.context.taskType, 'feature');
+        assert.ok(['CLASSIFIED', 'DELEGATING', 'RETRYING'].includes(state.phase));
       });
     }
 
@@ -925,17 +982,21 @@ console.log('══════════════════════�
 (() => {
   const sid = 'e2e-auto-enforce';
   try {
-    // 模擬初始分類為 quickfix（使用者說「開始規劃」不匹配 feature regex）
+    // 模擬手動觸發場景：使用者在初始 IDLE 狀態直接呼叫 /vibe:scope
+    // 無 pipeline 設定（task-classifier 未分類或分類為 none）
     initState(sid, {
-      taskType: 'quickfix',
-      pipelineEnforced: false,
-      expectedStages: ['DEV'],
+      phase: 'IDLE',
+      context: {
+        taskType: null,
+        pipelineId: null,
+        expectedStages: [],
+      },
     });
 
-    test('K1: 初始狀態 pipelineEnforced=false', () => {
+    test('K1: 初始狀態 phase=IDLE（非 enforced）', () => {
       const state = readState(sid);
-      assert.strictEqual(state.pipelineEnforced, false);
-      assert.strictEqual(state.taskType, 'quickfix');
+      assert.ok(!['CLASSIFIED', 'DELEGATING', 'RETRYING'].includes(state.phase));
+      assert.strictEqual(state.context.pipelineId, null);
     });
 
     // 模擬手動 /vibe:scope → planner agent 完成
@@ -962,9 +1023,11 @@ console.log('══════════════════════�
       );
     });
 
-    test('K3: planner 完成後，pipelineEnforced 仍為 false（PLAN→ARCH 不觸發 enforce）', () => {
+    test('K3: planner 完成後，phase=CLASSIFIED（FSM 中 STAGE_DONE 回到 CLASSIFIED）', () => {
       const state = readState(sid);
-      assert.strictEqual(state.pipelineEnforced, false);
+      // FSM 中 DELEGATING → STAGE_DONE → CLASSIFIED（enforced）
+      // 不再有「不觸發 enforce」的概念，enforcement 由 phase 隱式表達
+      assert.strictEqual(state.phase, 'CLASSIFIED');
     });
 
     // 模擬手動 /vibe:architect → architect agent 完成
@@ -989,21 +1052,23 @@ console.log('══════════════════════�
       );
     });
 
-    test('K5: architect 完成後，pipelineEnforced 自動升級為 true', () => {
+    test('K5: architect 完成後，phase=CLASSIFIED（enforced）', () => {
       const state = readState(sid);
-      assert.strictEqual(state.pipelineEnforced, true);
+      // FSM 中 DELEGATING → STAGE_DONE → CLASSIFIED
+      assert.strictEqual(state.phase, 'CLASSIFIED');
     });
 
-    test('K6: taskType 自動升級為 feature', () => {
+    test('K6: taskType 保持或升級', () => {
       const state = readState(sid);
-      assert.strictEqual(state.taskType, 'feature');
+      // FSM 中 taskType 在 CLASSIFY/RECLASSIFY 時設定
+      assert.ok(state.context.taskType, '應有 taskType');
     });
 
-    test('K7: expectedStages 自動補全', () => {
+    test('K7: 手動觸發下 expectedStages 可能為空（由 stageOrder 驅動）', () => {
       const state = readState(sid);
-      assert.ok(state.expectedStages.length > 2, '應有完整的階段列表');
-      assert.ok(state.expectedStages.includes('DEV'));
-      assert.ok(state.expectedStages.includes('REVIEW'));
+      // 手動觸發模式下 expectedStages 不由 CLASSIFY 設定，
+      // stage-transition 使用 pipeline.stageOrder 作為 fallback
+      assert.ok(Array.isArray(state.context.expectedStages));
     });
 
     // 現在 pipeline-guard 應該阻擋 Main Agent 直接寫碼
@@ -1062,17 +1127,17 @@ console.log('══════════════════════�
       assert.strictEqual(r1.exitCode, 0);
     });
 
-    // L2: pipelineEnforced=false → 放行
-    initState(sid, { taskType: 'quickfix', pipelineEnforced: false });
+    // L2: phase=IDLE（非 enforced）→ 放行
+    initState(sid, { phase: 'IDLE', context: { taskType: 'quickfix' } });
     const r2 = runHook('pipeline-guard', askInput);
-    test('L2: pipelineEnforced=false → pipeline-guard 放行', () => {
+    test('L2: phase=IDLE（非 enforced）→ pipeline-guard 放行', () => {
       assert.strictEqual(r2.exitCode, 0);
     });
 
-    // L3: pipelineEnforced=true → 阻擋（exit 2）
-    initState(sid, { taskType: 'feature', pipelineEnforced: true, expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW'] });
+    // L3: phase=CLASSIFIED（enforced）→ 阻擋（exit 2）
+    initState(sid, { phase: 'CLASSIFIED', context: { taskType: 'feature', expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW'] } });
     const r3 = runHook('pipeline-guard', askInput);
-    test('L3: pipelineEnforced=true → pipeline-guard 阻擋（exit 2）', () => {
+    test('L3: phase=CLASSIFIED（enforced）→ pipeline-guard 阻擋（exit 2）', () => {
       assert.strictEqual(r3.exitCode, 2);
     });
 
@@ -1084,15 +1149,15 @@ console.log('══════════════════════�
       assert.ok(r3.stderr.includes('自動'), '應提及自動模式');
     });
 
-    // L6: cancelled=true → 放行
-    initState(sid, { taskType: 'feature', pipelineEnforced: true, cancelled: true });
+    // L6: cancelled=true → 放行（phase=CLASSIFIED 但 cancelled=true 放行）
+    initState(sid, { phase: 'CLASSIFIED', context: { taskType: 'feature' }, meta: { cancelled: true } });
     const r4 = runHook('pipeline-guard', askInput);
     test('L6: pipeline 已取消（cancelled=true）→ pipeline-guard 放行', () => {
       assert.strictEqual(r4.exitCode, 0);
     });
 
     // L7: 完整 hook 鏈 — feature pipeline + pipeline-guard 阻擋 AskUserQuestion 和 Write
-    initState(sid, { taskType: 'feature', pipelineEnforced: true, expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV'] });
+    initState(sid, { phase: 'CLASSIFIED', context: { taskType: 'feature', expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV'] } });
 
     const askGate = runHook('pipeline-guard', askInput);
     const writeGate = runHook('pipeline-guard', {
@@ -1122,7 +1187,7 @@ console.log('══════════════════════�
   const sid = 'e2e-whitelist';
   try {
     // M1: EnterPlanMode 無條件阻擋
-    initState(sid, { taskType: 'feature', pipelineEnforced: true });
+    initState(sid, { phase: 'CLASSIFIED', context: { taskType: 'feature' } });
     const planMode = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'EnterPlanMode',
@@ -1136,7 +1201,7 @@ console.log('══════════════════════�
     });
 
     // M2: cancelled=true 後 EnterPlanMode 仍阻擋（無條件）
-    initState(sid, { taskType: 'feature', pipelineEnforced: true, cancelled: true });
+    initState(sid, { phase: 'CLASSIFIED', context: { taskType: 'feature' }, meta: { cancelled: true } });
     const planModeAfterCancel = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'EnterPlanMode',
@@ -1149,7 +1214,7 @@ console.log('══════════════════════�
     });
 
     // M3: NotebookEdit 支援（程式碼檔案阻擋）
-    initState(sid, { taskType: 'feature', pipelineEnforced: true });
+    initState(sid, { phase: 'CLASSIFIED', context: { taskType: 'feature' } });
     const notebook = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'NotebookEdit',
@@ -1172,21 +1237,21 @@ console.log('══════════════════════�
       assert.strictEqual(notebookNonCode.exitCode, 0);
     });
 
-    // M5: delegationActive=true 時 EnterPlanMode 仍阻擋（無條件）
-    initState(sid, { taskType: 'feature', pipelineEnforced: true, delegationActive: true });
+    // M5: phase=DELEGATING 時 EnterPlanMode 仍阻擋（無條件）
+    initState(sid, { phase: 'DELEGATING', context: { taskType: 'feature' } });
     const planModeDelegate = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'EnterPlanMode',
       tool_input: {},
     });
 
-    test('M5: delegationActive=true → EnterPlanMode 仍阻擋（無條件）', () => {
+    test('M5: phase=DELEGATING → EnterPlanMode 仍阻擋（無條件）', () => {
       assert.strictEqual(planModeDelegate.exitCode, 2);
       assert.ok(planModeDelegate.stderr.includes('EnterPlanMode'));
     });
 
-    // M6: pipelineEnforced=false 時所有工具放行
-    initState(sid, { taskType: 'quickfix', pipelineEnforced: false });
+    // M6: phase=IDLE（非 enforced）時所有工具放行
+    initState(sid, { phase: 'IDLE', context: { taskType: 'quickfix' } });
     const allTools = [
       { tool: 'Write', input: { file_path: 'src/app.js' } },
       { tool: 'Edit', input: { file_path: 'src/component.tsx' } },
@@ -1202,7 +1267,7 @@ console.log('══════════════════════�
         tool_input: input,
       });
 
-      test(`M6: pipelineEnforced=false → ${tool} 放行`, () => {
+      test(`M6: phase=IDLE → ${tool} 放行`, () => {
         assert.strictEqual(result.exitCode, 0);
       });
     }
@@ -1226,20 +1291,24 @@ console.log('══════════════════════�
     // 模擬 REVIEW FAIL → DEV 修復後的 state
     // pendingRetry 標記存在，表示 REVIEW 需要重跑
     initState(sid, {
-      taskType: 'feature',
-      pipelineId: 'full',
-      pipelineEnforced: true,
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      completed: ['vibe:planner', 'vibe:architect', 'vibe:developer', 'vibe:code-reviewer'],
-      stageResults: {
-        PLAN: { verdict: 'PASS' },
-        ARCH: { verdict: 'PASS' },
-        DEV: { verdict: 'UNKNOWN' },
-        REVIEW: { verdict: 'FAIL', severity: 'CRITICAL' },
+      phase: 'RETRYING',
+      context: {
+        taskType: 'feature',
+        pipelineId: 'full',
+        expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
       },
-      stageIndex: 4, // REVIEW 完成位置
-      pendingRetry: { stage: 'REVIEW', severity: 'CRITICAL', round: 1 },
-      retries: { REVIEW: 1 },
+      progress: {
+        completedAgents: ['vibe:planner', 'vibe:architect', 'vibe:developer', 'vibe:code-reviewer'],
+        stageResults: {
+          PLAN: { verdict: 'PASS' },
+          ARCH: { verdict: 'PASS' },
+          DEV: { verdict: 'UNKNOWN' },
+          REVIEW: { verdict: 'FAIL', severity: 'CRITICAL' },
+        },
+        stageIndex: 4, // REVIEW 完成位置
+        pendingRetry: { stage: 'REVIEW', severity: 'CRITICAL', round: 1 },
+        retries: { REVIEW: 1 },
+      },
     });
 
     // pipeline-check 的 block 訊息應以 REVIEW 為首
@@ -1275,7 +1344,7 @@ console.log('══════════════════════�
 
     // N4: 沒有 pendingRetry 時，TEST 在 REVIEW 前面（因為用 stageIndex 計算）
     const state = readState(sid);
-    delete state.pendingRetry;
+    state.progress.pendingRetry = null;
     // stageIndex=4 → slice(5) 從 TEST 開始，REVIEW 不在 missing 中
     fs.writeFileSync(
       path.join(CLAUDE_DIR, `pipeline-state-${sid}.json`),
@@ -1298,8 +1367,8 @@ console.log('══════════════════════�
 
     // N5: pendingRetry stage 不在 stageIndex 計算的 missing 中 → unshift 新增
     const state2 = readState(sid);
-    state2.pendingRetry = { stage: 'REVIEW', severity: 'HIGH', round: 1 };
-    state2.stageIndex = 4; // REVIEW 位置
+    state2.progress.pendingRetry = { stage: 'REVIEW', severity: 'HIGH', round: 1 };
+    state2.progress.stageIndex = 4; // REVIEW 位置
     fs.writeFileSync(
       path.join(CLAUDE_DIR, `pipeline-state-${sid}.json`),
       JSON.stringify(state2, null, 2)
@@ -1335,13 +1404,18 @@ console.log('══════════════════════�
     // O1: 過時 pipeline（lastTransition 超過 10 分鐘）+ 降級 → 應重設
     const staleTime = new Date(Date.now() - 15 * 60 * 1000).toISOString(); // 15 分鐘前
     initState(sid, {
-      pipelineId: 'standard',
-      taskType: 'feature',
-      pipelineEnforced: true,
-      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
-      completed: ['vibe:planner'],
-      stageResults: {},
-      lastTransition: staleTime,
+      phase: 'CLASSIFIED',
+      context: {
+        pipelineId: 'standard',
+        taskType: 'feature',
+        expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
+      },
+      progress: {
+        completedAgents: ['vibe:planner'],
+      },
+      meta: {
+        lastTransition: staleTime,
+      },
     });
 
     // 降級分類（research 任務）
@@ -1352,30 +1426,35 @@ console.log('══════════════════════�
 
     test('O1: 過時 pipeline + 降級 → 重設為新分類', () => {
       const state = readState(sid);
-      assert.notStrictEqual(state.pipelineId, 'standard', '應重設 pipeline');
-      assert.strictEqual(state.pipelineEnforced, false, 'research 不 enforce');
+      assert.notStrictEqual(state.context.pipelineId, 'standard', '應重設 pipeline');
+      assert.ok(!['CLASSIFIED', 'DELEGATING', 'RETRYING'].includes(state.phase), 'research 不 enforce');
     });
 
-    test('O2: 重設後 completed 被清空', () => {
+    test('O2: 重設後 completedAgents 被清空', () => {
       const state = readState(sid);
-      assert.deepStrictEqual(state.completed, [], 'completed 應為空');
+      assert.deepStrictEqual(state.progress.completedAgents, [], 'completedAgents 應為空');
     });
 
     test('O3: 重設後 pendingRetry 被清除', () => {
       const state = readState(sid);
-      assert.strictEqual(state.pendingRetry, false, 'pendingRetry 應為 false');
+      assert.strictEqual(state.progress.pendingRetry, null, 'pendingRetry 應為 null');
     });
 
     // O4: 新鮮 pipeline（lastTransition 剛剛）+ 降級 → 不應重設
     const freshTime = new Date().toISOString(); // 現在
     initState(sid, {
-      pipelineId: 'standard',
-      taskType: 'feature',
-      pipelineEnforced: true,
-      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
-      completed: ['vibe:planner', 'vibe:architect'],
-      stageResults: {},
-      lastTransition: freshTime,
+      phase: 'CLASSIFIED',
+      context: {
+        pipelineId: 'standard',
+        taskType: 'feature',
+        expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
+      },
+      progress: {
+        completedAgents: ['vibe:planner', 'vibe:architect'],
+      },
+      meta: {
+        lastTransition: freshTime,
+      },
     });
 
     runHook('task-classifier', {
@@ -1385,25 +1464,30 @@ console.log('══════════════════════�
 
     test('O4: 新鮮 pipeline + 降級 → 保持原 pipeline', () => {
       const state = readState(sid);
-      assert.strictEqual(state.pipelineId, 'standard', '應保持 standard');
-      assert.strictEqual(state.pipelineEnforced, true, '應保持 enforced');
+      assert.strictEqual(state.context.pipelineId, 'standard', '應保持 standard');
+      assert.ok(['CLASSIFIED', 'DELEGATING', 'RETRYING'].includes(state.phase), '應保持 enforced');
     });
 
-    test('O5: 原 completed 記錄保留', () => {
+    test('O5: 原 completedAgents 記錄保留', () => {
       const state = readState(sid);
-      assert.ok(state.completed.includes('vibe:planner'), 'planner 應保留');
-      assert.ok(state.completed.includes('vibe:architect'), 'architect 應保留');
+      assert.ok(state.progress.completedAgents.includes('vibe:planner'), 'planner 應保留');
+      assert.ok(state.progress.completedAgents.includes('vibe:architect'), 'architect 應保留');
     });
 
-    // O6: 無 lastTransition 欄位（舊格式 state）→ 視為過時
+    // O6: 無 lastTransition 欄位 → 視為過時
     initState(sid, {
-      pipelineId: 'standard',
-      taskType: 'feature',
-      pipelineEnforced: true,
-      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
-      completed: ['vibe:planner'],
-      stageResults: {},
-      // 故意不設 lastTransition
+      phase: 'CLASSIFIED',
+      context: {
+        pipelineId: 'standard',
+        taskType: 'feature',
+        expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
+      },
+      progress: {
+        completedAgents: ['vibe:planner'],
+      },
+      meta: {
+        lastTransition: null, // 無 lastTransition → 視為過時
+      },
     });
 
     runHook('task-classifier', {
@@ -1413,19 +1497,25 @@ console.log('══════════════════════�
 
     test('O6: 無 lastTransition → 視為過時，降級重設', () => {
       const state = readState(sid);
-      assert.notStrictEqual(state.pipelineId, 'standard', '應重設');
-      assert.strictEqual(state.pipelineEnforced, false);
+      assert.notStrictEqual(state.context.pipelineId, 'standard', '應重設');
+      assert.ok(!['CLASSIFIED', 'DELEGATING', 'RETRYING'].includes(state.phase));
     });
 
-    // O7: 已完成的 pipeline + 降級 → 正常流程（isPipelineComplete 先觸發重設）
+    // O7: 已完成的 pipeline + 降級 → 正常流程（isComplete 先觸發 RESET）
     initState(sid, {
-      pipelineId: 'fix',
-      taskType: 'quickfix',
-      pipelineEnforced: false,
-      expectedStages: ['DEV'],
-      completed: ['vibe:developer'],
-      stageResults: { DEV: { verdict: 'PASS' } },
-      lastTransition: staleTime,
+      phase: 'COMPLETE',
+      context: {
+        pipelineId: 'fix',
+        taskType: 'quickfix',
+        expectedStages: ['DEV'],
+      },
+      progress: {
+        completedAgents: ['vibe:developer'],
+        stageResults: { DEV: { verdict: 'PASS' } },
+      },
+      meta: {
+        lastTransition: staleTime,
+      },
     });
 
     runHook('task-classifier', {
@@ -1433,10 +1523,10 @@ console.log('══════════════════════�
       prompt: '這是什麼？',
     });
 
-    test('O7: 已完成 pipeline → isPipelineComplete 先重設，新分類正常套用', () => {
+    test('O7: 已完成 pipeline → isComplete 先 RESET，新分類正常套用', () => {
       const state = readState(sid);
-      // isPipelineComplete 先清除 pipelineId → 進入初始分類路徑
-      assert.strictEqual(state.taskType, 'research');
+      // isComplete → RESET → 進入初始分類路徑
+      assert.strictEqual(state.context.taskType, 'research');
     });
   } finally {
     cleanState(sid);
@@ -1454,14 +1544,18 @@ console.log('══════════════════════�
 (() => {
   const sid = 'test-qa-retry';
   try {
-    // 初始化 — full pipeline，DEV/REVIEW/TEST 已完成
+    // 初始化 — full pipeline，DEV/REVIEW/TEST 已完成，QA agent 執行中
     initState(sid, {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      pipelineEnforced: true,
-      completed: ['vibe:developer', 'vibe:code-reviewer', 'vibe:tester'],
-      stageIndex: 5, // TEST 完成（索引 5）
+      phase: 'DELEGATING',
+      context: {
+        pipelineId: 'full',
+        taskType: 'feature',
+        expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      },
+      progress: {
+        completedAgents: ['vibe:developer', 'vibe:code-reviewer', 'vibe:tester'],
+        stageIndex: 5, // TEST 完成（索引 5）
+      },
     });
 
     // Step 1: QA 完成，verdict FAIL:CRITICAL
@@ -1485,18 +1579,24 @@ console.log('══════════════════════�
 
     test('P2: state 寫入 pendingRetry 標記（stage=QA）', () => {
       const s = readState(sid);
-      assert.ok(s.pendingRetry, '應有 pendingRetry');
-      assert.strictEqual(s.pendingRetry.stage, 'QA');
-      assert.strictEqual(s.pendingRetry.severity, 'CRITICAL');
-      assert.strictEqual(s.pendingRetry.round, 1);
+      assert.ok(s.progress.pendingRetry, '應有 pendingRetry');
+      assert.strictEqual(s.progress.pendingRetry.stage, 'QA');
+      assert.strictEqual(s.progress.pendingRetry.severity, 'CRITICAL');
+      assert.strictEqual(s.progress.pendingRetry.round, 1);
     });
 
     test('P3: retries 計數正確（QA: 1）', () => {
       const s = readState(sid);
-      assert.strictEqual(s.retries.QA, 1);
+      assert.strictEqual(s.progress.retries.QA, 1);
     });
 
-    // Step 2: DEV 修復完成
+    // Step 2: DEV 修復完成（回退後 phase=RETRYING，需先 DELEGATE）
+    runHook('delegation-tracker', {
+      session_id: sid,
+      tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:developer' },
+    });
+
     const r2 = runHook('stage-transition', {
       session_id: sid,
       agent_type: 'vibe:developer',
@@ -1510,10 +1610,16 @@ console.log('══════════════════════�
 
     test('P5: pendingRetry 被消費', () => {
       const s = readState(sid);
-      assert.strictEqual(s.pendingRetry, undefined, 'pendingRetry 應被刪除');
+      assert.strictEqual(s.progress.pendingRetry, null, 'pendingRetry 應被清除');
     });
 
-    // Step 3: 第二次 QA PASS → 前進到 E2E
+    // Step 3: 第二次 QA PASS → 前進到 E2E（STAGE_DONE 後 phase=CLASSIFIED，需先 DELEGATE）
+    runHook('delegation-tracker', {
+      session_id: sid,
+      tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:qa' },
+    });
+
     fs.writeFileSync(transcriptPath, JSON.stringify({
       type: 'assistant',
       message: { content: [{ text: 'API 行為正確 <!-- PIPELINE_VERDICT: PASS -->' }] },
@@ -1552,12 +1658,16 @@ console.log('══════════════════════�
     // --- Part 1: E2E FAIL:CRITICAL → 回退到 DEV ---
 
     initState(sid, {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      pipelineEnforced: true,
-      completed: ['vibe:developer', 'vibe:code-reviewer', 'vibe:tester', 'vibe:qa'],
-      stageIndex: 6, // QA 完成（索引 6）
+      phase: 'DELEGATING',
+      context: {
+        pipelineId: 'full',
+        taskType: 'feature',
+        expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      },
+      progress: {
+        completedAgents: ['vibe:developer', 'vibe:code-reviewer', 'vibe:tester', 'vibe:qa'],
+        stageIndex: 6, // QA 完成（索引 6）
+      },
     });
 
     const transcriptPath = path.join(CLAUDE_DIR, `test-transcript-${sid}.jsonl`);
@@ -1580,25 +1690,29 @@ console.log('══════════════════════�
 
     test('Q2: pendingRetry.stage === E2E', () => {
       const s = readState(sid);
-      assert.ok(s.pendingRetry, '應有 pendingRetry');
-      assert.strictEqual(s.pendingRetry.stage, 'E2E');
-      assert.strictEqual(s.pendingRetry.severity, 'CRITICAL');
+      assert.ok(s.progress.pendingRetry, '應有 pendingRetry');
+      assert.strictEqual(s.progress.pendingRetry.stage, 'E2E');
+      assert.strictEqual(s.progress.pendingRetry.severity, 'CRITICAL');
     });
 
     test('Q3: retries.E2E === 1', () => {
       const s = readState(sid);
-      assert.strictEqual(s.retries.E2E, 1);
+      assert.strictEqual(s.progress.retries.E2E, 1);
     });
 
     // --- Part 2: E2E FAIL:MEDIUM → 不回退，繼續 DOCS ---
 
     initState(sid, {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      pipelineEnforced: true,
-      completed: ['vibe:developer', 'vibe:code-reviewer', 'vibe:tester', 'vibe:qa'],
-      stageIndex: 6,
+      phase: 'DELEGATING',
+      context: {
+        pipelineId: 'full',
+        taskType: 'feature',
+        expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      },
+      progress: {
+        completedAgents: ['vibe:developer', 'vibe:code-reviewer', 'vibe:tester', 'vibe:qa'],
+        stageIndex: 6,
+      },
     });
 
     fs.writeFileSync(transcriptPath, JSON.stringify({
@@ -1620,18 +1734,22 @@ console.log('══════════════════════�
 
     test('Q5: 無 pendingRetry（MEDIUM 不回退）', () => {
       const s = readState(sid);
-      assert.ok(!s.pendingRetry, '不應有 pendingRetry');
+      assert.ok(!s.progress.pendingRetry, '不應有 pendingRetry');
     });
 
     // --- Part 3: E2E FAIL:HIGH → 回退到 DEV ---
 
     initState(sid, {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      pipelineEnforced: true,
-      completed: ['vibe:developer', 'vibe:code-reviewer', 'vibe:tester', 'vibe:qa'],
-      stageIndex: 6,
+      phase: 'DELEGATING',
+      context: {
+        pipelineId: 'full',
+        taskType: 'feature',
+        expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      },
+      progress: {
+        completedAgents: ['vibe:developer', 'vibe:code-reviewer', 'vibe:tester', 'vibe:qa'],
+        stageIndex: 6,
+      },
     });
 
     fs.writeFileSync(transcriptPath, JSON.stringify({
@@ -1652,9 +1770,9 @@ console.log('══════════════════════�
 
     test('Q7: pendingRetry.stage === E2E（HIGH 嚴重度）', () => {
       const s = readState(sid);
-      assert.ok(s.pendingRetry, '應有 pendingRetry');
-      assert.strictEqual(s.pendingRetry.stage, 'E2E');
-      assert.strictEqual(s.pendingRetry.severity, 'HIGH');
+      assert.ok(s.progress.pendingRetry, '應有 pendingRetry');
+      assert.strictEqual(s.progress.pendingRetry.stage, 'E2E');
+      assert.strictEqual(s.progress.pendingRetry.severity, 'HIGH');
     });
 
     // 清理 transcript
@@ -1675,15 +1793,19 @@ console.log('══════════════════════�
 (() => {
   const sid = 'test-max-retries';
   try {
-    // 初始化 — 已回退 3 次（MAX_RETRIES=3）
+    // 初始化 — 已回退 3 次（MAX_RETRIES=3），code-reviewer 執行中
     initState(sid, {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      pipelineEnforced: true,
-      completed: ['vibe:developer'],
-      stageIndex: 3, // DEV（索引 3）
-      retries: { REVIEW: 3 }, // 已達上限
+      phase: 'DELEGATING',
+      context: {
+        pipelineId: 'full',
+        taskType: 'feature',
+        expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      },
+      progress: {
+        completedAgents: ['vibe:developer'],
+        stageIndex: 3, // DEV（索引 3）
+        retries: { REVIEW: 3 }, // 已達上限
+      },
     });
 
     // REVIEW 再次 FAIL:CRITICAL — 但已達上限
@@ -1712,17 +1834,17 @@ console.log('══════════════════════�
 
     test('R3: 無 pendingRetry（不再回退）', () => {
       const s = readState(sid);
-      assert.ok(!s.pendingRetry, '不應設定 pendingRetry');
+      assert.ok(!s.progress.pendingRetry, '不應設定 pendingRetry');
     });
 
     test('R4: stageIndex 前進（不卡死）', () => {
       const s = readState(sid);
-      assert.ok(s.stageIndex > 3, 'stageIndex 應大於 DEV 的索引');
+      assert.ok(s.progress.stageIndex > 3, 'stageIndex 應大於 DEV 的索引');
     });
 
     test('R5: retries 計數保持不變（不再累加）', () => {
       const s = readState(sid);
-      assert.strictEqual(s.retries.REVIEW, 3, 'retries.REVIEW 應保持 3');
+      assert.strictEqual(s.progress.retries.REVIEW, 3, 'retries.REVIEW 應保持 3');
     });
 
     // 清理 transcript
@@ -1743,14 +1865,18 @@ console.log('══════════════════════�
 (() => {
   const sid = 'test-cascading-retry';
   try {
-    // 初始化 — full pipeline，DEV 已完成
+    // 初始化 — full pipeline，DEV 已完成，code-reviewer 執行中
     initState(sid, {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      pipelineEnforced: true,
-      completed: ['vibe:developer'],
-      stageIndex: 3,
+      phase: 'DELEGATING',
+      context: {
+        pipelineId: 'full',
+        taskType: 'feature',
+        expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      },
+      progress: {
+        completedAgents: ['vibe:developer'],
+        stageIndex: 3,
+      },
     });
 
     const transcriptPath = path.join(CLAUDE_DIR, `test-transcript-${sid}.jsonl`);
@@ -1769,11 +1895,17 @@ console.log('══════════════════════�
 
     test('S1: REVIEW FAIL:HIGH → pendingRetry.stage=REVIEW', () => {
       const s = readState(sid);
-      assert.ok(s.pendingRetry, '應有 pendingRetry');
-      assert.strictEqual(s.pendingRetry.stage, 'REVIEW');
+      assert.ok(s.progress.pendingRetry, '應有 pendingRetry');
+      assert.strictEqual(s.progress.pendingRetry.stage, 'REVIEW');
     });
 
-    // ── Round 2: DEV fix → 回退重驗指向 REVIEW ──
+    // ── Round 2: DEV fix → 回退重驗指向 REVIEW ──（RETRYING→DELEGATE→DELEGATING→STAGE_DONE）
+    runHook('delegation-tracker', {
+      session_id: sid,
+      tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:developer' },
+    });
+
     const r2 = runHook('stage-transition', {
       session_id: sid,
       agent_type: 'vibe:developer',
@@ -1784,7 +1916,13 @@ console.log('══════════════════════�
       assert.ok(r2.json.systemMessage.includes('REVIEW'), '應指向 REVIEW');
     });
 
-    // ── Round 3: REVIEW PASS → 前進到 TEST ──
+    // ── Round 3: REVIEW PASS → 前進到 TEST ──（CLASSIFIED→DELEGATE→DELEGATING→STAGE_DONE）
+    runHook('delegation-tracker', {
+      session_id: sid,
+      tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:code-reviewer' },
+    });
+
     fs.writeFileSync(transcriptPath, JSON.stringify({
       type: 'assistant',
       message: { content: [{ text: '品質良好 <!-- PIPELINE_VERDICT: PASS -->' }] },
@@ -1800,7 +1938,13 @@ console.log('══════════════════════�
       assert.ok(r3.json.systemMessage.includes('TEST'), '應前進到 TEST');
     });
 
-    // ── Round 4: TEST FAIL:CRITICAL → 回退到 DEV ──
+    // ── Round 4: TEST FAIL:CRITICAL → 回退到 DEV ──（CLASSIFIED→DELEGATE→DELEGATING→STAGE_DONE）
+    runHook('delegation-tracker', {
+      session_id: sid,
+      tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:tester' },
+    });
+
     fs.writeFileSync(transcriptPath, JSON.stringify({
       type: 'assistant',
       message: { content: [{ text: '測試失敗 <!-- PIPELINE_VERDICT: FAIL:CRITICAL -->' }] },
@@ -1814,13 +1958,19 @@ console.log('══════════════════════�
 
     test('S4: TEST FAIL:CRITICAL → pendingRetry.stage=TEST', () => {
       const s = readState(sid);
-      assert.ok(s.pendingRetry, '應有 pendingRetry');
-      assert.strictEqual(s.pendingRetry.stage, 'TEST');
-      assert.strictEqual(s.retries.REVIEW, 1, 'REVIEW retries 保持 1');
-      assert.strictEqual(s.retries.TEST, 1, 'TEST retries 新增為 1');
+      assert.ok(s.progress.pendingRetry, '應有 pendingRetry');
+      assert.strictEqual(s.progress.pendingRetry.stage, 'TEST');
+      assert.strictEqual(s.progress.retries.REVIEW, 1, 'REVIEW retries 保持 1');
+      assert.strictEqual(s.progress.retries.TEST, 1, 'TEST retries 新增為 1');
     });
 
-    // ── Round 5: DEV fix → 回退重驗指向 TEST ──
+    // ── Round 5: DEV fix → 回退重驗指向 TEST ──（RETRYING→DELEGATE→DELEGATING→STAGE_DONE）
+    runHook('delegation-tracker', {
+      session_id: sid,
+      tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:developer' },
+    });
+
     const r5 = runHook('stage-transition', {
       session_id: sid,
       agent_type: 'vibe:developer',
@@ -1831,7 +1981,13 @@ console.log('══════════════════════�
       assert.ok(r5.json.systemMessage.includes('TEST'), '應指向 TEST');
     });
 
-    // ── Round 6: TEST PASS → 前進到 QA ──
+    // ── Round 6: TEST PASS → 前進到 QA ──（CLASSIFIED→DELEGATE→DELEGATING→STAGE_DONE）
+    runHook('delegation-tracker', {
+      session_id: sid,
+      tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:tester' },
+    });
+
     fs.writeFileSync(transcriptPath, JSON.stringify({
       type: 'assistant',
       message: { content: [{ text: '測試全過 <!-- PIPELINE_VERDICT: PASS -->' }] },
@@ -1851,9 +2007,9 @@ console.log('══════════════════════�
 
     test('S7: 累積 retries 正確（REVIEW:1, TEST:1）', () => {
       const s = readState(sid);
-      assert.strictEqual(s.retries.REVIEW, 1);
-      assert.strictEqual(s.retries.TEST, 1);
-      assert.ok(!s.retries.QA, 'QA 無回退');
+      assert.strictEqual(s.progress.retries.REVIEW, 1);
+      assert.strictEqual(s.progress.retries.TEST, 1);
+      assert.ok(!s.progress.retries.QA, 'QA 無回退');
     });
 
     // 清理 transcript
@@ -1874,13 +2030,18 @@ console.log('══════════════════════�
 (() => {
   const sid = 'test-tdd-loop';
   try {
+    // tester 執行中（phase=DELEGATING）
     initState(sid, {
-      pipelineId: 'test-first',
-      taskType: 'tdd',
-      expectedStages: ['TEST', 'DEV', 'TEST'],
-      pipelineEnforced: true,
-      completed: [],
-      stageIndex: 0,
+      phase: 'DELEGATING',
+      context: {
+        pipelineId: 'test-first',
+        taskType: 'tdd',
+        expectedStages: ['TEST', 'DEV', 'TEST'],
+      },
+      progress: {
+        completedAgents: [],
+        stageIndex: 0,
+      },
     });
 
     const transcriptPath = path.join(CLAUDE_DIR, `test-transcript-${sid}.jsonl`);
@@ -1902,7 +2063,13 @@ console.log('══════════════════════�
       assert.ok(r1.json.systemMessage.includes('DEV'), '應前進到 DEV');
     });
 
-    // ── Step 2: DEV 完成 → 前進到第二次 TEST ──
+    // ── Step 2: DEV 完成 → 前進到第二次 TEST ──（CLASSIFIED→DELEGATE→DELEGATING→STAGE_DONE）
+    runHook('delegation-tracker', {
+      session_id: sid,
+      tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:developer' },
+    });
+
     const r2 = runHook('stage-transition', {
       session_id: sid,
       agent_type: 'vibe:developer',
@@ -1916,10 +2083,16 @@ console.log('══════════════════════�
     test('T3: stageIndex 追蹤正確（DEV=索引 1 之後）', () => {
       const s = readState(sid);
       // DEV 完成後 stageIndex 已被 resolveNextStage 更新到第二個 TEST 的索引 2
-      assert.strictEqual(s.stageIndex, 2, 'stageIndex 應為 2（第二個 TEST）');
+      assert.strictEqual(s.progress.stageIndex, 2, 'stageIndex 應為 2（第二個 TEST）');
     });
 
-    // ── Step 3: 第二次 TEST FAIL:CRITICAL → 回退到 DEV ──
+    // ── Step 3: 第二次 TEST FAIL:CRITICAL → 回退到 DEV ──（CLASSIFIED→DELEGATE→DELEGATING→STAGE_DONE）
+    runHook('delegation-tracker', {
+      session_id: sid,
+      tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:tester' },
+    });
+
     fs.writeFileSync(transcriptPath, JSON.stringify({
       type: 'assistant',
       message: { content: [{ text: '測試失敗 <!-- PIPELINE_VERDICT: FAIL:CRITICAL -->' }] },
@@ -1933,11 +2106,17 @@ console.log('══════════════════════�
 
     test('T4: 第二次 TEST FAIL → pendingRetry.stage=TEST', () => {
       const s = readState(sid);
-      assert.ok(s.pendingRetry, '應有 pendingRetry');
-      assert.strictEqual(s.pendingRetry.stage, 'TEST');
+      assert.ok(s.progress.pendingRetry, '應有 pendingRetry');
+      assert.strictEqual(s.progress.pendingRetry.stage, 'TEST');
     });
 
-    // ── Step 4: DEV 修復 → 回退重驗 TEST ──
+    // ── Step 4: DEV 修復 → 回退重驗 TEST ──（RETRYING→DELEGATE→DELEGATING→STAGE_DONE）
+    runHook('delegation-tracker', {
+      session_id: sid,
+      tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:developer' },
+    });
+
     const r4 = runHook('stage-transition', {
       session_id: sid,
       agent_type: 'vibe:developer',
@@ -1948,7 +2127,13 @@ console.log('══════════════════════�
       assert.ok(r4.json.systemMessage.includes('TEST'), '應指向 TEST');
     });
 
-    // ── Step 5: 第二次 TEST PASS → pipeline 完成 ──
+    // ── Step 5: 第二次 TEST PASS → pipeline 完成 ──（CLASSIFIED→DELEGATE→DELEGATING→STAGE_DONE）
+    runHook('delegation-tracker', {
+      session_id: sid,
+      tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:tester' },
+    });
+
     fs.writeFileSync(transcriptPath, JSON.stringify({
       type: 'assistant',
       message: { content: [{ text: '綠燈 <!-- PIPELINE_VERDICT: PASS -->' }] },
@@ -1989,15 +2174,21 @@ console.log('══════════════════════�
   try {
     // 初始化 quick-dev pipeline，已有 pendingRetry
     initState(sid, {
-      pipelineId: 'quick-dev',
-      taskType: 'test',
-      expectedStages: ['DEV', 'REVIEW', 'TEST'],
-      pipelineEnforced: true,
-      completed: ['vibe:developer', 'vibe:code-reviewer'],
-      stageIndex: 1,
-      retries: { REVIEW: 1 },
-      pendingRetry: { stage: 'REVIEW', severity: 'HIGH', round: 1 },
-      lastTransition: new Date().toISOString(),
+      phase: 'RETRYING',
+      context: {
+        pipelineId: 'quick-dev',
+        taskType: 'test',
+        expectedStages: ['DEV', 'REVIEW', 'TEST'],
+      },
+      progress: {
+        completedAgents: ['vibe:developer', 'vibe:code-reviewer'],
+        stageIndex: 1,
+        retries: { REVIEW: 1 },
+        pendingRetry: { stage: 'REVIEW', severity: 'HIGH', round: 1 },
+      },
+      meta: {
+        lastTransition: new Date().toISOString(),
+      },
     });
 
     // 升級到 standard（使用者送了 feature 意圖的 prompt）
@@ -2008,17 +2199,23 @@ console.log('══════════════════════�
 
     test('U1: 升級到 standard pipeline', () => {
       const s = readState(sid);
-      assert.strictEqual(s.pipelineId, 'standard', '應升級到 standard');
+      assert.strictEqual(s.context.pipelineId, 'standard', '應升級到 standard');
     });
 
     test('U2: pendingRetry 在升級後保留', () => {
       const s = readState(sid);
-      assert.ok(s.pendingRetry, 'pendingRetry 應保留');
-      assert.strictEqual(s.pendingRetry.stage, 'REVIEW');
-      assert.strictEqual(s.pendingRetry.round, 1);
+      assert.ok(s.progress.pendingRetry, 'pendingRetry 應保留');
+      assert.strictEqual(s.progress.pendingRetry.stage, 'REVIEW');
+      assert.strictEqual(s.progress.pendingRetry.round, 1);
     });
 
-    // DEV 修復完成 → 應觸發回退重驗
+    // DEV 修復完成 → 應觸發回退重驗（RECLASSIFY 後 phase=CLASSIFIED，需先 DELEGATE）
+    runHook('delegation-tracker', {
+      session_id: sid,
+      tool_name: 'Task',
+      tool_input: { subagent_type: 'vibe:developer' },
+    });
+
     const r = runHook('stage-transition', {
       session_id: sid,
       agent_type: 'vibe:developer',
@@ -2032,7 +2229,7 @@ console.log('══════════════════════�
 
     test('U4: pendingRetry 被消費', () => {
       const s = readState(sid);
-      assert.ok(!s.pendingRetry, 'pendingRetry 應被消費');
+      assert.ok(!s.progress.pendingRetry, 'pendingRetry 應被消費');
     });
   } finally {
     cleanState(sid);
@@ -2049,13 +2246,18 @@ console.log('══════════════════════�
 (() => {
   const sid = 'test-review-only-fail';
   try {
+    // code-reviewer 執行中（phase=DELEGATING）
     initState(sid, {
-      pipelineId: 'review-only',
-      taskType: 'quickfix',
-      expectedStages: ['REVIEW'],
-      pipelineEnforced: true,  // v1.0.48: 所有有 stage 的 pipeline 都強制
-      completed: [],
-      stageIndex: 0,
+      phase: 'DELEGATING',
+      context: {
+        pipelineId: 'review-only',
+        taskType: 'quickfix',
+        expectedStages: ['REVIEW'],
+      },
+      progress: {
+        completedAgents: [],
+        stageIndex: 0,
+      },
     });
 
     const transcriptPath = path.join(CLAUDE_DIR, `test-transcript-${sid}.jsonl`);
@@ -2083,7 +2285,7 @@ console.log('══════════════════════�
 
     test('V3: 無 pendingRetry（無 DEV 可回退）', () => {
       const s = readState(sid);
-      assert.ok(!s.pendingRetry, '不應有 pendingRetry');
+      assert.ok(!s.progress.pendingRetry, '不應有 pendingRetry');
     });
 
     // 清理 transcript

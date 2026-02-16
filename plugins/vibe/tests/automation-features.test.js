@@ -76,15 +76,28 @@ test('PLAN 完成後建立 vibe-pipeline/plan tag', () => {
   cleanupGitTag(tagName);
 
   const statePath = createTempState(sessionId, {
-    initialized: true,
-    pipelineId: 'standard',
-    taskType: 'feature',
-    pipelineEnforced: true,
-    expectedStages: ['PLAN', 'ARCH', 'DEV'],
-    completed: [],
-    stageResults: {},
-    retries: {},
-    delegationActive: true,
+    phase: 'DELEGATING',
+    context: {
+      pipelineId: 'standard',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DEV'],
+      environment: {},
+      openspecEnabled: false,
+      needsDesign: false,
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: [],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
+    },
   });
 
   try {
@@ -109,19 +122,32 @@ test('回退場景不建立 checkpoint（shouldRetry=true）', () => {
   cleanupGitTag(tagName);
 
   const statePath = createTempState(sessionId, {
-    initialized: true,
-    pipelineId: 'standard',
-    taskType: 'feature',
-    pipelineEnforced: true,
-    expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
-    completed: ['vibe:planner', 'vibe:architect', 'vibe:developer'],
-    stageResults: {
-      PLAN: { verdict: 'PASS' },
-      ARCH: { verdict: 'PASS' },
-      DEV: { verdict: 'PASS' },
+    phase: 'DELEGATING',
+    context: {
+      pipelineId: 'standard',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
+      environment: {},
+      openspecEnabled: false,
+      needsDesign: false,
     },
-    retries: {},
-    delegationActive: true,
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: ['vibe:planner', 'vibe:architect', 'vibe:developer'],
+      stageResults: {
+        PLAN: { verdict: 'PASS' },
+        ARCH: { verdict: 'PASS' },
+        DEV: { verdict: 'PASS' },
+      },
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
+    },
   });
 
   // 建立 FAIL transcript
@@ -155,15 +181,28 @@ test('多個階段完成後各自有 tag', () => {
 
   // PLAN 完成
   let statePath = createTempState(sessionId, {
-    initialized: true,
-    pipelineId: 'standard',
-    taskType: 'feature',
-    pipelineEnforced: true,
-    expectedStages: ['PLAN', 'ARCH', 'DEV'],
-    completed: [],
-    stageResults: {},
-    retries: {},
-    delegationActive: true,
+    phase: 'DELEGATING',
+    context: {
+      pipelineId: 'standard',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DEV'],
+      environment: {},
+      openspecEnabled: false,
+      needsDesign: false,
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: [],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
+    },
   });
 
   try {
@@ -175,14 +214,28 @@ test('多個階段完成後各自有 tag', () => {
 
     // ARCH 完成
     statePath = createTempState(sessionId, {
-      initialized: true,
-      taskType: 'feature',
-      pipelineEnforced: true,
-      expectedStages: ['PLAN', 'ARCH', 'DEV'],
-      completed: ['vibe:planner'],
-      stageResults: { PLAN: { verdict: 'PASS' } },
-      retries: {},
-      delegationActive: true,
+      phase: 'DELEGATING',
+      context: {
+        pipelineId: null,
+        taskType: 'feature',
+        expectedStages: ['PLAN', 'ARCH', 'DEV'],
+        environment: {},
+        openspecEnabled: false,
+        needsDesign: false,
+      },
+      progress: {
+        currentStage: null,
+        stageIndex: 0,
+        completedAgents: ['vibe:planner'],
+        stageResults: { PLAN: { verdict: 'PASS' } },
+        retries: {},
+        skippedStages: [],
+        pendingRetry: null,
+      },
+      meta: {
+        initialized: true,
+        lastTransition: new Date().toISOString(),
+      },
     });
 
     runHook('stage-transition.js', {
@@ -209,15 +262,28 @@ console.log('\n🧪 Part 2: POST_STAGE_HINTS — 安全/覆蓋率提示注入');
 test('REVIEW → TEST 包含安全提示', () => {
   const sessionId = 'test-hints-1';
   const statePath = createTempState(sessionId, {
-    initialized: true,
-    pipelineId: 'standard',
-    taskType: 'feature',
-    pipelineEnforced: true,
-    expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA'],
-    completed: ['vibe:planner', 'vibe:architect', 'vibe:developer'],
-    stageResults: {},
-    retries: {},
-    delegationActive: true,
+    phase: 'DELEGATING',
+    context: {
+      pipelineId: 'standard',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA'],
+      environment: {},
+      openspecEnabled: false,
+      needsDesign: false,
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: ['vibe:planner', 'vibe:architect', 'vibe:developer'],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
+    },
   });
 
   try {
@@ -239,15 +305,28 @@ test('REVIEW → TEST 包含安全提示', () => {
 test('TEST → QA 包含覆蓋率提示', () => {
   const sessionId = 'test-hints-2';
   const statePath = createTempState(sessionId, {
-    initialized: true,
-    pipelineId: 'standard',
-    taskType: 'feature',
-    pipelineEnforced: true,
-    expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA'],
-    completed: ['vibe:planner', 'vibe:architect', 'vibe:developer', 'vibe:code-reviewer'],
-    stageResults: {},
-    retries: {},
-    delegationActive: true,
+    phase: 'DELEGATING',
+    context: {
+      pipelineId: 'standard',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA'],
+      environment: {},
+      openspecEnabled: false,
+      needsDesign: false,
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: ['vibe:planner', 'vibe:architect', 'vibe:developer', 'vibe:code-reviewer'],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
+    },
   });
 
   try {
@@ -269,15 +348,28 @@ test('TEST → QA 包含覆蓋率提示', () => {
 test('DEV → REVIEW 無額外提示（DEV 不在 POST_STAGE_HINTS 中）', () => {
   const sessionId = 'test-hints-3';
   const statePath = createTempState(sessionId, {
-    initialized: true,
-    pipelineId: 'standard',
-    taskType: 'feature',
-    pipelineEnforced: true,
-    expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST'],
-    completed: ['vibe:planner', 'vibe:architect'],
-    stageResults: {},
-    retries: {},
-    delegationActive: true,
+    phase: 'DELEGATING',
+    context: {
+      pipelineId: 'standard',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST'],
+      environment: {},
+      openspecEnabled: false,
+      needsDesign: false,
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: ['vibe:planner', 'vibe:architect'],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
+    },
   });
 
   try {
@@ -306,14 +398,32 @@ console.log('\n🧪 Part 3: buildKnowledgeHints — 知識 skills 自動注入')
 test('TypeScript 專案注入 typescript-patterns + coding-standards + testing-patterns', () => {
   const sessionId = 'test-knowledge-1';
   const statePath = createTempState(sessionId, {
-    initialized: true,
-    taskType: null,
-    expectedStages: [],
-    environment: {
-      languages: { primary: 'typescript', secondary: [] },
-      framework: null,
-      packageManager: { name: 'npm' },
-      tools: {},
+    phase: 'IDLE',
+    context: {
+      pipelineId: null,
+      taskType: null,
+      expectedStages: [],
+      environment: {
+        languages: { primary: 'typescript', secondary: [] },
+        framework: null,
+        packageManager: { name: 'npm' },
+        tools: {},
+      },
+      openspecEnabled: false,
+      needsDesign: false,
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: [],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
     },
   });
 
@@ -336,14 +446,32 @@ test('TypeScript 專案注入 typescript-patterns + coding-standards + testing-p
 test('Python 專案注入 python-patterns', () => {
   const sessionId = 'test-knowledge-2';
   const statePath = createTempState(sessionId, {
-    initialized: true,
-    taskType: null,
-    expectedStages: [],
-    environment: {
-      languages: { primary: 'python', secondary: [] },
-      framework: null,
-      packageManager: { name: 'pip' },
-      tools: {},
+    phase: 'IDLE',
+    context: {
+      pipelineId: null,
+      taskType: null,
+      expectedStages: [],
+      environment: {
+        languages: { primary: 'python', secondary: [] },
+        framework: null,
+        packageManager: { name: 'pip' },
+        tools: {},
+      },
+      openspecEnabled: false,
+      needsDesign: false,
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: [],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
     },
   });
 
@@ -364,14 +492,32 @@ test('Python 專案注入 python-patterns', () => {
 test('React + TypeScript 專案注入 frontend-patterns + typescript-patterns', () => {
   const sessionId = 'test-knowledge-3';
   const statePath = createTempState(sessionId, {
-    initialized: true,
-    taskType: null,
-    expectedStages: [],
-    environment: {
-      languages: { primary: 'typescript', secondary: [] },
-      framework: { name: 'react', version: '18.2.0' },
-      packageManager: { name: 'npm' },
-      tools: {},
+    phase: 'IDLE',
+    context: {
+      pipelineId: null,
+      taskType: null,
+      expectedStages: [],
+      environment: {
+        languages: { primary: 'typescript', secondary: [] },
+        framework: { name: 'react', version: '18.2.0' },
+        packageManager: { name: 'npm' },
+        tools: {},
+      },
+      openspecEnabled: false,
+      needsDesign: false,
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: [],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
     },
   });
 
@@ -393,14 +539,32 @@ test('React + TypeScript 專案注入 frontend-patterns + typescript-patterns', 
 test('Express 專案注入 backend-patterns', () => {
   const sessionId = 'test-knowledge-4';
   const statePath = createTempState(sessionId, {
-    initialized: true,
-    taskType: null,
-    expectedStages: [],
-    environment: {
-      languages: { primary: 'javascript', secondary: [] },
-      framework: { name: 'express', version: '4.18.0' },
-      packageManager: { name: 'npm' },
-      tools: {},
+    phase: 'IDLE',
+    context: {
+      pipelineId: null,
+      taskType: null,
+      expectedStages: [],
+      environment: {
+        languages: { primary: 'javascript', secondary: [] },
+        framework: { name: 'express', version: '4.18.0' },
+        packageManager: { name: 'npm' },
+        tools: {},
+      },
+      openspecEnabled: false,
+      needsDesign: false,
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: [],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
     },
   });
 
@@ -421,14 +585,32 @@ test('Express 專案注入 backend-patterns', () => {
 test('Go 專案注入 go-patterns', () => {
   const sessionId = 'test-knowledge-5';
   const statePath = createTempState(sessionId, {
-    initialized: true,
-    taskType: null,
-    expectedStages: [],
-    environment: {
-      languages: { primary: 'go', secondary: [] },
-      framework: null,
-      packageManager: null,
-      tools: {},
+    phase: 'IDLE',
+    context: {
+      pipelineId: null,
+      taskType: null,
+      expectedStages: [],
+      environment: {
+        languages: { primary: 'go', secondary: [] },
+        framework: null,
+        packageManager: null,
+        tools: {},
+      },
+      openspecEnabled: false,
+      needsDesign: false,
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: [],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
     },
   });
 
@@ -449,14 +631,32 @@ test('Go 專案注入 go-patterns', () => {
 test('無語言偵測時不注入知識 skills', () => {
   const sessionId = 'test-knowledge-6';
   const statePath = createTempState(sessionId, {
-    initialized: true,
-    taskType: null,
-    expectedStages: [],
-    environment: {
-      languages: { primary: null, secondary: [] },
-      framework: null,
-      packageManager: null,
-      tools: {},
+    phase: 'IDLE',
+    context: {
+      pipelineId: null,
+      taskType: null,
+      expectedStages: [],
+      environment: {
+        languages: { primary: null, secondary: [] },
+        framework: null,
+        packageManager: null,
+        tools: {},
+      },
+      openspecEnabled: false,
+      needsDesign: false,
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: [],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
     },
   });
 
@@ -477,14 +677,32 @@ test('無語言偵測時不注入知識 skills', () => {
 test('research 分類也能注入知識提示', () => {
   const sessionId = 'test-knowledge-7';
   const statePath = createTempState(sessionId, {
-    initialized: true,
-    taskType: null,
-    expectedStages: [],
-    environment: {
-      languages: { primary: 'typescript', secondary: [] },
-      framework: null,
-      packageManager: null,
-      tools: {},
+    phase: 'IDLE',
+    context: {
+      pipelineId: null,
+      taskType: null,
+      expectedStages: [],
+      environment: {
+        languages: { primary: 'typescript', secondary: [] },
+        framework: null,
+        packageManager: null,
+        tools: {},
+      },
+      openspecEnabled: false,
+      needsDesign: false,
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: [],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
     },
   });
 
@@ -505,14 +723,32 @@ test('research 分類也能注入知識提示', () => {
 test('多語言專案注入所有匹配的知識 skills', () => {
   const sessionId = 'test-knowledge-8';
   const statePath = createTempState(sessionId, {
-    initialized: true,
-    taskType: null,
-    expectedStages: [],
-    environment: {
-      languages: { primary: 'typescript', secondary: ['python'] },
-      framework: { name: 'next.js', version: '14.0.0' },
-      packageManager: { name: 'pnpm' },
-      tools: {},
+    phase: 'IDLE',
+    context: {
+      pipelineId: null,
+      taskType: null,
+      expectedStages: [],
+      environment: {
+        languages: { primary: 'typescript', secondary: ['python'] },
+        framework: { name: 'next.js', version: '14.0.0' },
+        packageManager: { name: 'pnpm' },
+        tools: {},
+      },
+      openspecEnabled: false,
+      needsDesign: false,
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: [],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
     },
   });
 
@@ -542,15 +778,28 @@ console.log('\n🧪 Part 4: Pipeline 完成三步閉環');
 test('Pipeline 完成訊息包含 verify 指令', () => {
   const sessionId = 'test-complete-1';
   const statePath = createTempState(sessionId, {
-    initialized: true,
-    pipelineId: 'standard',
-    taskType: 'feature',
-    pipelineEnforced: true,
-    expectedStages: ['DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-    completed: ['vibe:developer', 'vibe:code-reviewer', 'vibe:tester', 'vibe:qa', 'vibe:e2e-runner'],
-    stageResults: {},
-    retries: {},
-    delegationActive: true,
+    phase: 'DELEGATING',
+    context: {
+      pipelineId: 'standard',
+      taskType: 'feature',
+      expectedStages: ['DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      environment: {},
+      openspecEnabled: false,
+      needsDesign: false,
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: ['vibe:developer', 'vibe:code-reviewer', 'vibe:tester', 'vibe:qa', 'vibe:e2e-runner'],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
+    },
   });
 
   try {
@@ -572,15 +821,28 @@ test('Pipeline 完成訊息包含 verify 指令', () => {
 test('Pipeline 完成訊息包含 AskUserQuestion 指令', () => {
   const sessionId = 'test-complete-2';
   const statePath = createTempState(sessionId, {
-    initialized: true,
-    pipelineId: 'standard',
-    taskType: 'feature',
-    pipelineEnforced: true,
-    expectedStages: ['DEV', 'DOCS'],
-    completed: ['vibe:developer'],
-    stageResults: {},
-    retries: {},
-    delegationActive: true,
+    phase: 'DELEGATING',
+    context: {
+      pipelineId: 'standard',
+      taskType: 'feature',
+      expectedStages: ['DEV', 'DOCS'],
+      environment: {},
+      openspecEnabled: false,
+      needsDesign: false,
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: ['vibe:developer'],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
+    },
   });
 
   try {
@@ -602,15 +864,28 @@ test('Pipeline 完成訊息包含 AskUserQuestion 指令', () => {
 test('Pipeline 完成訊息包含 evolve 建議', () => {
   const sessionId = 'test-complete-3';
   const statePath = createTempState(sessionId, {
-    initialized: true,
-    pipelineId: 'standard',
-    taskType: 'feature',
-    pipelineEnforced: true,
-    expectedStages: ['DEV', 'DOCS'],
-    completed: ['vibe:developer'],
-    stageResults: {},
-    retries: {},
-    delegationActive: true,
+    phase: 'DELEGATING',
+    context: {
+      pipelineId: 'standard',
+      taskType: 'feature',
+      expectedStages: ['DEV', 'DOCS'],
+      environment: {},
+      openspecEnabled: false,
+      needsDesign: false,
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: ['vibe:developer'],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
+    },
   });
 
   try {
@@ -630,18 +905,31 @@ test('Pipeline 完成訊息包含 evolve 建議', () => {
   }
 });
 
-test('Pipeline 完成後 pipelineEnforced 設為 false', () => {
+test('Pipeline 完成後 phase 設為 COMPLETE', () => {
   const sessionId = 'test-complete-4';
   const statePath = createTempState(sessionId, {
-    initialized: true,
-    pipelineId: 'standard',
-    taskType: 'feature',
-    pipelineEnforced: true,
-    expectedStages: ['DOCS'],
-    completed: [],
-    stageResults: {},
-    retries: {},
-    delegationActive: true,
+    phase: 'DELEGATING',
+    context: {
+      pipelineId: 'standard',
+      taskType: 'feature',
+      expectedStages: ['DOCS'],
+      environment: {},
+      openspecEnabled: false,
+      needsDesign: false,
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: [],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+    },
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
+    },
   });
 
   try {
@@ -653,8 +941,7 @@ test('Pipeline 完成後 pipelineEnforced 設為 false', () => {
 
     // 讀取更新後的 state
     const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    assert.strictEqual(state.pipelineEnforced, false, 'pipelineEnforced 應為 false');
-    assert.strictEqual(state.delegationActive, false, 'delegationActive 應為 false');
+    assert.strictEqual(state.phase, 'COMPLETE', 'phase 應為 COMPLETE');
   } finally {
     cleanup(statePath);
     cleanupGitTag('vibe-pipeline/docs');

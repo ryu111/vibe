@@ -50,7 +50,7 @@ const TOOL_EMOJI = [
 // ────────────────── 框架分類 ──────────────────
 
 // 前端框架 — 需要視覺設計階段
-const FRONTEND_FRAMEWORKS = ['next.js', 'nuxt', 'remix', 'astro', 'svelte', 'vue', 'react', 'angular'];
+const FRONTEND_FRAMEWORKS = ['next.js', 'nuxt', 'remix', 'astro', 'svelte', 'vue', 'react', 'angular', 'solid', 'preact', 'lit', 'qwik', 'ember'];
 
 // 純 API 框架 — 不需要瀏覽器 E2E 測試
 const API_ONLY_FRAMEWORKS = ['express', 'fastify', 'hono', 'koa', 'nest'];

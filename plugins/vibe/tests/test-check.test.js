@@ -11,7 +11,7 @@ const path = require('path');
 const assert = require('assert');
 const { execSync } = require('child_process');
 
-const HOOK_SCRIPT = path.join(__dirname, '..', 'scripts', 'hooks', 'test-check.js');
+const HOOK_SCRIPT = path.join(__dirname, '..', 'scripts', 'hooks', 'post-edit.js');
 
 let passed = 0;
 let failed = 0;

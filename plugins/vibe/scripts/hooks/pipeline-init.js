@@ -2,22 +2,20 @@
 /**
  * pipeline-init.js — SessionStart hook
  *
- * 環境偵測 + state file 初始化（不注入 pipeline 規則）。
- * Pipeline 規則由 task-classifier 根據任務類型決定是否注入。
- * 防重複：透過 state file 的 initialized 欄位。
+ * 環境偵測 + state file 初始化。
+ * v2.0.0：使用 state-machine.js 的 createInitialState() 建立 FSM 結構。
  */
 'use strict';
-const fs = require('fs');
 const path = require('path');
-const os = require('os');
 
 const { discoverPipeline } = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-discovery.js'));
 const { detect } = require(path.join(__dirname, '..', 'lib', 'flow', 'env-detector.js'));
 const { reset: resetCounter } = require(path.join(__dirname, '..', 'lib', 'flow', 'counter.js'));
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
+const { createInitialState, readState, writeState, deleteState } = require(path.join(__dirname, '..', 'lib', 'flow', 'state-machine.js'));
 
-const CLAUDE_DIR = path.join(os.homedir(), '.claude');
+const fs = require('fs');
 
 let input = '';
 process.stdin.on('data', d => input += d);
@@ -26,26 +24,25 @@ process.stdin.on('end', () => {
     const data = JSON.parse(input);
     const sessionId = data.session_id || 'unknown';
     const cwd = data.cwd || process.cwd();
-    const statePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
 
-    // 防重複：已初始化過則跳過
-    if (fs.existsSync(statePath)) {
-      try {
-        const existing = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-        if (existing.initialized) {
-          process.exit(0);
-        }
-      } catch (_) {}
+    // 防重複：已初始化過則跳過（clear 事件或 FORCE_RESET 時重設）
+    const triggerSource = data.source || '';
+    const existing = readState(sessionId);
+    if (existing && existing.meta && existing.meta.initialized) {
+      if (triggerSource === 'clear' || process.env.VIBE_FORCE_RESET === '1') {
+        deleteState(sessionId);
+      } else {
+        process.exit(0);
+      }
     }
 
     // 環境偵測
     const env = detect(cwd);
 
-    // Pipeline 動態發現（儲存到 state，供 task-classifier 使用）
+    // Pipeline 動態發現
     const pipeline = discoverPipeline();
-    const installedStages = pipeline.stageOrder.filter(s => pipeline.stageMap[s]);
 
-    // 建立委派規則（儲存到 state，供 task-classifier 注入）
+    // 建立委派規則
     const pipelineRules = [];
     for (const stage of pipeline.stageOrder) {
       const info = pipeline.stageMap[stage];
@@ -66,26 +63,19 @@ process.stdin.on('end', () => {
     const openspecEnabled = fs.existsSync(openspecDir)
       && fs.existsSync(path.join(openspecDir, 'config.yaml'));
 
-    // 寫入 state file（不含 taskType — 由 task-classifier 設定）
-    // expectedStages 初始化為空陣列，由 task-classifier 根據 pipelineId 設定
-    if (!fs.existsSync(CLAUDE_DIR)) {
-      fs.mkdirSync(CLAUDE_DIR, { recursive: true });
-    }
-    fs.writeFileSync(statePath, JSON.stringify({
-      sessionId,
-      initialized: true,
-      completed: [],
-      expectedStages: [],  // 改為空陣列，等待 task-classifier 設定
-      pipelineId: null,     // 新增 pipelineId 欄位
-      pipelineRules,
+    // 建立初始 state（FSM phase: IDLE）
+    const state = createInitialState(sessionId, {
       environment: env,
       openspecEnabled,
-      lastTransition: new Date().toISOString(),
-    }, null, 2));
+      pipelineRules,
+    });
+
+    writeState(sessionId, state);
 
     // Emit timeline event
     emit(EVENT_TYPES.SESSION_START, sessionId, {
       cwd,
+      reason: triggerSource || 'startup',
       environment: {
         language: env.languages.primary,
         framework: env.framework?.name,
@@ -97,7 +87,7 @@ process.stdin.on('end', () => {
       },
     });
 
-    // 輸出環境摘要（additionalContext = 資訊提示，不觸發 "hook error" 標籤）
+    // 輸出環境摘要
     if (env.languages.primary) {
       const envParts = [`語言: ${env.languages.primary}`];
       if (env.framework) envParts.push(`框架: ${env.framework.name}`);

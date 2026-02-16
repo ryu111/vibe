@@ -8,8 +8,13 @@
 const assert = require('assert');
 const path = require('path');
 
-// 測試用內存 state（不寫檔案）
-let state = {};
+// 測試用內存 state（不寫檔案，FSM 結構）
+let state = {
+  phase: 'IDLE',
+  context: {},
+  progress: {},
+  meta: { initialized: false },
+};
 
 // Mock timeline emit（不寫檔案）
 const mockEmit = () => {};

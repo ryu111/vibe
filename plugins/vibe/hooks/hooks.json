@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/remote-autostart.js",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/remote-hub.js autostart",
             "timeout": 5,
             "statusMessage": "檢查遠端服務..."
           }
@@ -63,7 +63,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/remote-prompt-forward.js",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/remote-hub.js prompt-forward",
             "timeout": 5
           }
         ]
@@ -81,7 +81,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit|NotebookEdit|AskUserQuestion|EnterPlanMode",
+        "matcher": "Write|Edit|NotebookEdit|AskUserQuestion|EnterPlanMode|Bash",
         "hooks": [
           {
             "type": "command",
@@ -101,21 +101,11 @@
         ]
       },
       {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/danger-guard.js",
-            "timeout": 5
-          }
-        ]
-      },
-      {
         "matcher": "AskUserQuestion",
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/remote-ask-intercept.js",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/remote-hub.js ask-intercept",
             "timeout": 60
           }
         ]
@@ -127,31 +117,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/auto-lint.js",
-            "timeout": 15,
-            "statusMessage": "正在檢查程式碼品質..."
-          }
-        ]
-      },
-      {
-        "matcher": "Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/auto-format.js",
-            "timeout": 10,
-            "statusMessage": "正在格式化..."
-          }
-        ]
-      },
-      {
-        "matcher": "Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/test-check.js",
-            "timeout": 5,
-            "statusMessage": "檢查測試需求..."
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/post-edit.js",
+            "timeout": 20,
+            "statusMessage": "檢查程式碼品質..."
           }
         ]
       }
@@ -185,7 +153,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/remote-sender.js",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/remote-hub.js sender",
             "timeout": 10
           }
         ]
@@ -241,7 +209,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/remote-receipt.js",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/remote-hub.js receipt",
             "timeout": 10
           }
         ]

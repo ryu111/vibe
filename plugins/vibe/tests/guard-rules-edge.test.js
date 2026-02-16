@@ -20,8 +20,13 @@ const {
   NON_CODE_EXTS,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
 
-// v1.0.43: evaluate() 內建前置條件檢查，需要完整 enforced state 才會觸發 block
-const ENFORCED_STATE = { initialized: true, taskType: 'feature', pipelineEnforced: true };
+// v2.0.0 FSM: evaluate() 使用 state-machine 衍生查詢，需要 FSM 結構的 enforced state
+const ENFORCED_STATE = {
+  phase: 'CLASSIFIED',
+  context: { taskType: 'feature' },
+  progress: {},
+  meta: { initialized: true },
+};
 
 let passed = 0;
 let failed = 0;
@@ -301,23 +306,31 @@ test('Write 程式碼檔案 — state 為 undefined → 放行', () => {
 
 test('Write 程式碼檔案 — state 完整 enforced → 阻擋', () => {
   const state = {
-    initialized: true,
-    taskType: 'feature',
-    pipelineEnforced: true,
-    completed: ['PLAN', 'ARCH'],
+    phase: 'CLASSIFIED',
+    context: { taskType: 'feature' },
+    progress: { stageResults: { PLAN: 'PASS', ARCH: 'PASS' } },
+    meta: { initialized: true },
   };
   const result = evaluate('Write', { file_path: 'app.js' }, state);
   assert.strictEqual(result.decision, 'block');
 });
 
-test('Write 程式碼檔案 — delegationActive=true → 放行', () => {
-  const state = { ...ENFORCED_STATE, delegationActive: true };
+test('Write 程式碼檔案 — phase=DELEGATING → 放行', () => {
+  const state = {
+    phase: 'DELEGATING',
+    context: { taskType: 'feature' },
+    progress: {},
+    meta: { initialized: true },
+  };
   const result = evaluate('Write', { file_path: 'app.js' }, state);
   assert.strictEqual(result.decision, 'allow');
 });
 
 test('Write 程式碼檔案 — cancelled=true → 放行', () => {
-  const state = { ...ENFORCED_STATE, cancelled: true };
+  const state = {
+    ...ENFORCED_STATE,
+    meta: { ...ENFORCED_STATE.meta, cancelled: true },
+  };
   const result = evaluate('Write', { file_path: 'app.js' }, state);
   assert.strictEqual(result.decision, 'allow');
 });

@@ -2,24 +2,28 @@
 /**
  * guard-rules.js — Pipeline Guard 規則模組（純函式）
  *
- * v1.0.43 重構：
- * - PLAN 階段允許 AskUserQuestion（供 planner 詢問需求澄清）
- * - 合併 delegationActive/cancelled 檢查到 evaluate()
- * - 移除無人消費的 ORCHESTRATOR_TOOLS
+ * v2.0.0 FSM 重構：
+ * - 使用 state-machine 衍生查詢取代 6 層 flag 判斷
+ * - isDelegating() / isEnforced() / isCancelled() 取代直接讀 flag
  *
  * @module sentinel/guard-rules
  */
 'use strict';
 
 const path = require('path');
+const {
+  getPhase, isDelegating, isEnforced, isCancelled, isInitialized,
+  getTaskType, getCurrentStage, PHASES,
+} = require(path.join(__dirname, '..', 'flow', 'state-machine.js'));
 
 // 非程式碼檔案副檔名（允許直接編輯）
 const NON_CODE_EXTS = new Set([
   '.md', '.txt', '.json', '.yml', '.yaml', '.toml',
   '.cfg', '.ini', '.csv', '.xml', '.html', '.css', '.svg',
+  '.conf', '.lock',
 ]);
 
-// dotfiles（path.extname 回傳空字串，需用 basename 精確匹配）
+// dotfiles
 const NON_CODE_DOTFILES = new Set([
   '.env', '.env.local', '.env.example', '.env.development', '.env.production',
   '.gitignore', '.dockerignore', '.editorconfig',
@@ -28,8 +32,6 @@ const NON_CODE_DOTFILES = new Set([
 
 /**
  * 判斷檔案是否為非程式碼檔案
- * @param {string} filePath
- * @returns {boolean}
  */
 function isNonCodeFile(filePath) {
   if (!filePath) return false;
@@ -39,22 +41,84 @@ function isNonCodeFile(filePath) {
   return NON_CODE_EXTS.has(ext);
 }
 
+// ────────────────── 毀滅性指令防護 ──────────────────
+
+// 毀滅性指令模式（從 danger-guard.js 遷移，無條件攔截）
+const DANGER_PATTERNS = [
+  { pattern: /\brm\s+(-\w*r\w*f\w*|-\w*f\w*r\w*)\s+\/(\s|$)/, desc: 'rm -rf /' },
+  { pattern: /\bDROP\s+(TABLE|DATABASE)\b/i, desc: 'DROP TABLE/DATABASE' },
+  { pattern: /\bgit\s+push\s+--force\s+(main|master)\b/, desc: 'git push --force main/master' },
+  { pattern: /\bgit\s+push\s+-f\s+(main|master)\b/, desc: 'git push -f main/master' },
+  { pattern: /\bchmod\s+777\b/, desc: 'chmod 777' },
+  { pattern: />\s*\/dev\/sd[a-z]/, desc: '寫入裝置檔案' },
+  { pattern: /\bmkfs\b/, desc: 'mkfs 格式化磁碟' },
+  { pattern: /\bdd\s+.*of=\/dev\//, desc: 'dd 寫入裝置' },
+];
+
+/**
+ * 評估 Bash 指令是否為毀滅性操作（無條件阻擋）
+ */
+function evaluateBashDanger(command) {
+  for (const { pattern, desc } of DANGER_PATTERNS) {
+    if (pattern.test(command)) {
+      return {
+        decision: 'block',
+        reason: 'danger-pattern',
+        matchedPattern: desc,
+        message: `⛔ 攔截危險指令 — ${desc}\n指令：${command.slice(0, 200)}\n`,
+      };
+    }
+  }
+  return null;
+}
+
+// ────────────────── Bash 寫檔偵測 ──────────────────
+
+// 寫入指令模式（精確匹配特定指令，避免誤擋 npm run build > output.log）
+const WRITE_PATTERNS = [
+  /\b(?:echo|cat|printf)\b.*?>{1,2}\s*(\S+)/,
+  /\|\s*tee\s+(?:-a\s+)?(\S+)/,
+  /\bsed\s+(?:-[^i]*)?-i['"=]?\s*(?:'[^']*'|"[^"]*"|\S+)\s+(\S+)/,
+];
+
+/**
+ * 偵測 Bash 指令是否寫入程式碼檔案
+ */
+function detectBashWriteTarget(command) {
+  for (const pattern of WRITE_PATTERNS) {
+    const match = command.match(pattern);
+    if (match && match[1]) {
+      const targetFile = match[1].replace(/["']/g, '');
+      if (!isNonCodeFile(targetFile)) {
+        return {
+          decision: 'block',
+          reason: 'bash-write-bypass',
+          message:
+            `⛔ Pipeline 模式下禁止使用 Bash 寫入程式碼檔案。\n` +
+            `偵測到寫入目標：${targetFile}\n` +
+            `請使用 Task 工具委派給對應的 sub-agent。\n`,
+        };
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * 評估工具使用是否允許
  *
- * 放行優先順序（短路）：
- * 1. pipeline 未初始化/未分類/非強制 → allow
- * 2. 委派已啟動（sub-agent 操作） → allow
- * 3. pipeline 已取消 → allow
- * 4. 工具特定規則
- *
- * @param {string} toolName - Write|Edit|NotebookEdit|AskUserQuestion|EnterPlanMode
- * @param {object} toolInput - 工具輸入參數
- * @param {object} state - Pipeline state
- * @returns {{ decision: 'allow'|'block', reason?: string, message?: string }}
+ * 評估邏輯（短路）：
+ * 1. EnterPlanMode → 無條件阻擋
+ * 2. Bash DANGER_PATTERNS → 無條件阻擋（不受 FSM 影響）
+ * 3. 無 state / 未初始化 / 未分類 → allow
+ * 4. phase === DELEGATING → allow
+ * 5. 未 enforced → allow
+ * 6. 已取消 → allow
+ * 7. Bash 寫檔繞過 → 阻擋（僅 pipeline enforced）
+ * 8. 工具特定規則（Write/Edit/AskUserQuestion）
  */
 function evaluate(toolName, toolInput, state) {
-  // ── EnterPlanMode — 無條件阻擋（不受 pipeline 狀態影響） ──
+  // ── EnterPlanMode — 無條件阻擋 ──
   if (toolName === 'EnterPlanMode') {
     return {
       decision: 'block',
@@ -65,13 +129,28 @@ function evaluate(toolName, toolInput, state) {
     };
   }
 
-  // ── 前置放行條件（原本散在 pipeline-guard.js 的 4 個 if） ──
+  // ── Bash DANGER_PATTERNS — 無條件阻擋（不受 FSM 影響） ──
+  if (toolName === 'Bash') {
+    const command = toolInput?.command || '';
+    const dangerResult = evaluateBashDanger(command);
+    if (dangerResult) return dangerResult;
+  }
+
+  // ── FSM 衍生查詢放行條件 ──
   if (!state) return { decision: 'allow' };
-  if (!state.initialized) return { decision: 'allow' };
-  if (!state.taskType) return { decision: 'allow' };
-  if (!state.pipelineEnforced) return { decision: 'allow' };
-  if (state.delegationActive) return { decision: 'allow' };
-  if (state.cancelled) return { decision: 'allow' };
+  if (!isInitialized(state)) return { decision: 'allow' };
+  if (!getTaskType(state)) return { decision: 'allow' };
+  if (!isEnforced(state)) return { decision: 'allow' };
+  if (isDelegating(state)) return { decision: 'allow' };
+  if (isCancelled(state)) return { decision: 'allow' };
+
+  // ── Bash 寫檔繞過阻擋（僅 pipeline enforced 時） ──
+  if (toolName === 'Bash') {
+    const command = toolInput?.command || '';
+    const writeResult = detectBashWriteTarget(command);
+    if (writeResult) return writeResult;
+    return { decision: 'allow' };
+  }
 
   // ── Write / Edit / NotebookEdit ──
   if (['Write', 'Edit', 'NotebookEdit'].includes(toolName)) {
@@ -91,8 +170,7 @@ function evaluate(toolName, toolInput, state) {
 
   // ── AskUserQuestion ──
   if (toolName === 'AskUserQuestion') {
-    // PLAN 階段允許 AskUserQuestion（planner 需要詢問需求澄清）
-    const currentStage = state.currentStage || '';
+    const currentStage = getCurrentStage(state);
     if (currentStage === 'PLAN') return { decision: 'allow' };
 
     return {
@@ -106,13 +184,16 @@ function evaluate(toolName, toolInput, state) {
     };
   }
 
-  // 未知工具
   return { decision: 'allow' };
 }
 
 module.exports = {
   evaluate,
   isNonCodeFile,
+  evaluateBashDanger,
+  detectBashWriteTarget,
   NON_CODE_EXTS,
   NON_CODE_DOTFILES,
+  DANGER_PATTERNS,
+  WRITE_PATTERNS,
 };

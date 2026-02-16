@@ -16,11 +16,20 @@ const path = require('path');
 const {
   evaluate,
   isNonCodeFile,
+  evaluateBashDanger,
+  detectBashWriteTarget,
   NON_CODE_EXTS,
+  DANGER_PATTERNS,
+  WRITE_PATTERNS,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
 
-// v1.0.43: evaluate() 內建前置條件檢查，需要完整 enforced state 才會觸發 block
-const ENFORCED_STATE = { initialized: true, taskType: 'feature', pipelineEnforced: true };
+// v2.0.0 FSM: evaluate() 使用 state-machine 衍生查詢，需要 FSM 結構的 enforced state
+const ENFORCED_STATE = {
+  phase: 'CLASSIFIED',
+  context: { taskType: 'feature' },
+  progress: {},
+  meta: { initialized: true },
+};
 
 let passed = 0;
 let failed = 0;
@@ -169,7 +178,10 @@ test('AskUserQuestion → 阻擋', () => {
 });
 
 test('AskUserQuestion — PLAN 階段放行', () => {
-  const planState = { ...ENFORCED_STATE, currentStage: 'PLAN' };
+  const planState = {
+    ...ENFORCED_STATE,
+    progress: { ...ENFORCED_STATE.progress, currentStage: 'PLAN' },
+  };
   const result = evaluate('AskUserQuestion', {}, planState);
   assert.strictEqual(result.decision, 'allow');
 });
@@ -194,8 +206,13 @@ test('EnterPlanMode → 無 state 也阻擋', () => {
   assert.strictEqual(result.reason, 'plan-mode-disabled');
 });
 
-test('EnterPlanMode → pipelineEnforced=false 也阻擋', () => {
-  const result = evaluate('EnterPlanMode', {}, { initialized: true, taskType: 'quickfix', pipelineEnforced: false });
+test('EnterPlanMode → phase=IDLE 也阻擋', () => {
+  const result = evaluate('EnterPlanMode', {}, {
+    phase: 'IDLE',
+    context: { taskType: 'quickfix' },
+    progress: {},
+    meta: { initialized: true },
+  });
   assert.strictEqual(result.decision, 'block');
   assert.strictEqual(result.reason, 'plan-mode-disabled');
 });
@@ -239,6 +256,205 @@ test('NON_CODE_EXTS 不包含程式碼副檔名', () => {
   assert.strictEqual(NON_CODE_EXTS.has('.ts'), false);
   assert.strictEqual(NON_CODE_EXTS.has('.py'), false);
   assert.strictEqual(NON_CODE_EXTS.has('.go'), false);
+});
+
+// ═══════════════════════════════════════════════
+console.log('\n💣 evaluateBashDanger() — 危險指令偵測');
+console.log('═'.repeat(55));
+// ═══════════════════════════════════════════════
+
+test('DANGER_PATTERNS 匯出 8 個模式', () => {
+  assert.strictEqual(DANGER_PATTERNS.length, 8);
+});
+
+test('rm -rf / → block', () => {
+  const r = evaluateBashDanger('rm -rf / ');
+  assert.strictEqual(r.decision, 'block');
+  assert.strictEqual(r.matchedPattern, 'rm -rf /');
+});
+
+test('rm -fr / → block', () => {
+  const r = evaluateBashDanger('rm -fr / ');
+  assert.strictEqual(r.decision, 'block');
+});
+
+test('DROP TABLE users → block', () => {
+  const r = evaluateBashDanger('DROP TABLE users');
+  assert.strictEqual(r.decision, 'block');
+  assert.strictEqual(r.matchedPattern, 'DROP TABLE/DATABASE');
+});
+
+test('DROP DATABASE → block', () => {
+  const r = evaluateBashDanger('DROP DATABASE mydb');
+  assert.strictEqual(r.decision, 'block');
+});
+
+test('git push --force main → block', () => {
+  const r = evaluateBashDanger('git push --force main');
+  assert.strictEqual(r.decision, 'block');
+});
+
+test('git push -f master → block', () => {
+  const r = evaluateBashDanger('git push -f master');
+  assert.strictEqual(r.decision, 'block');
+});
+
+test('chmod 777 → block', () => {
+  const r = evaluateBashDanger('chmod 777 /etc/passwd');
+  assert.strictEqual(r.decision, 'block');
+  assert.strictEqual(r.matchedPattern, 'chmod 777');
+});
+
+test('mkfs → block', () => {
+  const r = evaluateBashDanger('mkfs /dev/sda1');
+  assert.strictEqual(r.decision, 'block');
+});
+
+test('dd of=/dev/sda → block', () => {
+  const r = evaluateBashDanger('dd if=/dev/zero of=/dev/sda');
+  assert.strictEqual(r.decision, 'block');
+});
+
+test('> /dev/sda → block', () => {
+  const r = evaluateBashDanger('cat file > /dev/sda');
+  assert.strictEqual(r.decision, 'block');
+});
+
+test('安全指令 ls -la → null', () => {
+  assert.strictEqual(evaluateBashDanger('ls -la'), null);
+});
+
+test('安全指令 npm install → null', () => {
+  assert.strictEqual(evaluateBashDanger('npm install'), null);
+});
+
+test('安全指令 git push origin feature → null', () => {
+  assert.strictEqual(evaluateBashDanger('git push origin feature'), null);
+});
+
+test('空指令 → null', () => {
+  assert.strictEqual(evaluateBashDanger(''), null);
+});
+
+// ═══════════════════════════════════════════════
+console.log('\n📝 detectBashWriteTarget() — 寫檔繞過偵測');
+console.log('═'.repeat(55));
+// ═══════════════════════════════════════════════
+
+test('WRITE_PATTERNS 匯出 3 個模式', () => {
+  assert.strictEqual(WRITE_PATTERNS.length, 3);
+});
+
+test('echo > src/app.js → block（程式碼檔案）', () => {
+  const r = detectBashWriteTarget("echo 'x' > src/app.js");
+  assert.strictEqual(r.decision, 'block');
+  assert.strictEqual(r.reason, 'bash-write-bypass');
+  assert.ok(r.message.includes('src/app.js'));
+});
+
+test('cat > utils.py → block', () => {
+  const r = detectBashWriteTarget('cat something > utils.py');
+  assert.strictEqual(r.decision, 'block');
+});
+
+test('printf >> server.go → block', () => {
+  const r = detectBashWriteTarget('printf "package main" >> server.go');
+  assert.strictEqual(r.decision, 'block');
+});
+
+test('echo > README.md → null（非程式碼檔案）', () => {
+  assert.strictEqual(detectBashWriteTarget('echo "# title" > README.md'), null);
+});
+
+test('echo > config.json → null（非程式碼檔案）', () => {
+  assert.strictEqual(detectBashWriteTarget('echo "{}" > config.json'), null);
+});
+
+test('tee src/index.ts → block', () => {
+  const r = detectBashWriteTarget('npm list | tee src/index.ts');
+  assert.strictEqual(r.decision, 'block');
+});
+
+test('tee -a output.md → null（非程式碼檔案）', () => {
+  assert.strictEqual(detectBashWriteTarget('echo "log" | tee -a output.md'), null);
+});
+
+test('sed -i src/file.js → block', () => {
+  const r = detectBashWriteTarget("sed -i '' 's/foo/bar/' src/file.js");
+  assert.strictEqual(r.decision, 'block');
+});
+
+test('npm run build > output.log → null（非寫入指令）', () => {
+  assert.strictEqual(detectBashWriteTarget('npm run build > output.log'), null);
+});
+
+test('git diff → null', () => {
+  assert.strictEqual(detectBashWriteTarget('git diff'), null);
+});
+
+test('空指令 → null', () => {
+  assert.strictEqual(detectBashWriteTarget(''), null);
+});
+
+// ═══════════════════════════════════════════════
+console.log('\n🔗 evaluate() — Bash 整合測試');
+console.log('═'.repeat(55));
+// ═══════════════════════════════════════════════
+
+test('Bash danger — 無 pipeline state 也阻擋（無條件）', () => {
+  const r = evaluate('Bash', { command: 'rm -rf / ' }, null);
+  assert.strictEqual(r.decision, 'block');
+  assert.strictEqual(r.reason, 'danger-pattern');
+});
+
+test('Bash danger — 空 state 也阻擋', () => {
+  const r = evaluate('Bash', { command: 'DROP TABLE x' }, {});
+  assert.strictEqual(r.decision, 'block');
+});
+
+test('Bash 安全指令 — enforced state → allow', () => {
+  const r = evaluate('Bash', { command: 'npm test' }, ENFORCED_STATE);
+  assert.strictEqual(r.decision, 'allow');
+});
+
+test('Bash 寫入程式碼 — enforced state → block', () => {
+  const r = evaluate('Bash', { command: "echo 'x' > src/app.js" }, ENFORCED_STATE);
+  assert.strictEqual(r.decision, 'block');
+  assert.strictEqual(r.reason, 'bash-write-bypass');
+});
+
+test('Bash 寫入非程式碼 — enforced state → allow', () => {
+  const r = evaluate('Bash', { command: 'echo "log" > notes.md' }, ENFORCED_STATE);
+  assert.strictEqual(r.decision, 'allow');
+});
+
+test('Bash 寫入 — 委派中（DELEGATING）→ allow', () => {
+  const delegatingState = {
+    phase: 'DELEGATING',
+    context: { taskType: 'feature' },
+    progress: {},
+    meta: { initialized: true },
+  };
+  const r = evaluate('Bash', { command: "echo 'x' > src/app.js" }, delegatingState);
+  assert.strictEqual(r.decision, 'allow');
+});
+
+test('Bash 寫入 — 無 taskType → allow（未分類）', () => {
+  const noTask = { phase: 'IDLE', context: {}, progress: {}, meta: { initialized: true } };
+  const r = evaluate('Bash', { command: "echo 'x' > src/app.js" }, noTask);
+  assert.strictEqual(r.decision, 'allow');
+});
+
+test('Bash danger — 委派中也阻擋（無條件）', () => {
+  const delegatingState = {
+    phase: 'DELEGATING',
+    context: { taskType: 'feature' },
+    progress: {},
+    meta: { initialized: true },
+  };
+  const r = evaluate('Bash', { command: 'chmod 777 /' }, delegatingState);
+  assert.strictEqual(r.decision, 'block');
+  assert.strictEqual(r.reason, 'danger-pattern');
 });
 
 // ═══════════════════════════════════════════════

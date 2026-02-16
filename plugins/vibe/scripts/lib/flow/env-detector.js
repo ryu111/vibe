@@ -170,7 +170,82 @@ function detect(cwd) {
     }
   } catch (_) {}
 
+  // 前端信號偵測
+  result.frontend = detectFrontendSignals(cwd, pkg);
+
   return result;
 }
 
-module.exports = { detect };
+/**
+ * 前端信號偵測（啟發式三層偵測）
+ * @param {string} cwd - 工作目錄
+ * @param {Object|null} pkg - package.json 內容
+ * @returns {{ detected: boolean, signals: string[], confidence: string }}
+ */
+function detectFrontendSignals(cwd, pkg) {
+  const signals = [];
+
+  // Layer 1: UI 庫 deps（高信心度）
+  if (pkg) {
+    const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+    const uiLibs = [
+      '@mui/material', '@chakra-ui/react', 'antd', '@headlessui/react',
+      '@radix-ui/react-dialog', 'solid-js', '@solidjs/router',
+      'preact', '@preact/signals', 'lit', '@lit/reactive-element',
+      '@angular/material', 'vuetify', 'element-plus',
+      'tailwindcss', '@tailwindcss/forms',
+      'styled-components', '@emotion/react', '@emotion/styled',
+    ];
+    for (const lib of uiLibs) {
+      if (allDeps[lib]) {
+        signals.push(`dep:${lib}`);
+      }
+    }
+  }
+
+  // Layer 2: 配置檔（中信心度）
+  const configPatterns = [
+    { prefix: 'tailwind.config', signal: 'config:tailwind' },
+    { prefix: 'postcss.config', signal: 'config:postcss' },
+    { prefix: '.storybook', signal: 'dir:storybook', isDir: true },
+  ];
+
+  try {
+    const entries = fs.readdirSync(cwd);
+    for (const { prefix, signal, isDir } of configPatterns) {
+      if (isDir) {
+        if (entries.includes(prefix)) {
+          try {
+            if (fs.statSync(path.join(cwd, prefix)).isDirectory()) {
+              signals.push(signal);
+            }
+          } catch (_) {}
+        }
+      } else {
+        if (entries.some(e => e.startsWith(prefix))) {
+          signals.push(signal);
+        }
+      }
+    }
+  } catch (_) {}
+
+  // Layer 3: 目錄結構（中信心度，需 pkg 存在避免 Go/Python 誤判）
+  if (pkg) {
+    const uiDirs = ['src/components', 'src/pages', 'src/views', 'src/layouts', 'components', 'pages'];
+    for (const dir of uiDirs) {
+      try {
+        const dirPath = path.join(cwd, dir);
+        if (fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory()) {
+          signals.push(`dir:${dir.split('/').pop()}`);
+        }
+      } catch (_) {}
+    }
+  }
+
+  const detected = signals.length > 0;
+  const confidence = signals.length >= 3 ? 'high' : (signals.length >= 1 ? 'medium' : 'none');
+
+  return { detected, signals, confidence };
+}
+
+module.exports = { detect, detectFrontendSignals };

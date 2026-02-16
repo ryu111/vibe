@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.48 | 全方位開發工作流 | 34 | 11 | 22 | 45 |
+| **vibe** | 1.0.50 | 全方位開發工作流 | 34 | 11 | 19 | 39 |
 
 ### vibe plugin 功能模組
 
@@ -75,14 +75,14 @@ plugins/vibe/
 ├── .claude-plugin/
 │   └── plugin.json          # manifest（name, version, skills, agents）
 ├── hooks/
-│   └── hooks.json           # 統一 22 hooks（7 事件，順序明確）
+│   └── hooks.json           # 統一 19 hooks（7 事件，順序明確）
 ├── pipeline.json            # Pipeline 階段宣告 + provides
 ├── scripts/
-│   ├── hooks/               # 22 個 hook 腳本
+│   ├── hooks/               # 15 個 hook 腳本
 │   └── lib/                 # 共用函式庫
 │       ├── registry.js      # ★ 全局 metadata（STAGES/AGENTS/EMOJI）
 │       ├── hook-logger.js   # Hook 錯誤日誌（~/.claude/hook-errors.log）
-│       ├── flow/            # pipeline-discovery, env-detector, counter, classifier, uiux-resolver, verdict, retry-policy, skip-rules, message-builder
+│       ├── flow/            # pipeline-discovery, env-detector, counter, classifier, uiux-resolver, verdict, retry-policy, skip-rules, message-builder, state-machine
 │       ├── sentinel/        # lang-map, tool-detector, guard-rules
 │       ├── dashboard/       # server-manager
 │       ├── remote/          # telegram, transcript, bot-manager
@@ -144,27 +144,26 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 
 **防禦機制**：
 - `task-classifier`（UserPromptSubmit）— 分類任務 + 按需注入委派規則
-- `pipeline-guard`（PreToolUse Write|Edit|NotebookEdit|AskUserQuestion|EnterPlanMode）— **exit 2 硬阻擋** Main Agent 直接寫碼、詢問使用者、進入 Plan Mode
+- `pipeline-guard`（PreToolUse Write|Edit|NotebookEdit|AskUserQuestion|EnterPlanMode|Bash）— **exit 2 硬阻擋** Main Agent 直接寫碼、Bash 寫檔繞過、詢問使用者、進入 Plan Mode
 - `delegation-tracker`（PreToolUse Task）— 設 `delegationActive=true` 讓 sub-agent 通過
 - `stage-transition`（SubagentStop）— 指示下一階段 + 清除 delegation
 
 ## Hooks 事件全景
 
-統一 hooks.json，22 hooks 按事件分組（順序明確）：
+統一 hooks.json，21 hooks 按事件分組（順序明確）：
 
 | 事件 | Hooks（執行順序） |
 |------|------------------|
-| **SessionStart** | session-cleanup → pipeline-init → dashboard-autostart → remote-autostart |
-| **UserPromptSubmit** | task-classifier → remote-prompt-forward |
+| **SessionStart** | session-cleanup → pipeline-init → dashboard-autostart → remote-hub:autostart |
+| **UserPromptSubmit** | task-classifier → remote-hub:prompt-forward |
 | **PreToolUse(Task)** | delegation-tracker |
-| **PreToolUse(Write\|Edit\|NotebookEdit\|AskUserQuestion\|EnterPlanMode)** | pipeline-guard |
+| **PreToolUse(Write\|Edit\|NotebookEdit\|AskUserQuestion\|EnterPlanMode\|Bash)** | pipeline-guard |
 | **PreToolUse(*)** | suggest-compact |
-| **PreToolUse(Bash)** | danger-guard |
-| **PreToolUse(AskUserQuestion)** | remote-ask-intercept |
-| **PostToolUse(Write\|Edit)** | auto-lint → auto-format → test-check |
+| **PreToolUse(AskUserQuestion)** | remote-hub:ask-intercept |
+| **PostToolUse(Write\|Edit)** | post-edit（lint → format → test-check） |
 | **PreCompact** | log-compact |
-| **SubagentStop** | stage-transition → remote-sender |
-| **Stop** | pipeline-check → task-guard → check-console-log → dashboard-refresh → remote-receipt |
+| **SubagentStop** | stage-transition → remote-hub:sender |
+| **Stop** | pipeline-check → task-guard → check-console-log → dashboard-refresh → remote-hub:receipt |
 
 ### Hook 輸出管道
 
@@ -172,7 +171,7 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 |------|---------|------|------|
 | `additionalContext` | Claude | 軟建議 | 背景知識、上下文注入 |
 | `systemMessage` | Claude | 強指令 | 系統級規則（模型不可忽略） |
-| `stderr` + exit 2 | 使用者 | **硬阻擋** | 阻止工具執行（danger-guard / pipeline-guard） |
+| `stderr` + exit 2 | 使用者 | **硬阻擋** | 阻止工具執行（pipeline-guard / Bash 危險指令） |
 | `hookLogger.error()` | log 檔案 | 無 | 記錄到 `~/.claude/hook-errors.log`（`/hook-diag` 查看） |
 
 ## State 與命名慣例

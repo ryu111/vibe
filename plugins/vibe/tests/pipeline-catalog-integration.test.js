@@ -474,8 +474,8 @@ test('non-enforced pipeline: 只有 none', () => {
 
 console.log('\n🧪 Part 13: FRONTEND_FRAMEWORKS 常量');
 
-test('FRONTEND_FRAMEWORKS 包含 8 個框架', () => {
-  assert.strictEqual(FRONTEND_FRAMEWORKS.length, 8);
+test('FRONTEND_FRAMEWORKS 包含 13 個框架', () => {
+  assert.strictEqual(FRONTEND_FRAMEWORKS.length, 13);
 });
 
 test('FRONTEND_FRAMEWORKS 包含主流前端框架', () => {

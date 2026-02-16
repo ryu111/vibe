@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * pipeline-guard.js — PreToolUse hook (unified)
- * Matcher: Write|Edit|NotebookEdit|AskUserQuestion|EnterPlanMode
+ * Matcher: Write|Edit|NotebookEdit|AskUserQuestion|EnterPlanMode|Bash
  *
  * v1.0.43 重構：精簡為純代理層。
  * 所有決策邏輯（含前置放行條件）統一在 guard-rules.js evaluate() 中。
@@ -41,6 +41,8 @@ process.stdin.on('end', () => {
     emit(EVENT_TYPES.TOOL_BLOCKED, sessionId, {
       tool: toolName,
       filePath: toolInput.file_path,
+      command: toolName === 'Bash' ? (toolInput.command || '').slice(0, 100) : undefined,
+      matchedPattern: result.matchedPattern,
       reason: result.reason || 'pipeline-guard',
     });
 
