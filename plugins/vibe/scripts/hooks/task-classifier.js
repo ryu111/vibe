@@ -138,6 +138,35 @@ function isUpgrade(oldPipelineId, newPipelineId) {
 }
 
 /**
+ * 判斷當前 pipeline 是否已完成（所有 expectedStages 都 PASS）
+ * 空 expectedStages（none pipeline）視為完成
+ */
+function isPipelineComplete(state) {
+  if (!state.expectedStages || state.expectedStages.length === 0) return true;
+  return state.expectedStages.every(st => state.stageResults?.[st]?.verdict === 'PASS');
+}
+
+/**
+ * 重設 pipeline 狀態欄位（保留 environment/openspecEnabled/pipelineRules 等基礎設施）
+ * 用於：上一個 pipeline 完成後，新任務重新開始
+ */
+function resetPipelineState(state) {
+  delete state.pipelineId;
+  delete state.taskType;
+  delete state.reclassifications;
+  state.completed = [];
+  state.stageResults = {};
+  state.retries = {};
+  state.skippedStages = [];
+  state.expectedStages = [];
+  state.stageIndex = 0;
+  state.currentStage = null;
+  state.delegationActive = false;
+  state.pipelineEnforced = false;
+  state.pendingRetry = false;
+}
+
+/**
  * 計算已完成的 stages（從 state.completed agents 推導）
  */
 function getCompletedStages(completedAgents) {
@@ -290,6 +319,12 @@ process.stdin.on('end', () => {
       try {
         state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
       } catch (_) {}
+    }
+
+    // 已完成 pipeline → 重設為全新分類（避免跨任務狀態殘留）
+    if (state && state.pipelineId && isPipelineComplete(state)) {
+      resetPipelineState(state);
+      fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
     }
 
     // 無 state file 或無 pipelineId → 初始分類
