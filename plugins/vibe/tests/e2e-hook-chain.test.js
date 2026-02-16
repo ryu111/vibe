@@ -172,9 +172,9 @@ console.log('═'.repeat(55));
       assert.strictEqual(state.taskType, 'quickfix');
     });
 
-    test('A2: pipelineEnforced 不被啟動', () => {
+    test('A2: pipelineEnforced 被啟動（所有有 stage 的 pipeline 都 enforce）', () => {
       const state = readState(sid);
-      assert.strictEqual(state.pipelineEnforced, false);
+      assert.strictEqual(state.pipelineEnforced, true);
     });
 
     test('A3: expectedStages 僅含 DEV', () => {
@@ -182,22 +182,21 @@ console.log('═'.repeat(55));
       assert.deepStrictEqual(state.expectedStages, ['DEV']);
     });
 
-    test('A4: task-classifier 輸出 additionalContext（非 systemMessage）', () => {
+    test('A4: task-classifier 輸出 systemMessage（enforced pipeline）', () => {
       assert.strictEqual(classifyResult.exitCode, 0);
       assert.ok(classifyResult.json);
-      assert.ok(classifyResult.json.additionalContext, '應有 additionalContext');
-      assert.strictEqual(classifyResult.json.systemMessage, undefined, '不應有 systemMessage');
+      assert.ok(classifyResult.json.systemMessage, '應有 systemMessage');
     });
 
-    // Step 3: pipeline-guard 應放行（pipelineEnforced=false）
+    // Step 3: pipeline-guard 應阻擋（pipelineEnforced=true）
     const gateResult = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'Write',
       tool_input: { file_path: 'src/app.js' },
     });
 
-    test('A5: pipeline-guard 放行 trivial 任務的 Write', () => {
-      assert.strictEqual(gateResult.exitCode, 0);
+    test('A5: pipeline-guard 阻擋 trivial 任務的 Write（必須委派）', () => {
+      assert.strictEqual(gateResult.exitCode, 2);
     });
   } finally {
     cleanState(sid);
@@ -436,7 +435,7 @@ console.log('═'.repeat(55));
     test('D1: 初始分類為 quickfix', () => {
       const state = readState(sid);
       assert.strictEqual(state.taskType, 'quickfix');
-      assert.strictEqual(state.pipelineEnforced, false);
+      assert.strictEqual(state.pipelineEnforced, true);
     });
 
     // Step 2: 第二次 prompt 升級為 feature
@@ -839,7 +838,7 @@ console.log('══════════════════════�
       test(`J${i + 1}: trivial 優先 — ${note}`, () => {
         const state = readState(sid);
         assert.strictEqual(state.taskType, 'quickfix');
-        assert.strictEqual(state.pipelineEnforced, false);
+        assert.strictEqual(state.pipelineEnforced, true);
       });
     }
 
@@ -906,8 +905,8 @@ console.log('══════════════════════�
       tool_input: { file_path: 'src/poc.ts' },
     });
 
-    test('J11: trivial(poc+看看) → pipeline-guard 放行寫碼', () => {
-      assert.strictEqual(gateResult.exitCode, 0);
+    test('J11: trivial(poc+看看) → pipeline-guard 阻擋寫碼（fix enforced）', () => {
+      assert.strictEqual(gateResult.exitCode, 2);
     });
   } finally {
     cleanState(sid);
@@ -2054,7 +2053,7 @@ console.log('══════════════════════�
       pipelineId: 'review-only',
       taskType: 'quickfix',
       expectedStages: ['REVIEW'],
-      pipelineEnforced: false,
+      pipelineEnforced: true,  // v1.0.48: 所有有 stage 的 pipeline 都強制
       completed: [],
       stageIndex: 0,
     });

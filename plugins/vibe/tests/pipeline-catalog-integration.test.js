@@ -92,10 +92,12 @@ test('PIPELINE_PRIORITY 升級路徑正確', () => {
   assert.ok(PIPELINE_PRIORITY['fix'] > PIPELINE_PRIORITY['none']);
 });
 
-test('enforced pipeline 優先級 >= 3', () => {
+test('只有 none 不 enforce', () => {
   Object.entries(PIPELINES).forEach(([id, p]) => {
-    if (p.enforced) {
-      assert.ok(PIPELINE_PRIORITY[id] >= 3, `enforced pipeline ${id} 優先級只有 ${PIPELINE_PRIORITY[id]}`);
+    if (id === 'none') {
+      assert.strictEqual(p.enforced, false, 'none 不應 enforce');
+    } else {
+      assert.strictEqual(p.enforced, true, `${id} 應 enforce`);
     }
   });
 });
@@ -457,18 +459,15 @@ test('多個 [pipeline:xxx] 標記 → 只取第一個', () => {
 
 console.log('\n🧪 Part 12: Pipeline enforced 屬性');
 
-test('enforced pipeline: full, standard, quick-dev, test-first, ui-only, security', () => {
-  const enforced = ['full', 'standard', 'quick-dev', 'test-first', 'ui-only', 'security'];
+test('enforced pipeline: 除 none 外全部強制', () => {
+  const enforced = ['full', 'standard', 'quick-dev', 'fix', 'test-first', 'ui-only', 'review-only', 'docs-only', 'security'];
   enforced.forEach(id => {
     assert.strictEqual(PIPELINES[id].enforced, true, `${id} 應為 enforced`);
   });
 });
 
-test('non-enforced pipeline: fix, review-only, docs-only, none', () => {
-  const nonEnforced = ['fix', 'review-only', 'docs-only', 'none'];
-  nonEnforced.forEach(id => {
-    assert.strictEqual(PIPELINES[id].enforced, false, `${id} 不應為 enforced`);
-  });
+test('non-enforced pipeline: 只有 none', () => {
+  assert.strictEqual(PIPELINES['none'].enforced, false, 'none 不應為 enforced');
 });
 
 // ===== 13. FRONTEND_FRAMEWORKS 常量測試 =====

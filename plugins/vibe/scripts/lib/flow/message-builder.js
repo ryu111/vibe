@@ -121,10 +121,14 @@ function buildCompleteMessage({ agentType, currentLabel, completedStr, forcedNot
    - 覆蓋率分析（/vibe:coverage）
    - 安全掃描（/vibe:security）
    - 知識進化（/vibe:evolve — 將此 session 產生的經驗進化為可重用組件）
+   - Pipeline 反思（如果你認為這個 pipeline 對此任務太重或不精準，提議更合適的 stage 組合）
 
 ⚠️ Pipeline 已解除自動模式，現在可以使用 AskUserQuestion。
 💡 自動分類提示：每個選項的 description 中加入 [pipeline:xxx] 標籤可幫助自動分類。
-   例如：description: "執行覆蓋率分析 [pipeline:none]"、description: "安全掃描 [pipeline:security]"`;
+   例如：description: "執行覆蓋率分析 [pipeline:none]"、description: "安全掃描 [pipeline:security]"
+💡 Pipeline 反思：如果此任務不需要這麼多階段，在選項中提供「建議新 pipeline 組合」，
+   說明更適合的 stage 組合（例如 "DEV → REVIEW" 或新增 "quick-review" pipeline）。
+   這些建議會幫助 pipeline catalog 從實際使用經驗中進化。`;
 }
 
 module.exports = {

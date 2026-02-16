@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.47 | 全方位開發工作流 | 34 | 11 | 22 | 45 |
+| **vibe** | 1.0.48 | 全方位開發工作流 | 34 | 11 | 22 | 45 |
 
 ### vibe plugin 功能模組
 
@@ -106,11 +106,11 @@ plugins/vibe/
 | **full** | PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS | 新功能（含 UI） | ✅ |
 | **standard** | PLAN → ARCH → DEV → REVIEW → TEST → DOCS | 新功能（無 UI）、大重構 | ✅ |
 | **quick-dev** | DEV → REVIEW → TEST | bugfix + 補測試、小改動 | ✅ |
-| **fix** | DEV | hotfix、config、一行修改 | ❌ |
+| **fix** | DEV | hotfix、config、一行修改 | ✅ |
 | **test-first** | TEST → DEV → TEST | TDD 工作流（雙 TEST 循環） | ✅ |
 | **ui-only** | DESIGN → DEV → QA | 純 UI/樣式調整 | ✅ |
-| **review-only** | REVIEW | 程式碼審查 | ❌ |
-| **docs-only** | DOCS | 純文件更新 | ❌ |
+| **review-only** | REVIEW | 程式碼審查 | ✅ |
+| **docs-only** | DOCS | 純文件更新 | ✅ |
 | **security** | DEV → REVIEW → TEST | 安全修復（REVIEW 含安全審查） | ✅ |
 | **none** | （空） | 問答、研究、trivial | ❌ |
 
@@ -119,8 +119,8 @@ plugins/vibe/
 - **顯式指定**：在 prompt 中使用 `[pipeline:xxx]` 語法（如 `[pipeline:tdd] 實作 XXX 功能`）
 
 **強制性**（enforced）：
-- ✅ 強制：pipeline-guard 硬阻擋 Main Agent 直接操作，必須透過 delegation
-- ❌ 非強制：允許 Main Agent 直接操作，pipeline 只作為建議
+- ✅ 強制：pipeline-guard 硬阻擋 Main Agent 直接操作，必須透過 delegation（所有有階段的 pipeline）
+- ❌ 非強制：僅 `none` pipeline（問答/研究），Main Agent 可直接操作
 
 ### 9 階段工作流
 
