@@ -72,10 +72,10 @@
     .task-badge { font-size: 10px; padding: 2px 8px; border-radius: 6px; background: var(--surface1); color: var(--subtext0); font-weight: 500; }
 
     /* === S/U Snake Grid === */
-    .snake { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 32px; padding: 8px 0; position: relative; }
+    .snake { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px 32px; padding: 8px 0; position: relative; }
     .snake-row2 { display: contents; }
     /* 轉角連接器 */
-    .snake-turn { grid-column: 4; display: flex; align-items: center; justify-content: center; color: var(--overlay0); font-size: 20px; font-weight: 700; transition: all 0.4s; }
+    .snake-turn { grid-column: 5; display: flex; align-items: center; justify-content: center; color: var(--overlay0); font-size: 20px; font-weight: 700; transition: all 0.4s; }
     .snake-turn.done { color: var(--green); text-shadow: 0 0 8px rgba(166,227,161,0.4); }
     .snake-turn.flowing { color: var(--green); animation: turnFlow 1.2s ease-in-out infinite; }
     @keyframes turnFlow { 0%,100% { transform: translateY(0); opacity: 0.5; text-shadow: none; } 50% { transform: translateY(3px); opacity: 1; text-shadow: 0 0 12px rgba(166,227,161,0.6); } }
@@ -112,7 +112,7 @@
     .ac.skipped::before { color: var(--green); opacity: 0.4; }
     .ac.fail::before { color: var(--red); }
     .ac.active::before { color: var(--sc, var(--blue)); animation: arrowFlowR 1.2s ease-in-out infinite; }
-    .snake > .ac:nth-child(4)::before { display: none; }
+    .snake > .ac:nth-child(5)::before { display: none; }
     /* 第二排箭頭（左向） */
     .snake-row2 .ac::before { content: '←'; left: -16px; }
     .snake-row2 .ac.pass::before { color: var(--green); }
@@ -674,8 +674,8 @@
 
     /* Responsive — 平板 */
     @media (max-width: 1100px) {
-      .snake { grid-template-columns: repeat(2, 1fr); gap: 8px 16px; }
-      .snake-turn { grid-column: 2; }
+      .snake { grid-template-columns: repeat(3, 1fr); gap: 8px 16px; }
+      .snake-turn { grid-column: 3; }
       .ac::after, .ac::before { display: none; }
       .ac-stats { gap: 6px; }
     }
@@ -1570,7 +1570,28 @@
                 <div class="dash-left">
                   <${AgentStatus} s=${s} tick=${tick} events=${tlAll} />
                   <${MCPStats} events=${tlAll} />
-                  ${!isComplete && html`
+                  ${isComplete ? html`
+                    <!-- 完成摘要 -->
+                    <div class="cards">
+                      <div class="card">
+                        <h3>🎉 完成摘要</h3>
+                        <div class="row"><span class="label">Pipeline</span><span class="value">${typeLabel(s.pipelineId || s.taskType)}</span></div>
+                        <div class="row"><span class="label">階段</span><span class="value" style="color:var(--green)">${(s.expectedStages || []).length} / ${(s.expectedStages || []).length} 全部通過</span></div>
+                        <div class="row"><span class="label">總重試</span><span class="value">${Object.values(s.retries || {}).reduce((a, b) => a + b, 0) || '無'}</span></div>
+                        ${s.skippedStages?.length > 0 && html`<div class="row"><span class="label">已跳過</span><span class="value" style="color:var(--subtext0)">${s.skippedStages.join(', ')}</span></div>`}
+                        <div class="row"><span class="label">經過時間</span><span class="value">${elapsed(s.startedAt || s.lastTransition)}</span></div>
+                      </div>
+                      <div class="card">
+                        <h3>⏱ 各階段耗時</h3>
+                        ${(s.expectedStages || []).map(stage => {
+                          const r = s.stageResults?.[stage];
+                          const dur = r?.duration;
+                          const tools = r?.toolCalls;
+                          return html`<div class="row"><span class="label">${SM[stage]?.emoji || ''} ${stage}</span><span class="value">${dur ? fmtSec(dur) : '—'}${tools ? ` · ${tools} calls` : ''}</span></div>`;
+                        })}
+                      </div>
+                    </div>
+                  ` : html`
                     <div class="cards">
                       <div class="card">
                         <h3>🔧 環境</h3>
@@ -1599,30 +1620,42 @@
                         ${s.skippedStages?.length > 0 && html`<div class="row"><span class="label">已跳過</span><span class="value" style="color:var(--subtext0)">${s.skippedStages.join(', ')}</span></div>`}
                       </div>
                     </div>
-                    <!-- Mini Pipeline -->
-                    <div class="mini-pipeline">
-                      ${ALL_STAGES.map((stage, i) => html`
-                        ${i > 0 && html`<span class="mini-arrow">›</span>`}
-                        <div class="mini-stage ${getStatus(stage, s)}">
-                          <span class="mini-stage-label">${SM[stage].emoji} ${stage}</span>
-                        </div>
-                      `)}
-                    </div>
-                    <div class="progress-bar" style="margin-top:2px">
-                      <div class="progress-fill ${isComplete ? 'complete' : ''}" style="width:${progress}%"></div>
-                    </div>
                   `}
+                  <!-- Mini Pipeline -->
+                  <div class="mini-pipeline">
+                    ${ALL_STAGES.map((stage, i) => html`
+                      ${i > 0 && html`<span class="mini-arrow">›</span>`}
+                      <div class="mini-stage ${getStatus(stage, s)}">
+                        <span class="mini-stage-label">${SM[stage].emoji} ${stage}</span>
+                      </div>
+                    `)}
+                  </div>
+                  <div class="progress-bar" style="margin-top:2px">
+                    <div class="progress-fill ${isComplete ? 'complete' : ''}" style="width:${progress}%"></div>
+                  </div>
                 </div>
                 <div class="dash-right">
                   <div class="mini-tl">
                     <div style="display:flex;align-items:center;justify-content:space-between">
-                      <h4>📋 最近事件</h4>
+                      <h4>📋 里程碑事件</h4>
                       ${tlAll.length > 0 && html`<button class="tl-clear" onClick=${clearTimeline}>清除</button>`}
                     </div>
                     <div class="tl-items-wrap">
-                      ${tlAll.length ? tlAll.map(ev => html`
-                        <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
-                      `) : html`<div style="color:var(--subtext0);font-size:10px">無事件</div>`}
+                      ${(() => {
+                        // Dashboard 概覽只顯示重要事件（完整列表在 Timeline Tab）
+                        const SIGNIFICANT = new Set([
+                          'session.start', 'task.classified', 'delegation.start',
+                          'stage.start', 'stage.complete', 'stage.retry',
+                          'pipeline.complete', 'pipeline.incomplete',
+                          'tool.blocked', 'tool.guarded',
+                          'ask.question', 'ask.answered',
+                          'compact.executed',
+                        ]);
+                        const significant = tlAll.filter(ev => SIGNIFICANT.has(ev.eventType));
+                        return significant.length ? significant.map(ev => html`
+                          <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
+                        `) : html`<div style="color:var(--subtext0);font-size:10px">${tlAll.length ? `${tlAll.length} 事件中無里程碑（工具呼叫等詳情見 Timeline Tab）` : '等待事件流…'}</div>`;
+                      })()}
                     </div>
                   </div>
                 </div>
