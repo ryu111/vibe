@@ -1092,11 +1092,42 @@ function runTaskClassifier(stdinData, envOverrides = {}) {
 function createTestState(sessionId, overrides = {}) {
   const p = path.join(CLAUDE_TEST_DIR, `pipeline-state-${sessionId}.json`);
   const state = {
-    sessionId, initialized: true, completed: [], expectedStages: [],
-    pipelineRules: [],
-    environment: { languages: { primary: null, secondary: [] }, framework: null, packageManager: null, tools: {} },
-    openspecEnabled: false, stageResults: {}, retries: {}, skippedStages: [],
-    stageIndex: 0, delegationActive: false, pipelineEnforced: false, ...overrides,
+    sessionId,
+    phase: overrides.phase || 'IDLE',
+    context: {
+      pipelineId: null,
+      taskType: null,
+      expectedStages: [],
+      environment: { languages: { primary: null, secondary: [] }, framework: null, packageManager: null, tools: {} },
+      openspecEnabled: false,
+      pipelineRules: [],
+      needsDesign: false,
+      ...(overrides.context || {}),
+    },
+    progress: {
+      currentStage: null,
+      stageIndex: 0,
+      completedAgents: [],
+      stageResults: {},
+      retries: {},
+      skippedStages: [],
+      pendingRetry: null,
+      ...(overrides.progress || {}),
+    },
+    meta: {
+      initialized: true,
+      classifiedAt: null,
+      lastTransition: new Date().toISOString(),
+      classificationSource: null,
+      classificationConfidence: null,
+      matchedRule: null,
+      layer: null,
+      reclassifications: [],
+      llmClassification: null,
+      correctionCount: 0,
+      cancelled: false,
+      ...(overrides.meta || {}),
+    },
   };
   fs.writeFileSync(p, JSON.stringify(state, null, 2));
   return p;
@@ -1120,16 +1151,23 @@ test('reset 清除 llmClassification（pipeline 完成後新分類重設）', ()
   const sid = 'test-reset-llm-' + Date.now();
   try {
     createTestState(sid, {
-      pipelineId: 'fix',
-      taskType: 'quickfix',
-      expectedStages: ['DEV'],
-      stageResults: { DEV: { verdict: 'PASS' } },
-      llmClassification: { pipeline: 'standard', confidence: 0.85, source: 'llm' },
+      phase: 'COMPLETE',
+      context: {
+        pipelineId: 'fix',
+        taskType: 'quickfix',
+        expectedStages: ['DEV'],
+      },
+      progress: {
+        stageResults: { DEV: { verdict: 'PASS' } },
+      },
+      meta: {
+        llmClassification: { pipeline: 'standard', confidence: 0.85, source: 'llm' },
+      },
     });
     runTaskClassifier({ session_id: sid, prompt: 'implement authentication' });
     const state = readTestState(sid);
-    assert.strictEqual(state.llmClassification, undefined, 'reset 後 llmClassification 應被刪除');
-    assert.deepStrictEqual(state.retries, {}, 'reset 後 retries 應為空物件');
+    assert.strictEqual(state.meta.llmClassification, null, 'reset 後 llmClassification 應為 null');
+    assert.deepStrictEqual(state.progress.retries, {}, 'reset 後 retries 應為空物件');
   } finally {
     cleanupTestState(sid);
   }
@@ -1141,9 +1179,9 @@ test('LLM 失敗不寫入快取（無 API key + weak explore prompt）', () => {
     createTestState(sid);
     runTaskClassifier({ session_id: sid, prompt: '看看現在的狀態' });
     const state = readTestState(sid);
-    assert.strictEqual(state.llmClassification, undefined, 'LLM 失敗時不應寫入快取');
-    assert.ok(state.pipelineId, '應有 pipelineId（降級分類）');
-    assert.strictEqual(state.classificationSource, 'regex-low', 'source 應為 regex-low');
+    assert.strictEqual(state.meta.llmClassification, null, 'LLM 失敗時不應寫入快取');
+    assert.ok(state.context.pipelineId, '應有 pipelineId（降級分類）');
+    assert.strictEqual(state.meta.classificationSource, 'regex-low', 'source 應為 regex-low');
   } finally {
     cleanupTestState(sid);
   }
@@ -1153,12 +1191,14 @@ test('快取命中直接使用（不呼叫 LLM API）', () => {
   const sid = 'test-cache-hit-' + Date.now();
   try {
     createTestState(sid, {
-      llmClassification: { pipeline: 'standard', confidence: 0.85, source: 'llm', timestamp: Date.now() },
+      meta: {
+        llmClassification: { pipeline: 'standard', confidence: 0.85, source: 'llm', timestamp: Date.now() },
+      },
     });
     runTaskClassifier({ session_id: sid, prompt: '看看現在的狀態' });
     const state = readTestState(sid);
-    assert.strictEqual(state.pipelineId, 'standard', '快取命中應使用快取的 pipeline');
-    assert.strictEqual(state.classificationSource, 'llm-cached', 'source 應為 llm-cached');
+    assert.strictEqual(state.context.pipelineId, 'standard', '快取命中應使用快取的 pipeline');
+    assert.strictEqual(state.meta.classificationSource, 'llm-cached', 'source 應為 llm-cached');
   } finally {
     cleanupTestState(sid);
   }
@@ -1168,12 +1208,14 @@ test('過期快取不使用（TTL 5 分鐘）', () => {
   const sid = 'test-cache-expired-' + Date.now();
   try {
     createTestState(sid, {
-      llmClassification: { pipeline: 'standard', confidence: 0.85, source: 'llm', timestamp: Date.now() - 6 * 60 * 1000 },
+      meta: {
+        llmClassification: { pipeline: 'standard', confidence: 0.85, source: 'llm', timestamp: Date.now() - 6 * 60 * 1000 },
+      },
     });
     runTaskClassifier({ session_id: sid, prompt: '看看現在的狀態' });
     const state = readTestState(sid);
     // 過期快取不使用，降級為 regex-low（無 API key）
-    assert.notStrictEqual(state.classificationSource, 'llm-cached', '過期快取不應命中');
+    assert.notStrictEqual(state.meta.classificationSource, 'llm-cached', '過期快取不應命中');
   } finally {
     cleanupTestState(sid);
   }
@@ -1183,11 +1225,13 @@ test('無 timestamp 的舊格式快取不使用', () => {
   const sid = 'test-cache-no-ts-' + Date.now();
   try {
     createTestState(sid, {
-      llmClassification: { pipeline: 'standard', confidence: 0.85, source: 'llm' },
+      meta: {
+        llmClassification: { pipeline: 'standard', confidence: 0.85, source: 'llm' },
+      },
     });
     runTaskClassifier({ session_id: sid, prompt: '看看現在的狀態' });
     const state = readTestState(sid);
-    assert.notStrictEqual(state.classificationSource, 'llm-cached', '無 timestamp 的快取不應命中');
+    assert.notStrictEqual(state.meta.classificationSource, 'llm-cached', '無 timestamp 的快取不應命中');
   } finally {
     cleanupTestState(sid);
   }
@@ -1199,8 +1243,8 @@ test('首次分類無快取時正常分類', () => {
     createTestState(sid);
     runTaskClassifier({ session_id: sid, prompt: 'implement user authentication' });
     const state = readTestState(sid);
-    assert.strictEqual(state.pipelineId, 'standard', 'feature 類型應映射到 standard pipeline');
-    assert.strictEqual(state.classificationSource, 'regex', '高信心度應為 regex（不觸發 LLM）');
+    assert.strictEqual(state.context.pipelineId, 'standard', 'feature 類型應映射到 standard pipeline');
+    assert.strictEqual(state.meta.classificationSource, 'regex', '高信心度應為 regex（不觸發 LLM）');
   } finally {
     cleanupTestState(sid);
   }
