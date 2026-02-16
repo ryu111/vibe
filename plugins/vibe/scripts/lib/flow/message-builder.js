@@ -122,7 +122,9 @@ function buildCompleteMessage({ agentType, currentLabel, completedStr, forcedNot
    - 安全掃描（/vibe:security）
    - 知識進化（/vibe:evolve — 將此 session 產生的經驗進化為可重用組件）
 
-⚠️ Pipeline 已解除自動模式，現在可以使用 AskUserQuestion。`;
+⚠️ Pipeline 已解除自動模式，現在可以使用 AskUserQuestion。
+💡 自動分類提示：每個選項的 description 中加入 [pipeline:xxx] 標籤可幫助自動分類。
+   例如：description: "執行覆蓋率分析 [pipeline:none]"、description: "安全掃描 [pipeline:security]"`;
 }
 
 module.exports = {

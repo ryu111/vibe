@@ -87,8 +87,9 @@ const WEAK_EXPLORE = /看看|查看|找找|說明|解釋|告訴|描述|列出|�
 const ACTION_PATTERNS = [
   { type: 'tdd', pattern: /tdd|test.?first|測試驅動|先寫測試/ },
   { type: 'test', pattern: /^(write|add|create|fix).*test|^(寫|加|新增|修).*測試|^test\b/ },
-  { type: 'refactor', pattern: /refactor|restructure|重構|重寫|重新設計|改架構/ },
+  { type: 'refactor', pattern: /refactor|restructure|重構|重寫|重新設計|改架構|優化|改善|改進|提升/ },
   { type: 'feature', pattern: /implement|develop|build.*feature|新增功能|建立.*(?:功能|api|rest|endpoint|server|service|database|服務|系統|模組|元件|頁面|app|應用|專案|component|module)|實作|開發.*功能|加入.*功能|新的.*(api|endpoint|component|頁面|模組|plugin)|整合.*系統/ },
+  { type: 'docs', pattern: /更新.*(?:\.md\b|文[件檔]|readme|changelog|documentation)|寫文[件檔]|補文[件檔]|update.+(?:readme|changelog|docs?|documentation)\b/ },
   { type: 'quickfix', pattern: /fix.*typo|rename|change.*name|update.*text|改名|修.*typo|換.*名|改.*顏色|改.*文字/ },
   { type: 'bugfix', pattern: /fix|bug|修(復|正)|debug|壞了|出錯|不work|不能/ },
 ];
@@ -191,7 +192,11 @@ function calculateConfidence(taskType, prompt) {
     return 0.8;
   }
 
-  // 預設 quickfix → 中信心度
+  // 預設 quickfix — 短文本降低信心度觸發 Layer 3 LLM
+  const SHORT_PROMPT_THRESHOLD = 40;
+  if (prompt.trim().length <= SHORT_PROMPT_THRESHOLD) {
+    return 0.5;
+  }
   return 0.7;
 }
 
@@ -266,11 +271,18 @@ function classifyWithLLM(prompt) {
     '- 修 typo、改名、一行修改 → fix',
     '- Bug 修復、小功能補丁 → quick-dev',
     '- 新功能、新系統、新模組 → standard（無 UI）或 full（含 UI）',
-    '- 重構 → standard',
+    '- 重構、優化、改善既有功能 → standard',
     '- TDD 工作流 → test-first',
     '- 純 UI/樣式 → ui-only',
-    '- 純文件 → docs-only',
+    '- 純文件更新 → docs-only',
     '- 安全修復 → security',
+    '',
+    '短文本特殊處理：',
+    '- 短文本（< 50 字）通常來自選單選擇，根據語意判斷最適合的 pipeline',
+    '- 「改善/優化/提升 X」→ standard',
+    '- 「更新文件/文檔/X.md」→ docs-only',
+    '- 「繼續 X」→ 根據 X 的內容判斷',
+    '- 不確定時選 none（保守策略）',
   ].join('\n');
 
   const body = JSON.stringify({

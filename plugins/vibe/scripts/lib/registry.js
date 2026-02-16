@@ -83,6 +83,7 @@ const TASKTYPE_TO_PIPELINE = {
   'research': 'none', 'quickfix': 'fix', 'bugfix': 'quick-dev',
   'feature': 'standard', 'refactor': 'standard',
   'test': 'quick-dev', 'tdd': 'test-first',
+  'docs': 'docs-only',
 };
 
 // pipeline ID → legacy taskType 反推映射（向後相容）

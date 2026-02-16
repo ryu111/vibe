@@ -185,11 +185,11 @@ test('classifyWithConfidence: Weak explore → none, 0.6', () => {
   assert.strictEqual(result.source, 'pending-llm');
 });
 
-test('classifyWithConfidence: 預設 quickfix → fix, 0.7', () => {
+test('classifyWithConfidence: 預設 quickfix（短文本）→ fix, 0.5, pending-llm', () => {
   const result = classifyWithConfidence('改個名');
   assert.strictEqual(result.pipeline, 'fix');
-  assert.strictEqual(result.confidence, 0.7);
-  assert.strictEqual(result.source, 'regex');
+  assert.strictEqual(result.confidence, 0.5, '短文本 default 應降低信心度');
+  assert.strictEqual(result.source, 'pending-llm', '短文本 default 應觸發 Layer 3');
 });
 
 // ===== 4. Classifier 向後相容測試 =====

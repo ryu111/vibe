@@ -799,10 +799,18 @@ test('Layer 2: Action keyword → 0.8', () => {
   assert.strictEqual(result.confidence, 0.8);
 });
 
-test('Layer 2: 預設 quickfix → fix, 0.7', () => {
+test('Layer 2: 預設 quickfix（短文本）→ fix, 0.5, pending-llm', () => {
   const result = classifyWithConfidence('隨便改改');
   assert.strictEqual(result.pipeline, 'fix');
-  assert.strictEqual(result.confidence, 0.7);
+  assert.strictEqual(result.confidence, 0.5, '短文本 default 應降低信心度');
+  assert.strictEqual(result.source, 'pending-llm', '短文本 default 應觸發 Layer 3');
+});
+
+test('Layer 2: 預設 quickfix（長文本）→ fix, 0.7', () => {
+  const result = classifyWithConfidence('this is a long enough prompt that should not trigger Layer 3 LLM classification');
+  assert.strictEqual(result.pipeline, 'fix');
+  assert.strictEqual(result.confidence, 0.7, '長文本 default 保持 0.7');
+  assert.strictEqual(result.source, 'regex', '長文本 default 不觸發 Layer 3');
 });
 
 test('Layer 2: 空字串 → fix, 0.7', () => {
@@ -1416,6 +1424,142 @@ test('Empty prompt → matchedRule: default', () => {
 test('Null prompt → matchedRule: default', () => {
   const result = classifyWithConfidence(null);
   assert.strictEqual(result.matchedRule, 'default');
+});
+
+// ═══════════════════════════════════════════════
+// Part 4b: 中文動詞擴充驗證（v1.0.46 改善 A）
+// ═══════════════════════════════════════════════
+
+console.log('\n🧪 Part 4b: 中文動詞擴充驗證');
+console.log('═'.repeat(50));
+
+test('改善 → refactor', () => {
+  assert.strictEqual(classify('改善系統效能'), 'refactor');
+});
+
+test('優化 → refactor', () => {
+  assert.strictEqual(classify('優化資料庫查詢'), 'refactor');
+});
+
+test('改進 → refactor', () => {
+  assert.strictEqual(classify('改進錯誤處理流程'), 'refactor');
+});
+
+test('提升 → refactor', () => {
+  assert.strictEqual(classify('提升使用者體驗'), 'refactor');
+});
+
+test('Pipeline 選擇 UX 改善 → refactor（AskUserQuestion 典型選項）', () => {
+  assert.strictEqual(classify('Pipeline 選擇 UX 改善'), 'refactor');
+  const r = classifyWithConfidence('Pipeline 選擇 UX 改善');
+  assert.strictEqual(r.pipeline, 'standard', '改善 → refactor → standard');
+  assert.strictEqual(r.matchedRule, 'action:refactor');
+  assert.strictEqual(r.confidence, 0.8, '動作關鍵字信心度 0.8');
+});
+
+test('疑問句 > refactor：能否改善效能', () => {
+  assert.strictEqual(classify('能否改善效能'), 'research');
+});
+
+test('疑問句 > refactor：改善什麼', () => {
+  assert.strictEqual(classify('改善什麼'), 'research');
+});
+
+// ═══════════════════════════════════════════════
+// Part 4c: docs taskType 驗證（v1.0.46 新增）
+// ═══════════════════════════════════════════════
+
+console.log('\n🧪 Part 4c: docs taskType 驗證');
+console.log('═'.repeat(50));
+
+test('更新 README.md → docs', () => {
+  assert.strictEqual(classify('更新 README.md'), 'docs');
+  const r = classifyWithConfidence('更新 README.md');
+  assert.strictEqual(r.pipeline, 'docs-only', 'docs → docs-only');
+  assert.strictEqual(r.matchedRule, 'action:docs');
+});
+
+test('更新 MEMORY.md → docs', () => {
+  assert.strictEqual(classify('更新 MEMORY.md'), 'docs');
+});
+
+test('更新 CHANGELOG.md → docs', () => {
+  assert.strictEqual(classify('更新 CHANGELOG.md'), 'docs');
+});
+
+test('更新文件 → docs', () => {
+  assert.strictEqual(classify('更新文件'), 'docs');
+});
+
+test('補文件 → docs', () => {
+  assert.strictEqual(classify('補文件'), 'docs');
+});
+
+test('寫文檔 → docs', () => {
+  assert.strictEqual(classify('寫文檔'), 'docs');
+});
+
+test('update readme → docs', () => {
+  assert.strictEqual(classify('update the readme'), 'docs');
+});
+
+test('update docs → docs', () => {
+  assert.strictEqual(classify('update project docs'), 'docs');
+});
+
+test('更新 docker → NOT docs（避免 false positive）', () => {
+  assert.notStrictEqual(classify('更新 docker compose'), 'docs');
+});
+
+// ═══════════════════════════════════════════════
+// Part 4d: 短文本 LLM 觸發驗證（v1.0.46 改善 B）
+// ═══════════════════════════════════════════════
+
+console.log('\n🧪 Part 4d: 短文本 LLM 觸發驗證');
+console.log('═'.repeat(50));
+
+test('短文本 default → pending-llm: ok', () => {
+  const r = classifyWithConfidence('ok');
+  assert.strictEqual(r.confidence, 0.5, '短文本 default 信心度 0.5');
+  assert.strictEqual(r.source, 'pending-llm', '應觸發 Layer 3');
+});
+
+test('短文本 default → pending-llm: 繼續', () => {
+  const r = classifyWithConfidence('繼續');
+  assert.strictEqual(r.confidence, 0.5);
+  assert.strictEqual(r.source, 'pending-llm');
+});
+
+test('短文本但命中 action → 不觸發 LLM', () => {
+  const r = classifyWithConfidence('優化效能');
+  assert.strictEqual(r.confidence, 0.8, '動作關鍵字信心度 0.8');
+  assert.strictEqual(r.source, 'regex', '不需 Layer 3');
+});
+
+test('短文本疑問句 → 不觸發 LLM（信心度 0.95）', () => {
+  const r = classifyWithConfidence('這是什麼');
+  assert.strictEqual(r.confidence, 0.95);
+  assert.strictEqual(r.source, 'regex');
+});
+
+test('長文本 default → 不觸發 LLM（保持 0.7）', () => {
+  const prompt = 'this is a sufficiently long prompt that does not match any action keywords at all';
+  const r = classifyWithConfidence(prompt);
+  assert.strictEqual(r.confidence, 0.7, '長文本 default 保持 0.7');
+  assert.strictEqual(r.source, 'regex', '長文本不觸發 Layer 3');
+  assert.ok(prompt.length > 40, '確認 prompt 超過閾值');
+});
+
+test('剛好 40 字元 → 觸發 LLM', () => {
+  const prompt = 'a'.repeat(40);
+  const r = classifyWithConfidence(prompt);
+  assert.strictEqual(r.confidence, 0.5, '40 字元 → 觸發 LLM');
+});
+
+test('41 字元 → 不觸發 LLM', () => {
+  const prompt = 'a'.repeat(41);
+  const r = classifyWithConfidence(prompt);
+  assert.strictEqual(r.confidence, 0.7, '41 字元 → 不觸發 LLM');
 });
 
 // ═══════════════════════════════════════════════
