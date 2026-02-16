@@ -10,6 +10,7 @@ import { homedir } from 'os';
 
 // 動態引入 CommonJS 模組
 const { createConsumer } = await import('./scripts/lib/timeline/consumer.js');
+const { query } = await import('./scripts/lib/timeline/timeline.js');
 const { formatEventText, EMOJI_MAP } = await import('./scripts/lib/timeline/formatter.js');
 
 // --port CLI 參數 or 環境變數
@@ -239,6 +240,16 @@ Bun.serve({
     open(ws) {
       clients.add(ws);
       ws.send(JSON.stringify({ type: 'init', sessions }));
+      // 新連線重播所有 session 的歷史 timeline 事件
+      for (const sid of Object.keys(sessions)) {
+        try {
+          const events = query(sid);
+          for (const event of events) {
+            const formatted = formatEvent(event, sid);
+            ws.send(JSON.stringify({ type: 'timeline', sessionId: sid, event: formatted }));
+          }
+        } catch (_) { /* timeline 不存在時跳過 */ }
+      }
     },
     close(ws) {
       clients.delete(ws);
