@@ -16,8 +16,14 @@ const path = require('path');
 // 非程式碼檔案副檔名（允許直接編輯）
 const NON_CODE_EXTS = new Set([
   '.md', '.txt', '.json', '.yml', '.yaml', '.toml',
-  '.cfg', '.ini', '.env', '.gitignore', '.dockerignore',
-  '.csv', '.xml', '.html', '.css', '.svg',
+  '.cfg', '.ini', '.csv', '.xml', '.html', '.css', '.svg',
+]);
+
+// dotfiles（path.extname 回傳空字串，需用 basename 精確匹配）
+const NON_CODE_DOTFILES = new Set([
+  '.env', '.env.local', '.env.example', '.env.development', '.env.production',
+  '.gitignore', '.dockerignore', '.editorconfig',
+  '.eslintrc', '.prettierrc', '.browserslistrc',
 ]);
 
 /**
@@ -27,6 +33,8 @@ const NON_CODE_EXTS = new Set([
  */
 function isNonCodeFile(filePath) {
   if (!filePath) return false;
+  const baseName = path.basename(filePath);
+  if (NON_CODE_DOTFILES.has(baseName)) return true;
   const ext = path.extname(filePath).toLowerCase();
   return NON_CODE_EXTS.has(ext);
 }
@@ -110,4 +118,5 @@ module.exports = {
   evaluate,
   isNonCodeFile,
   NON_CODE_EXTS,
+  NON_CODE_DOTFILES,
 };
