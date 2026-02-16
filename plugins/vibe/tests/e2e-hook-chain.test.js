@@ -1444,6 +1444,227 @@ console.log('══════════════════════�
 })();
 
 // ═══════════════════════════════════════════════
+// Scenario P: QA 回退重驗流程（對稱於 Scenario I 的 REVIEW 回退）
+// QA FAIL:CRITICAL → DEV 修復 → 重跑 QA → QA PASS → E2E
+// ═══════════════════════════════════════════════
+
+console.log('\n🔄 Scenario P: QA 回退重驗（QA FAIL → DEV fix → re-QA → E2E）');
+console.log('═══════════════════════════════════════════════════════');
+
+(() => {
+  const sid = 'test-qa-retry';
+  try {
+    // 初始化 — full pipeline，DEV/REVIEW/TEST 已完成
+    initState(sid, {
+      pipelineId: 'full',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      pipelineEnforced: true,
+      completed: ['vibe:developer', 'vibe:code-reviewer', 'vibe:tester'],
+      stageIndex: 5, // TEST 完成（索引 5）
+    });
+
+    // Step 1: QA 完成，verdict FAIL:CRITICAL
+    const transcriptPath = path.join(CLAUDE_DIR, `test-transcript-${sid}.jsonl`);
+    fs.writeFileSync(transcriptPath, JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ text: 'API 行為不符預期 <!-- PIPELINE_VERDICT: FAIL:CRITICAL -->' }] },
+    }) + '\n');
+
+    const r1 = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:qa',
+      agent_transcript_path: transcriptPath,
+    });
+
+    test('P1: QA FAIL:CRITICAL → 回退訊息指示回到 DEV', () => {
+      assert.ok(r1.json && r1.json.systemMessage, '應有 systemMessage');
+      assert.ok(r1.json.systemMessage.includes('Pipeline 回退'), '訊息應包含 Pipeline 回退');
+      assert.ok(r1.json.systemMessage.includes('DEV'), '訊息應指示回到 DEV');
+    });
+
+    test('P2: state 寫入 pendingRetry 標記（stage=QA）', () => {
+      const s = readState(sid);
+      assert.ok(s.pendingRetry, '應有 pendingRetry');
+      assert.strictEqual(s.pendingRetry.stage, 'QA');
+      assert.strictEqual(s.pendingRetry.severity, 'CRITICAL');
+      assert.strictEqual(s.pendingRetry.round, 1);
+    });
+
+    test('P3: retries 計數正確（QA: 1）', () => {
+      const s = readState(sid);
+      assert.strictEqual(s.retries.QA, 1);
+    });
+
+    // Step 2: DEV 修復完成
+    const r2 = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:developer',
+    });
+
+    test('P4: DEV 修復後 → 回退重驗訊息指向 QA', () => {
+      assert.ok(r2.json && r2.json.systemMessage, '應有 systemMessage');
+      assert.ok(r2.json.systemMessage.includes('回退重驗'), '訊息應包含「回退重驗」');
+      assert.ok(r2.json.systemMessage.includes('QA'), '應指示重跑 QA');
+    });
+
+    test('P5: pendingRetry 被消費', () => {
+      const s = readState(sid);
+      assert.strictEqual(s.pendingRetry, undefined, 'pendingRetry 應被刪除');
+    });
+
+    // Step 3: 第二次 QA PASS → 前進到 E2E
+    fs.writeFileSync(transcriptPath, JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ text: 'API 行為正確 <!-- PIPELINE_VERDICT: PASS -->' }] },
+    }) + '\n');
+
+    const r3 = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:qa',
+      agent_transcript_path: transcriptPath,
+    });
+
+    test('P6: 第二次 QA PASS → 前進到 E2E', () => {
+      assert.ok(r3.json && r3.json.systemMessage, '應有 systemMessage');
+      assert.ok(r3.json.systemMessage.includes('E2E'), '應指示前進到 E2E');
+      assert.ok(!r3.json.systemMessage.includes('回退重驗'), '不應包含回退重驗');
+    });
+
+    // 清理 transcript
+    try { fs.unlinkSync(transcriptPath); } catch (_) {}
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
+// Scenario Q: E2E 回退 + 非回退場景
+// E2E FAIL:CRITICAL → DEV 回退 | E2E FAIL:MEDIUM → 不回退，繼續 DOCS
+// ═══════════════════════════════════════════════
+
+console.log('\n🌐 Scenario Q: E2E 回退與非回退（CRITICAL vs MEDIUM）');
+console.log('═══════════════════════════════════════════════════════');
+
+(() => {
+  const sid = 'test-e2e-retry';
+  try {
+    // --- Part 1: E2E FAIL:CRITICAL → 回退到 DEV ---
+
+    initState(sid, {
+      pipelineId: 'full',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      pipelineEnforced: true,
+      completed: ['vibe:developer', 'vibe:code-reviewer', 'vibe:tester', 'vibe:qa'],
+      stageIndex: 6, // QA 完成（索引 6）
+    });
+
+    const transcriptPath = path.join(CLAUDE_DIR, `test-transcript-${sid}.jsonl`);
+    fs.writeFileSync(transcriptPath, JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ text: '使用者流程中斷 <!-- PIPELINE_VERDICT: FAIL:CRITICAL -->' }] },
+    }) + '\n');
+
+    const r1 = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:e2e-runner',
+      agent_transcript_path: transcriptPath,
+    });
+
+    test('Q1: E2E FAIL:CRITICAL → 回退到 DEV', () => {
+      assert.ok(r1.json && r1.json.systemMessage, '應有 systemMessage');
+      assert.ok(r1.json.systemMessage.includes('Pipeline 回退'), '應包含 Pipeline 回退');
+      assert.ok(r1.json.systemMessage.includes('DEV'), '應指示回到 DEV');
+    });
+
+    test('Q2: pendingRetry.stage === E2E', () => {
+      const s = readState(sid);
+      assert.ok(s.pendingRetry, '應有 pendingRetry');
+      assert.strictEqual(s.pendingRetry.stage, 'E2E');
+      assert.strictEqual(s.pendingRetry.severity, 'CRITICAL');
+    });
+
+    test('Q3: retries.E2E === 1', () => {
+      const s = readState(sid);
+      assert.strictEqual(s.retries.E2E, 1);
+    });
+
+    // --- Part 2: E2E FAIL:MEDIUM → 不回退，繼續 DOCS ---
+
+    initState(sid, {
+      pipelineId: 'full',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      pipelineEnforced: true,
+      completed: ['vibe:developer', 'vibe:code-reviewer', 'vibe:tester', 'vibe:qa'],
+      stageIndex: 6,
+    });
+
+    fs.writeFileSync(transcriptPath, JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ text: '小問題 <!-- PIPELINE_VERDICT: FAIL:MEDIUM -->' }] },
+    }) + '\n');
+
+    const r2 = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:e2e-runner',
+      agent_transcript_path: transcriptPath,
+    });
+
+    test('Q4: E2E FAIL:MEDIUM → 不回退，前進到 DOCS', () => {
+      assert.ok(r2.json && r2.json.systemMessage, '應有 systemMessage');
+      assert.ok(r2.json.systemMessage.includes('DOCS'), '應指示前進到 DOCS');
+      assert.ok(!r2.json.systemMessage.includes('Pipeline 回退'), '不應包含 Pipeline 回退');
+    });
+
+    test('Q5: 無 pendingRetry（MEDIUM 不回退）', () => {
+      const s = readState(sid);
+      assert.ok(!s.pendingRetry, '不應有 pendingRetry');
+    });
+
+    // --- Part 3: E2E FAIL:HIGH → 回退到 DEV ---
+
+    initState(sid, {
+      pipelineId: 'full',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      pipelineEnforced: true,
+      completed: ['vibe:developer', 'vibe:code-reviewer', 'vibe:tester', 'vibe:qa'],
+      stageIndex: 6,
+    });
+
+    fs.writeFileSync(transcriptPath, JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ text: '效能問題 <!-- PIPELINE_VERDICT: FAIL:HIGH -->' }] },
+    }) + '\n');
+
+    const r3 = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:e2e-runner',
+      agent_transcript_path: transcriptPath,
+    });
+
+    test('Q6: E2E FAIL:HIGH → 回退到 DEV', () => {
+      assert.ok(r3.json && r3.json.systemMessage, '應有 systemMessage');
+      assert.ok(r3.json.systemMessage.includes('Pipeline 回退'), '應包含 Pipeline 回退');
+    });
+
+    test('Q7: pendingRetry.stage === E2E（HIGH 嚴重度）', () => {
+      const s = readState(sid);
+      assert.ok(s.pendingRetry, '應有 pendingRetry');
+      assert.strictEqual(s.pendingRetry.stage, 'E2E');
+      assert.strictEqual(s.pendingRetry.severity, 'HIGH');
+    });
+
+    // 清理 transcript
+    try { fs.unlinkSync(transcriptPath); } catch (_) {}
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
 // 結果輸出
 // ═══════════════════════════════════════════════
 
