@@ -1665,6 +1665,205 @@ console.log('══════════════════════�
 })();
 
 // ═══════════════════════════════════════════════
+// Scenario R: MAX_RETRIES 耗盡 → 強制繼續（不卡死）
+// REVIEW 已回退 3 次 → 再次 FAIL → 不再回退，強制前進到 TEST
+// ═══════════════════════════════════════════════
+
+console.log('\n⚠️ Scenario R: MAX_RETRIES 耗盡 → 強制繼續');
+console.log('═══════════════════════════════════════════════════════');
+
+(() => {
+  const sid = 'test-max-retries';
+  try {
+    // 初始化 — 已回退 3 次（MAX_RETRIES=3）
+    initState(sid, {
+      pipelineId: 'full',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      pipelineEnforced: true,
+      completed: ['vibe:developer'],
+      stageIndex: 3, // DEV（索引 3）
+      retries: { REVIEW: 3 }, // 已達上限
+    });
+
+    // REVIEW 再次 FAIL:CRITICAL — 但已達上限
+    const transcriptPath = path.join(CLAUDE_DIR, `test-transcript-${sid}.jsonl`);
+    fs.writeFileSync(transcriptPath, JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ text: '仍有問題 <!-- PIPELINE_VERDICT: FAIL:CRITICAL -->' }] },
+    }) + '\n');
+
+    const r1 = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:code-reviewer',
+      agent_transcript_path: transcriptPath,
+    });
+
+    test('R1: MAX_RETRIES 耗盡 → 不回退，前進到 TEST', () => {
+      assert.ok(r1.json && r1.json.systemMessage, '應有 systemMessage');
+      assert.ok(r1.json.systemMessage.includes('TEST'), '應前進到 TEST');
+      assert.ok(!r1.json.systemMessage.includes('Pipeline 回退'), '不應包含 Pipeline 回退');
+    });
+
+    test('R2: 強制繼續警告', () => {
+      assert.ok(r1.json.systemMessage.includes('強制繼續'), '應包含強制繼續警告');
+      assert.ok(r1.json.systemMessage.includes('3'), '應提及回退上限次數');
+    });
+
+    test('R3: 無 pendingRetry（不再回退）', () => {
+      const s = readState(sid);
+      assert.ok(!s.pendingRetry, '不應設定 pendingRetry');
+    });
+
+    test('R4: stageIndex 前進（不卡死）', () => {
+      const s = readState(sid);
+      assert.ok(s.stageIndex > 3, 'stageIndex 應大於 DEV 的索引');
+    });
+
+    test('R5: retries 計數保持不變（不再累加）', () => {
+      const s = readState(sid);
+      assert.strictEqual(s.retries.REVIEW, 3, 'retries.REVIEW 應保持 3');
+    });
+
+    // 清理 transcript
+    try { fs.unlinkSync(transcriptPath); } catch (_) {}
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
+// Scenario S: 級聯多階段失敗修復（REVIEW → TEST 連續回退）
+// REVIEW FAIL → DEV → REVIEW PASS → TEST FAIL → DEV → TEST PASS → QA
+// ═══════════════════════════════════════════════
+
+console.log('\n🔗 Scenario S: 級聯多階段失敗修復');
+console.log('═══════════════════════════════════════════════════════');
+
+(() => {
+  const sid = 'test-cascading-retry';
+  try {
+    // 初始化 — full pipeline，DEV 已完成
+    initState(sid, {
+      pipelineId: 'full',
+      taskType: 'feature',
+      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+      pipelineEnforced: true,
+      completed: ['vibe:developer'],
+      stageIndex: 3,
+    });
+
+    const transcriptPath = path.join(CLAUDE_DIR, `test-transcript-${sid}.jsonl`);
+
+    // ── Round 1: REVIEW FAIL:HIGH ──
+    fs.writeFileSync(transcriptPath, JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ text: '邏輯錯誤 <!-- PIPELINE_VERDICT: FAIL:HIGH -->' }] },
+    }) + '\n');
+
+    runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:code-reviewer',
+      agent_transcript_path: transcriptPath,
+    });
+
+    test('S1: REVIEW FAIL:HIGH → pendingRetry.stage=REVIEW', () => {
+      const s = readState(sid);
+      assert.ok(s.pendingRetry, '應有 pendingRetry');
+      assert.strictEqual(s.pendingRetry.stage, 'REVIEW');
+    });
+
+    // ── Round 2: DEV fix → 回退重驗指向 REVIEW ──
+    const r2 = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:developer',
+    });
+
+    test('S2: DEV fix → 回退重驗指向 REVIEW', () => {
+      assert.ok(r2.json.systemMessage.includes('回退重驗'), '應包含回退重驗');
+      assert.ok(r2.json.systemMessage.includes('REVIEW'), '應指向 REVIEW');
+    });
+
+    // ── Round 3: REVIEW PASS → 前進到 TEST ──
+    fs.writeFileSync(transcriptPath, JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ text: '品質良好 <!-- PIPELINE_VERDICT: PASS -->' }] },
+    }) + '\n');
+
+    const r3 = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:code-reviewer',
+      agent_transcript_path: transcriptPath,
+    });
+
+    test('S3: REVIEW PASS → 前進到 TEST', () => {
+      assert.ok(r3.json.systemMessage.includes('TEST'), '應前進到 TEST');
+    });
+
+    // ── Round 4: TEST FAIL:CRITICAL → 回退到 DEV ──
+    fs.writeFileSync(transcriptPath, JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ text: '測試失敗 <!-- PIPELINE_VERDICT: FAIL:CRITICAL -->' }] },
+    }) + '\n');
+
+    runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:tester',
+      agent_transcript_path: transcriptPath,
+    });
+
+    test('S4: TEST FAIL:CRITICAL → pendingRetry.stage=TEST', () => {
+      const s = readState(sid);
+      assert.ok(s.pendingRetry, '應有 pendingRetry');
+      assert.strictEqual(s.pendingRetry.stage, 'TEST');
+      assert.strictEqual(s.retries.REVIEW, 1, 'REVIEW retries 保持 1');
+      assert.strictEqual(s.retries.TEST, 1, 'TEST retries 新增為 1');
+    });
+
+    // ── Round 5: DEV fix → 回退重驗指向 TEST ──
+    const r5 = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:developer',
+    });
+
+    test('S5: DEV fix → 回退重驗指向 TEST', () => {
+      assert.ok(r5.json.systemMessage.includes('回退重驗'), '應包含回退重驗');
+      assert.ok(r5.json.systemMessage.includes('TEST'), '應指向 TEST');
+    });
+
+    // ── Round 6: TEST PASS → 前進到 QA ──
+    fs.writeFileSync(transcriptPath, JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ text: '測試全過 <!-- PIPELINE_VERDICT: PASS -->' }] },
+    }) + '\n');
+
+    const r6 = runHook('stage-transition', {
+      session_id: sid,
+      agent_type: 'vibe:tester',
+      agent_transcript_path: transcriptPath,
+    });
+
+    test('S6: TEST PASS → 前進到 QA（非回退）', () => {
+      assert.ok(r6.json.systemMessage.includes('QA'), '應前進到 QA');
+      assert.ok(!r6.json.systemMessage.includes('Pipeline 回退'), '不應包含回退');
+      assert.ok(!r6.json.systemMessage.includes('回退重驗'), '不應包含回退重驗');
+    });
+
+    test('S7: 累積 retries 正確（REVIEW:1, TEST:1）', () => {
+      const s = readState(sid);
+      assert.strictEqual(s.retries.REVIEW, 1);
+      assert.strictEqual(s.retries.TEST, 1);
+      assert.ok(!s.retries.QA, 'QA 無回退');
+    });
+
+    // 清理 transcript
+    try { fs.unlinkSync(transcriptPath); } catch (_) {}
+  } finally {
+    cleanState(sid);
+  }
+})();
+
+// ═══════════════════════════════════════════════
 // 結果輸出
 // ═══════════════════════════════════════════════
 
