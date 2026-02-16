@@ -1106,11 +1106,14 @@
     function getAgentInfo(agent, s, askPending) {
       let status = 'idle', statusLabel = '閒置', dur = null, tools = null, retries = 0;
       if (agent.stage && s) {
-        // 無 pipeline 時 → 不適用（與 Pipeline tab skipped 一致）
-        if (!s.expectedStages?.length) {
+        // 直接委派偵測：currentStage 指向此 agent 且 delegationActive（手動 skill 觸發）
+        const isDirectDelegate = s.delegationActive && s.currentStage === agent.stage;
+        if (isDirectDelegate) {
+          status = 'running'; statusLabel = '運行中';
+        } else if (!s.expectedStages?.length) {
+          // 無 pipeline 時 → 不適用
           status = 'idle'; statusLabel = '—';
         } else if (!s.expectedStages.includes(agent.stage)) {
-          // 不在此 pipeline 範圍內 → 不適用
           status = 'idle'; statusLabel = '—';
         } else {
           const st = getStatus(agent.stage, s);
@@ -1120,7 +1123,6 @@
           switch (st) {
             case 'active': status = 'running'; statusLabel = '運行中'; break;
             case 'pass':
-              // 有執行證據才顯示完成（防止空 PASS 預設綠燈）
               if (r?.duration || r?.toolCalls || r?.completedAt) {
                 status = 'completed'; statusLabel = 'PASS';
               } else {
@@ -1134,13 +1136,12 @@
           }
         }
       } else if (agent.id === 'main' && s) {
-        // 只在有 currentStage 時才認定委派中（避免 delegationActive 殘留）
-        const reallyDelegating = s.delegationActive && s.currentStage;
+        // delegationActive 由 stage-transition SubagentStop 清除，不會殘留
         if (askPending) {
           status = 'waiting'; statusLabel = '等待回覆';
         } else {
-          status = reallyDelegating ? 'delegating' : 'running';
-          statusLabel = reallyDelegating ? '委派中' : '運行中';
+          status = s.delegationActive ? 'delegating' : 'running';
+          statusLabel = s.delegationActive ? '委派中' : '運行中';
         }
       }
       // 只有 pipeline agents 活躍時高亮 skills（系統/輔助 agent 無法追蹤具體 skill 使用）
