@@ -59,6 +59,7 @@ const AGENT_EMOJI = {
   planner: '📋', architect: '🏛️', designer: '🎨', developer: '🏗️',
   'code-reviewer': '🔍', tester: '🧪', qa: '✅', 'e2e-runner': '🌐',
   'doc-updater': '📝',
+  'security-reviewer': '🛡️', 'build-error-resolver': '🔧',
 };
 
 /**

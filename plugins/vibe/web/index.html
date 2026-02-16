@@ -180,10 +180,10 @@
     .al.running { background: var(--green); box-shadow: 0 0 8px var(--green); animation: alPulse 1.5s ease infinite; }
     .al.completed { background: var(--green); }
     .al.error { background: var(--red); box-shadow: 0 0 6px var(--red); animation: alPulse 1.5s ease infinite; }
-    .al.delegating { background: var(--blue); box-shadow: 0 0 8px var(--blue); animation: alPulse 1.5s ease infinite; }
+    .al.delegating { background: var(--purple); box-shadow: 0 0 8px var(--purple); animation: alPulse 1.5s ease infinite; }
     .al.waiting { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); animation: alPulse 1.5s ease infinite; }
-    .al.standby { background: var(--blue); opacity: 0.6; }
-    .al.pending { background: var(--surface2); }
+    .al.standby { background: transparent; border: 2px solid var(--blue); opacity: 0.8; }
+    .al.pending { background: var(--surface2); animation: alPulse 3s ease infinite; }
     .al.idle { background: var(--surface2); opacity: 0.5; }
     .al.skipped { background: var(--surface2); opacity: 0.3; }
     @keyframes alPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
@@ -193,9 +193,9 @@
     .ac-chip.st-running { background: rgba(166,227,161,0.15); color: var(--green); font-weight: 600; }
     .ac-chip.st-completed { background: rgba(166,227,161,0.1); color: var(--green); }
     .ac-chip.st-error { background: rgba(243,139,168,0.15); color: var(--red); font-weight: 600; }
-    .ac-chip.st-delegating { background: rgba(137,180,250,0.15); color: var(--blue); }
+    .ac-chip.st-delegating { background: rgba(203,166,247,0.15); color: var(--purple); }
     .ac-chip.st-waiting { background: rgba(249,226,175,0.15); color: var(--yellow); }
-    .ac-chip.st-standby { color: var(--blue); }
+    .ac-chip.st-standby { color: var(--blue); border: 1px solid var(--blue); background: transparent; }
     .ac-chip.st-skipped { color: var(--overlay0); text-decoration: line-through; }
     .ac-chip.st-idle { color: var(--overlay0); }
     .agent-extra { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; }
@@ -203,7 +203,8 @@
     .ac-chip.skill-on { opacity: 1; background: rgba(166,227,161,0.15); color: var(--green); font-weight: 600; border-color: rgba(166,227,161,0.3); }
     .agent-dur { font-size: 10px; color: var(--subtext0); text-align: right; font-variant-numeric: tabular-nums; }
     /* Agent 分組標籤 */
-    .agent-group-label { font-size: 9px; color: var(--overlay0); text-transform: uppercase; letter-spacing: 1.2px; padding: 6px 4px 2px; }
+    .agent-group-label { font-size: 9px; color: var(--subtext1); text-transform: uppercase; letter-spacing: 1.2px; padding: 4px 8px 2px; border-left: 2px solid var(--overlay0); }
+    .ac-chip.retry-chip { background: rgba(250,179,135,0.15); color: var(--orange); font-weight: 700; font-size: 9px; }
     /* MCP 統計 */
     .mcp-stats { background: var(--surface0); border-radius: 10px; padding: 12px 16px; border: 1px solid var(--surface1); }
     .mcp-stats h3 { font-size: 11px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
@@ -1103,50 +1104,43 @@
     }
 
     // --- Agent 狀態面板 ---
-    function getAgentInfo(agent, s, askPending) {
+    function getAgentInfo(agent, s, askPending, events) {
       let status = 'idle', statusLabel = '閒置', dur = null, tools = null, retries = 0;
-      if (agent.stage && s) {
-        // 直接委派偵測：currentStage 指向此 agent 且 delegationActive（手動 skill 觸發）
-        const isDirectDelegate = s.delegationActive && s.currentStage === agent.stage;
-        if (isDirectDelegate) {
-          status = 'running'; statusLabel = '運行中';
-        } else if (!s.expectedStages?.length) {
-          // 無 pipeline 時 → 不適用
-          status = 'idle'; statusLabel = '—';
-        } else if (!s.expectedStages.includes(agent.stage)) {
-          status = 'idle'; statusLabel = '—';
-        } else {
-          const st = getStatus(agent.stage, s);
-          const r = s.stageResults?.[agent.stage];
-          dur = r?.duration; tools = r?.toolCalls;
-          retries = s.retries?.[agent.stage] || 0;
-          switch (st) {
-            case 'active': status = 'running'; statusLabel = '運行中'; break;
-            case 'pass':
-              if (r?.duration || r?.toolCalls || r?.completedAt) {
-                status = 'completed'; statusLabel = 'PASS';
-              } else {
-                status = 'idle'; statusLabel = '—';
-              }
-              break;
-            case 'fail': status = 'error'; statusLabel = r?.severity || 'FAIL'; break;
-            case 'next': status = 'standby'; statusLabel = '待命'; break;
-            case 'skipped': status = 'skipped'; statusLabel = '跳過'; break;
-            default: status = 'pending'; statusLabel = '等待'; break;
+
+      if (agent.id === 'main' && s) {
+        // Main Agent：委派/等待/運行
+        if (askPending) { status = 'waiting'; statusLabel = '等待回覆'; }
+        else { status = s.delegationActive ? 'delegating' : 'running'; statusLabel = s.delegationActive ? '委派中' : '運行中'; }
+      } else {
+        // 所有 sub-agents：事件驅動偵測（適用 pipeline + support + system）
+        // 1. 正在運行？找最近的 delegation.start 看是不是這個 agent
+        if (s?.delegationActive && events?.length) {
+          const lastDel = events.find(e => e.eventType === 'delegation.start');
+          if (lastDel?.text?.includes(agent.id)) {
+            status = 'running'; statusLabel = '運行中';
           }
         }
-      } else if (agent.id === 'main' && s) {
-        // delegationActive 由 stage-transition SubagentStop 清除，不會殘留
-        if (askPending) {
-          status = 'waiting'; statusLabel = '等待回覆';
-        } else {
-          status = s.delegationActive ? 'delegating' : 'running';
-          statusLabel = s.delegationActive ? '委派中' : '運行中';
+        // 2. Pipeline 補充：已完成的階段顯示 pass/fail/duration
+        if (agent.stage && s?.stageResults?.[agent.stage]) {
+          const r = s.stageResults[agent.stage];
+          dur = r.duration; tools = r.toolCalls;
+          retries = s.retries?.[agent.stage] || 0;
+          if (status !== 'running') {
+            if (r.completedAt || r.verdict === 'PASS') { status = 'completed'; statusLabel = 'PASS'; }
+            else if (r.verdict === 'FAIL') { status = 'error'; statusLabel = r.severity || 'FAIL'; }
+          }
+        }
+        // 3. Pipeline 排程：待命/等待/跳過
+        if (status === 'idle' && agent.stage && s?.expectedStages?.includes(agent.stage)) {
+          const st = getStatus(agent.stage, s);
+          if (st === 'next') { status = 'standby'; statusLabel = '待命'; }
+          else if (st === 'skipped') { status = 'skipped'; statusLabel = '跳過'; }
+          else if (st !== 'pass' && st !== 'fail' && st !== 'active') { status = 'pending'; statusLabel = '等待'; }
         }
       }
-      // 只有 pipeline agents 活躍時高亮 skills（系統/輔助 agent 無法追蹤具體 skill 使用）
+
       const isActive = ['running', 'delegating'].includes(status);
-      const skillsLit = isActive && agent.group === 'pipeline';
+      const skillsLit = isActive;
       return { ...agent, status, statusLabel, dur, tools, retries, isActive, skillsLit };
     }
 
@@ -1160,7 +1154,7 @@
       }, [events]);
       // 每個 agent 獨立計時器（agent 變 active 時記錄起始時間）
       const timers = useRef({});
-      const agents = AGENT_ROSTER.map(a => getAgentInfo(a, s, askPending));
+      const agents = AGENT_ROSTER.map(a => getAgentInfo(a, s, askPending, events));
       // 同步計時器狀態（只在 running 時計時，delegating/waiting 暫停）
       agents.forEach(a => {
         const shouldTimer = a.status === 'running';
@@ -1169,6 +1163,7 @@
       });
       const running = agents.filter(a => ['running', 'delegating'].includes(a.status)).length;
       const done = agents.filter(a => a.status === 'completed').length;
+      const totalDur = agents.reduce((sum, a) => sum + (a.dur || 0), 0);
       const groups = [
         { key: 'system', label: '系統', items: agents.filter(a => a.group === 'system') },
         { key: 'pipeline', label: 'Pipeline', items: agents.filter(a => a.group === 'pipeline') },
@@ -1181,12 +1176,13 @@
             <div class="agent-panel-stats">
               <span class="agent-panel-stat">活躍 <span class="num">${running}</span></span>
               <span class="agent-panel-stat">完成 <span class="num">${done}</span></span>
+              <span class="agent-panel-stat">耗時 <span class="num">${totalDur > 0 ? fmtSec(totalDur) : '—'}</span></span>
               <span class="agent-panel-stat">共 <span class="num">${agents.length}</span></span>
             </div>
           </div>
           ${groups.map((g, gi) => html`
             ${gi > 0 && html`<div class="agent-sep"></div>`}
-            <div class="agent-group-label">${g.label}</div>
+            <div class="agent-group-label" style="border-color: var(--${{ system: 'yellow', pipeline: 'blue', support: 'orange' }[g.key] || 'overlay0'})">${g.label}</div>
             ${g.items.map(a => {
               // 時長：完成 → 顯示耗時 / 活躍 → 獨立即時計時
               let durText = '—';
@@ -1200,8 +1196,9 @@
                 <span class="agent-name" style="${a.isActive ? `color:${a.color}` : ''}">${a.emoji} ${a.name}</span>
                 <span class="ac-chip">${a.role}</span>
                 <span class="ac-chip model">${a.model}</span>
-                <span class="ac-chip st-${a.status}">${a.statusLabel}${a.retries > 0 ? ` ×${a.retries}` : ''}</span>
+                <span class="ac-chip st-${a.status}">${a.statusLabel}</span>
                 <div class="agent-extra">
+                  ${a.retries > 0 && html`<span class="ac-chip retry-chip">↻${a.retries}</span>`}
                   ${(a.skills || []).map(sk => html`<span class="ac-chip skill ${a.skillsLit ? 'skill-on' : ''}">${sk}</span>`)}
                   ${a.tools && html`<span class="ac-chip skill-on">🔧${a.tools}</span>`}
                 </div>
@@ -1565,7 +1562,7 @@
                 <button class="main-tab ${mainTab === 'timeline' ? 'active' : ''}" onClick=${() => setMainTab('timeline')}>📋 Timeline${tlAll.length ? html`<span class="tab-count">(${tlAll.length})</span>` : ''}</button>
               </div>
 
-              <!-- Tab: Dashboard（雙欄：左=Agents+MCP+指標，右=Timeline） -->
+              <!-- Tab: Dashboard（雙欄：左=Agents+MCP，右=Timeline） -->
               ${mainTab === 'dashboard' && html`
               <div class="dash-grid">
                 <div class="dash-left">
@@ -1592,48 +1589,7 @@
                         })}
                       </div>
                     </div>
-                  ` : html`
-                    <div class="cards">
-                      <div class="card">
-                        <h3>🔧 環境</h3>
-                        ${(() => {
-                          const e = s.environment;
-                          const hasEnv = e && (e.languages?.primary || e.framework || e.packageManager?.name || e.tools?.linter || e.tools?.test);
-                          if (!hasEnv) return html`<div class="row" style="color:var(--subtext0);font-size:10px">未偵測到開發環境（plugin / meta 專案）</div>`;
-                          return html`
-                            <div class="row"><span class="label">語言</span><span class="value">${e.languages?.primary || '—'}</span></div>
-                            <div class="row"><span class="label">框架</span><span class="value">${e.framework ? e.framework.name + ' ' + (e.framework.version || '') : '—'}</span></div>
-                            <div class="row"><span class="label">套件管理</span><span class="value">${e.packageManager?.name || '—'}</span></div>
-                            <div class="row"><span class="label">Linter</span><span class="value">${e.tools?.linter || '—'}</span></div>
-                            <div class="row"><span class="label">Formatter</span><span class="value">${e.tools?.formatter || '—'}</span></div>
-                            <div class="row"><span class="label">測試框架</span><span class="value">${e.tools?.test || '—'}</span></div>
-                          `;
-                        })()}
-                      </div>
-                      <div class="card">
-                        <h3>📊 指標</h3>
-                        <div class="row"><span class="label">Pipeline</span><span class="value">${typeLabel(s.pipelineId || s.taskType)}</span></div>
-                        <div class="row"><span class="label">進度</span><span class="value">${progress}%</span></div>
-                        <div class="row"><span class="label">已完成</span><span class="value">${(s.completed || []).length} / ${(s.expectedStages || []).length} 階段</span></div>
-                        <div class="row"><span class="label">重試次數</span><span class="value">${Object.values(s.retries || {}).reduce((a, b) => a + b, 0)}</span></div>
-                        <div class="row"><span class="label">委派中</span><span class="value">${s.delegationActive ? '⚡ Active' : '待機'}</span></div>
-                        <div class="row"><span class="label">當前階段</span><span class="value">${getCurrent(s) || (progress === 100 ? '✅ 完成' : '等待分類')}</span></div>
-                        ${s.skippedStages?.length > 0 && html`<div class="row"><span class="label">已跳過</span><span class="value" style="color:var(--subtext0)">${s.skippedStages.join(', ')}</span></div>`}
-                      </div>
-                    </div>
                   `}
-                  <!-- Mini Pipeline -->
-                  <div class="mini-pipeline">
-                    ${ALL_STAGES.map((stage, i) => html`
-                      ${i > 0 && html`<span class="mini-arrow">›</span>`}
-                      <div class="mini-stage ${getStatus(stage, s)}">
-                        <span class="mini-stage-label">${SM[stage].emoji} ${stage}</span>
-                      </div>
-                    `)}
-                  </div>
-                  <div class="progress-bar" style="margin-top:2px">
-                    <div class="progress-fill ${isComplete ? 'complete' : ''}" style="width:${progress}%"></div>
-                  </div>
                 </div>
                 <div class="dash-right">
                   <div class="mini-tl">
@@ -1662,11 +1618,6 @@
                   </div>
                 </div>
               `}
-              <div class="${isComplete ? 'celebrate' : ''}" style="position:relative">
-                <div class="progress-bar">
-                  <div class="progress-fill ${isComplete ? 'complete' : ''}" style="width:${progress}%"></div>
-                </div>
-              </div>
               `}
 
               <!-- Tab: Timeline -->
