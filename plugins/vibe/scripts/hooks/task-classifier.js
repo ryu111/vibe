@@ -208,9 +208,12 @@ process.stdin.on('end', () => {
       const stateForCache = fs.existsSync(statePath)
         ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : null;
 
-      if (stateForCache && stateForCache.llmClassification) {
-        result.pipeline = stateForCache.llmClassification.pipeline;
-        result.confidence = stateForCache.llmClassification.confidence;
+      const LLM_CACHE_TTL = 5 * 60 * 1000; // 5 分鐘快取過期
+      const cached = stateForCache && stateForCache.llmClassification;
+      const cacheValid = cached && cached.timestamp && (Date.now() - cached.timestamp < LLM_CACHE_TTL);
+      if (cacheValid) {
+        result.pipeline = cached.pipeline;
+        result.confidence = cached.confidence;
         result.source = 'llm-cached';
       } else {
         const llmResult = await classifyWithLLM(prompt);
@@ -219,7 +222,7 @@ process.stdin.on('end', () => {
           result.confidence = llmResult.confidence;
           result.source = llmResult.source;
           if (stateForCache) {
-            stateForCache.llmClassification = llmResult;
+            stateForCache.llmClassification = { ...llmResult, timestamp: Date.now() };
             fs.writeFileSync(statePath, JSON.stringify(stateForCache, null, 2));
           }
         } else {

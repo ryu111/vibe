@@ -412,6 +412,14 @@ test('create test for API endpoint → test', () => {
   assert.strictEqual(classify('create test for API endpoint'), 'test');
 });
 
+test('補測試 → test', () => {
+  assert.strictEqual(classify('補測試'), 'test');
+});
+
+test('補單元測試 → test', () => {
+  assert.strictEqual(classify('補單元測試'), 'test');
+});
+
 // ─── Refactor ────────────────────────────────
 
 test('重構認證模組 → refactor', () => {
@@ -1145,12 +1153,41 @@ test('快取命中直接使用（不呼叫 LLM API）', () => {
   const sid = 'test-cache-hit-' + Date.now();
   try {
     createTestState(sid, {
-      llmClassification: { pipeline: 'standard', confidence: 0.85, source: 'llm' },
+      llmClassification: { pipeline: 'standard', confidence: 0.85, source: 'llm', timestamp: Date.now() },
     });
     runTaskClassifier({ session_id: sid, prompt: '看看現在的狀態' });
     const state = readTestState(sid);
     assert.strictEqual(state.pipelineId, 'standard', '快取命中應使用快取的 pipeline');
     assert.strictEqual(state.classificationSource, 'llm-cached', 'source 應為 llm-cached');
+  } finally {
+    cleanupTestState(sid);
+  }
+});
+
+test('過期快取不使用（TTL 5 分鐘）', () => {
+  const sid = 'test-cache-expired-' + Date.now();
+  try {
+    createTestState(sid, {
+      llmClassification: { pipeline: 'standard', confidence: 0.85, source: 'llm', timestamp: Date.now() - 6 * 60 * 1000 },
+    });
+    runTaskClassifier({ session_id: sid, prompt: '看看現在的狀態' });
+    const state = readTestState(sid);
+    // 過期快取不使用，降級為 regex-low（無 API key）
+    assert.notStrictEqual(state.classificationSource, 'llm-cached', '過期快取不應命中');
+  } finally {
+    cleanupTestState(sid);
+  }
+});
+
+test('無 timestamp 的舊格式快取不使用', () => {
+  const sid = 'test-cache-no-ts-' + Date.now();
+  try {
+    createTestState(sid, {
+      llmClassification: { pipeline: 'standard', confidence: 0.85, source: 'llm' },
+    });
+    runTaskClassifier({ session_id: sid, prompt: '看看現在的狀態' });
+    const state = readTestState(sid);
+    assert.notStrictEqual(state.classificationSource, 'llm-cached', '無 timestamp 的快取不應命中');
   } finally {
     cleanupTestState(sid);
   }
