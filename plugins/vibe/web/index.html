@@ -1107,9 +1107,10 @@
     function getAgentInfo(agent, s, askPending, events) {
       let status = 'idle', statusLabel = '閒置', dur = null, tools = null, retries = 0;
 
-      if (agent.id === 'main' && s) {
-        // Main Agent：委派/等待/運行
-        if (askPending) { status = 'waiting'; statusLabel = '等待回覆'; }
+      if (agent.id === 'main') {
+        // Main Agent：閒置/等待/委派/運行
+        if (!s || !s.taskType) { /* 尚未分類 → 閒置 */ }
+        else if (askPending) { status = 'waiting'; statusLabel = '等待回覆'; }
         else { status = s.delegationActive ? 'delegating' : 'running'; statusLabel = s.delegationActive ? '委派中' : '運行中'; }
       } else {
         // 所有 sub-agents：事件驅動偵測（適用 pipeline + support + system）
