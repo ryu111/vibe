@@ -402,22 +402,23 @@ test('缺漏 ARCH 和 DEV 階段（混合格式）', () => {
     );
 
     const output = JSON.parse(result);
-    assert.ok(output.systemMessage, '應該有 systemMessage');
+    // v1.0.43: pipeline-check 升級為硬阻擋（decision: "block"）
+    assert.strictEqual(output.decision, 'block', '應該有 decision: block');
 
     // ARCH 有 skill，應該顯示 skill 名稱
     assert.ok(
-      output.systemMessage.includes('/vibe:architect'),
-      'systemMessage 應包含 /vibe:architect skill'
+      output.reason.includes('/vibe:architect'),
+      'reason 應包含 /vibe:architect skill'
     );
 
     // DEV 沒有 skill，應該顯示 Task 委派格式
     assert.ok(
-      output.systemMessage.includes('vibe:developer'),
-      'systemMessage 應包含 vibe:developer'
+      output.reason.includes('vibe:developer'),
+      'reason 應包含 vibe:developer'
     );
     assert.ok(
-      output.systemMessage.includes('subagent_type: "vibe:developer"'),
-      'systemMessage 應包含 subagent_type: "vibe:developer"'
+      output.reason.includes('subagent_type: "vibe:developer"'),
+      'reason 應包含 subagent_type: "vibe:developer"'
     );
   } finally {
     cleanup(statePath);

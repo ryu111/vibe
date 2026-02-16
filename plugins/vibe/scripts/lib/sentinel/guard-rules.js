@@ -1,28 +1,16 @@
 /**
  * guard-rules.js — Pipeline Guard 規則模組（純函式）
  *
- * 統一管理 Pipeline 模式下對 Main Agent 的工具使用限制。
- * 不讀取 state file，僅提供決策邏輯。
+ * v1.0.43 重構：
+ * - PLAN 階段允許 AskUserQuestion（供 planner 詢問需求澄清）
+ * - 合併 delegationActive/cancelled 檢查到 evaluate()
+ * - 移除無人消費的 ORCHESTRATOR_TOOLS
  *
- * 匯出函式：
- * - evaluate(toolName, toolInput, state) → { decision, reason?, message? }
- * - isNonCodeFile(filePath) → boolean
- *
- * 匯出常數：
- * - ORCHESTRATOR_TOOLS（允許 Main Agent 使用的白名單工具）
- * - NON_CODE_EXTS（非程式碼檔案副檔名）
+ * @module sentinel/guard-rules
  */
 'use strict';
 
 const path = require('path');
-
-// 白名單：Main Agent 允許使用的 orchestrator 工具
-const ORCHESTRATOR_TOOLS = new Set([
-  'Task', 'Skill', 'Read', 'Grep', 'Glob',
-  'WebFetch', 'WebSearch',
-  'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet',
-  'TodoRead', 'TodoWrite',
-]);
 
 // 非程式碼檔案副檔名（允許直接編輯）
 const NON_CODE_EXTS = new Set([
@@ -44,21 +32,32 @@ function isNonCodeFile(filePath) {
 
 /**
  * 評估工具使用是否允許
- * @param {string} toolName - 工具名稱（Write|Edit|NotebookEdit|AskUserQuestion|EnterPlanMode）
+ *
+ * 放行優先順序（短路）：
+ * 1. pipeline 未初始化/未分類/非強制 → allow
+ * 2. 委派已啟動（sub-agent 操作） → allow
+ * 3. pipeline 已取消 → allow
+ * 4. 工具特定規則
+ *
+ * @param {string} toolName - Write|Edit|NotebookEdit|AskUserQuestion|EnterPlanMode
  * @param {object} toolInput - 工具輸入參數
- * @param {object} state - Pipeline state（由 hook 傳入）
+ * @param {object} state - Pipeline state
  * @returns {{ decision: 'allow'|'block', reason?: string, message?: string }}
  */
 function evaluate(toolName, toolInput, state) {
-  // Write / Edit / NotebookEdit
-  if (['Write', 'Edit', 'NotebookEdit'].includes(toolName)) {
-    // 檢查檔案路徑 — 非程式碼檔案放行
-    const filePath = toolInput?.file_path || '';
-    if (isNonCodeFile(filePath)) {
-      return { decision: 'allow' };
-    }
+  // ── 前置放行條件（原本散在 pipeline-guard.js 的 4 個 if） ──
+  if (!state) return { decision: 'allow' };
+  if (!state.initialized) return { decision: 'allow' };
+  if (!state.taskType) return { decision: 'allow' };
+  if (!state.pipelineEnforced) return { decision: 'allow' };
+  if (state.delegationActive) return { decision: 'allow' };
+  if (state.cancelled) return { decision: 'allow' };
 
-    // 程式碼檔案需委派給 developer agent
+  // ── Write / Edit / NotebookEdit ──
+  if (['Write', 'Edit', 'NotebookEdit'].includes(toolName)) {
+    const filePath = toolInput?.file_path || '';
+    if (isNonCodeFile(filePath)) return { decision: 'allow' };
+
     return {
       decision: 'block',
       reason: 'pipeline-enforced',
@@ -70,8 +69,12 @@ function evaluate(toolName, toolInput, state) {
     };
   }
 
-  // AskUserQuestion
+  // ── AskUserQuestion ──
   if (toolName === 'AskUserQuestion') {
+    // PLAN 階段允許 AskUserQuestion（planner 需要詢問需求澄清）
+    const currentStage = state.currentStage || '';
+    if (currentStage === 'PLAN') return { decision: 'allow' };
+
     return {
       decision: 'block',
       reason: 'pipeline-auto-mode',
@@ -83,7 +86,7 @@ function evaluate(toolName, toolInput, state) {
     };
   }
 
-  // EnterPlanMode
+  // ── EnterPlanMode ──
   if (toolName === 'EnterPlanMode') {
     return {
       decision: 'block',
@@ -98,13 +101,12 @@ function evaluate(toolName, toolInput, state) {
     };
   }
 
-  // 未知工具（不應發生）
+  // 未知工具
   return { decision: 'allow' };
 }
 
 module.exports = {
   evaluate,
   isNonCodeFile,
-  ORCHESTRATOR_TOOLS,
   NON_CODE_EXTS,
 };

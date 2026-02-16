@@ -500,10 +500,11 @@ test('空 skippedStages 不影響計算', () => {
     );
 
     const output = JSON.parse(result);
-    assert.ok(output.systemMessage, '應有 systemMessage（有遺漏階段）');
-    assert.ok(output.systemMessage.includes('ARCH'), '應列出 ARCH');
-    assert.ok(output.systemMessage.includes('DESIGN'), '應列出 DESIGN');
-    assert.ok(output.systemMessage.includes('DEV'), '應列出 DEV');
+    // v1.0.43: pipeline-check 升級為硬阻擋（decision: "block"）
+    assert.strictEqual(output.decision, 'block', '應有 decision: block（有遺漏階段）');
+    assert.ok(output.reason.includes('ARCH'), '應列出 ARCH');
+    assert.ok(output.reason.includes('DESIGN'), '應列出 DESIGN');
+    assert.ok(output.reason.includes('DEV'), '應列出 DEV');
   } finally {
     cleanup(statePath);
   }
@@ -543,11 +544,12 @@ test('部分跳過：DESIGN 跳過但 E2E 沒跳過', () => {
     );
 
     const output = JSON.parse(result);
-    assert.ok(output.systemMessage, '應有 systemMessage');
+    // v1.0.43: pipeline-check 升級為硬阻擋（decision: "block"）
+    assert.strictEqual(output.decision, 'block', '應有 decision: block');
     // DESIGN 跳過不應列出，但 REVIEW/TEST/QA/E2E/DOCS 應列出
-    assert.ok(!output.systemMessage.includes('DESIGN（設計）'), 'DESIGN 不應列為遺漏');
-    assert.ok(output.systemMessage.includes('REVIEW'), '應列出 REVIEW');
-    assert.ok(output.systemMessage.includes('E2E'), 'E2E 未跳過應列為遺漏');
+    assert.ok(!output.reason.includes('DESIGN（設計）'), 'DESIGN 不應列為遺漏');
+    assert.ok(output.reason.includes('REVIEW'), '應列出 REVIEW');
+    assert.ok(output.reason.includes('E2E'), 'E2E 未跳過應列為遺漏');
   } finally {
     cleanup(statePath);
   }

@@ -44,36 +44,42 @@ plugins/vibe/pipeline.json     ← stage 順序 + provides 統一定義
 
 ---
 
-## 2. 四層防禦機制
+## 2. 五層防禦機制（v1.0.43 重構）
 
 ```
 使用者送出訊息
     │
     ▼
 ┌─────────────────────────────────────────┐
-│ ① task-classifier（UserPromptSubmit）    │  ← 軟建議：分類 + 建議階段
+│ ① task-classifier（UserPromptSubmit）    │  ← 軟→強：分類 + 注入委派規則
 │    command hook                         │
 └─────────────────────────────────────────┘
     │
     ▼
 ┌─────────────────────────────────────────┐
-│ ② pipeline-rules（SessionStart）         │  ← 軟建議：注入委派規則
-│    command hook · 10s · state file 防重複│
-└─────────────────────────────────────────┘
-    │
-    ▼
-  Main Agent 委派 sub-agent 執行
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│ ③ stage-transition（SubagentStop）       │  ← 強建議：完成 → 下一步
-│    command hook · 10s                   │
+│ ② pipeline-guard（PreToolUse）           │  ← 硬阻擋：exit 2 擋寫碼/Ask/PlanMode
+│    command hook · guard-rules.js 純函式  │
 └─────────────────────────────────────────┘
     │
     ▼
 ┌─────────────────────────────────────────┐
-│ ④ pipeline-check（Stop）                 │  ← 強建議：檢查遺漏階段
-│    command hook · 10s                   │
+│ ③ delegation-tracker（PreToolUse Task）  │  ← 狀態：設 delegationActive=true
+│    command hook                         │
+└─────────────────────────────────────────┘
+    │
+    ▼
+  Sub-agent 執行（delegation 期間 guard 放行）
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│ ④ stage-transition（SubagentStop）       │  ← 強指令：前進/回退/跳過/完成
+│    command hook · 4 純函式模組           │
+└─────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│ ⑤ pipeline-check（Stop）                │  ← 硬阻擋：decision:block 強制完成
+│    command hook                         │
 └─────────────────────────────────────────┘
 ```
 
@@ -82,9 +88,10 @@ plugins/vibe/pipeline.json     ← stage 順序 + provides 統一定義
 | # | 名稱 | 事件 | 類型 | 強度 | 輸出管道 | 說明 |
 |:-:|------|------|:----:|:----:|:--------:|------|
 | ① | task-classifier | UserPromptSubmit | command | 軟→強 | additionalContext / systemMessage | 分類任務類型 + 按需注入委派規則 |
-| ② | pipeline-rules | SessionStart | command | 軟建議 | additionalContext | 注入委派規則（哪些工作該給 sub-agent） |
-| ③ | stage-transition | SubagentStop | command | 強建議 | systemMessage | Agent 完成後判斷：前進/回退/跳過 |
-| ④ | pipeline-check | Stop | command | 強建議 | systemMessage | 結束前檢查是否有遺漏的建議階段 |
+| ② | pipeline-guard | PreToolUse | command | **硬阻擋** | stderr + exit 2 | 阻擋 Main Agent 寫碼/AskUserQuestion/EnterPlanMode（PLAN 階段 Ask 放行） |
+| ③ | delegation-tracker | PreToolUse(Task) | command | 狀態切換 | — | 設 delegationActive=true，讓 sub-agent 通過 guard |
+| ④ | stage-transition | SubagentStop | command | 強指令 | systemMessage | Agent 完成後判斷：前進/回退/跳過/完成 |
+| ⑤ | pipeline-check | Stop | command | **硬阻擋** | decision:block + reason | 結束前檢查遺漏階段，硬阻擋並強制繼續 |
 
 ### 輸出管道差異
 
@@ -391,17 +398,28 @@ hooks.json 定義：
 }
 ```
 
-**邏輯**（v1.0.21 — 含智慧回退/重驗/跳過/context 注入/自動 enforce/自動檢查點/階段提示）：
+**模組化架構**（v1.0.43 重構）：
+
+stage-transition.js 從 530 行單體重構為 ~275 行薄 orchestrator + 4 個純函式模組：
+
+| 模組 | 路徑 | 職責 |
+|------|------|------|
+| **verdict.js** | `scripts/lib/flow/verdict.js` | `parseVerdict(transcriptPath)` — 從 JSONL 解析 PIPELINE_VERDICT 標記 |
+| **retry-policy.js** | `scripts/lib/flow/retry-policy.js` | `shouldRetryStage(stage, verdict, retryCount)` — 品質階段回退判斷 |
+| **skip-rules.js** | `scripts/lib/flow/skip-rules.js` | `shouldSkipStage(stage, state, stages)` + `resolveNextStage(...)` — DESIGN/E2E 智慧跳過 |
+| **message-builder.js** | `scripts/lib/flow/message-builder.js` | 7 個訊息組裝函式（委派方法/context/前進/回退/完成等） |
+
+**邏輯**（v1.0.43 — 含智慧回退/重驗/跳過/context 注入/自動 enforce/自動檢查點/階段提示）：
 
 1. `stop_hook_active === true` → exit 0（防無限迴圈，必須第一步檢查）
 2. `discoverPipeline()` 動態載入 pipeline 配置
 3. `agentToStage[agent_type]` 查找所屬 stage
-4. `parseVerdict(agent_transcript_path)` 從 transcript JSONL 解析 `PIPELINE_VERDICT` 標記
-5. `shouldRetryStage()` 判斷是否需要回退
+4. `parseVerdict(agent_transcript_path)` 從 transcript JSONL 解析 `PIPELINE_VERDICT` 標記（純函式）
+5. `shouldRetryStage()` 判斷是否需要回退（純函式）
 6. **自動 enforce**：下一階段為 DEV+ 且 `pipelineEnforced=false` → 自動升級（見下方說明）
 7. **回退路徑**：品質階段 FAIL:CRITICAL/HIGH → 設定 `pendingRetry` 標記 → 回到 DEV
 8. **回退重驗路徑**：DEV 完成且 `pendingRetry` 存在 → 消費標記 → 強制重跑原品質階段
-9. **前進路徑**：智慧跳過判斷 → 階段 context 注入 + POST_STAGE_HINTS 注入 → 指示下一步
+9. **前進路徑**：`resolveNextStage()` 智慧跳過 → `buildStageContext()` 注入 → 指示下一步
 10. 更新 state file（含 `stageResults`、`retries`、`pendingRetry`、`pipelineEnforced`）
 11. **自動檢查點**（v1.0.21）：非回退時，建立 `git tag -f vibe-pipeline/{stage}` 標記
 12. 輸出 `{ "continue": true, "systemMessage": "..." }`
@@ -576,7 +594,7 @@ stage-transition 從 `agent_transcript_path`（JSONL）最後 20 行中搜尋此
 
 不認識的 agent（不在任何 plugin 的 pipeline 宣告中）→ exit 0，不輸出。
 
-### 4.4 pipeline-check（Stop · command hook · 強建議）
+### 4.4 pipeline-check（Stop · command hook · 硬阻擋）
 
 **腳本**：`scripts/hooks/pipeline-check.js`
 
@@ -596,23 +614,26 @@ hooks.json 定義：
 
 **輸入**（stdin JSON）：`{ "stop_hook_active": false }`
 
-**邏輯**：
+**邏輯**（v1.0.43 升級為硬阻擋）：
 
 1. `stop_hook_active === true` → exit 0
 2. 讀取 state file，不存在 → exit 0（沒有進行中的 pipeline）
-3. 比較 `expectedStages` vs 已完成的 stages
-4. 有遺漏 → 輸出 `systemMessage`
-5. 全完成或無 pipeline → 清理 state file → exit 0
+3. 比較 `expectedStages` vs 已完成的 stages（排除 `skippedStages`）
+4. 有遺漏 → 輸出 `decision: "block"` + `reason`（硬阻擋，強制繼續）
+5. 全完成或無 pipeline → exit 0
 
-#### Claude 看到的 systemMessage 內容（有遺漏時）：
+#### 硬阻擋輸出（有遺漏時）：
 
+```json
+{
+  "decision": "block",
+  "reason": "🚫 [Pipeline 未完成] 缺：審查、測試\n- REVIEW：code-reviewer 執行程式碼審查\n- TEST：tester 執行測試\n已完成：PLAN → ARCH → DEV\n\n請立即委派下一個遺漏的階段。Pipeline 是閉環流程，必須跑完所有階段才能結束。"
+}
 ```
-[Pipeline 提醒] 以下建議階段尚未執行：REVIEW, TEST
-已完成：PLAN → ARCH → DESIGN → DEV
-如果是刻意跳過，請向使用者說明原因。
-```
 
-全完成或無 pipeline → 不輸出任何 systemMessage。
+> **v1.0.43 升級**：從 `{continue: true, systemMessage}` 軟建議改為 `{decision: "block", reason}` 硬阻擋。ECC 的 Stop hook `decision: "block"` 機制會將 `reason` 作為下一個 prompt 注入 Claude，形成強制性的「必須繼續」指令。
+
+全完成或無 pipeline → 不輸出，exit 0。
 
 ### 4.5 task-guard（Stop · command hook · 絕對阻擋）
 
@@ -685,6 +706,41 @@ Stop 觸發
 
 **Stop ≠ Session 結束**：Stop 只是 Claude 結束當前回合，session 依然開著。使用者可以繼續輸入新需求 → 新的 TodoWrite → task-guard 重新啟動。
 
+### 4.6 pipeline-guard + guard-rules（PreToolUse · command hook · 硬阻擋）
+
+**腳本**：`scripts/hooks/pipeline-guard.js`（薄代理）+ `scripts/lib/sentinel/guard-rules.js`（純函式）
+
+**v1.0.43 架構**：pipeline-guard.js 精簡為 ~53 行薄代理，所有判斷邏輯集中在 guard-rules.js 的 `evaluate()` 純函式中。
+
+**Matcher**：`Write|Edit|NotebookEdit|AskUserQuestion|EnterPlanMode`
+
+**guard-rules.js evaluate() 六級前置條件短路**：
+
+```
+evaluate(toolName, toolInput, state)
+  │
+  ├─ !state → allow（無 state）
+  ├─ !state.initialized → allow（未初始化）
+  ├─ !state.taskType → allow（未分類）
+  ├─ !state.pipelineEnforced → allow（非強制 pipeline）
+  ├─ state.delegationActive → allow（sub-agent 執行中）
+  ├─ state.cancelled → allow（已取消）
+  │
+  ├─ Write/Edit/NotebookEdit
+  │   ├─ isNonCodeFile(file_path) → allow（.md/.json/.yaml 等非程式碼）
+  │   └─ 程式碼檔案 → block（阻擋 Main Agent 直接寫碼）
+  │
+  ├─ AskUserQuestion
+  │   ├─ currentStage === 'PLAN' → allow（PLAN 階段允許詢問）
+  │   └─ 其他階段 → block（Pipeline 自動模式禁止詢問）
+  │
+  └─ EnterPlanMode → block（Pipeline 模式禁止內建 Plan Mode）
+```
+
+**PLAN 階段例外**（v1.0.43 新增）：Pipeline 閉環的核心設計 — 選定 pipeline 後自動跑完，不再被 AskUserQuestion 中斷。唯一例外是 PLAN 階段，planner 可能需要向使用者釐清需求。
+
+**非程式碼檔案放行**：`isNonCodeFile()` 判斷 `.md`/`.json`/`.yaml`/`.toml`/`.txt`/`.env`/`.csv` 等 20+ 種副檔名，允許 Main Agent 直接編輯文件/配置（不強制 delegation）。
+
 ---
 
 ## 5. 使用者可見文字規範
@@ -740,10 +796,10 @@ Claude 收到 systemMessage 後會用自然語言向使用者報告。
 | 優先 | 檔案 | 變動 |
 |:----:|------|------|
 | 5 | `plugins/vibe/scripts/hooks/pipeline-init.js` | 環境偵測 + pipeline-rules 注入（§4.2） |
-| 6 | `plugins/vibe/hooks/hooks.json` | 統一 21 hooks 定義 |
+| 6 | `plugins/vibe/hooks/hooks.json` | 統一 22 hooks 定義 |
 | 7 | `plugins/vibe/pipeline.json` | 所有 stages + provides |
 | 10 | `docs/ref/vibe.md` | 自動生成 — 含所有 skills/agents/hooks/scripts |
-| 11 | `docs/plugin-specs.json` | vibe hooks 21、scripts 37 |
+| 11 | `docs/plugin-specs.json` | vibe hooks 22、scripts 45 |
 | 12 | `dashboard/scripts/generate.js` | Pipeline 視覺化同步更新 |
 
 ### vibe.md 自動同步

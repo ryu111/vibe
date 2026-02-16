@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.42 | 全方位開發工作流 | 33 | 11 | 22 | 41 |
+| **vibe** | 1.0.43 | 全方位開發工作流 | 33 | 11 | 22 | 45 |
 
 ### vibe plugin 功能模組
 
@@ -82,7 +82,7 @@ plugins/vibe/
 │   └── lib/                 # 共用函式庫
 │       ├── registry.js      # ★ 全局 metadata（STAGES/AGENTS/EMOJI）
 │       ├── hook-logger.js   # Hook 錯誤日誌（~/.claude/hook-errors.log）
-│       ├── flow/            # pipeline-discovery, env-detector, counter, classifier, uiux-resolver
+│       ├── flow/            # pipeline-discovery, env-detector, counter, classifier, uiux-resolver, verdict, retry-policy, skip-rules, message-builder
 │       ├── sentinel/        # lang-map, tool-detector, guard-rules
 │       ├── dashboard/       # server-manager
 │       ├── remote/          # telegram, transcript, bot-manager

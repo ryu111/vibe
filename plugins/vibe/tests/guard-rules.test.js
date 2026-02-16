@@ -16,9 +16,11 @@ const path = require('path');
 const {
   evaluate,
   isNonCodeFile,
-  ORCHESTRATOR_TOOLS,
   NON_CODE_EXTS,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
+
+// v1.0.43: evaluate() 內建前置條件檢查，需要完整 enforced state 才會觸發 block
+const ENFORCED_STATE = { initialized: true, taskType: 'feature', pipelineEnforced: true };
 
 let passed = 0;
 let failed = 0;
@@ -122,7 +124,7 @@ test('NotebookEdit 非程式碼檔案 → 放行', () => {
 });
 
 test('Write 程式碼檔案 → 阻擋', () => {
-  const result = evaluate('Write', { file_path: 'src/app.js' }, {});
+  const result = evaluate('Write', { file_path: 'src/app.js' }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
   assert.strictEqual(result.reason, 'pipeline-enforced');
   assert.ok(result.message.includes('⛔'));
@@ -131,24 +133,24 @@ test('Write 程式碼檔案 → 阻擋', () => {
 });
 
 test('Edit 程式碼檔案 → 阻擋', () => {
-  const result = evaluate('Edit', { file_path: 'src/component.tsx' }, {});
+  const result = evaluate('Edit', { file_path: 'src/component.tsx' }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
   assert.ok(result.message.includes('Edit'));
 });
 
 test('NotebookEdit 程式碼檔案 → 阻擋', () => {
-  const result = evaluate('NotebookEdit', { file_path: 'notebook.ipynb' }, {});
+  const result = evaluate('NotebookEdit', { file_path: 'notebook.ipynb' }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
   assert.ok(result.message.includes('NotebookEdit'));
 });
 
 test('Write 無 file_path → 阻擋', () => {
-  const result = evaluate('Write', {}, {});
+  const result = evaluate('Write', {}, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
 });
 
 test('Write file_path 為空字串 → 阻擋', () => {
-  const result = evaluate('Write', { file_path: '' }, {});
+  const result = evaluate('Write', { file_path: '' }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
 });
 
@@ -158,12 +160,18 @@ console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
 test('AskUserQuestion → 阻擋', () => {
-  const result = evaluate('AskUserQuestion', {}, {});
+  const result = evaluate('AskUserQuestion', {}, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
   assert.strictEqual(result.reason, 'pipeline-auto-mode');
   assert.ok(result.message.includes('⛔'));
   assert.ok(result.message.includes('自動'));
   assert.ok(result.message.includes('/vibe:cancel'));
+});
+
+test('AskUserQuestion — PLAN 階段放行', () => {
+  const planState = { ...ENFORCED_STATE, currentStage: 'PLAN' };
+  const result = evaluate('AskUserQuestion', {}, planState);
+  assert.strictEqual(result.decision, 'allow');
 });
 
 // ═══════════════════════════════════════════════
@@ -172,7 +180,7 @@ console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
 test('EnterPlanMode → 阻擋', () => {
-  const result = evaluate('EnterPlanMode', {}, {});
+  const result = evaluate('EnterPlanMode', {}, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
   assert.strictEqual(result.reason, 'pipeline-active');
   assert.ok(result.message.includes('⛔'));
@@ -206,14 +214,6 @@ test('Task（orchestrator 工具）→ 放行', () => {
 console.log('\n📦 常數驗證');
 console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
-
-test('ORCHESTRATOR_TOOLS 包含必要工具', () => {
-  assert.ok(ORCHESTRATOR_TOOLS.has('Task'));
-  assert.ok(ORCHESTRATOR_TOOLS.has('Read'));
-  assert.ok(ORCHESTRATOR_TOOLS.has('Grep'));
-  assert.ok(ORCHESTRATOR_TOOLS.has('Skill'));
-  assert.ok(ORCHESTRATOR_TOOLS.has('TaskCreate'));
-});
 
 test('NON_CODE_EXTS 包含常見副檔名', () => {
   assert.ok(NON_CODE_EXTS.has('.md'));

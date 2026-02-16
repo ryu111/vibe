@@ -2,8 +2,13 @@
 /**
  * pipeline-check.js — Stop hook
  *
- * 結束前檢查是否有遺漏的 pipeline 階段。
- * 強度：強建議（systemMessage）。
+ * v1.0.43 重構：從軟提醒（systemMessage）升級為硬阻擋（decision: "block"）。
+ * Pipeline 閉環保障 — 遺漏的階段會強制 Claude 繼續執行。
+ *
+ * 行為：
+ * - pipelineEnforced=true 且有遺漏階段 → decision: "block"（強制繼續）
+ * - 全部完成 → 清理 state file
+ * - 非強制 pipeline → 不檢查
  */
 'use strict';
 const fs = require('fs');
@@ -24,33 +29,18 @@ process.stdin.on('end', () => {
     const data = JSON.parse(input);
 
     // 防迴圈
-    if (data.stop_hook_active) {
-      process.exit(0);
-    }
+    if (data.stop_hook_active) process.exit(0);
 
     const sessionId = data.session_id || 'unknown';
     const statePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
 
-    // 沒有 state file → 沒有進行中的 pipeline
-    if (!fs.existsSync(statePath)) {
-      process.exit(0);
-    }
+    if (!fs.existsSync(statePath)) process.exit(0);
 
     let state;
-    try {
-      state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    } catch (_) {
-      process.exit(0);
-    }
+    try { state = JSON.parse(fs.readFileSync(statePath, 'utf8')); } catch (_) { process.exit(0); }
 
-    if (!state.expectedStages || state.expectedStages.length === 0) {
-      process.exit(0);
-    }
-
-    // 非強制 pipeline 任務不檢查（flag 由 task-classifier 設定）
-    if (!state.pipelineEnforced) {
-      process.exit(0);
-    }
+    if (!state.expectedStages || state.expectedStages.length === 0) process.exit(0);
+    if (!state.pipelineEnforced) process.exit(0);
 
     // 動態發現 pipeline
     const pipeline = discoverPipeline();
@@ -59,66 +49,47 @@ process.stdin.on('end', () => {
     const completedStages = [];
     for (const agent of (state.completed || [])) {
       const stage = pipeline.agentToStage[agent];
-      if (stage && !completedStages.includes(stage)) {
-        completedStages.push(stage);
-      }
+      if (stage && !completedStages.includes(stage)) completedStages.push(stage);
     }
 
     // 比較期望 vs 已完成（排除已跳過的階段）
     const skipped = state.skippedStages || [];
-
-    // TDD pipeline 特殊處理：用 stageIndex 判斷是否完成（而非 stage name 出現次數）
     const pipelineId = state.pipelineId || null;
-    const pipelineStages = pipelineId && PIPELINES[pipelineId]
-      ? PIPELINES[pipelineId].stages
-      : state.expectedStages;
+    const pipelineStages = (pipelineId && PIPELINES[pipelineId])
+      ? PIPELINES[pipelineId].stages : state.expectedStages;
 
     let missing = [];
     if (pipelineId && PIPELINES[pipelineId]) {
-      // 有 pipelineId → 用 stageIndex 判斷（優先）或 completedStages 比對
       const stageIndex = state.stageIndex;
       if (typeof stageIndex === 'number' && stageIndex >= 0) {
-        // stageIndex 是最後完成的階段的位置，如果 stageIndex >= pipelineStages.length - 1 表示已完成
         if (stageIndex < pipelineStages.length - 1) {
-          // 還有未完成的階段（從 stageIndex + 1 到結尾）
           missing = pipelineStages.slice(stageIndex + 1).filter(s =>
             pipeline.stageMap[s] && !skipped.includes(s)
           );
         }
       } else {
-        // 無 stageIndex → 用 stage name 比對 pipelineStages（非 expectedStages）
         missing = pipelineStages.filter(s =>
           pipeline.stageMap[s] && !completedStages.includes(s) && !skipped.includes(s)
         );
       }
     } else {
-      // 無 pipelineId（legacy 模式）→ 用 stage name 比對
       missing = state.expectedStages.filter(s =>
         pipeline.stageMap[s] && !completedStages.includes(s) && !skipped.includes(s)
       );
     }
 
     if (missing.length === 0) {
-      // 全部完成或無遺漏 → 清理 state file
+      // 全部完成 → 清理 state file
       try { fs.unlinkSync(statePath); } catch (_) {}
       process.exit(0);
     }
 
-    // Emit pipeline incomplete event
-    emit(EVENT_TYPES.PIPELINE_INCOMPLETE, sessionId, {
-      missingStages: missing,
-      completedStages,
-    });
-
-    // 有遺漏 → systemMessage 提醒
-    const missingLabels = missing.map(s =>
-      `${s}（${pipeline.stageLabels[s] || s}）`
-    ).join(', ');
-    const completedStr = completedStages.length > 0
-      ? completedStages.join(' → ')
-      : '（無）';
+    // Emit pipeline incomplete
+    emit(EVENT_TYPES.PIPELINE_INCOMPLETE, sessionId, { missingStages: missing, completedStages });
 
     // 建立遺漏階段的執行指引
+    const missingLabels = missing.map(s => `${s}（${pipeline.stageLabels[s] || s}）`).join(', ');
+    const completedStr = completedStages.length > 0 ? completedStages.join(' → ') : '（無）';
     const missingHints = missing.map(s => {
       const info = pipeline.stageMap[s];
       const label = pipeline.stageLabels[s] || s;
@@ -128,9 +99,10 @@ process.stdin.on('end', () => {
       return `- ${label}`;
     }).join('\n');
 
+    // ★ 硬阻擋：decision: "block" 強制 Claude 繼續完成遺漏階段
     console.log(JSON.stringify({
-      continue: true,
-      systemMessage: `🚫 [Pipeline 未完成] 缺：${missingLabels}\n${missingHints}\n已完成：${completedStr}`,
+      decision: 'block',
+      reason: `🚫 [Pipeline 未完成] 缺：${missingLabels}\n${missingHints}\n已完成：${completedStr}\n\n請立即委派下一個遺漏的階段。Pipeline 是閉環流程，必須跑完所有階段才能結束。`,
     }));
   } catch (err) {
     hookLogger.error('pipeline-check', err);

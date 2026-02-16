@@ -561,19 +561,19 @@ console.log('═'.repeat(55));
       stop_hook_active: false,
     });
 
-    test('F1: 偵測到遺漏階段', () => {
+    test('F1: 偵測到遺漏階段（硬阻擋）', () => {
       assert.ok(checkResult.json);
-      assert.ok(checkResult.json.systemMessage);
-      assert.ok(checkResult.json.systemMessage.includes('Pipeline 未完成'));
+      assert.strictEqual(checkResult.json.decision, 'block');
+      assert.ok(checkResult.json.reason.includes('Pipeline 未完成'));
     });
 
     test('F2: 遺漏提示包含 namespaced agent', () => {
-      const msg = checkResult.json.systemMessage;
+      const msg = checkResult.json.reason;
       assert.ok(msg.includes('vibe:developer') || msg.includes('developer'));
     });
 
-    test('F3: continue=true（不阻止回合結束，僅提醒）', () => {
-      assert.strictEqual(checkResult.json.continue, true);
+    test('F3: decision=block（硬阻擋，強制繼續完成遺漏階段）', () => {
+      assert.strictEqual(checkResult.json.decision, 'block');
     });
   } finally {
     cleanState(sid);

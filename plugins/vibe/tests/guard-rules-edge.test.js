@@ -20,6 +20,9 @@ const {
   NON_CODE_EXTS,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
 
+// v1.0.43: evaluate() 內建前置條件檢查，需要完整 enforced state 才會觸發 block
+const ENFORCED_STATE = { initialized: true, taskType: 'feature', pipelineEnforced: true };
+
 let passed = 0;
 let failed = 0;
 
@@ -126,33 +129,33 @@ console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
 test('Write — toolInput 為 null', () => {
-  const result = evaluate('Write', null, {});
+  const result = evaluate('Write', null, ENFORCED_STATE);
   // null?.file_path 返回 undefined，傳給 isNonCodeFile 返回 false
   assert.strictEqual(result.decision, 'block');
 });
 
 test('Write — toolInput 為 undefined', () => {
-  const result = evaluate('Write', undefined, {});
+  const result = evaluate('Write', undefined, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
 });
 
 test('Write — file_path 為 null', () => {
-  const result = evaluate('Write', { file_path: null }, {});
+  const result = evaluate('Write', { file_path: null }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
 });
 
 test('Write — file_path 為 undefined', () => {
-  const result = evaluate('Write', { file_path: undefined }, {});
+  const result = evaluate('Write', { file_path: undefined }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
 });
 
 test('Write — file_path 為數字（拋出錯誤）', () => {
   // isNonCodeFile 內部 path.extname 會拋錯
-  assert.throws(() => evaluate('Write', { file_path: 123 }, {}), /path.*string/);
+  assert.throws(() => evaluate('Write', { file_path: 123 }, ENFORCED_STATE), /path.*string/);
 });
 
 test('Write — file_path 為物件（拋出錯誤）', () => {
-  assert.throws(() => evaluate('Write', { file_path: {} }, {}), /path.*string/);
+  assert.throws(() => evaluate('Write', { file_path: {} }, ENFORCED_STATE), /path.*string/);
 });
 
 // ═══════════════════════════════════════════════
@@ -161,33 +164,33 @@ console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
 test('NotebookEdit — .ipynb (Jupyter Notebook) → 阻擋', () => {
-  const result = evaluate('NotebookEdit', { file_path: 'notebook.ipynb' }, {});
+  const result = evaluate('NotebookEdit', { file_path: 'notebook.ipynb' }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
   assert.ok(result.message.includes('NotebookEdit'));
 });
 
 test('NotebookEdit — 空 file_path → 阻擋', () => {
-  const result = evaluate('NotebookEdit', { file_path: '' }, {});
+  const result = evaluate('NotebookEdit', { file_path: '' }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
 });
 
 test('NotebookEdit — 無 file_path → 阻擋', () => {
-  const result = evaluate('NotebookEdit', {}, {});
+  const result = evaluate('NotebookEdit', {}, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
 });
 
 test('NotebookEdit — .md 檔案 → 放行', () => {
-  const result = evaluate('NotebookEdit', { file_path: 'notes.md' }, {});
+  const result = evaluate('NotebookEdit', { file_path: 'notes.md' }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'allow');
 });
 
 test('NotebookEdit — .json 檔案 → 放行', () => {
-  const result = evaluate('NotebookEdit', { file_path: 'data.json' }, {});
+  const result = evaluate('NotebookEdit', { file_path: 'data.json' }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'allow');
 });
 
 test('NotebookEdit — null toolInput', () => {
-  const result = evaluate('NotebookEdit', null, {});
+  const result = evaluate('NotebookEdit', null, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
 });
 
@@ -197,24 +200,24 @@ console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
 test('AskUserQuestion — toolInput 為空物件', () => {
-  const result = evaluate('AskUserQuestion', {}, {});
+  const result = evaluate('AskUserQuestion', {}, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
   assert.strictEqual(result.reason, 'pipeline-auto-mode');
 });
 
 test('AskUserQuestion — toolInput 為 null', () => {
-  const result = evaluate('AskUserQuestion', null, {});
+  const result = evaluate('AskUserQuestion', null, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
 });
 
 test('EnterPlanMode — toolInput 為空物件', () => {
-  const result = evaluate('EnterPlanMode', {}, {});
+  const result = evaluate('EnterPlanMode', {}, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
   assert.strictEqual(result.reason, 'pipeline-active');
 });
 
 test('EnterPlanMode — toolInput 為 null', () => {
-  const result = evaluate('EnterPlanMode', null, {});
+  const result = evaluate('EnterPlanMode', null, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
 });
 
@@ -234,31 +237,29 @@ console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
 test('Write 程式碼檔案 — message 包含工具名稱', () => {
-  const result = evaluate('Write', { file_path: 'app.js' }, {});
+  const result = evaluate('Write', { file_path: 'app.js' }, ENFORCED_STATE);
   assert.ok(result.message.includes('Write'));
   assert.ok(!result.message.includes('Edit'));
   assert.ok(!result.message.includes('NotebookEdit'));
 });
 
 test('Edit 程式碼檔案 — message 包含工具名稱', () => {
-  const result = evaluate('Edit', { file_path: 'app.ts' }, {});
+  const result = evaluate('Edit', { file_path: 'app.ts' }, ENFORCED_STATE);
   assert.ok(result.message.includes('Edit'));
   assert.ok(!result.message.includes('Write'));
 });
 
 test('NotebookEdit 程式碼檔案 — message 包含工具名稱', () => {
-  const result = evaluate('NotebookEdit', { file_path: 'main.py' }, {});
+  const result = evaluate('NotebookEdit', { file_path: 'main.py' }, ENFORCED_STATE);
   assert.ok(result.message.includes('NotebookEdit'));
   assert.ok(!result.message.includes('Write'), '訊息不應包含 Write');
-  // 注意：錯誤訊息可能同時提到 Write|Edit|NotebookEdit 作為範例
-  // 所以只驗證主要工具名稱出現
 });
 
 test('所有阻擋訊息包含 ⛔ 符號', () => {
   const cases = [
-    evaluate('Write', { file_path: 'app.js' }, {}),
-    evaluate('AskUserQuestion', {}, {}),
-    evaluate('EnterPlanMode', {}, {}),
+    evaluate('Write', { file_path: 'app.js' }, ENFORCED_STATE),
+    evaluate('AskUserQuestion', {}, ENFORCED_STATE),
+    evaluate('EnterPlanMode', {}, ENFORCED_STATE),
   ];
   cases.forEach(result => {
     assert.strictEqual(result.decision, 'block');
@@ -267,26 +268,26 @@ test('所有阻擋訊息包含 ⛔ 符號', () => {
 });
 
 // ═══════════════════════════════════════════════
-console.log('\n🛡️ evaluate() — state 參數測試（不影響決策）');
+console.log('\n🛡️ evaluate() — state 前置條件測試');
 console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
-test('Write 程式碼檔案 — state 為空物件', () => {
+test('Write 程式碼檔案 — state 為空物件 → 放行（無 initialized）', () => {
   const result = evaluate('Write', { file_path: 'app.js' }, {});
-  assert.strictEqual(result.decision, 'block');
+  assert.strictEqual(result.decision, 'allow');
 });
 
-test('Write 程式碼檔案 — state 為 null', () => {
+test('Write 程式碼檔案 — state 為 null → 放行', () => {
   const result = evaluate('Write', { file_path: 'app.js' }, null);
-  assert.strictEqual(result.decision, 'block');
+  assert.strictEqual(result.decision, 'allow');
 });
 
-test('Write 程式碼檔案 — state 為 undefined', () => {
+test('Write 程式碼檔案 — state 為 undefined → 放行', () => {
   const result = evaluate('Write', { file_path: 'app.js' }, undefined);
-  assert.strictEqual(result.decision, 'block');
+  assert.strictEqual(result.decision, 'allow');
 });
 
-test('Write 程式碼檔案 — state 有複雜屬性（不影響）', () => {
+test('Write 程式碼檔案 — state 完整 enforced → 阻擋', () => {
   const state = {
     initialized: true,
     taskType: 'feature',
@@ -294,8 +295,19 @@ test('Write 程式碼檔案 — state 有複雜屬性（不影響）', () => {
     completed: ['PLAN', 'ARCH'],
   };
   const result = evaluate('Write', { file_path: 'app.js' }, state);
-  // evaluate() 不讀取 state，純粹根據工具和檔案路徑決策
   assert.strictEqual(result.decision, 'block');
+});
+
+test('Write 程式碼檔案 — delegationActive=true → 放行', () => {
+  const state = { ...ENFORCED_STATE, delegationActive: true };
+  const result = evaluate('Write', { file_path: 'app.js' }, state);
+  assert.strictEqual(result.decision, 'allow');
+});
+
+test('Write 程式碼檔案 — cancelled=true → 放行', () => {
+  const state = { ...ENFORCED_STATE, cancelled: true };
+  const result = evaluate('Write', { file_path: 'app.js' }, state);
+  assert.strictEqual(result.decision, 'allow');
 });
 
 // ═══════════════════════════════════════════════
