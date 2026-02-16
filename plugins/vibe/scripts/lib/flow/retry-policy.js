@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * retry-policy.js — 回退策略（純函式）
  *

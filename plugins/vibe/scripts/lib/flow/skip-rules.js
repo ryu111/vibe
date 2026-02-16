@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * skip-rules.js — 智慧跳過規則（純函式）
  *

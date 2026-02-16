@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * verdict.js — Verdict 解析（純函式）
  *

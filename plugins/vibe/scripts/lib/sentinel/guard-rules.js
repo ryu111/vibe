@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * guard-rules.js — Pipeline Guard 規則模組（純函式）
  *

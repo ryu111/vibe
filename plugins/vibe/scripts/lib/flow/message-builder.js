@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * message-builder.js — Pipeline systemMessage 組裝（純函式）
  *
