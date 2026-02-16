@@ -1106,9 +1106,9 @@
     function getAgentInfo(agent, s, askPending) {
       let status = 'idle', statusLabel = '閒置', dur = null, tools = null, retries = 0;
       if (agent.stage && s) {
-        // 無 pipeline 時 → 閒置（非「跳過」）
+        // 無 pipeline 時 → 不適用（與 Pipeline tab skipped 一致）
         if (!s.expectedStages?.length) {
-          status = 'idle'; statusLabel = '閒置';
+          status = 'idle'; statusLabel = '—';
         } else if (!s.expectedStages.includes(agent.stage)) {
           // 不在此 pipeline 範圍內 → 不適用
           status = 'idle'; statusLabel = '—';
@@ -1149,7 +1149,7 @@
       return { ...agent, status, statusLabel, dur, tools, retries, isActive, skillsLit };
     }
 
-    function AgentStatus({ s, tick, events }) {
+    function AgentStatus({ s, tick, events, taskLabel }) {
       // 偵測 AskUserQuestion 等待中（最新事件是 ask.question = 正在等待回覆）
       const askPending = useMemo(() => {
         if (!events?.length) return false;
@@ -1175,7 +1175,7 @@
       return html`
         <div class="agent-panel">
           <div class="agent-panel-hdr">
-            <h3>🤖 Agents 當前狀態</h3>
+            <h3>🤖 Agents 當前狀態${taskLabel ? html` <span class="task-badge">${taskLabel}</span>` : ''}</h3>
             <div class="agent-panel-stats">
               <span class="agent-panel-stat">活躍 <span class="num">${running}</span></span>
               <span class="agent-panel-stat">完成 <span class="num">${done}</span></span>
@@ -1539,7 +1539,6 @@
             ${s ? html`
               <h1>
                 🎯 Pipeline — ${sid(active)}
-                ${(s.pipelineId || s.taskType) && html`<span class="task-badge">${typeLabel(s.pipelineId || s.taskType)}</span>`}
                 ${isComplete && html`<span style="margin-left:4px">🎉</span>`}
                 <div class="toolbar">
                   <button class="tool-btn ${theme === 'pixel' ? 'active' : ''}" onClick=${() => setTheme(t => t === 'default' ? 'pixel' : 'default')} title="像素風 (P)">🎮 像素</button>
@@ -1568,7 +1567,7 @@
               ${mainTab === 'dashboard' && html`
               <div class="dash-grid">
                 <div class="dash-left">
-                  <${AgentStatus} s=${s} tick=${tick} events=${tlAll} />
+                  <${AgentStatus} s=${s} tick=${tick} events=${tlAll} taskLabel=${(s.pipelineId || s.taskType) ? typeLabel(s.pipelineId || s.taskType) : ''} />
                   <${MCPStats} events=${tlAll} />
                   ${isComplete ? html`
                     <!-- 完成摘要 -->
@@ -1637,25 +1636,13 @@
                 <div class="dash-right">
                   <div class="mini-tl">
                     <div style="display:flex;align-items:center;justify-content:space-between">
-                      <h4>📋 里程碑事件</h4>
+                      <h4>📋 最近事件</h4>
                       ${tlAll.length > 0 && html`<button class="tl-clear" onClick=${clearTimeline}>清除</button>`}
                     </div>
                     <div class="tl-items-wrap">
-                      ${(() => {
-                        // Dashboard 概覽只顯示重要事件（完整列表在 Timeline Tab）
-                        const SIGNIFICANT = new Set([
-                          'session.start', 'task.classified', 'delegation.start',
-                          'stage.start', 'stage.complete', 'stage.retry',
-                          'pipeline.complete', 'pipeline.incomplete',
-                          'tool.blocked', 'tool.guarded',
-                          'ask.question', 'ask.answered',
-                          'compact.executed',
-                        ]);
-                        const significant = tlAll.filter(ev => SIGNIFICANT.has(ev.eventType));
-                        return significant.length ? significant.map(ev => html`
-                          <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
-                        `) : html`<div style="color:var(--subtext0);font-size:10px">${tlAll.length ? `${tlAll.length} 事件中無里程碑（工具呼叫等詳情見 Timeline Tab）` : '等待事件流…'}</div>`;
-                      })()}
+                      ${tlAll.length ? tlAll.map(ev => html`
+                        <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
+                      `) : html`<div style="color:var(--subtext0);font-size:10px">等待事件流…</div>`}
                     </div>
                   </div>
                 </div>
