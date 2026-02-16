@@ -15,7 +15,7 @@
     "PLAN":   { "agent": "planner",        "skill": "/vibe:scope" },
     "ARCH":   { "agent": "architect",      "skill": "/vibe:architect" },
     "DESIGN": { "agent": "designer",       "skill": "/vibe:design" },
-    "DEV":    { "agent": "developer",      "skill": null },
+    "DEV":    { "agent": "developer",      "skill": "/vibe:dev" },
     "REVIEW": { "agent": "code-reviewer",  "skill": "/vibe:review" },
     "TEST":   { "agent": "tester",         "skill": "/vibe:tdd" },
     "QA":     { "agent": "qa",             "skill": "/vibe:qa" },

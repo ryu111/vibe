@@ -196,7 +196,7 @@ test('前進場景：PLAN → ARCH（有 skill 的階段）', () => {
   }
 });
 
-test('前進場景：ARCH → DEV（無 skill 的階段，Task 委派）', () => {
+test('前進場景：ARCH → DEV（Skill 委派）', () => {
   const sessionId = 'test-ns-1b';
   const statePath = createTempState(sessionId, {
     initialized: true,
@@ -228,18 +228,14 @@ test('前進場景：ARCH → DEV（無 skill 的階段，Task 委派）', () =>
 
     const output = JSON.parse(result);
     assert.ok(output.systemMessage, '應該有 systemMessage');
-    // DEV 沒有 skill，應該使用 Task 委派
+    // DEV 有 skill /vibe:dev，應該使用 Skill 委派
     assert.ok(
-      output.systemMessage.includes('vibe:developer'),
-      'systemMessage 應包含 vibe:developer'
+      output.systemMessage.includes('/vibe:dev'),
+      'systemMessage 應包含 /vibe:dev skill'
     );
     assert.ok(
-      output.systemMessage.includes('subagent_type: "vibe:developer"'),
-      'systemMessage 應包含 subagent_type: "vibe:developer"'
-    );
-    assert.ok(
-      output.systemMessage.includes('使用 Task 工具委派'),
-      'systemMessage 應包含 Task 工具委派指示'
+      output.systemMessage.includes('使用 Skill 工具呼叫'),
+      'systemMessage 應包含 Skill 工具呼叫指示'
     );
   } finally {
     cleanup(statePath);
@@ -292,13 +288,14 @@ test('回退場景：REVIEW FAIL:HIGH → DEV（namespaced 格式）', () => {
 
     const output = JSON.parse(result);
     assert.ok(output.systemMessage, '應該有 systemMessage');
+    // 回退到 DEV 使用 Skill 委派
     assert.ok(
-      output.systemMessage.includes('vibe:developer'),
-      'systemMessage 應包含 vibe:developer（回退）'
+      output.systemMessage.includes('/vibe:dev'),
+      'systemMessage 應包含 /vibe:dev skill（回退）'
     );
     assert.ok(
-      output.systemMessage.includes('subagent_type: "vibe:developer"'),
-      'systemMessage 應包含 subagent_type: "vibe:developer"'
+      output.systemMessage.includes('使用 Skill 工具呼叫'),
+      'systemMessage 應包含 Skill 工具呼叫指示'
     );
     assert.ok(
       output.systemMessage.includes('🔄'),
@@ -355,10 +352,10 @@ test('回退場景：修復後重新執行 REVIEW（namespaced 格式）', () =>
 
     const output = JSON.parse(result);
     assert.ok(output.systemMessage, '應該有 systemMessage');
-    // 精簡後回退訊息只包含 DEV method + 告知 stage-transition 會指示重跑
+    // 回退修復後使用 Skill 委派 DEV
     assert.ok(
-      output.systemMessage.includes('vibe:developer'),
-      'systemMessage 應包含 vibe:developer（回退修復）'
+      output.systemMessage.includes('/vibe:dev') || output.systemMessage.includes('/vibe:review'),
+      'systemMessage 應包含 /vibe:dev 或 /vibe:review skill（回退修復）'
     );
     assert.ok(
       output.systemMessage.includes('REVIEW'),
@@ -411,14 +408,10 @@ test('缺漏 ARCH 和 DEV 階段（混合格式）', () => {
       'reason 應包含 /vibe:architect skill'
     );
 
-    // DEV 沒有 skill，應該顯示 Task 委派格式
+    // DEV 有 skill /vibe:dev，應該顯示 Skill 委派格式
     assert.ok(
-      output.reason.includes('vibe:developer'),
-      'reason 應包含 vibe:developer'
-    );
-    assert.ok(
-      output.reason.includes('subagent_type: "vibe:developer"'),
-      'reason 應包含 subagent_type: "vibe:developer"'
+      output.reason.includes('/vibe:dev'),
+      'reason 應包含 /vibe:dev skill'
     );
   } finally {
     cleanup(statePath);

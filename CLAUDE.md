@@ -9,13 +9,13 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.43 | 全方位開發工作流 | 33 | 11 | 22 | 45 |
+| **vibe** | 1.0.44 | 全方位開發工作流 | 34 | 11 | 22 | 45 |
 
 ### vibe plugin 功能模組
 
 | 模組 | 功能 | Skills | Agents |
 |------|------|:------:|:------:|
-| 規劃 | Pipeline 工作流管理、規劃、架構設計 | 7 | 3 (planner/architect/developer) |
+| 規劃 | Pipeline 工作流管理、規劃、架構設計、開發實作 | 8 | 3 (planner/architect/developer) |
 | 設計 | UI/UX 設計系統生成（ui-ux-pro-max 整合） | 1 | 1 (designer) |
 | 品質 | lint、format、review、security、TDD、E2E、QA | 9 | 6 (code-reviewer/security-reviewer/tester/build-error-resolver/e2e-runner/qa) |
 | 知識 | 語言/框架模式庫（純知識） | 8 | 0 |
@@ -135,7 +135,7 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 | PLAN | planner | opus/purple | `/vibe:scope` |
 | ARCH | architect | opus/cyan | `/vibe:architect` |
 | DESIGN | designer | sonnet/cyan | `/vibe:design` |
-| DEV | developer | sonnet/yellow | — |
+| DEV | developer | sonnet/yellow | `/vibe:dev` |
 | REVIEW | code-reviewer | opus/blue | `/vibe:review` |
 | TEST | tester | sonnet/pink | `/vibe:tdd` |
 | QA | qa | sonnet/yellow | `/vibe:qa` |

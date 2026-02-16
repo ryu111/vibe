@@ -569,7 +569,7 @@ console.log('═'.repeat(55));
 
     test('F2: 遺漏提示包含 namespaced agent', () => {
       const msg = checkResult.json.reason;
-      assert.ok(msg.includes('vibe:developer') || msg.includes('developer'));
+      assert.ok(msg.includes('/vibe:dev') || msg.includes('developer'));
     });
 
     test('F3: decision=block（硬阻擋，強制繼續完成遺漏階段）', () => {
@@ -656,7 +656,7 @@ console.log('═'.repeat(55));
     // Step 2-4: 模擬 3 個 agent 的 delegate → complete 循環
     const agents = [
       { type: 'vibe:planner', nextKeyword: 'architect' },
-      { type: 'vibe:architect', nextKeyword: 'developer' },
+      { type: 'vibe:architect', nextKeyword: '/vibe:dev' },
       { type: 'vibe:developer', nextKeyword: 'REVIEW' },  // skill-based: /vibe:review
     ];
 
