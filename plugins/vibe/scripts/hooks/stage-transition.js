@@ -244,12 +244,14 @@ process.stdin.on('end', () => {
           const frameworkName = (envInfo.framework && envInfo.framework.name) || '';
           const isFrontend = FRONTEND_FRAMEWORKS.includes(frameworkName);
           state.pipelineId = isFrontend ? 'full' : 'standard';
+          // 新 pipelineId → 必須同步 expectedStages（舊值可能是 stale 的殘留）
+          state.expectedStages = PIPELINES[state.pipelineId].stages;
+        } else if (!state.expectedStages || state.expectedStages.length === 0) {
+          // pipelineId 已有但 expectedStages 為空 → 同步
+          state.expectedStages = PIPELINES[state.pipelineId].stages;
         }
         if (!state.taskType || state.taskType === 'quickfix' || state.taskType === 'research') {
           state.taskType = 'feature';
-        }
-        if (!state.expectedStages || state.expectedStages.length === 0) {
-          state.expectedStages = PIPELINES[state.pipelineId].stages;
         }
       }
     }

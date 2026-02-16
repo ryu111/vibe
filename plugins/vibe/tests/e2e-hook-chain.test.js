@@ -215,10 +215,10 @@ console.log('═'.repeat(55));
     // Step 1: 初始化
     initState(sid);
 
-    // Step 2: task-classifier 分類 feature 任務
+    // Step 2: task-classifier 分類 feature 任務（顯式 [pipeline:full] 確保完整 9 階段）
     const classifyResult = runHook('task-classifier', {
       session_id: sid,
-      prompt: '建立完整的 REST API server，包含使用者認證',
+      prompt: '建立完整的 REST API server，包含使用者認證 [pipeline:full]',
     });
 
     test('B1: task-classifier 分類為 feature', () => {
@@ -315,13 +315,14 @@ console.log('═'.repeat(55));
     });
 
     // Step 8: 模擬完成所有階段直到 pipeline-check
-    // 補齊其餘 agent 完成紀錄
+    // 補齊其餘 agent 完成紀錄 + stageIndex（pipeline-check 用 stageIndex 判斷完成度）
     const state = readState(sid);
     state.completed = [
       'vibe:planner', 'vibe:architect', 'vibe:designer', 'vibe:developer',
       'vibe:code-reviewer', 'vibe:tester', 'vibe:qa',
       'vibe:e2e-runner', 'vibe:doc-updater',
     ];
+    state.stageIndex = state.expectedStages.length - 1; // 最後一個階段的索引
     fs.writeFileSync(
       path.join(CLAUDE_DIR, `pipeline-state-${sid}.json`),
       JSON.stringify(state, null, 2)
@@ -454,8 +455,8 @@ console.log('═'.repeat(55));
       const state = readState(sid);
       assert.ok(state.reclassifications);
       assert.strictEqual(state.reclassifications.length, 1);
-      assert.strictEqual(state.reclassifications[0].from, 'quickfix');
-      assert.strictEqual(state.reclassifications[0].to, 'feature');
+      assert.strictEqual(state.reclassifications[0].from, 'fix');      // pipeline ID（非 taskType）
+      assert.strictEqual(state.reclassifications[0].to, 'standard');   // pipeline ID（非 taskType）
     });
 
     test('D4: 升級輸出 systemMessage', () => {

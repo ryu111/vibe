@@ -67,8 +67,11 @@ assert(formatToolDetail({ tool: 'WebFetch', url: 'https://example.com' }) === 'W
 assert(formatToolDetail({ tool: 'WebSearch', query: 'test query' }) === 'WebSearch "test query"', 'WebSearch + query');
 assert(formatToolDetail({ tool: 'AskUserQuestion', questionCount: 3 }) === 'AskUserQuestion (3 題)', 'AskUserQuestion + count');
 assert(formatToolDetail({ tool: 'EnterPlanMode' }) === 'EnterPlanMode', 'EnterPlanMode');
-assert(formatToolDetail({ tool: 'mcp__plugin__search' }) === 'MCP:search', 'MCP 工具簡稱');
-assert(formatToolDetail({ tool: 'mcp__claude-in-chrome__screenshot' }) === 'MCP:screenshot', 'MCP 長名稱簡稱');
+assert(formatToolDetail({ tool: 'mcp__plugin__search' }) === 'plugin:search', 'MCP server:method 簡稱');
+assert(formatToolDetail({ tool: 'mcp__claude-in-chrome__screenshot' }) === 'chrome:screenshot', 'MCP chrome 縮寫');
+assert(formatToolDetail({ tool: 'mcp__plugin_claude-mem_mcp-search__search' }) === 'claude-mem:search', 'MCP plugin_ 前綴提取');
+assert(formatToolDetail({ tool: 'mcp__ide__getDiagnostics' }) === 'ide:getDiagnostics', 'MCP ide server');
+assert(formatToolDetail({ tool: 'mcp__search' }) === 'MCP:search', 'MCP fallback（parts<3）');
 assert(formatToolDetail({ tool: 'Unknown' }) === 'Unknown', '未知工具');
 
 // ── formatEventText ────────────────────────────

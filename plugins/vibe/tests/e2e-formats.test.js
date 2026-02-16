@@ -120,7 +120,7 @@ module.exports = {
   // 複製 timeline 模組（remote hooks 需要）
   const mockTimelineDir = path.join(mockScriptsLib, 'timeline');
   fs.mkdirSync(mockTimelineDir, { recursive: true });
-  for (const file of ['schema.js', 'timeline.js', 'consumer.js', 'index.js']) {
+  for (const file of ['schema.js', 'timeline.js', 'consumer.js', 'formatter.js', 'index.js']) {
     fs.copyFileSync(
       path.join(SCRIPTS_DIR, 'lib', 'timeline', file),
       path.join(mockTimelineDir, file)
