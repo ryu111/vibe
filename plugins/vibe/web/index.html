@@ -261,8 +261,8 @@
     .mini-arrow { color: var(--surface2); font-size: 8px; flex-shrink: 0; }
 
     /* Dashboard 雙欄佈局（橫向螢幕預設） */
-    .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .dash-left, .dash-right { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+    .dash-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+    .dash-left, .dash-right { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; }
     .dash-right { max-height: calc(100vh - 160px); }
     @media (max-width: 960px) { .dash-grid { grid-template-columns: 1fr; } .dash-right { max-height: none; } }
     /* Dashboard mini timeline */
@@ -1130,7 +1130,13 @@
             else if (r.verdict === 'FAIL') { status = 'error'; statusLabel = r.severity || 'FAIL'; }
           }
         }
-        // 3. Pipeline 排程：待命/等待/跳過
+        // 3. Support agents：曾被委派 → 完成（無 stage 結果可查）
+        if (status === 'idle' && agent.group === 'support' && events?.length) {
+          if (events.some(e => e.eventType === 'delegation.start' && e.text?.includes(agent.id))) {
+            status = 'completed'; statusLabel = '完成';
+          }
+        }
+        // 4. Pipeline 排程：待命/等待/跳過
         if (status === 'idle' && agent.stage && s?.expectedStages?.includes(agent.stage)) {
           const st = getStatus(agent.stage, s);
           if (st === 'next') { status = 'standby'; statusLabel = '待命'; }
