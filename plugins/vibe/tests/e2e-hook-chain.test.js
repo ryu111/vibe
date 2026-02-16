@@ -1122,7 +1122,7 @@ console.log('══════════════════════�
 (() => {
   const sid = 'e2e-whitelist';
   try {
-    // M1: EnterPlanMode 阻擋
+    // M1: EnterPlanMode 無條件阻擋
     initState(sid, { taskType: 'feature', pipelineEnforced: true });
     const planMode = runHook('pipeline-guard', {
       session_id: sid,
@@ -1130,14 +1130,13 @@ console.log('══════════════════════�
       tool_input: {},
     });
 
-    test('M1: pipelineEnforced=true → 阻擋 EnterPlanMode', () => {
+    test('M1: EnterPlanMode 無條件阻擋（pipeline enforced）', () => {
       assert.strictEqual(planMode.exitCode, 2);
       assert.ok(planMode.stderr.includes('EnterPlanMode'));
-      assert.ok(planMode.stderr.includes('vibe:planner'));
       assert.ok(planMode.stderr.includes('/vibe:scope'));
     });
 
-    // M2: cancelled=true 後 EnterPlanMode 也放行
+    // M2: cancelled=true 後 EnterPlanMode 仍阻擋（無條件）
     initState(sid, { taskType: 'feature', pipelineEnforced: true, cancelled: true });
     const planModeAfterCancel = runHook('pipeline-guard', {
       session_id: sid,
@@ -1145,8 +1144,9 @@ console.log('══════════════════════�
       tool_input: {},
     });
 
-    test('M2: cancelled=true → EnterPlanMode 放行', () => {
-      assert.strictEqual(planModeAfterCancel.exitCode, 0);
+    test('M2: cancelled=true → EnterPlanMode 仍阻擋（無條件）', () => {
+      assert.strictEqual(planModeAfterCancel.exitCode, 2);
+      assert.ok(planModeAfterCancel.stderr.includes('EnterPlanMode'));
     });
 
     // M3: NotebookEdit 支援（程式碼檔案阻擋）
@@ -1173,7 +1173,7 @@ console.log('══════════════════════�
       assert.strictEqual(notebookNonCode.exitCode, 0);
     });
 
-    // M5: delegationActive=true 時 EnterPlanMode 也放行（實際不會發生，但邏輯覆蓋）
+    // M5: delegationActive=true 時 EnterPlanMode 仍阻擋（無條件）
     initState(sid, { taskType: 'feature', pipelineEnforced: true, delegationActive: true });
     const planModeDelegate = runHook('pipeline-guard', {
       session_id: sid,
@@ -1181,8 +1181,9 @@ console.log('══════════════════════�
       tool_input: {},
     });
 
-    test('M5: delegationActive=true → EnterPlanMode 放行（統一 delegation 白名單）', () => {
-      assert.strictEqual(planModeDelegate.exitCode, 0);
+    test('M5: delegationActive=true → EnterPlanMode 仍阻擋（無條件）', () => {
+      assert.strictEqual(planModeDelegate.exitCode, 2);
+      assert.ok(planModeDelegate.stderr.includes('EnterPlanMode'));
     });
 
     // M6: pipelineEnforced=false 時所有工具放行
@@ -1192,7 +1193,7 @@ console.log('══════════════════════�
       { tool: 'Edit', input: { file_path: 'src/component.tsx' } },
       { tool: 'NotebookEdit', input: { file_path: 'notebook.ipynb' } },
       { tool: 'AskUserQuestion', input: {} },
-      { tool: 'EnterPlanMode', input: {} },
+      // EnterPlanMode 已移除：v1.0.47+ 無條件阻擋，不受 pipelineEnforced 影響
     ];
 
     for (const { tool, input } of allTools) {

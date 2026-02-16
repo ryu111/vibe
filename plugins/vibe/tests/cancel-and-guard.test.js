@@ -489,7 +489,7 @@ test('放行 — AskUserQuestion（cancelled=true）', () => {
   }
 });
 
-test('阻擋 — EnterPlanMode（pipeline 啟動中）', () => {
+test('阻擋 — EnterPlanMode（無條件阻擋，pipeline 啟動中）', () => {
   const sessionId = 'test-pg-14';
   try {
     writeState(sessionId, {
@@ -507,13 +507,12 @@ test('阻擋 — EnterPlanMode（pipeline 啟動中）', () => {
 
     assert.strictEqual(result.exitCode, 2);
     assert.ok(result.stderr.includes('EnterPlanMode'));
-    assert.ok(result.stderr.includes('vibe:planner'));
   } finally {
     cleanState(sessionId);
   }
 });
 
-test('放行 — EnterPlanMode（pipelineEnforced=false）', () => {
+test('阻擋 — EnterPlanMode（無條件阻擋，pipelineEnforced=false）', () => {
   const sessionId = 'test-pg-15';
   try {
     writeState(sessionId, {
@@ -528,7 +527,9 @@ test('放行 — EnterPlanMode（pipelineEnforced=false）', () => {
       tool_input: {},
     });
 
-    assert.strictEqual(result.exitCode, 0);
+    // v1.0.47+: EnterPlanMode 無條件阻擋
+    assert.strictEqual(result.exitCode, 2);
+    assert.ok(result.stderr.includes('EnterPlanMode'));
   } finally {
     cleanState(sessionId);
   }

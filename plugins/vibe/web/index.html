@@ -1568,7 +1568,7 @@
                 <div class="dash-left">
                   <${AgentStatus} s=${s} tick=${tick} events=${tlAll} taskLabel=${(s.pipelineId || s.taskType) ? typeLabel(s.pipelineId || s.taskType) : ''} />
                   <${MCPStats} events=${tlAll} />
-                  ${isComplete ? html`
+                  ${isComplete && html`
                     <!-- 完成摘要 -->
                     <div class="cards">
                       <div class="card">

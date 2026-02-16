@@ -209,15 +209,28 @@ test('AskUserQuestion — toolInput 為 null', () => {
   assert.strictEqual(result.decision, 'block');
 });
 
-test('EnterPlanMode — toolInput 為空物件', () => {
+test('EnterPlanMode — toolInput 為空物件（無條件阻擋）', () => {
   const result = evaluate('EnterPlanMode', {}, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
-  assert.strictEqual(result.reason, 'pipeline-active');
+  assert.strictEqual(result.reason, 'plan-mode-disabled');
 });
 
-test('EnterPlanMode — toolInput 為 null', () => {
+test('EnterPlanMode — toolInput 為 null（無條件阻擋）', () => {
   const result = evaluate('EnterPlanMode', null, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
+  assert.strictEqual(result.reason, 'plan-mode-disabled');
+});
+
+test('EnterPlanMode — 無 pipeline state 也阻擋', () => {
+  const result = evaluate('EnterPlanMode', {}, null);
+  assert.strictEqual(result.decision, 'block');
+  assert.strictEqual(result.reason, 'plan-mode-disabled');
+});
+
+test('EnterPlanMode — state 為空物件也阻擋', () => {
+  const result = evaluate('EnterPlanMode', {}, {});
+  assert.strictEqual(result.decision, 'block');
+  assert.strictEqual(result.reason, 'plan-mode-disabled');
 });
 
 test('未知工具 — toolInput 為 null', () => {

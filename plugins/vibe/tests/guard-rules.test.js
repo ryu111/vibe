@@ -179,15 +179,25 @@ console.log('\n🛡️ evaluate() — EnterPlanMode 測試');
 console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
-test('EnterPlanMode → 阻擋', () => {
+test('EnterPlanMode → 無條件阻擋', () => {
   const result = evaluate('EnterPlanMode', {}, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
-  assert.strictEqual(result.reason, 'pipeline-active');
+  assert.strictEqual(result.reason, 'plan-mode-disabled');
   assert.ok(result.message.includes('⛔'));
   assert.ok(result.message.includes('EnterPlanMode'));
-  assert.ok(result.message.includes('vibe:planner'));
   assert.ok(result.message.includes('/vibe:scope'));
-  assert.ok(result.message.includes('/cancel'));
+});
+
+test('EnterPlanMode → 無 state 也阻擋', () => {
+  const result = evaluate('EnterPlanMode', {}, null);
+  assert.strictEqual(result.decision, 'block');
+  assert.strictEqual(result.reason, 'plan-mode-disabled');
+});
+
+test('EnterPlanMode → pipelineEnforced=false 也阻擋', () => {
+  const result = evaluate('EnterPlanMode', {}, { initialized: true, taskType: 'quickfix', pipelineEnforced: false });
+  assert.strictEqual(result.decision, 'block');
+  assert.strictEqual(result.reason, 'plan-mode-disabled');
 });
 
 // ═══════════════════════════════════════════════

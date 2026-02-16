@@ -54,6 +54,17 @@ function isNonCodeFile(filePath) {
  * @returns {{ decision: 'allow'|'block', reason?: string, message?: string }}
  */
 function evaluate(toolName, toolInput, state) {
+  // ── EnterPlanMode — 無條件阻擋（不受 pipeline 狀態影響） ──
+  if (toolName === 'EnterPlanMode') {
+    return {
+      decision: 'block',
+      reason: 'plan-mode-disabled',
+      message:
+        `⛔ 禁止使用 EnterPlanMode。\n` +
+        `如需規劃，請使用 /vibe:scope 委派給 planner agent。\n`,
+    };
+  }
+
   // ── 前置放行條件（原本散在 pipeline-guard.js 的 4 個 if） ──
   if (!state) return { decision: 'allow' };
   if (!state.initialized) return { decision: 'allow' };
@@ -92,21 +103,6 @@ function evaluate(toolName, toolInput, state) {
         'Pipeline 是全自動閉環流程，stage-transition 會指示下一步。\n' +
         '請直接按照 pipeline 指示執行下一階段。\n' +
         '如需退出 pipeline 自動模式，使用 /vibe:cancel。\n',
-    };
-  }
-
-  // ── EnterPlanMode ──
-  if (toolName === 'EnterPlanMode') {
-    return {
-      decision: 'block',
-      reason: 'pipeline-active',
-      message:
-        `⛔ Pipeline 模式下禁止使用 EnterPlanMode。\n` +
-        `Pipeline 有自己的 PLAN 階段，請改用：\n` +
-        `  Task({ subagent_type: "vibe:planner", prompt: "..." })\n` +
-        `或觸發 /vibe:scope skill。\n` +
-        `\n` +
-        `如需手動進入 Plan Mode，請先使用 /cancel 退出 pipeline 模式。\n`,
     };
   }
 
