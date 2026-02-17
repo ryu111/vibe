@@ -155,7 +155,9 @@ function validate(state, timeline) {
     true, `max=${maxRetry}`);
 
   // ═══ L4 Timeline 層 ═══
-  add('L4:hasClassified', timeline.some(e => e.type === 'task.classified'));
+  // v3: task-classifier 改用 prompt.received（向後相容檢查 task.classified）
+  add('L4:hasClassified',
+    timeline.some(e => e.type === 'prompt.received' || e.type === 'task.classified'));
 
   if (isPhaseComplete) {
     add('L4:hasPipelineComplete', timeline.some(e => e.type === 'pipeline.complete'),
