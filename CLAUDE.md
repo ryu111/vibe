@@ -252,8 +252,7 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 
 | 路徑 | 內容 | 維護方式 |
 |------|------|---------|
-| `docs/reference/` | 6 份組件規格書（plugin/skill/agent/hook/script/template） | 手動 |
-| `docs/ref/` | plugin 設計文件 + `index.md` + `vibe.md` + `pipeline.md` | index.md + vibe.md 自動生成 |
+| `docs/ref/` | plugin 設計文件 + `index.md` + `vibe.md` + `pipeline.md` + `pipeline-v3.md` | index.md + vibe.md 自動生成 |
 | `docs/plugin-specs.json` | 組件數量 Single Source of Truth | 手動 |
 | `docs/ECC研究報告.md` | ECC 平台深度分析 | 手動 |
 | `dashboard/` | Build-time 靜態生成系統（HTML + index.md） | Stop hook 自動觸發 |
@@ -276,7 +275,7 @@ commit 涉及 plugin 變更時，必須同步更新該 plugin 的 `plugin.json` 
 - **major +1**：破壞性變更
 
 ### 新增組件 Checklist
-1. 按 `docs/reference/` 規格書建立組件
+1. 按 forge 驗證規則建立組件（`/forge:scaffold`、`/forge:skill`、`/forge:agent`、`/forge:hook`）
 2. 更新 `docs/plugin-specs.json` 的 `expected` 數量
 3. 如涉及 pipeline → 更新 `pipeline.json` 的 `provides`
 4. 如涉及新 stage → 更新 `registry.js`
