@@ -32,12 +32,12 @@
           "health"
         ],
         "agents": [
-          "planner", "architect", "designer", "developer",
+          "planner", "architect", "designer", "developer", "pipeline-architect",
           "code-reviewer", "security-reviewer", "tester", "build-error-resolver", "e2e-runner", "qa",
           "doc-updater"
         ],
         "hooks": 19,
-        "scripts": 39
+        "scripts": 43
       }
     }
   }

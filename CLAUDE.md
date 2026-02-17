@@ -9,13 +9,13 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.50 | 全方位開發工作流 | 34 | 11 | 19 | 39 |
+| **vibe** | 1.0.53 | 全方位開發工作流 | 34 | 12 | 19 | 43 |
 
 ### vibe plugin 功能模組
 
 | 模組 | 功能 | Skills | Agents |
 |------|------|:------:|:------:|
-| 規劃 | Pipeline 工作流管理、規劃、架構設計、開發實作 | 8 | 3 (planner/architect/developer) |
+| 規劃 | Pipeline 工作流管理、規劃、架構設計、開發實作 | 8 | 4 (planner/architect/developer/pipeline-architect) |
 | 設計 | UI/UX 設計系統生成（ui-ux-pro-max 整合） | 1 | 1 (designer) |
 | 品質 | lint、format、review、security、TDD、E2E、QA | 9 | 6 (code-reviewer/security-reviewer/tester/build-error-resolver/e2e-runner/qa) |
 | 知識 | 語言/框架模式庫（純知識） | 8 | 0 |
@@ -51,7 +51,7 @@ openspec/
 ```
 
 **Pipeline 對接**：PLAN→proposal.md | ARCH→design+specs+tasks | DESIGN→design-system+mockup | DEV→tasks.md打勾 | REVIEW→specs對照審查 | TEST→specs→測試案例 | DOCS→archive歸檔
-**Agent 覆蓋**：9/11 agents 整合 OpenSpec（planner/architect/designer/developer/code-reviewer/tester/qa/doc-updater/security-reviewer），build-error-resolver 和 e2e-runner 不需要
+**Agent 覆蓋**：9/12 agents 整合 OpenSpec（planner/architect/designer/developer/code-reviewer/tester/qa/doc-updater/security-reviewer），build-error-resolver、e2e-runner 和 pipeline-architect 不需要
 
 ## 設計哲學
 
@@ -82,13 +82,14 @@ plugins/vibe/
 │   └── lib/                 # 共用函式庫
 │       ├── registry.js      # ★ 全局 metadata（STAGES/AGENTS/EMOJI）
 │       ├── hook-logger.js   # Hook 錯誤日誌（~/.claude/hook-errors.log）
-│       ├── flow/            # pipeline-discovery, env-detector, counter, classifier, uiux-resolver, verdict, retry-policy, skip-rules, message-builder, state-machine
+│       ├── hook-utils.js    # safeRun() JSON stdin 安全解析
+│       ├── flow/            # ★ dag-state, dag-utils, pipeline-controller, skip-predicates, state-migrator, classifier, verdict, retry-policy, message-builder, env-detector, counter, uiux-resolver, pipeline-discovery
 │       ├── sentinel/        # lang-map, tool-detector, guard-rules
 │       ├── dashboard/       # server-manager
 │       ├── remote/          # telegram, transcript, bot-manager
 │       └── timeline/        # schema, timeline, consumer, formatter, index
 ├── skills/                  # 34 個 skill 目錄
-├── agents/                  # 11 個 agent 定義
+├── agents/                  # 12 個 agent 定義
 ├── server.js                # Dashboard HTTP+WebSocket server
 ├── bot.js                   # Telegram daemon
 ├── web/index.html           # Dashboard 前端
@@ -97,9 +98,20 @@ plugins/vibe/
 
 ## Pipeline 委派架構
 
-### Pipeline Catalog（10 種工作流模板）
+### Pipeline v3 — 動態 DAG 架構
 
-統一在 `registry.js` 的 `PIPELINES` 常量定義 10 種可組合的 pipeline 模板，task-classifier 根據使用者意圖自動選擇：
+v3 核心改變：靜態 FSM → 宣告式 DAG 狀態 + pipeline-controller 統一 API。所有 hook 精簡為 controller 薄代理。
+
+**三個角色分工**：
+- **Pipeline Agent**（pipeline-architect, haiku/plan）：分析 prompt + 環境 → 產出 DAG + 執行藍圖
+- **Pipeline Skill**（`/vibe:pipeline`）：提供 stage 定義、DAG 結構規範、範例模板
+- **Hook Stack**（5 核心）：防護 + 追蹤 + 引導 + 閉環
+
+**v3 State Schema**：`dag`（DAG 結構）+ `stages`（各 stage 狀態）+ `classification`（分類結果）+ `pendingRetry`/`retries`。Phase 由 `derivePhase(state)` 即時推導，不儲存。
+
+### Pipeline Catalog（10 種參考模板）
+
+`registry.js` 的 `PIPELINES` 定義 10 種參考模板。`[pipeline:xxx]` 顯式指定時直接建立線性 DAG；非顯式則由 pipeline-architect 動態生成：
 
 | Pipeline ID | 階段 | 描述 | 強制性 |
 |------------|------|------|:-----:|
@@ -142,11 +154,12 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 | E2E | e2e-runner | sonnet/green | `/vibe:e2e` |
 | DOCS | doc-updater | haiku/purple | `/vibe:doc-sync` |
 
-**防禦機制**：
-- `task-classifier`（UserPromptSubmit）— 分類任務 + 按需注入委派規則
-- `pipeline-guard`（PreToolUse Write|Edit|NotebookEdit|AskUserQuestion|EnterPlanMode|Bash）— **exit 2 硬阻擋** Main Agent 直接寫碼、Bash 寫檔繞過、詢問使用者、進入 Plan Mode
-- `delegation-tracker`（PreToolUse Task）— 設 `delegationActive=true` 讓 sub-agent 通過
-- `stage-transition`（SubagentStop）— 指示下一階段 + 清除 delegation
+**防禦機制**（v3：所有 hook 為 pipeline-controller 薄代理）：
+- `task-classifier`（UserPromptSubmit）→ `ctrl.classify()` — 快篩 + 分類 + 顯式路徑建 DAG
+- `pipeline-guard`（PreToolUse *）→ `ctrl.canProceed()` — derivePhase 決策 + 唯讀白名單
+- `delegation-tracker`（PreToolUse Task）→ `ctrl.onDelegate()` — stage active 標記
+- `stage-transition`（SubagentStop）→ `ctrl.onStageComplete()` — DAG 排程 + 回退/前進/完成
+- `pipeline-check`（Stop）→ `ctrl.onSessionStop()` — 遺漏偵測 + 閉環阻擋
 
 ## Hooks 事件全景
 
@@ -198,6 +211,7 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 | pink | tester | sonnet |
 | orange | build-error-resolver | haiku |
 | green | e2e-runner | sonnet |
+| purple | pipeline-architect | haiku |
 
 合法色彩值：`red` / `blue` / `green` / `yellow` / `purple` / `orange` / `pink` / `cyan`
 
