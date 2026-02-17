@@ -614,6 +614,74 @@ test('多語言專案注入所有匹配的知識 skills', () => {
 });
 
 // ═══════════════════════════════════════════════
+console.log('\n🧪 Part 3b: buildKnowledgeHints — 直接單元測試');
+// ═══════════════════════════════════════════════
+
+const { buildKnowledgeHints } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'flow', 'pipeline-controller.js'));
+
+test('unit: TypeScript → typescript-patterns + common skills', () => {
+  const result = buildKnowledgeHints({ environment: { languages: { primary: 'typescript', secondary: [] } } });
+  assert.ok(result.includes('/vibe:typescript-patterns'));
+  assert.ok(result.includes('/vibe:coding-standards'));
+  assert.ok(result.includes('/vibe:testing-patterns'));
+  assert.ok(result.startsWith('可用知識庫：'));
+});
+
+test('unit: React + TypeScript → frontend + typescript + common', () => {
+  const result = buildKnowledgeHints({ environment: { languages: { primary: 'typescript' }, framework: { name: 'react' } } });
+  assert.ok(result.includes('/vibe:typescript-patterns'));
+  assert.ok(result.includes('/vibe:frontend-patterns'));
+  assert.ok(result.includes('/vibe:coding-standards'));
+});
+
+test('unit: Go → go-patterns + common', () => {
+  const result = buildKnowledgeHints({ environment: { languages: { primary: 'go' } } });
+  assert.ok(result.includes('/vibe:go-patterns'));
+  assert.ok(result.includes('/vibe:coding-standards'));
+});
+
+test('unit: Express (no lang match) → backend-patterns + common', () => {
+  const result = buildKnowledgeHints({ environment: { languages: { primary: 'javascript' }, framework: { name: 'express' } } });
+  assert.ok(result.includes('/vibe:backend-patterns'));
+  assert.ok(!result.includes('/vibe:typescript-patterns'), 'javascript 不在 languages mapping');
+});
+
+test('unit: 空 environment → 空字串', () => {
+  assert.strictEqual(buildKnowledgeHints({}), '');
+  assert.strictEqual(buildKnowledgeHints({ environment: {} }), '');
+  assert.strictEqual(buildKnowledgeHints({ environment: { languages: {} } }), '');
+});
+
+test('unit: null/undefined primary → 空字串', () => {
+  assert.strictEqual(buildKnowledgeHints({ environment: { languages: { primary: null } } }), '');
+  assert.strictEqual(buildKnowledgeHints({ environment: { languages: { primary: undefined } } }), '');
+});
+
+test('unit: secondary 含非字串元素 → 安全過濾', () => {
+  const result = buildKnowledgeHints({
+    environment: { languages: { primary: 'typescript', secondary: [123, null, 'python', undefined] } },
+  });
+  assert.ok(result.includes('/vibe:typescript-patterns'));
+  assert.ok(result.includes('/vibe:python-patterns'));
+  assert.ok(!result.includes('123'), '非字串應被過濾');
+});
+
+test('unit: Set 去重 — 多框架指向同一 skill 不重複', () => {
+  const result = buildKnowledgeHints({
+    environment: { languages: { primary: 'typescript' }, framework: { name: 'next.js' } },
+  });
+  const count = (result.match(/\/vibe:frontend-patterns/g) || []).length;
+  assert.strictEqual(count, 1, 'frontend-patterns 不應重複');
+});
+
+test('unit: 大小寫不敏感 — TypeScript/PYTHON 正常匹配', () => {
+  const r1 = buildKnowledgeHints({ environment: { languages: { primary: 'TypeScript' } } });
+  assert.ok(r1.includes('/vibe:typescript-patterns'));
+  const r2 = buildKnowledgeHints({ environment: { languages: { primary: 'PYTHON' } } });
+  assert.ok(r2.includes('/vibe:python-patterns'));
+});
+
+// ═══════════════════════════════════════════════
 console.log('\n🧪 Part 4: Pipeline 完成三步閉環');
 // ═══════════════════════════════════════════════
 
