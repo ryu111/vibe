@@ -132,25 +132,25 @@ test('NotebookEdit 非程式碼檔案 → 放行', () => {
   assert.strictEqual(result.decision, 'allow');
 });
 
-test('Write 程式碼檔案 → 阻擋', () => {
+test('Write 程式碼檔案 → 阻擋（CLASSIFIED must-delegate）', () => {
   const result = evaluate('Write', { file_path: 'src/app.js' }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
-  assert.strictEqual(result.reason, 'pipeline-enforced');
+  // CLASSIFIED 階段：must-delegate 統一阻擋（在工具特定檢查之前）
+  assert.strictEqual(result.reason, 'must-delegate');
   assert.ok(result.message.includes('⛔'));
-  assert.ok(result.message.includes('Write'));
-  assert.ok(result.message.includes('vibe:developer'));
+  assert.ok(result.message.includes('等待委派'));
 });
 
-test('Edit 程式碼檔案 → 阻擋', () => {
+test('Edit 程式碼檔案 → 阻擋（CLASSIFIED must-delegate）', () => {
   const result = evaluate('Edit', { file_path: 'src/component.tsx' }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
-  assert.ok(result.message.includes('Edit'));
+  assert.ok(result.message.includes('等待委派'));
 });
 
-test('NotebookEdit 程式碼檔案 → 阻擋', () => {
+test('NotebookEdit 程式碼檔案 → 阻擋（CLASSIFIED must-delegate）', () => {
   const result = evaluate('NotebookEdit', { file_path: 'notebook.ipynb' }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
-  assert.ok(result.message.includes('NotebookEdit'));
+  assert.ok(result.message.includes('等待委派'));
 });
 
 test('Write 無 file_path → 阻擋', () => {
@@ -168,21 +168,25 @@ console.log('\n🛡️ evaluate() — AskUserQuestion 測試');
 console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
-test('AskUserQuestion → 阻擋', () => {
+test('AskUserQuestion → 阻擋（CLASSIFIED must-delegate）', () => {
   const result = evaluate('AskUserQuestion', {}, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
-  assert.strictEqual(result.reason, 'pipeline-auto-mode');
+  // CLASSIFIED 階段：must-delegate 統一阻擋（在 AskUserQuestion 特定檢查之前）
+  assert.strictEqual(result.reason, 'must-delegate');
   assert.ok(result.message.includes('⛔'));
-  assert.ok(result.message.includes('自動'));
+  assert.ok(result.message.includes('等待委派'));
   assert.ok(result.message.includes('/vibe:cancel'));
 });
 
-test('AskUserQuestion — PLAN 階段放行', () => {
-  const planState = {
-    ...ENFORCED_STATE,
-    progress: { ...ENFORCED_STATE.progress, currentStage: 'PLAN' },
+test('AskUserQuestion — PLAN 階段放行（需 DELEGATING phase）', () => {
+  // CLASSIFIED 階段 must-delegate 會先阻擋，PLAN 放行只在 DELEGATING 有效
+  const planDelegatingState = {
+    phase: 'DELEGATING',
+    context: { taskType: 'feature' },
+    progress: { currentStage: 'PLAN' },
+    meta: { initialized: true },
   };
-  const result = evaluate('AskUserQuestion', {}, planState);
+  const result = evaluate('AskUserQuestion', {}, planDelegatingState);
   assert.strictEqual(result.decision, 'allow');
 });
 
@@ -412,20 +416,36 @@ test('Bash danger — 空 state 也阻擋', () => {
   assert.strictEqual(r.decision, 'block');
 });
 
-test('Bash 安全指令 — enforced state → allow', () => {
+test('Bash 安全指令 — CLASSIFIED → must-delegate 阻擋', () => {
+  // CLASSIFIED 階段：must-delegate 統一阻擋所有非 Task/Skill 工具
   const r = evaluate('Bash', { command: 'npm test' }, ENFORCED_STATE);
+  assert.strictEqual(r.decision, 'block');
+  assert.strictEqual(r.reason, 'must-delegate');
+});
+
+test('Bash 安全指令 — DELEGATING → allow', () => {
+  const delegatingState = {
+    phase: 'DELEGATING',
+    context: { taskType: 'feature' },
+    progress: {},
+    meta: { initialized: true },
+  };
+  const r = evaluate('Bash', { command: 'npm test' }, delegatingState);
   assert.strictEqual(r.decision, 'allow');
 });
 
-test('Bash 寫入程式碼 — enforced state → block', () => {
+test('Bash 寫入程式碼 — CLASSIFIED → must-delegate（優先於 bash-write-bypass）', () => {
   const r = evaluate('Bash', { command: "echo 'x' > src/app.js" }, ENFORCED_STATE);
   assert.strictEqual(r.decision, 'block');
-  assert.strictEqual(r.reason, 'bash-write-bypass');
+  // must-delegate 在 bash-write-bypass 之前觸發
+  assert.strictEqual(r.reason, 'must-delegate');
 });
 
-test('Bash 寫入非程式碼 — enforced state → allow', () => {
+test('Bash 寫入非程式碼 — CLASSIFIED → must-delegate 阻擋', () => {
+  // CLASSIFIED 階段：所有 Bash 操作都被 must-delegate 阻擋
   const r = evaluate('Bash', { command: 'echo "log" > notes.md' }, ENFORCED_STATE);
-  assert.strictEqual(r.decision, 'allow');
+  assert.strictEqual(r.decision, 'block');
+  assert.strictEqual(r.reason, 'must-delegate');
 });
 
 test('Bash 寫入 — 委派中（DELEGATING）→ allow', () => {

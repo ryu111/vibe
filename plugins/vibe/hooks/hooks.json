@@ -81,7 +81,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit|NotebookEdit|AskUserQuestion|EnterPlanMode|Bash",
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",

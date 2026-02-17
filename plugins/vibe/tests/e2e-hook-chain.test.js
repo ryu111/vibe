@@ -269,7 +269,7 @@ console.log('═'.repeat(55));
       assert.ok(classifyResult.json);
       assert.ok(classifyResult.json.systemMessage, '應有 systemMessage');
       assert.ok(classifyResult.json.systemMessage.includes('⛔'));
-      assert.ok(classifyResult.json.systemMessage.includes('禁止'));
+      assert.ok(classifyResult.json.systemMessage.includes('硬阻擋'));
     });
 
     // Step 3: pipeline-guard 應阻擋 Main Agent 的 Write
@@ -1226,7 +1226,7 @@ console.log('══════════════════════�
 
     test('M3: NotebookEdit 程式碼檔案 → 阻擋', () => {
       assert.strictEqual(notebook.exitCode, 2);
-      assert.ok(notebook.stderr.includes('NotebookEdit'));
+      assert.ok(notebook.stderr.includes('等待委派') || notebook.stderr.includes('NotebookEdit'));
     });
 
     // M4: NotebookEdit 非程式碼檔案（.json）阻擋

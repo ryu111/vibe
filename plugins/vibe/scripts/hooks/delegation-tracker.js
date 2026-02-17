@@ -13,7 +13,7 @@ const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 const { AGENT_TO_STAGE } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
 const {
-  transition, readState, writeState, getPhase, PHASES,
+  transition, readState, writeState, getPhase, getPendingRetry, PHASES,
 } = require(path.join(__dirname, '..', 'lib', 'flow', 'state-machine.js'));
 
 let input = '';
@@ -32,8 +32,22 @@ process.stdin.on('end', () => {
     const shortAgent = agentType.includes(':') ? agentType.split(':')[1] : agentType;
     const stage = AGENT_TO_STAGE[shortAgent] || '';
 
-    // Transition: CLASSIFIED/RETRYING/IDLE → DELEGATING
+    // pendingRetry 防護：RETRYING 階段只允許 DEV 委派
     const phase = getPhase(state);
+    if (phase === PHASES.RETRYING) {
+      const pendingRetry = getPendingRetry(state);
+      if (pendingRetry && stage && stage !== 'DEV') {
+        const targetStage = pendingRetry.stage || '?';
+        const severity = pendingRetry.severity || '?';
+        process.stderr.write(
+          `⛔ [Pipeline Guard] 回退中：必須先委派 DEV agent 修復 ${targetStage} 的 ${severity} 問題，` +
+          `不可直接委派 ${shortAgent}（${stage}）。請使用正確的委派方法呼叫 developer agent。\n`
+        );
+        process.exit(2);
+      }
+    }
+
+    // Transition: CLASSIFIED/RETRYING/IDLE → DELEGATING
     if (phase === PHASES.CLASSIFIED || phase === PHASES.RETRYING || phase === PHASES.IDLE) {
       try {
         const newState = transition(state, { type: 'DELEGATE', stage, agentType: shortAgent });

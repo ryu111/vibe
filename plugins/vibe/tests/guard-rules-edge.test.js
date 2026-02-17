@@ -173,7 +173,8 @@ console.log('═'.repeat(55));
 test('NotebookEdit — .ipynb (Jupyter Notebook) → 阻擋', () => {
   const result = evaluate('NotebookEdit', { file_path: 'notebook.ipynb' }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
-  assert.ok(result.message.includes('NotebookEdit'));
+  // CLASSIFIED 階段：must-delegate 統一阻擋，訊息為「等待委派」
+  assert.ok(result.message.includes('等待委派'));
 });
 
 test('NotebookEdit — 空 file_path → 阻擋', () => {
@@ -187,16 +188,17 @@ test('NotebookEdit — 無 file_path → 阻擋', () => {
 });
 
 test('NotebookEdit — .md 檔案（enforced）→ 阻擋', () => {
-  // Pipeline enforced 模式下，主 Agent 一律不可寫入（不區分檔案類型）
+  // CLASSIFIED 階段：must-delegate 統一阻擋（在工具特定檢查之前）
   const result = evaluate('NotebookEdit', { file_path: 'notes.md' }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
-  assert.strictEqual(result.reason, 'pipeline-enforced');
+  assert.strictEqual(result.reason, 'must-delegate');
 });
 
 test('NotebookEdit — .json 檔案（enforced）→ 阻擋', () => {
   const result = evaluate('NotebookEdit', { file_path: 'data.json' }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
-  assert.strictEqual(result.reason, 'pipeline-enforced');
+  // CLASSIFIED 階段：must-delegate 統一阻擋
+  assert.strictEqual(result.reason, 'must-delegate');
 });
 
 test('NotebookEdit — null toolInput', () => {
@@ -212,7 +214,8 @@ console.log('═'.repeat(55));
 test('AskUserQuestion — toolInput 為空物件', () => {
   const result = evaluate('AskUserQuestion', {}, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
-  assert.strictEqual(result.reason, 'pipeline-auto-mode');
+  // CLASSIFIED 階段：must-delegate 統一阻擋（在 AskUserQuestion 特定檢查之前）
+  assert.strictEqual(result.reason, 'must-delegate');
 });
 
 test('AskUserQuestion — toolInput 為 null', () => {
@@ -259,23 +262,23 @@ console.log('\n🛡️ evaluate() — 錯誤訊息驗證');
 console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
-test('Write 程式碼檔案 — message 包含工具名稱', () => {
+test('Write 程式碼檔案 — CLASSIFIED 階段 must-delegate 統一訊息', () => {
   const result = evaluate('Write', { file_path: 'app.js' }, ENFORCED_STATE);
-  assert.ok(result.message.includes('Write'));
-  assert.ok(!result.message.includes('Edit'));
-  assert.ok(!result.message.includes('NotebookEdit'));
+  // CLASSIFIED 階段：must-delegate 統一阻擋，訊息不含工具名稱
+  assert.ok(result.message.includes('等待委派'));
+  assert.strictEqual(result.reason, 'must-delegate');
 });
 
-test('Edit 程式碼檔案 — message 包含工具名稱', () => {
+test('Edit 程式碼檔案 — CLASSIFIED 階段 must-delegate 統一訊息', () => {
   const result = evaluate('Edit', { file_path: 'app.ts' }, ENFORCED_STATE);
-  assert.ok(result.message.includes('Edit'));
-  assert.ok(!result.message.includes('Write'));
+  assert.ok(result.message.includes('等待委派'));
+  assert.strictEqual(result.reason, 'must-delegate');
 });
 
-test('NotebookEdit 程式碼檔案 — message 包含工具名稱', () => {
+test('NotebookEdit 程式碼檔案 — CLASSIFIED 階段 must-delegate 統一訊息', () => {
   const result = evaluate('NotebookEdit', { file_path: 'main.py' }, ENFORCED_STATE);
-  assert.ok(result.message.includes('NotebookEdit'));
-  assert.ok(!result.message.includes('Write'), '訊息不應包含 Write');
+  assert.ok(result.message.includes('等待委派'));
+  assert.strictEqual(result.reason, 'must-delegate');
 });
 
 test('所有阻擋訊息包含 ⛔ 符號', () => {

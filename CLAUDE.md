@@ -86,8 +86,8 @@ plugins/vibe/
 │       ├── sentinel/        # lang-map, tool-detector, guard-rules
 │       ├── dashboard/       # server-manager
 │       ├── remote/          # telegram, transcript, bot-manager
-│       └── timeline/        # schema, timeline, consumer（統一事件流）
-├── skills/                  # 33 個 skill 目錄
+│       └── timeline/        # schema, timeline, consumer, formatter, index
+├── skills/                  # 34 個 skill 目錄
 ├── agents/                  # 11 個 agent 定義
 ├── server.js                # Dashboard HTTP+WebSocket server
 ├── bot.js                   # Telegram daemon
@@ -150,7 +150,7 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 
 ## Hooks 事件全景
 
-統一 hooks.json，21 hooks 按事件分組（順序明確）：
+統一 hooks.json，19 hooks 按事件分組（順序明確）：
 
 | 事件 | Hooks（執行順序） |
 |------|------------------|

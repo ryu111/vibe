@@ -358,7 +358,8 @@ test('NotebookEdit — pipeline 啟動 + .ipynb → 阻擋', () => {
 
     assert.strictEqual(result.exitCode, 2);
     assert.ok(result.stderr.includes('⛔'));
-    assert.ok(result.stderr.includes('NotebookEdit'));
+    // CLASSIFIED 階段：must-delegate 統一阻擋，訊息為「等待委派」
+    assert.ok(result.stderr.includes('等待委派'));
   } finally {
     cleanState(sessionId);
   }
@@ -579,7 +580,8 @@ test('AskUserQuestion — 有額外欄位 → 阻擋（忽略額外欄位）', (
     });
 
     assert.strictEqual(result.exitCode, 2);
-    assert.ok(result.stderr.includes('AskUserQuestion'));
+    // CLASSIFIED 階段：must-delegate 統一阻擋，訊息為「等待委派」
+    assert.ok(result.stderr.includes('等待委派'));
   } finally {
     cleanState(sessionId);
   }
@@ -610,7 +612,7 @@ test('StdIn 為 null → 放行（JSON parse 失敗降級）', () => {
   }
 });
 
-test('StdIn 缺 tool_name → 放行', () => {
+test('StdIn 缺 tool_name — CLASSIFIED → must-delegate 阻擋', () => {
   const sessionId = 'test-stdin-1';
   try {
     writeState(sessionId, {
@@ -625,8 +627,8 @@ test('StdIn 缺 tool_name → 放行', () => {
       tool_input: { file_path: 'src/app.js' },
     });
 
-    // tool_name='Unknown'，不在 matcher 列表，guard-rules 返回 allow
-    assert.strictEqual(result.exitCode, 0);
+    // CLASSIFIED 階段：must-delegate 阻擋所有非 Task/Skill 工具（含 Unknown）
+    assert.strictEqual(result.exitCode, 2);
   } finally {
     cleanState(sessionId);
   }

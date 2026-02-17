@@ -88,7 +88,7 @@ const ACTION_PATTERNS = [
   { type: 'tdd', pattern: /tdd|test.?first|測試驅動|先寫測試/ },
   { type: 'test', pattern: /^(write|add|create|fix).*test|^(寫|加|新增|修|補).*測試|^test\b|補測試/ },
   { type: 'refactor', pattern: /refactor|restructure|重構|重寫|重新設計|改架構|優化|改善|改進|提升/ },
-  { type: 'feature', pattern: /implement|develop|build.*feature|新增功能|建立.*(?:功能|api|rest|endpoint|server|service|database|服務|系統|模組|元件|頁面|app|應用|專案|component|module)|實作|開發.*功能|加入.*功能|新的.*(api|endpoint|component|頁面|模組|plugin)|整合.*系統/ },
+  { type: 'feature', pattern: /implement|develop|build.*feature|新增.{0,20}(?:功能|模組|系統|服務|元件|頁面|api|endpoint|server|component|module)|建立.{0,20}(?:功能|api|rest|endpoint|server|service|database|服務|系統|模組|元件|頁面|app|應用|專案|component|module)|實作|開發.*功能|加入.*功能|新的.*(api|endpoint|component|頁面|模組|plugin)|整合.*系統/ },
   { type: 'docs', pattern: /更新.*(?:\.md\b|文[件檔]|readme|changelog|documentation)|寫文[件檔]|補文[件檔]|update.+(?:readme|changelog|docs?|documentation)\b/ },
   { type: 'quickfix', pattern: /fix.*typo|rename|change.*name|update.*text|改名|修.*typo|換.*名|改.*顏色|改.*文字/ },
   { type: 'bugfix', pattern: /fix|bug|修(復|正)|debug|壞了|出錯|不work|不能/ },
@@ -103,8 +103,15 @@ function classifyDetailed(prompt) {
   if (!prompt) return { taskType: 'quickfix', matchedRule: 'default' };
   const p = prompt.toLowerCase();
 
+  // Phase 0: 強動作信號（優先於疑問守衛）
+  // — 明確的「更新 xxx.md / README」動作意圖不受嵌入式「是否」等詞干擾
+  if (/更新.*(?:\.md\b|readme|changelog)|寫.*(?:文[件檔]|readme)/.test(p)) {
+    return { taskType: 'docs', matchedRule: 'action:docs' };
+  }
+
   if (isStrongQuestion(p)) return { taskType: 'research', matchedRule: 'strong-question' };
   if (TRIVIAL.test(p)) return { taskType: 'quickfix', matchedRule: 'trivial' };
+
   if (WEAK_EXPLORE.test(p)) return { taskType: 'research', matchedRule: 'weak-explore' };
 
   for (const { type, pattern } of ACTION_PATTERNS) {

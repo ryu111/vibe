@@ -348,7 +348,8 @@ test('阻擋 — pipeline 啟動 + 未委派 + 程式碼檔案', () => {
 
     assert.strictEqual(result.exitCode, 2);
     assert.ok(result.stderr.includes('⛔'));
-    assert.ok(result.stderr.includes('Pipeline 模式下禁止直接使用'));
+    // CLASSIFIED 階段：must-delegate 統一阻擋，訊息為「等待委派」
+    assert.ok(result.stderr.includes('等待委派'));
   } finally {
     cleanState(sessionId);
   }
@@ -439,7 +440,8 @@ test('阻擋 — Edit 工具同樣受限', () => {
     });
 
     assert.strictEqual(result.exitCode, 2);
-    assert.ok(result.stderr.includes('Edit'));
+    // CLASSIFIED 階段：must-delegate 統一阻擋，訊息不含工具名稱而是「等待委派」
+    assert.ok(result.stderr.includes('等待委派'));
   } finally {
     cleanState(sessionId);
   }
@@ -483,7 +485,8 @@ test('阻擋 — AskUserQuestion（pipeline 啟動中）', () => {
 
     assert.strictEqual(result.exitCode, 2);
     assert.ok(result.stderr.includes('⛔'));
-    assert.ok(result.stderr.includes('自動'));
+    // CLASSIFIED 階段：must-delegate 統一阻擋（含 AskUserQuestion）
+    assert.ok(result.stderr.includes('等待委派'));
   } finally {
     cleanState(sessionId);
   }

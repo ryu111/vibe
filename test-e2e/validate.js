@@ -171,7 +171,7 @@ function validate(state, timeline) {
 
   if (expected.hasRetries) {
     const hasAny = Object.values(retries).some(c => c > 0);
-    add('L5:hasRetries', hasAny);
+    add('L5:hasRetries', hasAny, false); // warning：依賴模型遵守 verdict 協議，非 infrastructure 保證
   }
 
   if (expected.hasReclassification) {

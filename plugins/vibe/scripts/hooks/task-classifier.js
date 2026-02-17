@@ -92,17 +92,34 @@ function getCompletedStages(completedAgents) {
 // ────────────────── Pipeline 委派規則 ──────────────────
 
 function buildPipelineRules(pipelineId, stages, pipelineRules) {
-  const stageStr = stages.join(' → ');
   const label = PIPELINES[pipelineId]?.label || pipelineId;
-  const parts = [
-    `⛔ PIPELINE 模式 — 你是管理者，不是執行者。`,
-    `Pipeline: ${label}（${stageStr}）`,
-    `禁止 Write/Edit/EnterPlanMode（pipeline-guard 硬阻擋）。使用 Task/Skill 委派 sub-agent。`,
-  ];
-  if (pipelineRules && pipelineRules.length > 0) parts.push(...pipelineRules);
-  parts.push(`每階段完成後 stage-transition 指示下一步，照做即可。禁止 AskUserQuestion（PLAN 階段除外）。`);
-  parts.push(`立即委派 ${stages[0]} 階段。`);
-  return parts.join('\n');
+
+  // 只保留活躍 pipeline 的階段規則（過濾不相關的雜訊）
+  const relevantRules = (pipelineRules || []).filter(rule =>
+    stages.some(stage => rule.includes(`- ${stage}（`))
+  );
+
+  // 提取第一個階段的具體呼叫方式
+  const firstStage = stages[0];
+  const firstRule = relevantRules.find(r => r.includes(`- ${firstStage}（`)) || '';
+  const firstAction = firstRule.replace(/^.*→\s*/, '').trim();
+
+  if (stages.length === 1) {
+    // 單階段 pipeline — 極簡指令，不給模型思考空間
+    return [
+      `⛔ PIPELINE: ${label}`,
+      `你的唯一動作：${firstAction || `委派 ${firstStage} 階段`}`,
+      `不需要先讀取程式碼，sub-agent 會自行處理。Write/Edit 被硬阻擋。`,
+    ].join('\n');
+  }
+
+  // 多階段 pipeline — 強調第一步 + 只列相關規則
+  return [
+    `⛔ PIPELINE: ${label}（${stages.join(' → ')}）`,
+    `第一步 → ${firstAction || `委派 ${firstStage} 階段`}`,
+    ...relevantRules,
+    `後續由 stage-transition 自動指示。Write/Edit/AskUserQuestion 被硬阻擋。`,
+  ].join('\n');
 }
 
 // ────────────────── 輸出函式 ──────────────────
@@ -220,8 +237,10 @@ process.stdin.on('end', () => {
     // 讀取現有 state
     let state = readState(sessionId);
 
-    // 已完成 pipeline → RESET
+    // 已完成 pipeline → RESET（保留舊 pipelineId 用於 reclassification 追蹤）
+    let previousPipelineId = null;
     if (state && isComplete(state)) {
+      previousPipelineId = getPipelineId(state);
       state = transition(state, { type: 'RESET' });
       writeState(sessionId, state);
     }
@@ -246,9 +265,22 @@ process.stdin.on('end', () => {
       });
       writeState(sessionId, state);
 
+      // 追蹤 COMPLETE → RESET → CLASSIFY 的 pipeline 變更（reclassification）
+      const isReclassification = previousPipelineId && previousPipelineId !== newPipelineId;
+      if (isReclassification) {
+        state.meta.reclassifications = state.meta.reclassifications || [];
+        state.meta.reclassifications.push({
+          from: previousPipelineId,
+          to: newPipelineId,
+          at: new Date().toISOString(),
+        });
+        writeState(sessionId, state);
+      }
+
       emit(EVENT_TYPES.TASK_CLASSIFIED, sessionId, {
         pipelineId: newPipelineId, taskType: newTaskType,
-        expectedStages: newStages, reclassified: false,
+        expectedStages: newStages, reclassified: isReclassification,
+        from: isReclassification ? previousPipelineId : undefined,
         layer: determineLayer(result), confidence: result.confidence,
         source: result.source, matchedRule: result.matchedRule,
       });

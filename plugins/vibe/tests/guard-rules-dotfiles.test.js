@@ -226,7 +226,8 @@ console.log('═'.repeat(55));
 test('Write .gitignore（Pipeline enforced）→ block', () => {
   const result = evaluate('Write', { file_path: '.gitignore' }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
-  assert.strictEqual(result.reason, 'pipeline-enforced');
+  // CLASSIFIED 階段：must-delegate 統一阻擋（在工具特定檢查之前）
+  assert.strictEqual(result.reason, 'must-delegate');
 });
 
 test('Write .env（Pipeline enforced）→ block', () => {
@@ -272,7 +273,8 @@ test('NotebookEdit .browserslistrc（Pipeline enforced）→ block', () => {
 test('Write app.js（Pipeline enforced）→ block（確保不受影響）', () => {
   const result = evaluate('Write', { file_path: 'app.js' }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
-  assert.strictEqual(result.reason, 'pipeline-enforced');
+  // CLASSIFIED 階段：must-delegate 統一阻擋
+  assert.strictEqual(result.reason, 'must-delegate');
   assert.ok(result.message.includes('⛔'));
 });
 

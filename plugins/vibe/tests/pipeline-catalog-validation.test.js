@@ -705,16 +705,16 @@ for (const scenario of SCENARIOS) {
   });
   console.log(`    └─ exitCode=${auq.exitCode}, blocked ✓`);
 
-  // 3c: Bash 讀取操作放行
-  log('STEP', 'Bash 讀取放行');
+  // 3c: Bash 讀取操作 — CLASSIFIED 階段一律阻擋（must-delegate）
+  log('STEP', 'Bash 讀取阻擋（CLASSIFIED must-delegate）');
   const bashRead = runHook('pipeline-guard', {
     session_id: sid, tool_name: 'Bash',
     tool_input: { command: 'ls -la /tmp' },
   });
-  test('X3: Bash ls → exit 0（讀取放行）', () => {
-    assert.strictEqual(bashRead.exitCode, 0);
+  test('X3: Bash ls → exit 2（CLASSIFIED must-delegate）', () => {
+    assert.strictEqual(bashRead.exitCode, 2);
   });
-  console.log(`    └─ exitCode=${bashRead.exitCode}, allowed ✓`);
+  console.log(`    └─ exitCode=${bashRead.exitCode}, blocked ✓`);
 
   // 3d: Bash 危險操作阻擋
   log('STEP', 'Bash 危險操作阻擋');

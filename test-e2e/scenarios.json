@@ -230,6 +230,32 @@
       "timeout": 1200
     },
     {
+      "id": "B07",
+      "category": "B",
+      "categoryLabel": "自然語言分類",
+      "name": "自然語言→fix（複雜）",
+      "prompt": "plugins/vibe/scripts/lib/hook-logger.js 裡面 MAX_LINES 寫死 500 行太小了，改成讀環境變數 VIBE_LOG_MAX_LINES，預設值保持 500，並且 truncateLog 函式要用新的常量",
+      "expected": {
+        "pipelineId": "fix",
+        "phase": "COMPLETE"
+      },
+      "timeout": 480,
+      "_note": "較複雜的 fix prompt — 多步驟修改（常量 + 環境變數 + 函式連動），模型更自然地認為需要委派"
+    },
+    {
+      "id": "B08",
+      "category": "B",
+      "categoryLabel": "自然語言分類",
+      "name": "自然語言→docs-only（複雜）",
+      "prompt": "更新 docs/ref/pipeline.md，補上 Pipeline Catalog 的 10 種模板完整說明表格，每種包含名稱、階段列表、適用場景、是否強制，並加入分類器三層架構的說明段落",
+      "expected": {
+        "pipelineId": "docs-only",
+        "phase": "COMPLETE"
+      },
+      "timeout": 480,
+      "_note": "較複雜的 docs prompt — 多個區塊（表格 + 段落），模型更自然地認為需要委派"
+    },
+    {
       "id": "C01",
       "category": "C",
       "categoryLabel": "回復路徑",
@@ -279,7 +305,7 @@
       "categoryLabel": "回復路徑",
       "name": "Pipeline 升級",
       "prompt": "[pipeline:fix] 修改 hook-logger.js 的 truncate 長度",
-      "followUp": "其實這個修改影響範圍蠻大的，需要完整測試，幫我升級到 quick-dev pipeline",
+      "followUp": "[pipeline:quick-dev] 其實這個修改影響範圍蠻大的，需要完整測試",
       "expected": {
         "hasReclassification": true
       },

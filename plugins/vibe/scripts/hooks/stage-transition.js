@@ -282,6 +282,7 @@ process.stdin.on('end', () => {
           isComplete: false,
           stageIndex: resolved.index,
           skippedStages: newSkipped,
+          pendingRetry: null, // 自癒：清除任何遺留的 pendingRetry
         });
 
         const nextInfo = pipeline.stageMap[resolved.stage];
@@ -309,6 +310,7 @@ process.stdin.on('end', () => {
           isComplete: true,
           stageIndex: newStageIndex,
           skippedStages: newSkipped,
+          pendingRetry: null, // 自癒：清除任何遺留的 pendingRetry
         });
 
         message = mb.buildCompleteMessage({

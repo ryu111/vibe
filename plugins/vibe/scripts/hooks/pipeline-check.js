@@ -67,8 +67,12 @@ process.stdin.on('end', () => {
     if (pipelineId && PIPELINES[pipelineId]) {
       const stageIndex = getStageIndex(state);
       if (typeof stageIndex === 'number' && stageIndex >= 0) {
-        if (stageIndex < pipelineStages.length - 1) {
-          missing = pipelineStages.slice(stageIndex + 1).filter(s =>
+        // stageIndex=0 + completedAgents=[] → 尚未開始，所有階段都 missing
+        // stageIndex=N + completedAgents=[...] → 從 N+1 開始算 missing
+        const hasProgress = completedAgents.length > 0;
+        const startFrom = hasProgress ? stageIndex + 1 : stageIndex;
+        if (startFrom < pipelineStages.length) {
+          missing = pipelineStages.slice(startFrom).filter(s =>
             pipeline.stageMap[s] && !skipped.includes(s)
           );
         }

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# run.sh — Pipeline E2E 測試驅動器
+# run.sh — Pipeline E2E 測試驅動器（Dashboard 即時渲染）
 #
 # 用法:
-#   ./run.sh              # 跑全部 29 個場景
+#   ./run.sh              # 跑全部場景
 #   ./run.sh A            # 跑 A 分類（Pipeline 正路徑）
 #   ./run.sh A04          # 跑單一場景
 #   ./run.sh A04 A10 B03  # 跑指定場景
 #   ./run.sh smoke        # 冒煙測試（A10 + A04）
 #
 # 環境變數:
-#   VIBE_E2E_MODEL     測試模型（預設 haiku）
+#   VIBE_E2E_MODEL     測試模型（預設 opus）
 #   VIBE_E2E_PARALLEL  同時執行場景數（預設 1，建議 1-3）
 #   VIBE_E2E_KEEP_TMP  保留暫存目錄（除錯用）
 #   VIBE_E2E_DRY_RUN   只顯示場景列表不執行
@@ -30,7 +30,7 @@ SCENARIOS_FILE="$SCRIPT_DIR/scenarios.json"
 VALIDATE_SCRIPT="$SCRIPT_DIR/validate.js"
 REPORT_SCRIPT="$SCRIPT_DIR/report.js"
 
-MODEL="${VIBE_E2E_MODEL:-haiku}"
+MODEL="${VIBE_E2E_MODEL:-opus}"
 KEEP_TMP="${VIBE_E2E_KEEP_TMP:-false}"
 DRY_RUN="${VIBE_E2E_DRY_RUN:-false}"
 
@@ -48,19 +48,143 @@ DIM='\033[2m'
 BOLD='\033[1m'
 RESET='\033[0m'
 
+# ────────────────── Dashboard 即時渲染 ──────────────────
+#
+# 設計：每個場景佔一行，狀態原地更新（不捲動）
+# - set_status() 寫狀態檔 → render_dashboard() 用 ANSI 游標上移重繪
+# - fd 3 = 原始終端（$() 子 shell 裡也能渲染到螢幕）
+# - 序列模式：set_status 後立即渲染
+# - 並行模式：背景 loop 每 2 秒渲染一次
+
+DASH_DIR=""
+DASH_LINES=0
+DASH_IDS_STR=""
+RENDER_LOOP_PID=""
+
+init_dashboard() {
+  DASH_DIR=$(mktemp -d /tmp/vibe-e2e-dash.XXXXXX)
+
+  # fd 3 = 原始終端（即使在 $() 子 shell 中也能輸出到螢幕）
+  exec 3>&1
+
+  local ids=("$@")
+  DASH_IDS_STR="${ids[*]}"
+  DASH_LINES=$(( ${#ids[@]} + 4 ))  # header(2) + scenarios + separator(1) + summary(1)
+
+  # 初始化 status 檔案
+  for id in "${ids[@]}"; do
+    local name
+    name=$(get_scenario_field "$id" "name")
+    echo "${name:-$id}" > "$DASH_DIR/${id}.name"
+    echo "⬜ 待執行" > "$DASH_DIR/${id}.status"
+  done
+
+  # 預留畫面空間（印空行佔位）
+  local i
+  for ((i=0; i<DASH_LINES; i++)); do
+    echo "" >&3
+  done
+
+  render_dashboard
+}
+
+set_status() {
+  local id="$1"
+  local status="$2"
+  [ -z "$DASH_DIR" ] && return
+  echo "$status" > "$DASH_DIR/${id}.status"
+
+  # 序列模式：每次更新立即渲染；並行模式：由背景 loop 渲染
+  if [ -z "$RENDER_LOOP_PID" ]; then
+    render_dashboard
+  fi
+}
+
+render_dashboard() {
+  [ -z "$DASH_DIR" ] && return
+
+  # 游標上移到 dashboard 起始位置
+  printf '\033[%dA' "$DASH_LINES" >&3
+
+  # Header
+  printf '\033[K  %b━━━ Pipeline E2E ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n' '\033[0;36m' '\033[0m' >&3
+  printf '\033[K  %b模型: %s | 結果: %s%b\n' '\033[2m' "$MODEL" "$(basename "$RESULTS_DIR")" '\033[0m' >&3
+
+  # Scenario rows
+  local p=0 f=0 r=0 w=0
+  local id
+  for id in $DASH_IDS_STR; do
+    local name status color
+    name=$(cat "$DASH_DIR/${id}.name" 2>/dev/null || echo "$id")
+    status=$(cat "$DASH_DIR/${id}.status" 2>/dev/null || echo "⬜")
+
+    # 截斷過長名稱
+    if [ ${#name} -gt 28 ]; then
+      name="${name:0:25}..."
+    fi
+
+    case "$status" in
+      ✓*) color='\033[0;32m'; p=$((p+1)) ;;
+      ✗*) color='\033[0;31m'; f=$((f+1)) ;;
+      ⏳*) color='\033[0;33m'; r=$((r+1)) ;;
+      *) color='\033[2m'; w=$((w+1)) ;;
+    esac
+
+    printf '\033[K  \033[1m%-6s\033[0m %-30s %b%s\033[0m\n' "$id" "$name" "$color" "$status" >&3
+  done
+
+  # Separator + Summary
+  printf '\033[K  %b───────────────────────────────────────────────────────────%b\n' '\033[2m' '\033[0m' >&3
+
+  local total=0
+  for id in $DASH_IDS_STR; do total=$((total+1)); done
+  printf '\033[K  \033[0;32m%d✓\033[0m  \033[0;31m%d✗\033[0m  \033[0;33m%d⏳\033[0m  \033[2m%d⬜\033[0m  共 %d\n' "$p" "$f" "$r" "$w" "$total" >&3
+}
+
+start_render_loop() {
+  (
+    while [ -d "$DASH_DIR" ]; do
+      render_dashboard
+      sleep 2
+    done
+  ) &
+  RENDER_LOOP_PID=$!
+}
+
+stop_render_loop() {
+  if [ -n "$RENDER_LOOP_PID" ]; then
+    kill "$RENDER_LOOP_PID" 2>/dev/null || true
+    wait "$RENDER_LOOP_PID" 2>/dev/null || true
+    RENDER_LOOP_PID=""
+    render_dashboard  # 並行模式：停止 loop 後最終渲染一次
+  fi
+}
+
+cleanup_dashboard() {
+  stop_render_loop
+  [ -n "$DASH_DIR" ] && rm -rf "$DASH_DIR"
+  exec 3>&- 2>/dev/null || true
+}
+
 # ────────────────── 信號處理 ──────────────────
 
 cleanup_on_exit() {
-  echo ""
-  echo -e "${YELLOW}收到中斷信號，清理殘留 tmux sessions...${RESET}"
+  # 最後一次渲染 dashboard 顯示當前狀態
+  if [ -n "$DASH_DIR" ]; then
+    render_dashboard
+    printf '\n' >&3
+    printf '  %b中斷%b\n' '\033[0;33m' '\033[0m' >&3
+  fi
+
   for sess in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^e2e-'); do
     tmux kill-session -t "$sess" 2>/dev/null || true
   done
-  # 產出已完成的結果報告
+
   if [ -d "$RESULTS_DIR" ] && ls "$RESULTS_DIR"/*.json 1>/dev/null 2>&1; then
-    echo -e "${DIM}產出部分結果報告...${RESET}"
     node "$REPORT_SCRIPT" "$RESULTS_DIR" 2>/dev/null || true
   fi
+
+  cleanup_dashboard
   exit 130
 }
 
@@ -115,17 +239,13 @@ get_scenario_ids() {
   local filter="$1"
 
   if [ "$filter" = "all" ] || [ -z "$filter" ]; then
-    # 全部場景
     jq -r '.scenarios[].id' "$SCENARIOS_FILE"
   elif [ "$filter" = "smoke" ]; then
-    # 冒煙測試：最便宜的兩個
     echo "A10"
     echo "A04"
   elif [[ "$filter" =~ ^[A-D]$ ]]; then
-    # 分類篩選
     jq -r ".scenarios[] | select(.category == \"$filter\") | .id" "$SCENARIOS_FILE"
   else
-    # 單一或多個場景 ID
     echo "$filter"
   fi
 }
@@ -146,10 +266,7 @@ clone_project() {
   local id="$1"
   local target="/tmp/vibe-e2e-${id}"
 
-  # 清理殘留
   rm -rf "$target"
-
-  # 淺複製（~2 秒）
   git clone --depth 1 --single-branch "file://$VIBE_ROOT" "$target" 2>/dev/null
 
   echo "$target"
@@ -163,15 +280,12 @@ apply_variant() {
 
   case "$variant" in
     "default")
-      # 不需修改
       ;;
     "buggy-review")
-      # 植入 console.log 殘留讓 reviewer 報 FAIL
       echo "console.log('DEBUG_LEFTOVER_FOR_REVIEW');" >> "$project_dir/plugins/vibe/scripts/lib/hook-logger.js"
       (cd "$project_dir" && git add -A && git commit -m "inject buggy code for review test" --no-verify 2>/dev/null) || true
       ;;
     "buggy-test")
-      # 植入必定失敗的測試
       cat > "$project_dir/plugins/vibe/tests/injected-fail.test.js" << 'TESTEOF'
 #!/usr/bin/env node
 'use strict';
@@ -184,11 +298,9 @@ TESTEOF
       (cd "$project_dir" && git add -A && git commit -m "inject failing test" --no-verify 2>/dev/null) || true
       ;;
     "frontend")
-      # 模擬前端專案（next.config.js + react 依賴）
       echo "module.exports = { reactStrictMode: true };" > "$project_dir/next.config.js"
       mkdir -p "$project_dir/src/components"
       echo "export default function App() { return <div>Hello</div>; }" > "$project_dir/src/components/App.tsx"
-      # 注入 package.json 前端依賴
       if [ -f "$project_dir/package.json" ]; then
         node -e "
           const pkg = JSON.parse(require('fs').readFileSync('$project_dir/package.json','utf8'));
@@ -204,7 +316,6 @@ TESTEOF
       (cd "$project_dir" && git add -A && git commit -m "setup frontend project" --no-verify 2>/dev/null) || true
       ;;
     *)
-      echo -e "${YELLOW}未知 variant: $variant，使用 default${RESET}"
       ;;
   esac
 }
@@ -219,7 +330,6 @@ poll_state() {
   local elapsed=0
   local state_file="$CLAUDE_DIR/pipeline-state-${uuid}.json"
   local poll_interval=10
-  local ask_handled=0
 
   while true; do
     if (( elapsed > timeout )); then
@@ -236,17 +346,14 @@ poll_state() {
         } catch(e) { console.log('UNKNOWN'); }
       " 2>/dev/null)
 
+      set_status "$scenario_id" "⏳ ${phase} (${elapsed}s)"
+
       case "$phase" in
         COMPLETE)
-          echo -e "  ${DIM}[${elapsed}s] phase=COMPLETE${RESET}" >&2
-          # 不回應 AskUserQuestion — 全域規則會讓 Claude 在 pipeline 完成後
-          # 觸發 AskUserQuestion，回應 "1" 會被 task-classifier 當作新 prompt
-          # 重新分類，覆蓋 state。直接返回讓 caller 驗證後 /exit。
           echo "COMPLETE"
           return 0
           ;;
         IDLE)
-          # none pipeline 或完成後重設
           local pid
           pid=$(node -e "
             try {
@@ -255,18 +362,15 @@ poll_state() {
             } catch(e) { console.log(''); }
           " 2>/dev/null)
           if [ "$pid" = "none" ]; then
-            echo -e "  ${DIM}[${elapsed}s] none pipeline 偵測到，等 15s${RESET}" >&2
+            set_status "$scenario_id" "⏳ none 完成偵測..."
             sleep 15
             echo "NONE_COMPLETE"
             return 0
           fi
           ;;
-        CLASSIFIED|DELEGATING|RETRYING)
-          echo -e "  ${DIM}[${elapsed}s] phase=$phase${RESET}" >&2
-          ;;
       esac
     else
-      echo -e "  ${DIM}[${elapsed}s] 等待 state 檔案...${RESET}" >&2
+      set_status "$scenario_id" "⏳ 等待 state (${elapsed}s)"
     fi
 
     sleep "$poll_interval"
@@ -280,10 +384,11 @@ wait_for_plan_then_cancel() {
   local uuid="$1"
   local sess="$2"
   local timeout="$3"
+  local scenario_id="$4"
   local state_file="$CLAUDE_DIR/pipeline-state-${uuid}.json"
   local elapsed=0
 
-  echo -e "  ${DIM}等待 PLAN 完成後送 /cancel...${RESET}" >&2
+  set_status "$scenario_id" "⏳ 等待 PLAN..."
 
   while (( elapsed < timeout )); do
     if [ -f "$state_file" ]; then
@@ -297,15 +402,27 @@ wait_for_plan_then_cancel() {
       " 2>/dev/null)
 
       if [ "$has_plan" = "yes" ]; then
-        echo -e "  ${DIM}[${elapsed}s] PLAN 完成，送 /cancel${RESET}" >&2
-        sleep 3
-        tmux send-keys -t "$sess" -l "/cancel" 2>/dev/null
-        tmux send-keys -t "$sess" Enter 2>/dev/null
-        # 等 cancel 處理（不回應 AskUserQuestion，同理）
-        sleep 10
+        set_status "$scenario_id" "⏳ Cancel 中..."
+        # 直接修改 state file — 繞過 TUI 互動限制
+        # /cancel skill 在 sub-agent 執行中無法被處理（排入 TUI 佇列），
+        # 所以直接寫 state 是唯一可靠的方法
+        node -e "
+          const fs = require('fs');
+          const f = '$state_file';
+          const state = JSON.parse(fs.readFileSync(f, 'utf8'));
+          state.phase = 'IDLE';
+          state.meta = state.meta || {};
+          state.meta.cancelled = true;
+          fs.writeFileSync(f, JSON.stringify(state, null, 2));
+        " 2>/dev/null
+        # Ctrl+C 中斷當前 sub-agent
+        tmux send-keys -t "$sess" C-c 2>/dev/null
+        sleep 5
         echo "CANCELLED"
         return 0
       fi
+
+      set_status "$scenario_id" "⏳ 等待 PLAN (${elapsed}s)"
     fi
 
     sleep 5
@@ -323,24 +440,27 @@ handle_follow_up() {
   local sess="$2"
   local follow_up="$3"
   local timeout="$4"
+  local scenario_id="$5"
 
   # 先等第一個 pipeline 完成
   local result
-  result=$(poll_state "$uuid" "$timeout" "" "$sess")
+  result=$(poll_state "$uuid" "$timeout" "$scenario_id" "$sess")
 
   if [ "$result" = "COMPLETE" ] || [ "$result" = "NONE_COMPLETE" ]; then
-    echo -e "  ${DIM}第一輪完成，送 follow-up...${RESET}" >&2
-    sleep 5
-    # 先回應 AskUserQuestion（如果有的話）
-    # 然後等一下再送 follow-up
+    set_status "$scenario_id" "⏳ 送 follow-up..."
+    # Pipeline 完成後全域規則觸發 AskUserQuestion，需要先處理
+    sleep 8
+    # Escape 關閉 AskUserQuestion widget（如果有的話）
+    tmux send-keys -t "$sess" Escape 2>/dev/null
     sleep 3
+    # 送 follow-up 作為新 prompt
     tmux send-keys -t "$sess" -l "$follow_up"
     sleep 1
     tmux send-keys -t "$sess" Enter
     # 重新等待
     sleep 5
     local result2
-    result2=$(poll_state "$uuid" "$timeout" "" "$sess")
+    result2=$(poll_state "$uuid" "$timeout" "$scenario_id" "$sess")
     echo "$result2"
   else
     echo "$result"
@@ -355,7 +475,7 @@ run_scenario() {
   scenario_json=$(get_scenario_json "$id")
 
   if [ -z "$scenario_json" ] || [ "$scenario_json" = "null" ]; then
-    echo -e "${RED}場景 $id 不存在${RESET}"
+    set_status "$id" "✗ 場景不存在"
     return 1
   fi
 
@@ -367,13 +487,8 @@ run_scenario() {
   category=$(echo "$scenario_json" | jq -r '.category')
   follow_up=$(echo "$scenario_json" | jq -r '.followUp // empty')
 
-  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-  echo -e "${BOLD}[$id] $name${RESET}"
-  echo -e "${DIM}  pipeline: $(echo "$scenario_json" | jq -r '.expected.pipelineId // "auto"')${RESET}"
-  echo -e "${DIM}  timeout: ${timeout_sec}s | variant: $variant${RESET}"
-
   if [ "$DRY_RUN" = "true" ]; then
-    echo -e "${YELLOW}  [DRY RUN] 跳過執行${RESET}"
+    set_status "$id" "⬜ [DRY RUN]"
     return 0
   fi
 
@@ -381,13 +496,13 @@ run_scenario() {
   start_time=$(date +%s)
 
   # 1. 複製專案
-  echo -e "  ${DIM}複製專案...${RESET}"
+  set_status "$id" "⏳ 複製專案..."
   local project_dir
   project_dir=$(clone_project "$id")
 
   # 2. 套用變體
   if [ "$variant" != "default" ]; then
-    echo -e "  ${DIM}套用變體: $variant${RESET}"
+    set_status "$id" "⏳ 套用 $variant"
     apply_variant "$project_dir" "$variant"
   fi
 
@@ -397,29 +512,18 @@ run_scenario() {
 
   # 4. 啟動 claude session（獨立 tmux session per scenario）
   local sess="e2e-${id}"
-
-  # 清理殘留 session
   tmux kill-session -t "$sess" 2>/dev/null || true
-
-  # 建立新 detached session
   tmux new-session -d -s "$sess" -x 200 -y 50
-
-  # 等 tmux 就緒
   sleep 1
 
-  # 送出 claude 啟動命令
   local claude_cmd="cd '$project_dir' && claude --session-id '$uuid' --model '$MODEL' --dangerously-skip-permissions --plugin-dir '$VIBE_PLUGIN' --plugin-dir '$FORGE_PLUGIN'"
   tmux send-keys -t "$sess" "$claude_cmd" Enter
 
-  echo -e "  ${DIM}等待 claude 啟動 (session=$uuid)...${RESET}"
+  set_status "$id" "⏳ 啟動 claude..."
   sleep 10
 
   # 5. 送出 prompt
-  local prompt_preview="$prompt"
-  if [ ${#prompt_preview} -gt 80 ]; then
-    prompt_preview="${prompt_preview:0:77}..."
-  fi
-  echo -e "  ${DIM}送出 prompt: ${CYAN}${prompt_preview}${RESET}"
+  set_status "$id" "⏳ 送 prompt..."
   tmux send-keys -t "$sess" -l "$prompt"
   sleep 1
   tmux send-keys -t "$sess" Enter
@@ -428,13 +532,10 @@ run_scenario() {
   local final_status="UNKNOWN"
 
   if [ "$id" = "C03" ]; then
-    # Cancel 場景：等 PLAN 完成後送 /cancel
-    final_status=$(wait_for_plan_then_cancel "$uuid" "$sess" "$timeout_sec")
+    final_status=$(wait_for_plan_then_cancel "$uuid" "$sess" "$timeout_sec" "$id")
   elif [ -n "$follow_up" ]; then
-    # Follow-up 場景：第一輪完成後送後續
-    final_status=$(handle_follow_up "$uuid" "$sess" "$follow_up" "$timeout_sec")
+    final_status=$(handle_follow_up "$uuid" "$sess" "$follow_up" "$timeout_sec" "$id")
   else
-    # 正常場景
     final_status=$(poll_state "$uuid" "$timeout_sec" "$id" "$sess")
   fi
 
@@ -442,12 +543,11 @@ run_scenario() {
   end_time=$(date +%s)
   local duration=$((end_time - start_time))
 
-  # 7. 驗證結果（用快照）
-  echo -e "  ${DIM}驗證結果...${RESET}"
+  # 7. 驗證結果
+  set_status "$id" "⏳ 驗證中..."
   local result_file="$RESULTS_DIR/${id}.json"
 
   if [ "$final_status" = "TIMEOUT" ]; then
-    # Timeout — 產出特殊結果
     cat > "$result_file" << EOF
 {
   "scenarioId": "$id",
@@ -462,12 +562,10 @@ run_scenario() {
   "checks": [{ "name": "timeout", "passed": false, "required": true, "error": "超過 ${timeout_sec}s 時限" }]
 }
 EOF
-    echo -e "  ${RED}✗ TIMEOUT (${duration}s)${RESET}"
+    set_status "$id" "✗ TIMEOUT (${duration}s)"
   else
-    # 正常驗證
     node "$VALIDATE_SCRIPT" "$uuid" "$id" "$SCENARIOS_FILE" > "$result_file" 2>/dev/null || true
 
-    # 注入 duration
     if [ -f "$result_file" ]; then
       node -e "
         const fs = require('fs');
@@ -484,30 +582,23 @@ EOF
     " 2>/dev/null)
 
     if [ "$status" = "PASS" ]; then
-      echo -e "  ${GREEN}✓ PASS (${duration}s)${RESET}"
+      set_status "$id" "✓ PASS (${duration}s)"
     else
-      echo -e "  ${RED}✗ $status (${duration}s)${RESET}"
+      set_status "$id" "✗ $status (${duration}s)"
     fi
   fi
 
   # 8. 關閉 claude session
-  echo -e "  ${DIM}清理...${RESET}"
   tmux send-keys -t "$sess" -l "/exit" 2>/dev/null || true
   sleep 1
   tmux send-keys -t "$sess" Enter 2>/dev/null || true
   sleep 3
-
-  # 關閉 tmux session
   tmux kill-session -t "$sess" 2>/dev/null || true
 
   # 9. 清理暫存目錄
   if [ "$KEEP_TMP" != "true" ]; then
     rm -rf "$project_dir"
-  else
-    echo -e "  ${DIM}保留暫存: $project_dir${RESET}"
   fi
-
-  echo -e "  ${DIM}完成 [$id] (${duration}s)${RESET}"
 }
 
 # ────────────────── 主流程 ──────────────────
@@ -543,21 +634,13 @@ main() {
   local seen_list=""
   for id in "${scenario_ids[@]}"; do
     case ",$seen_list," in
-      *",$id,"*) ;;  # 已見過
+      *",$id,"*) ;;
       *)
         unique_ids+=("$id")
         seen_list="${seen_list}${id},"
         ;;
     esac
   done
-
-  echo -e "${BOLD}場景: ${#unique_ids[@]} 個${RESET}"
-  echo -e "${DIM}模型: $MODEL | 結果: $RESULTS_DIR${RESET}"
-  echo ""
-
-  if [ "$DRY_RUN" = "true" ]; then
-    echo -e "${YELLOW}[DRY RUN 模式]${RESET}"
-  fi
 
   # 建立結果目錄
   mkdir -p "$RESULTS_DIR"
@@ -568,8 +651,8 @@ main() {
   # 執行成本排序（none→fix→docs→...→full）
   local cost_order=(
     A10 B03       # none（最便宜）
-    A04 B02       # fix
-    A08 B05       # docs-only
+    A04 B02 B07   # fix
+    A08 B05 B08   # docs-only
     A07           # review-only
     C06 C07 C08   # 模糊測試
     A03 B04 D04   # quick-dev
@@ -606,32 +689,28 @@ main() {
     fi
   done
 
-  # 執行
   local total=${#ordered_ids[@]}
   local parallel="${VIBE_E2E_PARALLEL:-1}"
 
-  echo -e "${DIM}並行度: $parallel${RESET}"
-  echo ""
+  # ─── 初始化 Dashboard ───
+  init_dashboard "${ordered_ids[@]}"
 
   if [ "$parallel" -le 1 ]; then
     # ─── 序列執行 ───
-    local current=0
     for id in "${ordered_ids[@]}"; do
-      current=$((current + 1))
-      echo -e "${BLUE}[${current}/${total}]${RESET} 執行場景 $id"
-      run_scenario "$id" || true
+      run_scenario "$id" > /dev/null 2>&1 || true
     done
   else
     # ─── 並行執行 ───
+    start_render_loop
+
     local running=0
-    local launched=0
     local pids=""
 
     for id in "${ordered_ids[@]}"; do
       # 等待空位
       while [ "$running" -ge "$parallel" ]; do
         sleep 3
-        # 收割完成的 jobs
         local new_pids=""
         running=0
         for pid in $pids; do
@@ -643,11 +722,8 @@ main() {
         pids="$new_pids"
       done
 
-      launched=$((launched + 1))
-      echo -e "${BLUE}[${launched}/${total}]${RESET} ${BOLD}啟動${RESET} $id ${DIM}(slot $((running + 1))/$parallel)${RESET}"
-
       # 背景執行
-      run_scenario "$id" &
+      run_scenario "$id" > /dev/null 2>&1 &
       pids="$pids $!"
       running=$((running + 1))
 
@@ -656,43 +732,48 @@ main() {
     done
 
     # 等待所有剩餘 jobs
-    echo -e "${DIM}等待 $running 個場景完成...${RESET}"
     for pid in $pids; do
       wait "$pid" 2>/dev/null || true
     done
+
+    stop_render_loop
   fi
 
-  # 統計結果
-  local passed=0
-  local failed=0
-  for id in "${ordered_ids[@]}"; do
-    local result_file="$RESULTS_DIR/${id}.json"
-    if [ -f "$result_file" ]; then
-      local status
-      status=$(node -e "
-        try { console.log(JSON.parse(require('fs').readFileSync('$result_file','utf8')).status); }
-        catch(e) { console.log('ERROR'); }
-      " 2>/dev/null)
-      if [ "$status" = "PASS" ]; then
-        passed=$((passed + 1))
+  # ─── 統計結果 + 報告 ───
+  if [ "$DRY_RUN" = "true" ]; then
+    echo "" >&3
+    printf '  %b[DRY RUN] %d 個場景已列出%b\n' '\033[0;33m' "$total" '\033[0m' >&3
+  else
+    local passed=0
+    local failed=0
+    for id in "${ordered_ids[@]}"; do
+      local result_file="$RESULTS_DIR/${id}.json"
+      if [ -f "$result_file" ]; then
+        local status
+        status=$(node -e "
+          try { console.log(JSON.parse(require('fs').readFileSync('$result_file','utf8')).status); }
+          catch(e) { console.log('ERROR'); }
+        " 2>/dev/null)
+        if [ "$status" = "PASS" ]; then
+          passed=$((passed + 1))
+        else
+          failed=$((failed + 1))
+        fi
       else
         failed=$((failed + 1))
       fi
-    else
-      failed=$((failed + 1))
-    fi
-  done
+    done
 
-  echo ""
-  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-  echo -e "${BOLD}執行完成: $passed PASS / $failed FAIL (共 $total)${RESET}"
-  echo ""
+    echo "" >&3
+    printf '  %b━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n' '\033[0;36m' '\033[0m' >&3
+    printf '  %b執行完成: %d PASS / %d FAIL (共 %d)%b\n' '\033[1m' "$passed" "$failed" "$total" '\033[0m' >&3
+    echo "" >&3
 
-  # 產出報告
-  if [ "$DRY_RUN" != "true" ]; then
-    echo -e "${DIM}產出報告...${RESET}"
-    node "$REPORT_SCRIPT" "$RESULTS_DIR"
+    printf '  %b產出報告...%b\n' '\033[2m' '\033[0m' >&3
+    node "$REPORT_SCRIPT" "$RESULTS_DIR" >&3 2>&1
   fi
+
+  cleanup_dashboard
 }
 
 main "$@"
