@@ -14,6 +14,7 @@
 #   VIBE_E2E_PARALLEL  同時執行場景數（預設 1，建議 1-3）
 #   VIBE_E2E_KEEP_TMP  保留暫存目錄（除錯用）
 #   VIBE_E2E_DRY_RUN   只顯示場景列表不執行
+#   VIBE_E2E_NO_TMUX   強制使用 print 模式（無需 tmux）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 set -uo pipefail
 # 注意：不用 set -e — 並行模式下 background job 的 exit code 會觸發 early exit
@@ -33,6 +34,13 @@ REPORT_SCRIPT="$SCRIPT_DIR/report.js"
 MODEL="${VIBE_E2E_MODEL:-opus}"
 KEEP_TMP="${VIBE_E2E_KEEP_TMP:-false}"
 DRY_RUN="${VIBE_E2E_DRY_RUN:-false}"
+
+# 執行模式：tmux（互動）或 print（非互動，無需 tmux）
+if command -v tmux &>/dev/null && [ "${VIBE_E2E_NO_TMUX:-}" != "true" ]; then
+  USE_TMUX=true
+else
+  USE_TMUX=false
+fi
 
 # 結果目錄（時間戳）
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
@@ -177,9 +185,17 @@ cleanup_on_exit() {
     printf '  %b中斷%b\n' '\033[0;33m' '\033[0m' >&3
   fi
 
-  for sess in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^e2e-'); do
-    tmux kill-session -t "$sess" 2>/dev/null || true
-  done
+  if [ "$USE_TMUX" = "true" ]; then
+    for sess in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^e2e-'); do
+      tmux kill-session -t "$sess" 2>/dev/null || true
+    done
+  else
+    # print 模式：清理所有 e2e pid 檔案對應的進程
+    for pf in /tmp/vibe-e2e-pid-*; do
+      [ -f "$pf" ] && kill "$(cat "$pf")" 2>/dev/null || true
+      rm -f "$pf" 2>/dev/null || true
+    done
+  fi
 
   if [ -d "$RESULTS_DIR" ] && ls "$RESULTS_DIR"/*.json 1>/dev/null 2>&1; then
     node "$REPORT_SCRIPT" "$RESULTS_DIR" 2>/dev/null || true
@@ -196,8 +212,8 @@ trap cleanup_on_exit INT TERM
 check_prerequisites() {
   local missing=0
 
-  if ! command -v tmux &>/dev/null; then
-    echo -e "${RED}tmux 未安裝${RESET}"
+  if [ "$USE_TMUX" = "true" ] && ! command -v tmux &>/dev/null; then
+    echo -e "${RED}tmux 未安裝（設 VIBE_E2E_NO_TMUX=true 可用 print 模式）${RESET}"
     missing=1
   fi
 
@@ -470,8 +486,12 @@ wait_for_plan_then_cancel() {
           state.meta.cancelled = true;
           fs.writeFileSync(f, JSON.stringify(state, null, 2));
         " 2>/dev/null
-        # Ctrl+C 中斷當前 sub-agent
-        tmux send-keys -t "$sess" C-c 2>/dev/null
+        # 中斷當前 session
+        if [ "$USE_TMUX" = "true" ]; then
+          tmux send-keys -t "$sess" C-c 2>/dev/null
+        else
+          stop_claude_print "$scenario_id"
+        fi
         sleep 5
         echo "CANCELLED"
         return 0
@@ -494,6 +514,8 @@ handle_follow_up() {
   local follow_up="$3"
   local timeout="$4"
   local scenario_id="$5"
+  local project_dir="${6:-}"
+  local mem_dir="${7:-}"
 
   # 先等第一個 pipeline 完成
   local result
@@ -501,15 +523,21 @@ handle_follow_up() {
 
   if [ "$result" = "COMPLETE" ] || [ "$result" = "NONE_COMPLETE" ]; then
     set_status "$scenario_id" "⏳ 送 follow-up..."
-    # Pipeline 完成後全域規則觸發 AskUserQuestion，需要先處理
-    sleep 8
-    # Escape 關閉 AskUserQuestion widget（如果有的話）
-    tmux send-keys -t "$sess" Escape 2>/dev/null
-    sleep 3
-    # 送 follow-up 作為新 prompt
-    tmux send-keys -t "$sess" -l "$follow_up"
-    sleep 1
-    tmux send-keys -t "$sess" Enter
+
+    if [ "$USE_TMUX" = "true" ]; then
+      # tmux：Pipeline 完成後全域規則觸發 AskUserQuestion，需要先處理
+      sleep 8
+      tmux send-keys -t "$sess" Escape 2>/dev/null
+      sleep 3
+      tmux send-keys -t "$sess" -l "$follow_up"
+      sleep 1
+      tmux send-keys -t "$sess" Enter
+    else
+      # print：第一次 -p 已結束，用 --resume -p 送第二個 prompt
+      sleep 3
+      send_followup_print "$scenario_id" "$project_dir" "$uuid" "$mem_dir" "$follow_up" > /dev/null
+    fi
+
     # 重新等待
     sleep 5
     local result2
@@ -517,6 +545,89 @@ handle_follow_up() {
     echo "$result2"
   else
     echo "$result"
+  fi
+}
+
+# ────────────────── Claude 啟動/停止（雙模式抽象）──────────────────
+
+# 共用 claude 命令參數（不含 cd 和 -p）
+_claude_base_args() {
+  local uuid="$1" mem_dir="$2"
+  echo "CLAUDE_MEM_DATA_DIR='$mem_dir' claude --session-id '$uuid' --model '$MODEL' --dangerously-skip-permissions --plugin-dir '$VIBE_PLUGIN' --plugin-dir '$FORGE_PLUGIN'"
+}
+
+# tmux 模式：建立 session 並啟動 claude
+start_claude_tmux() {
+  local id="$1" project_dir="$2" uuid="$3" mem_dir="$4"
+  local sess="e2e-${id}"
+  tmux kill-session -t "$sess" 2>/dev/null || true
+  tmux new-session -d -s "$sess" -x 200 -y 50
+  sleep 1
+  local claude_cmd="cd '$project_dir' && $(_claude_base_args "$uuid" "$mem_dir")"
+  tmux send-keys -t "$sess" "$claude_cmd" Enter
+  sleep 10
+  echo "$sess"
+}
+
+# tmux 模式：送出 prompt
+send_prompt_tmux() {
+  local sess="$1" prompt="$2"
+  tmux send-keys -t "$sess" -l "$prompt"
+  sleep 1
+  tmux send-keys -t "$sess" Enter
+}
+
+# tmux 模式：停止 claude
+stop_claude_tmux() {
+  local sess="$1"
+  tmux send-keys -t "$sess" -l "/exit" 2>/dev/null || true
+  sleep 1
+  tmux send-keys -t "$sess" Enter 2>/dev/null || true
+  sleep 3
+  tmux kill-session -t "$sess" 2>/dev/null || true
+}
+
+# print 模式：背景啟動 claude -p
+start_claude_print() {
+  local id="$1" project_dir="$2" uuid="$3" mem_dir="$4" prompt="$5"
+  local log_file="$RESULTS_DIR/${id}.claude.log"
+  local pid_file="/tmp/vibe-e2e-pid-${id}"
+
+  (
+    cd "$project_dir"
+    unset CLAUDECODE  # 避免 nested session 檢測
+    eval "$(_claude_base_args "$uuid" "$mem_dir") -p $(printf '%q' "$prompt")" > "$log_file" 2>&1
+  ) &
+  local bg_pid=$!
+  echo "$bg_pid" > "$pid_file"
+  echo "$bg_pid"
+}
+
+# print 模式：follow-up（--resume -p）
+send_followup_print() {
+  local id="$1" project_dir="$2" uuid="$3" mem_dir="$4" follow_up="$5"
+  local log_file="$RESULTS_DIR/${id}.claude-followup.log"
+
+  (
+    cd "$project_dir"
+    unset CLAUDECODE  # 避免 nested session 檢測
+    eval "$(_claude_base_args "$uuid" "$mem_dir") --resume -p $(printf '%q' "$follow_up")" > "$log_file" 2>&1
+  ) &
+  local bg_pid=$!
+  echo "$bg_pid" > "/tmp/vibe-e2e-pid-${id}"
+  echo "$bg_pid"
+}
+
+# print 模式：停止 claude（kill background process）
+stop_claude_print() {
+  local id="$1"
+  local pid_file="/tmp/vibe-e2e-pid-${id}"
+  if [ -f "$pid_file" ]; then
+    local bg_pid
+    bg_pid=$(cat "$pid_file")
+    kill "$bg_pid" 2>/dev/null || true
+    wait "$bg_pid" 2>/dev/null || true
+    rm -f "$pid_file"
   fi
 }
 
@@ -563,34 +674,30 @@ run_scenario() {
   local uuid
   uuid=$(uuidgen | tr '[:upper:]' '[:lower:]')
 
-  # 4. 啟動 claude session（獨立 tmux session per scenario）
-  local sess="e2e-${id}"
-  tmux kill-session -t "$sess" 2>/dev/null || true
-  tmux new-session -d -s "$sess" -x 200 -y 50
-  sleep 1
-
   # claude-mem 隔離：使用空的資料目錄，避免歷史記憶污染 E2E session
   local mem_dir="/tmp/e2e-claude-mem-$$-${id}"
   mkdir -p "$mem_dir"
-  local claude_cmd="cd '$project_dir' && CLAUDE_MEM_DATA_DIR='$mem_dir' claude --session-id '$uuid' --model '$MODEL' --dangerously-skip-permissions --plugin-dir '$VIBE_PLUGIN' --plugin-dir '$FORGE_PLUGIN'"
-  tmux send-keys -t "$sess" "$claude_cmd" Enter
 
+  # 4. 啟動 claude session + 送出 prompt
   set_status "$id" "⏳ 啟動 claude..."
-  sleep 10
+  local sess="" claude_pid=""
 
-  # 5. 送出 prompt
-  set_status "$id" "⏳ 送 prompt..."
-  tmux send-keys -t "$sess" -l "$prompt"
-  sleep 1
-  tmux send-keys -t "$sess" Enter
+  if [ "$USE_TMUX" = "true" ]; then
+    sess=$(start_claude_tmux "$id" "$project_dir" "$uuid" "$mem_dir")
+    set_status "$id" "⏳ 送 prompt..."
+    send_prompt_tmux "$sess" "$prompt"
+  else
+    set_status "$id" "⏳ 送 prompt..."
+    claude_pid=$(start_claude_print "$id" "$project_dir" "$uuid" "$mem_dir" "$prompt")
+  fi
 
-  # 6. 等待完成
+  # 5. 等待完成
   local final_status="UNKNOWN"
 
   if [ "$id" = "C03" ]; then
     final_status=$(wait_for_plan_then_cancel "$uuid" "$sess" "$timeout_sec" "$id")
   elif [ -n "$follow_up" ]; then
-    final_status=$(handle_follow_up "$uuid" "$sess" "$follow_up" "$timeout_sec" "$id")
+    final_status=$(handle_follow_up "$uuid" "$sess" "$follow_up" "$timeout_sec" "$id" "$project_dir" "$mem_dir")
   else
     final_status=$(poll_state "$uuid" "$timeout_sec" "$id" "$sess")
   fi
@@ -645,11 +752,11 @@ EOF
   fi
 
   # 8. 關閉 claude session
-  tmux send-keys -t "$sess" -l "/exit" 2>/dev/null || true
-  sleep 1
-  tmux send-keys -t "$sess" Enter 2>/dev/null || true
-  sleep 3
-  tmux kill-session -t "$sess" 2>/dev/null || true
+  if [ "$USE_TMUX" = "true" ]; then
+    stop_claude_tmux "$sess"
+  else
+    stop_claude_print "$id"
+  fi
 
   # 9. 清理暫存目錄
   if [ "$KEEP_TMP" != "true" ]; then
@@ -662,8 +769,11 @@ EOF
 
 main() {
   echo -e "${CYAN}${BOLD}"
+  local mode_label="tmux"
+  [ "$USE_TMUX" != "true" ] && mode_label="print"
   echo "  ╔═══════════════════════════════════════╗"
-  echo "  ║   Pipeline E2E 測試框架 v1.0          ║"
+  echo "  ║   Pipeline E2E 測試框架 v1.1          ║"
+  echo "  ║   模式: ${mode_label}                            ║"
   echo "  ╚═══════════════════════════════════════╝"
   echo -e "${RESET}"
 
