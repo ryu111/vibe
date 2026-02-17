@@ -852,43 +852,43 @@ console.log('══════════════════════�
 })();
 
 // ═══════════════════════════════════════════════
-// Scenario J: LLM-first 分類行為驗證
-// v4: 移除 regex，分類由 LLM 負責。無 API key → fallback → none/research
+// Scenario J: Prompt Hook 分類行為驗證
+// v5: 分類由 prompt hook 負責。command hook 只處理顯式 [pipeline:xxx] 和 state 管理
 // ═══════════════════════════════════════════════
 
-console.log('\n🎯 Scenario J: LLM-first 分類行為（無 API key → fallback）');
+console.log('\n🎯 Scenario J: Prompt Hook 分類行為（非顯式 → prompt-hook → none）');
 console.log('═══════════════════════════════════════════════════════');
 
 (() => {
   const sid = 'e2e-llm-first';
   try {
-    // J1-J5: 無 API key，所有非顯式 prompt → none pipeline → research taskType
-    const fallbackCases = [
-      { prompt: '做一個 poc 測試看看', note: 'poc + 看看 → fallback' },
-      { prompt: 'scaffold 一個新專案', note: 'scaffold → fallback' },
-      { prompt: '簡單的範例 demo', note: '簡單 demo → fallback' },
-      { prompt: '建立 hello world express server', note: 'hello world → fallback' },
-      { prompt: 'develop a prototype app', note: 'prototype → fallback' },
+    // J1-J5: 非顯式 prompt → prompt-hook → none pipeline → research taskType
+    const promptHookCases = [
+      { prompt: '做一個 poc 測試看看', note: 'poc + 看看 → prompt-hook' },
+      { prompt: 'scaffold 一個新專案', note: 'scaffold → prompt-hook' },
+      { prompt: '簡單的範例 demo', note: '簡單 demo → prompt-hook' },
+      { prompt: '建立 hello world express server', note: 'hello world → prompt-hook' },
+      { prompt: 'develop a prototype app', note: 'prototype → prompt-hook' },
     ];
 
-    for (let i = 0; i < fallbackCases.length; i++) {
-      const { prompt, note } = fallbackCases[i];
+    for (let i = 0; i < promptHookCases.length; i++) {
+      const { prompt, note } = promptHookCases[i];
       initState(sid);
       runHook('task-classifier', { session_id: sid, prompt });
 
-      test(`J${i + 1}: fallback → none/research — ${note}`, () => {
+      test(`J${i + 1}: prompt-hook → none/research — ${note}`, () => {
         const state = readState(sid);
         assert.strictEqual(state.classification.pipelineId, 'none');
         assert.strictEqual(state.classification.taskType, 'research');
-        assert.strictEqual(state.classification.source, 'fallback');
+        assert.strictEqual(state.classification.source, 'prompt-hook');
       });
     }
 
-    // J6-J8: 純 Research（無 API key 也是 fallback → none → research）
+    // J6-J8: 純 Research（prompt hook 處理，command hook 回傳 none）
     const pureResearchCases = [
-      { prompt: '查看目前的架構', note: '查看(research) → fallback' },
-      { prompt: '這個 API 是什麼？', note: '是什麼(research) → fallback' },
-      { prompt: 'how does this work?', note: 'how(research) → fallback' },
+      { prompt: '查看目前的架構', note: '查看(research) → prompt-hook' },
+      { prompt: '這個 API 是什麼？', note: '是什麼(research) → prompt-hook' },
+      { prompt: 'how does this work?', note: 'how(research) → prompt-hook' },
     ];
 
     for (let i = 0; i < pureResearchCases.length; i++) {
@@ -896,17 +896,17 @@ console.log('══════════════════════�
       initState(sid);
       runHook('task-classifier', { session_id: sid, prompt });
 
-      test(`J${i + 6}: fallback → none/research — ${note}`, () => {
+      test(`J${i + 6}: prompt-hook → none/research — ${note}`, () => {
         const state = readState(sid);
         assert.strictEqual(state.classification.pipelineId, 'none');
         assert.strictEqual(state.classification.taskType, 'research');
       });
     }
 
-    // J9-J10: 純 Feature prompt（無 API key 也是 fallback）
+    // J9-J10: Feature prompt（prompt hook 負責引導，command hook 回傳 none）
     const pureFeatureCases = [
-      { prompt: '建立完整的使用者認證系統', note: '建立...系統 → fallback' },
-      { prompt: 'implement user authentication', note: 'implement → fallback' },
+      { prompt: '建立完整的使用者認證系統', note: '建立...系統 → prompt-hook' },
+      { prompt: 'implement user authentication', note: 'implement → prompt-hook' },
     ];
 
     for (let i = 0; i < pureFeatureCases.length; i++) {
@@ -914,7 +914,7 @@ console.log('══════════════════════�
       initState(sid);
       runHook('task-classifier', { session_id: sid, prompt });
 
-      test(`J${i + 9}: fallback → none/research（無 LLM）— ${note}`, () => {
+      test(`J${i + 9}: prompt-hook → none/research — ${note}`, () => {
         const state = readState(sid);
         assert.strictEqual(state.classification.pipelineId, 'none');
         assert.strictEqual(state.classification.taskType, 'research');

@@ -2,7 +2,7 @@
 /**
  * classifier-and-console-filter.test.js — 單元測試
  *
- * Part 1: LLM-first 分類器（Layer 1 顯式 + LLM 介面 + Fallback + 向後相容）
+ * Part 1: Pipeline 分類器（Layer 1 顯式 + Prompt Hook 架構 + Fallback）
  * Part 2: check-console-log 檔案過濾 regex
  * Part 3: 品質守衛 hooks stdin→stdout 驗證
  * Part 4: formatter task.classified 格式驗證
@@ -43,12 +43,11 @@ function asyncTest(name, fn) {
 
 const {
   classifyWithConfidence,
-  classifyWithLLM,
   extractExplicitPipeline,
+  extractHookClassification,
   mapTaskTypeToPipeline,
   buildPipelineCatalogHint,
-  LLM_MODEL,
-  LLM_TIMEOUT,
+  buildClassifierPrompt,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'classifier.js'));
 
 // ─── Part 1a: extractExplicitPipeline (sync) ──────
@@ -119,15 +118,10 @@ asyncTest('Layer 1: [PIPELINE:SECURITY] 全大寫 → security', async () => {
   assert.strictEqual(result.confidence, 1.0);
 });
 
-asyncTest('Layer 1: [pipeline:invalid-name] → 降級到 Fallback', async () => {
-  const origKey = process.env.ANTHROPIC_API_KEY;
-  delete process.env.ANTHROPIC_API_KEY;
-  try {
-    const result = await classifyWithConfidence('[pipeline:invalid-name] fix typo');
-    assert.strictEqual(result.source, 'fallback');
-  } finally {
-    if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
-  }
+asyncTest('Layer 1: [pipeline:invalid-name] → 降級到 prompt-hook', async () => {
+  const result = await classifyWithConfidence('[pipeline:invalid-name] fix typo');
+  assert.strictEqual(result.source, 'prompt-hook');
+  assert.strictEqual(result.matchedRule, 'prompt-hook');
 });
 
 asyncTest('Layer 1: 語法在結尾 → 正確解析', async () => {
@@ -186,80 +180,103 @@ asyncTest('Fallback: 只有空白 → none, 0, fallback, empty', async () => {
   assert.strictEqual(result.source, 'fallback');
 });
 
-asyncTest('Fallback: 一般 prompt（無 API key）→ none/fallback/api-unavailable', async () => {
-  const origKey = process.env.ANTHROPIC_API_KEY;
-  delete process.env.ANTHROPIC_API_KEY;
-  try {
-    const result = await classifyWithConfidence('建立一個完整的 REST API server');
-    assert.strictEqual(result.pipeline, 'none');
-    assert.strictEqual(result.confidence, 0);
-    assert.strictEqual(result.source, 'fallback');
-    assert.strictEqual(result.matchedRule, 'api-unavailable');
-  } finally {
-    if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
-  }
+asyncTest('Fallback: 一般 prompt → none/prompt-hook', async () => {
+  const result = await classifyWithConfidence('建立一個完整的 REST API server');
+  assert.strictEqual(result.pipeline, 'none');
+  assert.strictEqual(result.confidence, 0);
+  assert.strictEqual(result.source, 'prompt-hook');
+  assert.strictEqual(result.matchedRule, 'prompt-hook');
 });
 
-asyncTest('Fallback: 中文 prompt（無 API key）→ none/fallback', async () => {
-  const origKey = process.env.ANTHROPIC_API_KEY;
-  delete process.env.ANTHROPIC_API_KEY;
-  try {
-    const result = await classifyWithConfidence('重構認證模組');
-    assert.strictEqual(result.pipeline, 'none');
-    assert.strictEqual(result.source, 'fallback');
-  } finally {
-    if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
-  }
+asyncTest('Fallback: 中文 prompt → none/prompt-hook', async () => {
+  const result = await classifyWithConfidence('重構認證模組');
+  assert.strictEqual(result.pipeline, 'none');
+  assert.strictEqual(result.source, 'prompt-hook');
 });
 
-asyncTest('Fallback: 疑問句（無 API key）→ none/fallback', async () => {
-  const origKey = process.env.ANTHROPIC_API_KEY;
-  delete process.env.ANTHROPIC_API_KEY;
-  try {
-    const result = await classifyWithConfidence('什麼是 pipeline?');
-    assert.strictEqual(result.pipeline, 'none');
-    assert.strictEqual(result.source, 'fallback');
-  } finally {
-    if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
-  }
+asyncTest('Fallback: 疑問句 → none/prompt-hook', async () => {
+  const result = await classifyWithConfidence('什麼是 pipeline?');
+  assert.strictEqual(result.pipeline, 'none');
+  assert.strictEqual(result.source, 'prompt-hook');
 });
 
-// ─── Part 1d: LLM 介面驗證 ──────────────────────
+// ─── Part 1d: extractHookClassification ──────────
 
-console.log('\n🧪 Part 1d: LLM 介面驗證');
+console.log('\n🧪 Part 1d: extractHookClassification（Prompt Hook 結果解析）');
 console.log('═'.repeat(50));
 
-asyncTest('classifyWithLLM: 無 API key → 回傳 null', async () => {
-  const origKey = process.env.ANTHROPIC_API_KEY;
-  delete process.env.ANTHROPIC_API_KEY;
-  try {
-    const result = await classifyWithLLM('建立一個完整的 REST API');
-    assert.strictEqual(result, null, '無 API key 時應回傳 null');
-  } finally {
-    if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
+test('extractHookClassification: 正常 systemMessage → pipeline ID', () => {
+  assert.strictEqual(extractHookClassification('此需求適合 [pipeline:standard]。請使用對應 skill 開始委派。'), 'standard');
+});
+
+test('extractHookClassification: full pipeline → full', () => {
+  assert.strictEqual(extractHookClassification('此需求適合 [pipeline:full]。請使用對應 skill 開始委派。'), 'full');
+});
+
+test('extractHookClassification: fix pipeline → fix', () => {
+  assert.strictEqual(extractHookClassification('此需求適合 [pipeline:fix]。請使用對應 skill 開始委派。'), 'fix');
+});
+
+test('extractHookClassification: 無 pipeline 標記 → null', () => {
+  assert.strictEqual(extractHookClassification('這是一般回應，沒有 pipeline 標記'), null);
+});
+
+test('extractHookClassification: null → null', () => {
+  assert.strictEqual(extractHookClassification(null), null);
+});
+
+test('extractHookClassification: undefined → null', () => {
+  assert.strictEqual(extractHookClassification(undefined), null);
+});
+
+test('extractHookClassification: 空字串 → null', () => {
+  assert.strictEqual(extractHookClassification(''), null);
+});
+
+test('extractHookClassification: 不合法 ID → null', () => {
+  assert.strictEqual(extractHookClassification('[pipeline:invalid-name] test'), null);
+});
+
+test('extractHookClassification: 所有 pipeline ID 都可解析', () => {
+  const ids = ['full', 'standard', 'quick-dev', 'fix', 'test-first', 'ui-only', 'review-only', 'docs-only', 'security', 'none'];
+  for (const id of ids) {
+    assert.strictEqual(extractHookClassification(`[pipeline:${id}] test`), id, `應解析 ${id}`);
   }
 });
 
-asyncTest('classifyWithLLM: 空 prompt → null（無 key）', async () => {
-  const origKey = process.env.ANTHROPIC_API_KEY;
-  delete process.env.ANTHROPIC_API_KEY;
-  try {
-    const result = await classifyWithLLM('');
-    assert.strictEqual(result, null);
-  } finally {
-    if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
+// ─── Part 1e: buildClassifierPrompt + buildPipelineCatalogHint ──
+
+console.log('\n🧪 Part 1e: buildClassifierPrompt + buildPipelineCatalogHint');
+console.log('═'.repeat(50));
+
+test('buildClassifierPrompt: 回傳非空字串', () => {
+  const prompt = buildClassifierPrompt();
+  assert.ok(typeof prompt === 'string');
+  assert.ok(prompt.length > 0);
+});
+
+test('buildClassifierPrompt: 包含分類原則', () => {
+  const prompt = buildClassifierPrompt();
+  assert.ok(prompt.includes('分類原則'), '應包含分類原則');
+});
+
+test('buildClassifierPrompt: 包含回覆格式', () => {
+  const prompt = buildClassifierPrompt();
+  assert.ok(prompt.includes('decision'), '應包含 decision 欄位說明');
+  assert.ok(prompt.includes('systemMessage'), '應包含 systemMessage 欄位說明');
+});
+
+test('buildClassifierPrompt: 包含所有 pipeline ID', () => {
+  const prompt = buildClassifierPrompt();
+  const ids = ['full', 'standard', 'quick-dev', 'fix', 'test-first', 'ui-only', 'review-only', 'docs-only', 'security', 'none'];
+  for (const id of ids) {
+    assert.ok(prompt.includes(id), `應包含 pipeline ${id}`);
   }
 });
 
-test('classifyWithLLM: 函式回傳 Promise', () => {
-  const origKey = process.env.ANTHROPIC_API_KEY;
-  delete process.env.ANTHROPIC_API_KEY;
-  try {
-    const result = classifyWithLLM('test');
-    assert.ok(result instanceof Promise, '應回傳 Promise');
-  } finally {
-    if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
-  }
+test('buildClassifierPrompt: 包含 JSON 回覆格式', () => {
+  const prompt = buildClassifierPrompt();
+  assert.ok(prompt.includes('[pipeline:'), '應包含 [pipeline: 語法範例');
 });
 
 test('buildPipelineCatalogHint: 回傳非空字串', () => {
@@ -284,247 +301,6 @@ test('buildPipelineCatalogHint: 包含所有非 none 的 pipeline', () => {
 test('buildPipelineCatalogHint: 不包含 none', () => {
   const hint = buildPipelineCatalogHint();
   assert.ok(!hint.includes('[pipeline:none]'), '不應包含 [pipeline:none]');
-});
-
-test('buildPipelineCatalogHint: 包含 LLM 不可用提示', () => {
-  const hint = buildPipelineCatalogHint();
-  assert.ok(hint.includes('LLM'), '應包含 LLM 提示');
-});
-
-// ─── Part 1e: 環境變數與常量 ────────────────────
-
-console.log('\n🧪 Part 1e: 環境變數與常量');
-console.log('═'.repeat(50));
-
-test('LLM_MODEL 預設值: claude-sonnet-4-20250514', () => {
-  assert.strictEqual(LLM_MODEL, 'claude-sonnet-4-20250514');
-});
-
-test('LLM_TIMEOUT 預設值: 10000', () => {
-  assert.strictEqual(LLM_TIMEOUT, 10000);
-});
-
-const classifierModulePath = require.resolve(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'classifier.js'));
-
-function runClassifierCheck(envVars, expression) {
-  const tmpFile = path.join(os.tmpdir(), `vibe-cls-test-${Date.now()}-${Math.random().toString(36).slice(2)}.js`);
-  fs.writeFileSync(tmpFile, `const c = require(${JSON.stringify(classifierModulePath)});\nprocess.stdout.write(String(${expression}));`);
-  try {
-    return execSync(`node "${tmpFile}"`, {
-      env: { ...process.env, ...envVars },
-      timeout: 5000,
-    }).toString();
-  } finally {
-    try { fs.unlinkSync(tmpFile); } catch (_) {}
-  }
-}
-
-test('VIBE_CLASSIFIER_MODEL 環境變數覆寫', () => {
-  const result = runClassifierCheck(
-    { VIBE_CLASSIFIER_MODEL: 'claude-haiku-4-5-20251001' },
-    'c.LLM_MODEL'
-  );
-  assert.strictEqual(result, 'claude-haiku-4-5-20251001');
-});
-
-test('VIBE_CLASSIFIER_THRESHOLD=1.0 → 停用 LLM', () => {
-  const tmpFile = path.join(os.tmpdir(), `vibe-cls-thr-${Date.now()}.js`);
-  fs.writeFileSync(tmpFile, `
-const c = require(${JSON.stringify(classifierModulePath)});
-(async () => {
-  const result = await c.classifyWithLLM('test prompt');
-  process.stdout.write(String(result === null));
-})();
-`);
-  try {
-    const result = execSync(`node "${tmpFile}"`, {
-      env: { ...process.env, VIBE_CLASSIFIER_THRESHOLD: '1.0', ANTHROPIC_API_KEY: 'test-key' },
-      timeout: 5000,
-    }).toString();
-    assert.strictEqual(result, 'true', 'THRESHOLD=1.0 時 classifyWithLLM 應回傳 null');
-  } finally {
-    try { fs.unlinkSync(tmpFile); } catch (_) {}
-  }
-});
-
-test('VIBE_CLASSIFIER_THRESHOLD=0.5 → 不停用 LLM（< 1.0）', () => {
-  const tmpFile = path.join(os.tmpdir(), `vibe-cls-thr-low-${Date.now()}.js`);
-  fs.writeFileSync(tmpFile, `
-const c = require(${JSON.stringify(classifierModulePath)});
-(async () => {
-  // 無 API key 時 classifyWithLLM 因缺 key 而回傳 null（不是因為 threshold）
-  // 所以設一個 fake key，讓它嘗試呼叫（會因為假 key 而 HTTP 錯誤 → null）
-  // 但重點是它不會因為 threshold 而直接跳過
-  // 我們檢查 threshold < 1.0 不會觸發 early return
-  const threshold = parseFloat(process.env.VIBE_CLASSIFIER_THRESHOLD);
-  const skipped = Number.isNaN(threshold) ? false : threshold >= 1.0;
-  process.stdout.write(String(skipped));
-})();
-`);
-  try {
-    const result = execSync(`node "${tmpFile}"`, {
-      env: { ...process.env, VIBE_CLASSIFIER_THRESHOLD: '0.5' },
-      timeout: 5000,
-    }).toString();
-    assert.strictEqual(result, 'false', 'THRESHOLD=0.5 不應停用 LLM');
-  } finally {
-    try { fs.unlinkSync(tmpFile); } catch (_) {}
-  }
-});
-
-// ─── Part 1e2: LLM 回應解析 mock 測試 ──────────
-
-console.log('\n🧪 Part 1e2: LLM 回應解析 mock 測試');
-console.log('═'.repeat(50));
-
-/**
- * 執行子進程 mock 測試：monkeypatch https.request 後呼叫 classifyWithLLM
- * @param {Object} mockResponse - { statusCode, body } 模擬回應
- * @param {Object} [opts] - { error: true } 模擬網路錯誤
- * @returns {string} 子進程 stdout 輸出
- */
-function runLLMMockTest(mockResponse, opts = {}) {
-  const tmpFile = path.join(os.tmpdir(), `vibe-llm-mock-${Date.now()}-${Math.random().toString(36).slice(2)}.js`);
-  const mockCode = opts.error
-    ? `
-// 模擬網路錯誤
-const origRequest = require('https').request;
-require('https').request = function(options, cb) {
-  const req = new (require('events').EventEmitter)();
-  req.write = () => {};
-  req.end = () => { setTimeout(() => req.emit('error', new Error('MOCK_NETWORK_ERROR')), 5); };
-  req.setTimeout = (ms, cb2) => {};
-  req.destroy = () => {};
-  return req;
-};
-`
-    : opts.timeout
-    ? `
-// 模擬超時
-const origRequest = require('https').request;
-require('https').request = function(options, cb) {
-  const req = new (require('events').EventEmitter)();
-  req.write = () => {};
-  req.end = () => {};
-  let timeoutCb;
-  req.setTimeout = (ms, cb2) => { timeoutCb = cb2; setTimeout(cb2, 5); };
-  req.destroy = () => {};
-  return req;
-};
-`
-    : `
-// 模擬成功回應
-const { EventEmitter } = require('events');
-const origRequest = require('https').request;
-require('https').request = function(options, cb) {
-  const res = new EventEmitter();
-  res.statusCode = ${mockResponse.statusCode || 200};
-  const req = new EventEmitter();
-  req.write = () => {};
-  req.end = () => {
-    setTimeout(() => {
-      cb(res);
-      const body = ${JSON.stringify(JSON.stringify(mockResponse.body || ''))};
-      res.emit('data', body);
-      res.emit('end');
-    }, 5);
-  };
-  req.setTimeout = () => {};
-  req.destroy = () => {};
-  return req;
-};
-`;
-
-  fs.writeFileSync(tmpFile, `
-${mockCode}
-const c = require(${JSON.stringify(classifierModulePath)});
-(async () => {
-  const result = await c.classifyWithLLM('建立一個完整的 REST API');
-  process.stdout.write(JSON.stringify(result));
-})();
-`);
-  try {
-    return execSync(`node "${tmpFile}"`, {
-      env: { ...process.env, ANTHROPIC_API_KEY: 'test-mock-key' },
-      timeout: 10000,
-    }).toString();
-  } finally {
-    try { fs.unlinkSync(tmpFile); } catch (_) {}
-  }
-}
-
-test('LLM mock: 成功回應 → 正確解析 pipeline', () => {
-  const result = runLLMMockTest({
-    statusCode: 200,
-    body: { content: [{ text: '{"pipeline":"standard"}' }] },
-  });
-  const parsed = JSON.parse(result);
-  assert.strictEqual(parsed.pipeline, 'standard');
-  assert.strictEqual(parsed.source, 'llm');
-  assert.strictEqual(parsed.confidence, 0.85);
-  assert.strictEqual(parsed.matchedRule, 'llm');
-});
-
-test('LLM mock: fix pipeline → 正確解析', () => {
-  const result = runLLMMockTest({
-    statusCode: 200,
-    body: { content: [{ text: '```json\n{"pipeline":"fix"}\n```' }] },
-  });
-  const parsed = JSON.parse(result);
-  assert.strictEqual(parsed.pipeline, 'fix');
-});
-
-test('LLM mock: none pipeline → 正確解析', () => {
-  const result = runLLMMockTest({
-    statusCode: 200,
-    body: { content: [{ text: '{"pipeline":"none"}' }] },
-  });
-  const parsed = JSON.parse(result);
-  assert.strictEqual(parsed.pipeline, 'none');
-});
-
-test('LLM mock: 不合法 pipeline ID → null', () => {
-  const result = runLLMMockTest({
-    statusCode: 200,
-    body: { content: [{ text: '{"pipeline":"invalid-id"}' }] },
-  });
-  assert.strictEqual(result, 'null');
-});
-
-test('LLM mock: 非 JSON 回應 → null', () => {
-  const result = runLLMMockTest({
-    statusCode: 200,
-    body: { content: [{ text: 'I think you should use full pipeline' }] },
-  });
-  assert.strictEqual(result, 'null');
-});
-
-test('LLM mock: 空 content → null', () => {
-  const result = runLLMMockTest({
-    statusCode: 200,
-    body: { content: [] },
-  });
-  assert.strictEqual(result, 'null');
-});
-
-test('LLM mock: HTTP 401 → null', () => {
-  const result = runLLMMockTest({ statusCode: 401, body: { error: 'unauthorized' } });
-  assert.strictEqual(result, 'null');
-});
-
-test('LLM mock: HTTP 500 → null', () => {
-  const result = runLLMMockTest({ statusCode: 500, body: { error: 'server error' } });
-  assert.strictEqual(result, 'null');
-});
-
-test('LLM mock: 網路錯誤 → null', () => {
-  const result = runLLMMockTest({}, { error: true });
-  assert.strictEqual(result, 'null');
-});
-
-test('LLM mock: 超時 → null', () => {
-  const result = runLLMMockTest({}, { timeout: true });
-  assert.strictEqual(result, 'null');
 });
 
 // ─── Part 1f: mapTaskTypeToPipeline ─────────────
@@ -575,10 +351,8 @@ const TC_SCRIPT = path.join(__dirname, '..', 'scripts', 'hooks', 'task-classifie
 function runTaskClassifier(stdinData, envOverrides = {}) {
   const input = JSON.stringify(stdinData);
   const testEnv = { ...process.env, ...envOverrides };
-  // 確保測試不呼叫真實 LLM API
+  // 確保測試不呼叫真實 API
   delete testEnv.ANTHROPIC_API_KEY;
-  delete testEnv.VIBE_CLASSIFIER_THRESHOLD;
-  delete testEnv.VIBE_CLASSIFIER_MODEL;
   try {
     const stdout = execSync(
       `echo '${input.replace(/'/g, "'\\''")}' | node "${TC_SCRIPT}"`,
@@ -686,16 +460,16 @@ test('reset 清除分類（pipeline 完成後新分類重設）', () => {
   }
 });
 
-test('一般 prompt 正常分類（v4 LLM-first，無 API key → none）', () => {
+test('一般 prompt 正常分類（prompt-hook 架構 → none）', () => {
   const sid = 'test-fallback-cls-' + Date.now();
   try {
     createTestState(sid);
     runTaskClassifier({ session_id: sid, prompt: '看看現在的狀態' });
     const state = readTestState(sid);
-    // 無 API key → fallback → none pipeline
+    // 非顯式 prompt → prompt-hook → none pipeline
     assert.ok(state.classification, '應有 classification');
-    assert.strictEqual(state.classification.pipelineId, 'none', '無 API key → none');
-    assert.strictEqual(state.classification.source, 'fallback', '應為 fallback source');
+    assert.strictEqual(state.classification.pipelineId, 'none', '非顯式 → none');
+    assert.strictEqual(state.classification.source, 'prompt-hook', '應為 prompt-hook source');
   } finally {
     cleanupTestState(sid);
   }
@@ -716,7 +490,7 @@ test('已分類 state 不重複分類（same pipeline）', () => {
     // 注入 v3 classification
     const p = path.join(CLAUDE_TEST_DIR, `pipeline-state-${sid}.json`);
     const s = JSON.parse(fs.readFileSync(p, 'utf8'));
-    s.classification = { pipelineId: 'none', source: 'fallback', confidence: 0 };
+    s.classification = { pipelineId: 'none', source: 'prompt-hook', confidence: 0 };
     fs.writeFileSync(p, JSON.stringify(s, null, 2));
 
     const result = runTaskClassifier({ session_id: sid, prompt: '看看專案' });
