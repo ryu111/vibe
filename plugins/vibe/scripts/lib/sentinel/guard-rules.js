@@ -148,7 +148,7 @@ function evaluate(toolName, toolInput, state) {
   // ── FSM 衍生查詢放行條件 ──
   if (!state) return { decision: 'allow' };
   if (!isInitialized(state)) return { decision: 'allow' };
-  if (!getTaskType(state)) return { decision: 'allow' };
+  // v3: isEnforced() 涵蓋 taskType 缺失場景，不需要 getTaskType 早期返回
   if (!isEnforced(state)) return { decision: 'allow' };
   if (isDelegating(state)) return { decision: 'allow' };
   if (isCancelled(state)) return { decision: 'allow' };

@@ -70,13 +70,31 @@ function cleanupSession(sessionId) {
     path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`),
     path.join(CLAUDE_DIR, `flow-counter-${sessionId}.json`),
     path.join(CLAUDE_DIR, `timeline-${sessionId}.jsonl`),
+    path.join(CLAUDE_DIR, `classified-reads-${sessionId}.json`),
   );
+}
+
+/** 寫入獨立計數檔（v3.1: classifiedReadCount 從 pipeline state 移出） */
+function writeClassifiedCount(sessionId, count) {
+  const p = path.join(CLAUDE_DIR, `classified-reads-${sessionId}.json`);
+  fs.writeFileSync(p, JSON.stringify({ count }));
+}
+
+/** 讀取獨立計數檔 */
+function readClassifiedCount(sessionId) {
+  const p = path.join(CLAUDE_DIR, `classified-reads-${sessionId}.json`);
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')).count || 0; } catch (_) { return 0; }
+}
+
+/** 檢查獨立計數檔是否存在 */
+function classifiedCountExists(sessionId) {
+  return fs.existsSync(path.join(CLAUDE_DIR, `classified-reads-${sessionId}.json`));
 }
 
 /**
  * 建立 CLASSIFIED phase 的 v3 state（有 dag + classification，無 active stage）
  */
-function makeClassifiedState(sessionId, { pipelineId = 'standard', readCount = 0 } = {}) {
+function makeClassifiedState(sessionId, { pipelineId = 'standard' } = {}) {
   return {
     version: 3,
     sessionId,
@@ -99,7 +117,6 @@ function makeClassifiedState(sessionId, { pipelineId = 'standard', readCount = 0
       cancelled: false,
       lastTransition: new Date().toISOString(),
       reclassifications: [],
-      classifiedReadCount: readCount,
     },
   };
 }
@@ -107,7 +124,7 @@ function makeClassifiedState(sessionId, { pipelineId = 'standard', readCount = 0
 /**
  * 建立 DELEGATING phase 的 v3 state（有 active stage）
  */
-function makeDelegatingState(sessionId, { pipelineId = 'standard', readCount = 5 } = {}) {
+function makeDelegatingState(sessionId, { pipelineId = 'standard' } = {}) {
   return {
     version: 3,
     sessionId,
@@ -128,7 +145,6 @@ function makeDelegatingState(sessionId, { pipelineId = 'standard', readCount = 5
       cancelled: false,
       lastTransition: new Date().toISOString(),
       reclassifications: [],
-      classifiedReadCount: readCount,
     },
   };
 }
@@ -150,12 +166,11 @@ console.log('\n=== CLASSIFIED 計數遞增邏輯 ===');
 
 test('CLASSIFIED 階段：首次呼叫 → classifiedReadCount = 1', () => {
   const sessionId = 'test-sc-c-count-1';
-  const statePath = writeState(sessionId, makeClassifiedState(sessionId, { readCount: 0 }));
+  writeState(sessionId, makeClassifiedState(sessionId));
 
   try {
     runHook({ session_id: sessionId, tool_name: 'Read', tool_input: { file_path: '/foo/bar.js' } });
-    const updatedState = readState(sessionId);
-    assert.strictEqual(updatedState.meta.classifiedReadCount, 1,
+    assert.strictEqual(readClassifiedCount(sessionId), 1,
       'classifiedReadCount 應遞增為 1');
   } finally {
     cleanupSession(sessionId);
@@ -164,12 +179,12 @@ test('CLASSIFIED 階段：首次呼叫 → classifiedReadCount = 1', () => {
 
 test('CLASSIFIED 階段：多次呼叫累積計數', () => {
   const sessionId = 'test-sc-c-count-2';
-  const statePath = writeState(sessionId, makeClassifiedState(sessionId, { readCount: 1 }));
+  writeState(sessionId, makeClassifiedState(sessionId));
+  writeClassifiedCount(sessionId, 1);
 
   try {
     runHook({ session_id: sessionId, tool_name: 'Glob', tool_input: { pattern: '**/*.ts' } });
-    const updatedState = readState(sessionId);
-    assert.strictEqual(updatedState.meta.classifiedReadCount, 2,
+    assert.strictEqual(readClassifiedCount(sessionId), 2,
       'classifiedReadCount 應從 1 遞增為 2');
   } finally {
     cleanupSession(sessionId);
@@ -182,7 +197,8 @@ console.log('\n=== CLASSIFIED 閾值觸發提醒 ===');
 
 test('CLASSIFIED 達閾值（第 3 次）→ systemMessage 包含委派提醒', () => {
   const sessionId = 'test-sc-c-threshold-1';
-  writeState(sessionId, makeClassifiedState(sessionId, { readCount: 2, pipelineId: 'quick-dev' }));
+  writeState(sessionId, makeClassifiedState(sessionId, { pipelineId: 'quick-dev' }));
+  writeClassifiedCount(sessionId, 2);
 
   try {
     const output = runHook({ session_id: sessionId, tool_name: 'Grep', tool_input: { pattern: 'foo' } });
@@ -199,7 +215,8 @@ test('CLASSIFIED 達閾值（第 3 次）→ systemMessage 包含委派提醒', 
 
 test('CLASSIFIED 達閾值 → systemMessage 包含 pipelineId 標籤', () => {
   const sessionId = 'test-sc-c-threshold-2';
-  writeState(sessionId, makeClassifiedState(sessionId, { readCount: 2, pipelineId: 'standard' }));
+  writeState(sessionId, makeClassifiedState(sessionId, { pipelineId: 'standard' }));
+  writeClassifiedCount(sessionId, 2);
 
   try {
     const output = runHook({ session_id: sessionId, tool_name: 'Read', tool_input: { file_path: '/x.js' } });
@@ -212,7 +229,8 @@ test('CLASSIFIED 達閾值 → systemMessage 包含 pipelineId 標籤', () => {
 
 test('CLASSIFIED 達閾值 → systemMessage 包含下一個 ready stage', () => {
   const sessionId = 'test-sc-c-threshold-3';
-  writeState(sessionId, makeClassifiedState(sessionId, { readCount: 2, pipelineId: 'quick-dev' }));
+  writeState(sessionId, makeClassifiedState(sessionId, { pipelineId: 'quick-dev' }));
+  writeClassifiedCount(sessionId, 2);
 
   try {
     const output = runHook({ session_id: sessionId, tool_name: 'Glob', tool_input: { pattern: '*.js' } });
@@ -226,7 +244,8 @@ test('CLASSIFIED 達閾值 → systemMessage 包含下一個 ready stage', () =>
 
 test('CLASSIFIED 未達閾值（第 2 次）→ 無 systemMessage', () => {
   const sessionId = 'test-sc-c-nothreshold';
-  writeState(sessionId, makeClassifiedState(sessionId, { readCount: 1 }));
+  writeState(sessionId, makeClassifiedState(sessionId));
+  writeClassifiedCount(sessionId, 1);
 
   try {
     const output = runHook({ session_id: sessionId, tool_name: 'Read', tool_input: { file_path: '/x.js' } });
@@ -239,12 +258,12 @@ test('CLASSIFIED 未達閾值（第 2 次）→ 無 systemMessage', () => {
 
 test('CLASSIFIED 超過閾值後繼續累積計數', () => {
   const sessionId = 'test-sc-c-beyond';
-  writeState(sessionId, makeClassifiedState(sessionId, { readCount: 4 }));
+  writeState(sessionId, makeClassifiedState(sessionId));
+  writeClassifiedCount(sessionId, 4);
 
   try {
     runHook({ session_id: sessionId, tool_name: 'Read', tool_input: { file_path: '/x.js' } });
-    const updated = readState(sessionId);
-    assert.strictEqual(updated.meta.classifiedReadCount, 5, '計數應繼續累積到 5');
+    assert.strictEqual(readClassifiedCount(sessionId), 5, '計數應繼續累積到 5');
   } finally {
     cleanupSession(sessionId);
   }
@@ -254,35 +273,30 @@ test('CLASSIFIED 超過閾值後繼續累積計數', () => {
 console.log('\n=== DELEGATING 重設計數器 ===');
 // ═══════════════════════════════════════════════════════
 
-test('DELEGATING 階段：已有 classifiedReadCount → 重設為 0', () => {
+test('DELEGATING 階段：已有計數檔 → 刪除', () => {
   const sessionId = 'test-sc-c-delegating';
-  writeState(sessionId, makeDelegatingState(sessionId, { readCount: 5 }));
+  writeState(sessionId, makeDelegatingState(sessionId));
+  writeClassifiedCount(sessionId, 5);
 
   try {
+    assert.ok(classifiedCountExists(sessionId), '執行前計數檔應存在');
     runHook({ session_id: sessionId, tool_name: 'Read', tool_input: { file_path: '/x.js' } });
-    const updated = readState(sessionId);
-    assert.strictEqual(updated.meta.classifiedReadCount, 0, 'DELEGATING 應將 classifiedReadCount 重設為 0');
+    assert.ok(!classifiedCountExists(sessionId), 'DELEGATING 應刪除計數檔');
   } finally {
     cleanupSession(sessionId);
   }
 });
 
-test('DELEGATING 階段：classifiedReadCount 為 0 → state 不變（不寫檔）', () => {
+test('DELEGATING 階段：無計數檔 → 靜默（不報錯）', () => {
   const sessionId = 'test-sc-c-delegating-zero';
-  const state = makeDelegatingState(sessionId, { readCount: 0 });
-  // 不設 classifiedReadCount（預設 0）
-  delete state.meta.classifiedReadCount;
-  writeState(sessionId, state);
-
-  const beforeMtime = fs.statSync(path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`)).mtimeMs;
+  writeState(sessionId, makeDelegatingState(sessionId));
+  // 不建立計數檔
 
   try {
+    assert.ok(!classifiedCountExists(sessionId), '執行前計數檔不應存在');
     runHook({ session_id: sessionId, tool_name: 'Grep', tool_input: { pattern: 'foo' } });
-    // 因為 readCount 不存在（falsy），不應觸發重設寫入
-    const afterMtime = fs.statSync(path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`)).mtimeMs;
-    // 這個斷言允許一點點容差（有些 OS 的 mtime 精度不同）
-    // 主要確認沒有報錯
-    assert.ok(true, 'DELEGATING classifiedReadCount=0 不報錯');
+    // 無計數檔 → unlinkSync 拋錯被 catch → 靜默
+    assert.ok(!classifiedCountExists(sessionId), '執行後計數檔仍不應存在');
   } finally {
     cleanupSession(sessionId);
   }
@@ -294,7 +308,8 @@ console.log('\n=== compact + CLASSIFIED 合併輸出 ===');
 
 test('compact 提醒 + CLASSIFIED 提醒 → 合併為單一 systemMessage（包含兩段）', () => {
   const sessionId = 'test-sc-c-combined';
-  writeState(sessionId, makeClassifiedState(sessionId, { readCount: 2, pipelineId: 'standard' }));
+  writeState(sessionId, makeClassifiedState(sessionId, { pipelineId: 'standard' }));
+  writeClassifiedCount(sessionId, 2);
   // 設定 counter 達 compact 閾值（60）
   writeCounter(sessionId, 99);
 
@@ -352,16 +367,14 @@ test('無效 JSON state → 不報錯，靜默降級', () => {
 console.log('\n=== extractToolInfo 各工具提取 ===');
 // ═══════════════════════════════════════════════════════
 
-test('Task 工具 → 跳過（由 delegation-tracker 處理）', () => {
+test('Task 工具 → 跳過 tool.used 但仍遞增 classifiedReadCount', () => {
   const sessionId = 'test-sc-c-task';
-  writeState(sessionId, makeClassifiedState(sessionId, { readCount: 0 }));
+  writeState(sessionId, makeClassifiedState(sessionId));
 
   try {
-    // Task 不觸發 tool.used，也不遞增計數
+    // Task 不觸發 tool.used（由 delegation-tracker 處理），但 CLASSIFIED 計數仍遞增
     runHook({ session_id: sessionId, tool_name: 'Task', tool_input: { description: 'do something' } });
-    // CLASSIFIED 計數仍應遞增（CLASSIFIED 邏輯不區分工具種類）
-    const updated = readState(sessionId);
-    assert.strictEqual(updated.meta.classifiedReadCount, 1, 'Task 工具也應遞增 classifiedReadCount');
+    assert.strictEqual(readClassifiedCount(sessionId), 1, 'Task 工具也應遞增 classifiedReadCount');
   } finally {
     cleanupSession(sessionId);
   }

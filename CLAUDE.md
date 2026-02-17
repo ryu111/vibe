@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.55 | 全方位開發工作流 | 34 | 12 | 19 | 44 |
+| **vibe** | 1.0.58 | 全方位開發工作流 | 34 | 12 | 19 | 44 |
 
 ### vibe plugin 功能模組
 

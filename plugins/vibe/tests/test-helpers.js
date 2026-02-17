@@ -26,6 +26,10 @@ function cleanTestStateFiles() {
     { prefix: 'timeline-unknown', suffix: '.jsonl' },
     { prefix: 'task-guard-state-', suffix: '.json' },
     { prefix: 'test-transcript-', suffix: '.jsonl' },
+    { prefix: 'classified-reads-test-', suffix: '.json' },
+    { prefix: 'classified-reads-e2e-', suffix: '.json' },
+    { prefix: 'flow-counter-test-', suffix: '.json' },
+    { prefix: 'flow-counter-e2e-', suffix: '.json' },
   ];
 
   let count = 0;

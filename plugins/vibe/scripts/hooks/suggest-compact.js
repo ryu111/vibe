@@ -109,20 +109,21 @@ process.stdin.on('end', () => {
       systemMessages.push(result.message);
     }
 
-    // 3. CLASSIFIED 階段 delegation 提醒（複用 cachedState）
+    // 3. CLASSIFIED 階段 delegation 提醒（獨立計數檔案，不寫 pipeline state）
     try {
       if (cachedState) {
         const { derivePhase, getReadyStages } = require(path.join(__dirname, '..', 'lib', 'flow', 'dag-state.js'));
         const phase = derivePhase(cachedState);
+        const countFile = path.join(CLAUDE_DIR, `classified-reads-${sessionId}.json`);
 
         if (phase === 'CLASSIFIED') {
-          // 追蹤連續唯讀呼叫次數
-          const count = (cachedState.meta?.classifiedReadCount || 0) + 1;
-          cachedState.meta = cachedState.meta || {};
-          cachedState.meta.classifiedReadCount = count;
-          fs.writeFileSync(stateFile, JSON.stringify(cachedState, null, 2));
+          // 追蹤連續唯讀呼叫次數（獨立檔案，避免 pipeline state 競態）
+          let count = 0;
+          try { count = JSON.parse(fs.readFileSync(countFile, 'utf8')).count || 0; } catch (_) {}
+          count++;
+          fs.writeFileSync(countFile, JSON.stringify({ count }));
 
-          // M-2 fix: 間隔提醒（閾值首次 + 之後每 5 次）
+          // 間隔提醒（閾值首次 + 之後每 5 次）
           const THRESHOLD = 3;
           if (count === THRESHOLD || (count > THRESHOLD && (count - THRESHOLD) % 5 === 0)) {
             const ready = getReadyStages(cachedState);
@@ -133,11 +134,8 @@ process.stdin.on('end', () => {
             systemMessages.push(reminder);
           }
         } else if (phase === 'DELEGATING') {
-          // 進入委派後重設計數器
-          if (cachedState.meta?.classifiedReadCount) {
-            cachedState.meta.classifiedReadCount = 0;
-            fs.writeFileSync(stateFile, JSON.stringify(cachedState, null, 2));
-          }
+          // 進入委派後刪除計數檔
+          try { fs.unlinkSync(countFile); } catch (_) {}
         }
       }
     } catch (_) {}

@@ -158,6 +158,16 @@ function classify(sessionId, prompt, options = {}) {
     ds.writeState(sessionId, state);
   }
 
+  // 已取消 → 只有顯式 [pipeline:xxx] 才能重新啟動
+  if (state && ds.isCancelled(state)) {
+    if (result.source !== 'explicit') {
+      return { output: null }; // 非顯式分類被抑制
+    }
+    // 顯式指定 → 重設取消狀態，允許重新分類
+    state = ds.reset(state);
+    ds.writeState(sessionId, state);
+  }
+
   // 已分類 + 同一 pipeline → 不重複
   const existingPipelineId = ds.getPipelineId(state);
   if (existingPipelineId === pipelineId && existingPipelineId) {
@@ -240,84 +250,15 @@ function classify(sessionId, prompt, options = {}) {
 /**
  * 工具防護（PreToolUse hook）
  *
+ * 統一入口：載入 state 後代理到 guard-rules.evaluate()。
+ * 消除 canProceed/evaluate 邏輯重複（v1.0.56/57 根因）。
+ *
  * @returns {{ decision: 'allow'|'block', message?: string, reason?: string }}
  */
 function canProceed(sessionId, toolName, toolInput) {
-  // 引入 guard-rules 的危險指令檢查
-  const { evaluateBashDanger, detectBashWriteTarget } = require('../sentinel/guard-rules.js');
-
-  // EnterPlanMode → 無條件 block
-  if (toolName === 'EnterPlanMode') {
-    return {
-      decision: 'block',
-      reason: 'plan-mode-disabled',
-      message: '⛔ 禁止使用 EnterPlanMode。請使用 /vibe:scope 委派給 planner agent。\n',
-    };
-  }
-
-  // Bash DANGER_PATTERNS → 無條件 block
-  if (toolName === 'Bash') {
-    const danger = evaluateBashDanger(toolInput?.command || '');
-    if (danger) return danger;
-  }
-
-  // 讀取 state
+  const { evaluate } = require('../sentinel/guard-rules.js');
   const state = loadState(sessionId);
-  if (!state) return { decision: 'allow' };
-  if (!ds.isInitialized(state)) return { decision: 'allow' };
-  if (!ds.isEnforced(state)) return { decision: 'allow' };
-  if (ds.isDelegating(state)) return { decision: 'allow' };
-  if (ds.isCancelled(state)) return { decision: 'allow' };
-
-  // 唯讀工具白名單
-  const READ_ONLY = new Set(['Read', 'Grep', 'Glob', 'WebSearch', 'WebFetch', 'TaskList', 'TaskGet']);
-  const phase = ds.derivePhase(state);
-
-  if (phase === ds.PHASES.CLASSIFIED || phase === ds.PHASES.RETRYING) {
-    if (toolName === 'Task' || toolName === 'Skill' || READ_ONLY.has(toolName)) {
-      return { decision: 'allow' };
-    }
-    // Cancel 逃生口：允許 Write/Edit 修改 pipeline/task-guard state 檔案
-    if (['Write', 'Edit'].includes(toolName)) {
-      const fp = toolInput?.file_path;
-      if (typeof fp === 'string' &&
-          /^(pipeline-state|task-guard-state)-[a-f0-9-]+\.json$/.test(path.basename(fp))) {
-        return { decision: 'allow' };
-      }
-    }
-    return {
-      decision: 'block',
-      reason: 'must-delegate',
-      message: `⛔ Pipeline 等待委派 — 禁止 ${toolName}。請使用 Skill 或 Task 工具委派 sub-agent。\n`,
-    };
-  }
-
-  // Bash 寫檔繞過
-  if (toolName === 'Bash') {
-    const writeResult = detectBashWriteTarget(toolInput?.command || '');
-    if (writeResult) return writeResult;
-    return { decision: 'allow' };
-  }
-
-  // Write/Edit/NotebookEdit
-  if (['Write', 'Edit', 'NotebookEdit'].includes(toolName)) {
-    return {
-      decision: 'block',
-      reason: 'pipeline-enforced',
-      message: `⛔ Pipeline 模式下禁止 ${toolName}。請委派 sub-agent。\n`,
-    };
-  }
-
-  // AskUserQuestion
-  if (toolName === 'AskUserQuestion') {
-    return {
-      decision: 'block',
-      reason: 'pipeline-auto-mode',
-      message: '⛔ Pipeline 自動模式：禁止 AskUserQuestion。請按 pipeline 指示執行。\n',
-    };
-  }
-
-  return { decision: 'allow' };
+  return evaluate(toolName, toolInput, state);
 }
 
 // ────────────────── 3. onDelegate ──────────────────
@@ -345,9 +286,12 @@ function onDelegate(sessionId, agentType, toolInput) {
     };
   }
 
-  // 標記 stage active
+  // 標記 stage active + 重設阻擋計數
   if (stage && state.dag && state.stages[stage]) {
     state = ds.markStageActive(state, stage, shortAgent);
+    if (state.meta?.pipelineCheckBlocks) {
+      state.meta.pipelineCheckBlocks = 0;
+    }
     ds.writeState(sessionId, state);
   }
 
@@ -637,6 +581,16 @@ function onSessionStop(sessionId) {
   const missing = [...failed, ...active, ...ready, ...pending];
   if (missing.length === 0) return null;
 
+  // 連續阻擋計數（使用者可見提示，不在 systemMessage 中提及 cancel）
+  const blockCount = (state.meta?.pipelineCheckBlocks || 0) + 1;
+  state.meta = state.meta || {};
+  state.meta.pipelineCheckBlocks = blockCount;
+  ds.writeState(sessionId, state);
+
+  const cancelHint = blockCount >= 3
+    ? `（連續 ${blockCount} 次，輸入 /vibe:cancel 可取消）`
+    : '';
+
   const pipeline = discoverPipeline();
   const hints = missing.slice(0, 3).map(s => {
     const info = resolveAgent(s, pipeline.stageMap);
@@ -648,7 +602,7 @@ function onSessionStop(sessionId) {
 
   return {
     continue: false,
-    stopReason: `Pipeline 未完成 — 缺 ${missing.length} 個階段`,
+    stopReason: `Pipeline 未完成 — 缺 ${missing.length} 個階段${cancelHint}`,
     systemMessage:
       `⛔ Pipeline 未完成！缺：${missing.join(', ')}\n${hints}\n` +
       `必須使用 Skill/Task 委派下一階段。禁止純文字回覆。`,
