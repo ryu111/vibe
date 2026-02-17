@@ -418,8 +418,8 @@ Pipeline Controller 是所有 hook 的唯一邏輯入口。5 個方法各對應�
 task-classifier hook (UserPromptSubmit)
   |-- ctrl.classify()
   |   |-- Layer 1: [pipeline:xxx] 顯式? -> 快速路徑（直接建 DAG）
-  |   |-- Layer 2: regex 分類 + 信心度
-  |   └-- 低信心度? -> systemMessage 指示呼叫 /vibe:pipeline
+  |   |-- Layer 2: prompt hook（haiku 訂閱認證）→ systemMessage 注入 [pipeline:ID]
+  |   └-- prompt hook 無回應? -> none pipeline（不 enforce）
   |
   v
 Main Agent 呼叫 /vibe:pipeline skill
@@ -793,16 +793,16 @@ pipeline-architect 可以產出超越模板的自訂 DAG，例如並行排程：
 
 ---
 
-## 附錄：三層分類器
+## 附錄：兩層分類器
 
 > 檔案路徑：`plugins/vibe/scripts/lib/flow/classifier.js`
 
-v1.0.60 重寫為 LLM-first 架構，移除所有 regex 分類：
+v1.0.63 改為 prompt hook 架構，使用訂閱認證（不需 API key）：
 
-| Layer | 機制 | 信心度 | 觸發條件 |
-|-------|------|:------:|---------|
-| 1 | `[pipeline:xxx]` 顯式語法 | 1.0 | prompt 包含語法標記 |
-| 2 | LLM Sonnet 語意分類 | 0.85 | Layer 1 未命中 + API key 可用 |
-| Fallback | none pipeline | 0 | API 不可用 |
+| Layer | 機制 | 觸發條件 |
+|-------|------|---------|
+| 1 | `[pipeline:xxx]` 顯式語法（command hook 處理） | prompt 包含語法標記 |
+| 2 | Prompt Hook（haiku，訂閱認證）→ systemMessage 注入 `[pipeline:ID]` | Layer 1 未命中 |
+| Fallback | none pipeline（不 enforce） | prompt hook 無回應 |
 
-**環境變數**：`VIBE_CLASSIFIER_MODEL`（LLM 模型）、`VIBE_CLASSIFIER_THRESHOLD`（設 ≥1.0 停用 LLM）。
+**架構**：prompt hook 由 ECC 平台以訂閱認證呼叫 haiku，回傳 `systemMessage` 引導 Main Agent → 呼叫 `/vibe:pipeline` → DAG 建立。

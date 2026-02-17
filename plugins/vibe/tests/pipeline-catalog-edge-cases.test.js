@@ -185,13 +185,13 @@ asyncTest('只有空白字元的 prompt → 預設 none', async () => {
   assert.strictEqual(result.pipeline, 'none');
 });
 
-asyncTest('只有 emoji 的 prompt（無 API key）→ none/fallback', async () => {
+asyncTest('只有 emoji 的 prompt（無 API key）→ none/prompt-hook', async () => {
   const origKey = process.env.ANTHROPIC_API_KEY;
   delete process.env.ANTHROPIC_API_KEY;
   try {
     const result = await classifyWithConfidence('🚀🎉✨');
     assert.strictEqual(result.pipeline, 'none');
-    assert.strictEqual(result.source, 'fallback');
+    assert.strictEqual(result.source, 'prompt-hook');
   } finally {
     if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
   }
@@ -233,7 +233,7 @@ asyncTest('同一 prompt 多次分類應回傳相同結果（顯式）', async (
   });
 });
 
-asyncTest('同一 prompt 多次分類應回傳相同結果（fallback）', async () => {
+asyncTest('同一 prompt 多次分類應回傳相同結果（prompt-hook）', async () => {
   const origKey = process.env.ANTHROPIC_API_KEY;
   delete process.env.ANTHROPIC_API_KEY;
   try {
@@ -244,7 +244,7 @@ asyncTest('同一 prompt 多次分類應回傳相同結果（fallback）', async
     }
     results.forEach(r => {
       assert.strictEqual(r.pipeline, 'none');
-      assert.strictEqual(r.source, 'fallback');
+      assert.strictEqual(r.source, 'prompt-hook');
     });
   } finally {
     if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
