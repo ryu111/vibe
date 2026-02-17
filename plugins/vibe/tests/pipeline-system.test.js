@@ -201,8 +201,8 @@ test('前進場景：PLAN → ARCH（有 skill 的階段）', () => {
       'systemMessage 應包含 /vibe:architect skill'
     );
     assert.ok(
-      output.systemMessage.includes('使用 Skill 工具呼叫'),
-      'systemMessage 應包含 Skill 工具呼叫指示'
+      output.systemMessage.includes('執行') || output.systemMessage.includes('委派'),
+      'systemMessage 應包含執行或委派指示'
     );
   } finally {
     cleanup(statePath);
@@ -260,8 +260,8 @@ test('前進場景：ARCH → DEV（Skill 委派）', () => {
       'systemMessage 應包含 /vibe:dev skill'
     );
     assert.ok(
-      output.systemMessage.includes('使用 Skill 工具呼叫'),
-      'systemMessage 應包含 Skill 工具呼叫指示'
+      output.systemMessage.includes('執行') || output.systemMessage.includes('委派'),
+      'systemMessage 應包含執行或委派指示'
     );
   } finally {
     cleanup(statePath);
@@ -333,8 +333,8 @@ test('回退場景：REVIEW FAIL:HIGH → DEV（namespaced 格式）', () => {
       'systemMessage 應包含 /vibe:dev skill（回退）'
     );
     assert.ok(
-      output.systemMessage.includes('使用 Skill 工具呼叫'),
-      'systemMessage 應包含 Skill 工具呼叫指示'
+      output.systemMessage.includes('執行') || output.systemMessage.includes('委派'),
+      'systemMessage 應包含執行或委派指示'
     );
     assert.ok(
       output.systemMessage.includes('🔄'),
@@ -465,19 +465,19 @@ test('缺漏 ARCH 和 DEV 階段（混合格式）', () => {
     );
 
     const output = JSON.parse(result);
-    // v1.0.43: pipeline-check 升級為硬阻擋（decision: "block"）
-    assert.strictEqual(output.decision, 'block', '應該有 decision: block');
+    // v1.0.53: pipeline-check 使用 command hook 正確格式（continue: false）
+    assert.strictEqual(output.continue, false, '應有 continue: false');
 
     // ARCH 有 skill，應該顯示 skill 名稱
     assert.ok(
-      output.reason.includes('/vibe:architect'),
-      'reason 應包含 /vibe:architect skill'
+      output.systemMessage.includes('/vibe:architect'),
+      'systemMessage 應包含 /vibe:architect skill'
     );
 
     // DEV 有 skill /vibe:dev，應該顯示 Skill 委派格式
     assert.ok(
-      output.reason.includes('/vibe:dev'),
-      'reason 應包含 /vibe:dev skill'
+      output.systemMessage.includes('/vibe:dev'),
+      'systemMessage 應包含 /vibe:dev skill'
     );
   } finally {
     cleanup(statePath);
@@ -726,11 +726,12 @@ test('ARCH→DESIGN 前進：後端框架跳過 DESIGN', () => {
     assert.ok(output.systemMessage, '應有 systemMessage');
     assert.ok(output.systemMessage.includes('→ DEV'), '後端框架應跳過 DESIGN 進入 DEV');
 
-    // 檢查 state file
+    // v3：檢查 DESIGN stage status === 'skipped'
     const updatedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    const skipped = updatedState.progress?.skippedStages || [];
-    assert.ok(skipped.includes('DESIGN'),
-      'skippedStages 應包含 DESIGN');
+    assert.ok(
+      updatedState.stages?.DESIGN?.status === 'skipped',
+      'DESIGN stage 應被 skipped'
+    );
   } finally {
     cleanup(statePath);
     cleanup(transcriptPath);
@@ -791,8 +792,8 @@ test('ARCH→DESIGN 前進：needsDesign=true 強制不跳過', () => {
 
     // 檢查 state file
     const updatedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    const skipped = updatedState.progress?.skippedStages || [];
-    assert.ok(!skipped.includes('DESIGN'),
+    // v3: 檢查 stages 物件中 DESIGN 的狀態
+    assert.ok(updatedState.stages?.DESIGN?.status !== 'skipped',
       'needsDesign=true 不應跳過 DESIGN');
   } finally {
     cleanup(statePath);
@@ -800,39 +801,17 @@ test('ARCH→DESIGN 前進：needsDesign=true 強制不跳過', () => {
   }
 });
 
-test('pipeline-check 排除 skippedStages 中的 DESIGN', () => {
+test('pipeline-check 排除 skipped stages', () => {
   const sessionId = `pipeline-test-skip-check-${Date.now()}`;
-  const statePath = createTempState(sessionId, {
-    phase: 'COMPLETE',
-    context: {
-      pipelineId: null,
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      environment: {},
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: 'DOCS',
-      stageIndex: 0,
-      completedAgents: ['vibe:planner', 'vibe:architect', 'vibe:developer', 'vibe:code-reviewer', 'vibe:tester', 'vibe:qa', 'vibe:doc-updater'],
-      skippedStages: ['DESIGN', 'E2E'], // 跳過了 DESIGN 和 E2E
-      stageResults: {
-        PLAN: { verdict: 'PASS' },
-        ARCH: { verdict: 'PASS' },
-        DEV: { verdict: 'PASS' },
-        REVIEW: { verdict: 'PASS' },
-        TEST: { verdict: 'PASS' },
-        QA: { verdict: 'PASS' },
-        DOCS: { verdict: 'PASS' },
-      },
-      retries: {},
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const { writeV3State } = require('./test-helpers');
+  // v3: DESIGN 和 E2E 跳過，其餘全部完成
+  const statePath = writeV3State(sessionId, {
+    stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    completed: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'DOCS'],
+    skipped: ['DESIGN', 'E2E'],
+    pipelineId: 'full',
+    taskType: 'feature',
+    enforced: true,
   });
 
   try {
@@ -850,8 +829,8 @@ test('pipeline-check 排除 skippedStages 中的 DESIGN', () => {
       }
     );
 
-    // 跳過的階段不應被視為遺漏（應該清理 state 並 exit 0）
-    assert.strictEqual(result.trim(), '', 'skippedStages 中的階段不應被視為遺漏');
+    // 跳過的階段不應被視為遺漏（COMPLETE 狀態 → 正常退出）
+    assert.strictEqual(result.trim(), '', 'skipped stages 不應被視為遺漏');
   } finally {
     cleanup(statePath);
   }

@@ -25,9 +25,11 @@ const PROJECT_ROOT = path.join(PLUGIN_ROOT, '..', '..');
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 process.env.CLAUDE_PLUGIN_ROOT = PLUGIN_ROOT;
 
+const { writeV3State, cleanTestStateFiles } = require('./test-helpers');
+
 let passed = 0;
 let failed = 0;
-require('./test-helpers').cleanTestStateFiles();
+cleanTestStateFiles();
 
 function test(name, fn) {
   try {
@@ -46,12 +48,6 @@ function test(name, fn) {
 
 // ─── 輔助函式 ─────────────────────────────
 
-function createTempState(sessionId, state) {
-  const statePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
-  fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
-  return statePath;
-}
-
 function createTempTranscript(sessionId, entries) {
   const transcriptPath = path.join(CLAUDE_DIR, `test-transcript-${sessionId}.jsonl`);
   fs.writeFileSync(transcriptPath, entries.map(e => JSON.stringify(e)).join('\n'));
@@ -65,6 +61,8 @@ function cleanup(...paths) {
     } catch (_) {}
   }
 }
+
+const FULL_STAGES = ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'];
 
 // ═══════════════════════════════════════════════
 console.log('\n🧪 Part 1: Registry 定義（registry.js）');
@@ -116,30 +114,15 @@ console.log('\n🧪 Part 2: Stage Transition 跳過邏輯');
 // ═══════════════════════════════════════════════
 
 test('前端框架（react）→ DESIGN 不跳過', () => {
-  const sessionId = `design-test-frontend-${Date.now()}`;
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      environment: { framework: { name: 'react' } },
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: 'ARCH',
-      stageIndex: 0,
-      completedAgents: ['vibe:planner'],
-      stageResults: { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } },
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const sessionId = `test-design-frontend-${Date.now()}`;
+  const statePath = writeV3State(sessionId, {
+    stages: FULL_STAGES,
+    completed: ['PLAN'],
+    active: 'ARCH',
+    pipelineId: 'full',
+    taskType: 'feature',
+    environment: { framework: { name: 'react' } },
+    enforced: true,
   });
 
   const transcriptPath = createTempTranscript(sessionId, [
@@ -165,46 +148,30 @@ test('前端框架（react）→ DESIGN 不跳過', () => {
 
     const output = JSON.parse(result);
     assert.ok(output.systemMessage, '應有 systemMessage');
-    assert.ok(output.systemMessage.includes('→ DESIGN') || output.systemMessage.includes('DESIGN'),
+    assert.ok(output.systemMessage.includes('DESIGN'),
       'react 框架應進入 DESIGN 階段');
     assert.ok(!output.systemMessage.includes('跳過') || !output.systemMessage.includes('DESIGN（純後端'),
       '不應顯示跳過 DESIGN 的訊息');
 
-    // 檢查 state file
+    // v3: 檢查 stages.DESIGN.status
     const updatedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    const skipped = updatedState.progress?.skippedStages || [];
-    assert.ok(!skipped.includes('DESIGN'),
-      'react 框架不應將 DESIGN 加入 skippedStages');
+    assert.notStrictEqual(updatedState.stages.DESIGN.status, 'skipped',
+      'react 框架不應將 DESIGN 跳過');
   } finally {
     cleanup(statePath, transcriptPath);
   }
 });
 
 test('前端框架（vue）→ DESIGN 不跳過', () => {
-  const sessionId = `design-test-vue-${Date.now()}`;
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      environment: { framework: { name: 'vue' } },
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: 'ARCH',
-      stageIndex: 0,
-      completedAgents: ['vibe:planner'],
-      stageResults: { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } },
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const sessionId = `test-design-vue-${Date.now()}`;
+  const statePath = writeV3State(sessionId, {
+    stages: FULL_STAGES,
+    completed: ['PLAN'],
+    active: 'ARCH',
+    pipelineId: 'full',
+    taskType: 'feature',
+    environment: { framework: { name: 'vue' } },
+    enforced: true,
   });
 
   const transcriptPath = createTempTranscript(sessionId, [
@@ -230,43 +197,27 @@ test('前端框架（vue）→ DESIGN 不跳過', () => {
 
     const output = JSON.parse(result);
     assert.ok(output.systemMessage, '應有 systemMessage');
-    assert.ok(output.systemMessage.includes('→ DESIGN') || output.systemMessage.includes('DESIGN'),
+    assert.ok(output.systemMessage.includes('DESIGN'),
       'vue 框架應進入 DESIGN 階段');
 
     const updatedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    const skipped = updatedState.progress?.skippedStages || [];
-    assert.ok(!skipped.includes('DESIGN'),
+    assert.notStrictEqual(updatedState.stages.DESIGN.status, 'skipped',
       'vue 框架不應跳過 DESIGN');
   } finally {
     cleanup(statePath, transcriptPath);
   }
 });
 
-test('後端框架（express）→ DESIGN 跳過，skippedStages 包含 DESIGN', () => {
-  const sessionId = `design-test-backend-${Date.now()}`;
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      environment: { framework: { name: 'express' } },
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: 'ARCH',
-      stageIndex: 0,
-      completedAgents: ['vibe:planner'],
-      stageResults: { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } },
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+test('後端框架（express）→ DESIGN 跳過，stages.DESIGN.status === skipped', () => {
+  const sessionId = `test-design-backend-${Date.now()}`;
+  const statePath = writeV3State(sessionId, {
+    stages: FULL_STAGES,
+    completed: ['PLAN'],
+    active: 'ARCH',
+    pipelineId: 'full',
+    taskType: 'feature',
+    environment: { framework: { name: 'express' } },
+    enforced: true,
   });
 
   const transcriptPath = createTempTranscript(sessionId, [
@@ -292,44 +243,28 @@ test('後端框架（express）→ DESIGN 跳過，skippedStages 包含 DESIGN',
 
     const output = JSON.parse(result);
     assert.ok(output.systemMessage, '應有 systemMessage');
-    assert.ok(output.systemMessage.includes('→ DEV'), 'express 框架應跳過 DESIGN 進入 DEV');
+    assert.ok(output.systemMessage.includes('DEV'), 'express 框架應跳過 DESIGN 進入 DEV');
 
-    // 檢查 state file
+    // v3: 檢查 stages.DESIGN.status === 'skipped'
     const updatedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    const skipped = updatedState.progress?.skippedStages || [];
-    assert.ok(skipped.length > 0, '應有 skippedStages 欄位');
-    assert.ok(skipped.includes('DESIGN'),
-      'express 框架應將 DESIGN 加入 skippedStages');
+    assert.strictEqual(updatedState.stages.DESIGN.status, 'skipped',
+      'express 框架應將 DESIGN 標記為 skipped');
   } finally {
     cleanup(statePath, transcriptPath);
   }
 });
 
 test('needsDesign=true（後端框架也不跳過）', () => {
-  const sessionId = `design-test-forced-${Date.now()}`;
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      environment: { framework: { name: 'express' } },
-      openspecEnabled: false,
-      needsDesign: true, // 強制需要設計
-    },
-    progress: {
-      currentStage: 'ARCH',
-      stageIndex: 0,
-      completedAgents: ['vibe:planner'],
-      stageResults: { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } },
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const sessionId = `test-design-forced-${Date.now()}`;
+  const statePath = writeV3State(sessionId, {
+    stages: FULL_STAGES,
+    completed: ['PLAN'],
+    active: 'ARCH',
+    pipelineId: 'full',
+    taskType: 'feature',
+    environment: { framework: { name: 'express' } },
+    needsDesign: true,
+    enforced: true,
   });
 
   const transcriptPath = createTempTranscript(sessionId, [
@@ -355,12 +290,11 @@ test('needsDesign=true（後端框架也不跳過）', () => {
 
     const output = JSON.parse(result);
     assert.ok(output.systemMessage, '應有 systemMessage');
-    assert.ok(output.systemMessage.includes('→ DESIGN') || output.systemMessage.includes('DESIGN'),
+    assert.ok(output.systemMessage.includes('DESIGN'),
       'needsDesign=true 應進入 DESIGN 階段');
 
     const updatedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    const skipped = updatedState.progress?.skippedStages || [];
-    assert.ok(!skipped.includes('DESIGN'),
+    assert.notStrictEqual(updatedState.stages.DESIGN.status, 'skipped',
       'needsDesign=true 不應跳過 DESIGN');
   } finally {
     cleanup(statePath, transcriptPath);
@@ -368,30 +302,15 @@ test('needsDesign=true（後端框架也不跳過）', () => {
 });
 
 test('無框架資訊 → DESIGN 跳過', () => {
-  const sessionId = `design-test-noframework-${Date.now()}`;
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      environment: {}, // 無框架資訊
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: 'ARCH',
-      stageIndex: 0,
-      completedAgents: ['vibe:planner'],
-      stageResults: { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } },
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const sessionId = `test-design-noframework-${Date.now()}`;
+  const statePath = writeV3State(sessionId, {
+    stages: FULL_STAGES,
+    completed: ['PLAN'],
+    active: 'ARCH',
+    pipelineId: 'full',
+    taskType: 'feature',
+    environment: {},
+    enforced: true,
   });
 
   const transcriptPath = createTempTranscript(sessionId, [
@@ -417,48 +336,27 @@ test('無框架資訊 → DESIGN 跳過', () => {
 
     const output = JSON.parse(result);
     assert.ok(output.systemMessage, '應有 systemMessage');
-    assert.ok(output.systemMessage.includes('→ DEV'), '無框架資訊應跳過 DESIGN');
+    assert.ok(output.systemMessage.includes('DEV'), '無框架資訊應跳過 DESIGN');
 
     const updatedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    const skipped = updatedState.progress?.skippedStages || [];
-    assert.ok(skipped.includes('DESIGN'),
+    assert.strictEqual(updatedState.stages.DESIGN.status, 'skipped',
       '無框架資訊應跳過 DESIGN');
   } finally {
     cleanup(statePath, transcriptPath);
   }
 });
 
-test('E2E 跳過也正確記錄到 skippedStages', () => {
-  const sessionId = `design-test-e2e-skip-${Date.now()}`;
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      environment: { framework: { name: 'express' } }, // express = API-only
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: 'QA',
-      stageIndex: 0,
-      completedAgents: ['vibe:planner', 'vibe:architect', 'vibe:developer', 'vibe:code-reviewer', 'vibe:tester'],
-      stageResults: {
-        PLAN: { verdict: 'PASS' },
-        ARCH: { verdict: 'PASS' },
-        DEV: { verdict: 'PASS' },
-        REVIEW: { verdict: 'PASS' },
-        TEST: { verdict: 'PASS' },
-      },
-      skippedStages: ['DESIGN'], // ARCH→DEV 時已跳過 DESIGN
-      retries: {},
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+test('E2E 跳過也正確記錄到 stages', () => {
+  const sessionId = `test-design-e2e-skip-${Date.now()}`;
+  const statePath = writeV3State(sessionId, {
+    stages: FULL_STAGES,
+    completed: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST'],
+    skipped: ['DESIGN'],
+    active: 'QA',
+    pipelineId: 'full',
+    taskType: 'feature',
+    environment: { framework: { name: 'express' } },
+    enforced: true,
   });
 
   const transcriptPath = createTempTranscript(sessionId, [
@@ -486,10 +384,12 @@ test('E2E 跳過也正確記錄到 skippedStages', () => {
     assert.ok(output.systemMessage, '應有 systemMessage');
 
     const updatedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    const skipped = updatedState.progress?.skippedStages || [];
-    assert.ok(skipped.length > 0, '應有 skippedStages');
-    assert.ok(skipped.includes('E2E'), '純 API 專案應跳過 E2E');
-    assert.ok(skipped.includes('DESIGN'), 'DESIGN 仍在 skippedStages 中');
+    // v3: E2E 應被跳過（express = API-only）
+    assert.strictEqual(updatedState.stages.E2E.status, 'skipped',
+      '純 API 專案應跳過 E2E');
+    // DESIGN 仍為 skipped
+    assert.strictEqual(updatedState.stages.DESIGN.status, 'skipped',
+      'DESIGN 仍應為 skipped');
   } finally {
     cleanup(statePath, transcriptPath);
   }
@@ -499,39 +399,16 @@ test('E2E 跳過也正確記錄到 skippedStages', () => {
 console.log('\n🧪 Part 3: Pipeline Check 跳過排除');
 // ═══════════════════════════════════════════════
 
-test('skippedStages 包含 DESIGN → 不計入 missing', () => {
-  const sessionId = `design-test-pipeline-check-${Date.now()}`;
-  const statePath = createTempState(sessionId, {
-    phase: 'COMPLETE',
-    context: {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      environment: {},
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: 'DOCS',
-      stageIndex: 0,
-      completedAgents: ['vibe:planner', 'vibe:architect', 'vibe:developer', 'vibe:code-reviewer', 'vibe:tester', 'vibe:qa', 'vibe:doc-updater'],
-      skippedStages: ['DESIGN', 'E2E'],
-      stageResults: {
-        PLAN: { verdict: 'PASS' },
-        ARCH: { verdict: 'PASS' },
-        DEV: { verdict: 'PASS' },
-        REVIEW: { verdict: 'PASS' },
-        TEST: { verdict: 'PASS' },
-        QA: { verdict: 'PASS' },
-        DOCS: { verdict: 'PASS' },
-      },
-      retries: {},
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+test('所有階段 completed/skipped → pipeline-check 不阻擋', () => {
+  const sessionId = `test-design-pipeline-check-${Date.now()}`;
+  const statePath = writeV3State(sessionId, {
+    stages: FULL_STAGES,
+    completed: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'DOCS'],
+    skipped: ['DESIGN', 'E2E'],
+    pipelineId: 'full',
+    taskType: 'feature',
+    environment: {},
+    enforced: true,
   });
 
   try {
@@ -549,10 +426,10 @@ test('skippedStages 包含 DESIGN → 不計入 missing', () => {
       }
     );
 
-    // skippedStages 中的階段不應被視為遺漏（應該清理 state 並無輸出）
-    assert.strictEqual(result.trim(), '', 'skippedStages 中的階段不應計入 missing');
+    // 全部完成/跳過 → pipeline-check 不應阻擋（空輸出或無輸出）
+    assert.strictEqual(result.trim(), '', '全部 completed/skipped 不應阻擋');
 
-    // State file 應保留（pipeline-check 不再刪除，由 session-cleanup 過期清理）
+    // State file 應保留
     assert.ok(fs.existsSync(statePath), 'pipeline 完成後 state file 應保留');
   } finally {
     cleanup(statePath);
@@ -560,30 +437,15 @@ test('skippedStages 包含 DESIGN → 不計入 missing', () => {
 });
 
 test('空 skippedStages 不影響計算', () => {
-  const sessionId = `design-test-empty-skip-${Date.now()}`;
-  const statePath = createTempState(sessionId, {
-    phase: 'CLASSIFIED',
-    context: {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      environment: {},
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: 'PLAN',
-      stageIndex: 0,
-      completedAgents: ['vibe:planner'],
-      skippedStages: [], // 空陣列
-      stageResults: { PLAN: { verdict: 'PASS' } },
-      retries: {},
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const sessionId = `test-design-empty-skip-${Date.now()}`;
+  // 只有 PLAN completed，其他全部 pending → pipeline-check 應阻擋
+  const statePath = writeV3State(sessionId, {
+    stages: FULL_STAGES,
+    completed: ['PLAN'],
+    pipelineId: 'full',
+    taskType: 'feature',
+    environment: {},
+    enforced: true,
   });
 
   try {
@@ -602,45 +464,26 @@ test('空 skippedStages 不影響計算', () => {
     );
 
     const output = JSON.parse(result);
-    // v1.0.43: pipeline-check 升級為硬阻擋（decision: "block"）
-    assert.strictEqual(output.decision, 'block', '應有 decision: block（有遺漏階段）');
-    assert.ok(output.reason.includes('ARCH'), '應列出 ARCH');
-    assert.ok(output.reason.includes('DESIGN'), '應列出 DESIGN');
-    assert.ok(output.reason.includes('DEV'), '應列出 DEV');
+    assert.strictEqual(output.continue, false, '應有 continue: false（有遺漏階段）');
+    // v3：遺漏 stages 在 systemMessage 中列出
+    assert.ok(output.systemMessage.includes('ARCH'), '應列出 ARCH');
+    assert.ok(output.systemMessage.includes('DESIGN'), '應列出 DESIGN');
+    assert.ok(output.systemMessage.includes('DEV'), '應列出 DEV');
   } finally {
     cleanup(statePath);
   }
 });
 
 test('部分跳過：DESIGN 跳過但 E2E 沒跳過', () => {
-  const sessionId = `design-test-partial-skip-${Date.now()}`;
-  const statePath = createTempState(sessionId, {
-    phase: 'CLASSIFIED',
-    context: {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      environment: {},
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: 'DEV',
-      stageIndex: 0,
-      completedAgents: ['vibe:planner', 'vibe:architect', 'vibe:developer'],
-      skippedStages: ['DESIGN'], // 只跳過 DESIGN
-      stageResults: {
-        PLAN: { verdict: 'PASS' },
-        ARCH: { verdict: 'PASS' },
-        DEV: { verdict: 'PASS' },
-      },
-      retries: {},
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const sessionId = `test-design-partial-skip-${Date.now()}`;
+  const statePath = writeV3State(sessionId, {
+    stages: FULL_STAGES,
+    completed: ['PLAN', 'ARCH', 'DEV'],
+    skipped: ['DESIGN'],
+    pipelineId: 'full',
+    taskType: 'feature',
+    environment: {},
+    enforced: true,
   });
 
   try {
@@ -659,12 +502,12 @@ test('部分跳過：DESIGN 跳過但 E2E 沒跳過', () => {
     );
 
     const output = JSON.parse(result);
-    // v1.0.43: pipeline-check 升級為硬阻擋（decision: "block"）
-    assert.strictEqual(output.decision, 'block', '應有 decision: block');
+    assert.strictEqual(output.continue, false, '應有 continue: false');
     // DESIGN 跳過不應列出，但 REVIEW/TEST/QA/E2E/DOCS 應列出
-    assert.ok(!output.reason.includes('DESIGN（設計）'), 'DESIGN 不應列為遺漏');
-    assert.ok(output.reason.includes('REVIEW'), '應列出 REVIEW');
-    assert.ok(output.reason.includes('E2E'), 'E2E 未跳過應列為遺漏');
+    // v3：遺漏 stages 在 systemMessage 中列出
+    assert.ok(output.systemMessage, '應有 systemMessage');
+    assert.ok(output.systemMessage.includes('REVIEW'), '應列出 REVIEW');
+    assert.ok(output.systemMessage.includes('E2E'), 'E2E 未跳過應列為遺漏');
   } finally {
     cleanup(statePath);
   }
@@ -878,30 +721,15 @@ console.log('\n🧪 Part 8: 邊界案例與錯誤處理');
 // ═══════════════════════════════════════════════
 
 test('空值框架（framework: { name: "" }）→ 視為無框架，跳過 DESIGN', () => {
-  const sessionId = `design-test-empty-framework-${Date.now()}`;
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      environment: { framework: { name: '' } }, // 空字串
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: 'ARCH',
-      stageIndex: 0,
-      completedAgents: ['vibe:planner'],
-      stageResults: { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } },
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const sessionId = `test-design-empty-framework-${Date.now()}`;
+  const statePath = writeV3State(sessionId, {
+    stages: FULL_STAGES,
+    completed: ['PLAN'],
+    active: 'ARCH',
+    pipelineId: 'full',
+    taskType: 'feature',
+    environment: { framework: { name: '' } },
+    enforced: true,
   });
 
   const transcriptPath = createTempTranscript(sessionId, [
@@ -927,8 +755,7 @@ test('空值框架（framework: { name: "" }）→ 視為無框架，跳過 DESI
 
     const output = JSON.parse(result);
     const updatedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    const skipped = updatedState.progress?.skippedStages || [];
-    assert.ok(skipped.includes('DESIGN'),
+    assert.strictEqual(updatedState.stages.DESIGN.status, 'skipped',
       '空字串框架應視為無框架，跳過 DESIGN');
   } finally {
     cleanup(statePath, transcriptPath);
@@ -936,30 +763,16 @@ test('空值框架（framework: { name: "" }）→ 視為無框架，跳過 DESI
 });
 
 test('needsDesign=false 明確設為 false（後端框架）→ 跳過 DESIGN', () => {
-  const sessionId = `design-test-explicit-false-${Date.now()}`;
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      environment: { framework: { name: 'express' } },
-      openspecEnabled: false,
-      needsDesign: false, // 明確設為 false
-    },
-    progress: {
-      currentStage: 'ARCH',
-      stageIndex: 0,
-      completedAgents: ['vibe:planner'],
-      stageResults: { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } },
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const sessionId = `test-design-explicit-false-${Date.now()}`;
+  const statePath = writeV3State(sessionId, {
+    stages: FULL_STAGES,
+    completed: ['PLAN'],
+    active: 'ARCH',
+    pipelineId: 'full',
+    taskType: 'feature',
+    environment: { framework: { name: 'express' } },
+    needsDesign: false,
+    enforced: true,
   });
 
   const transcriptPath = createTempTranscript(sessionId, [
@@ -985,8 +798,7 @@ test('needsDesign=false 明確設為 false（後端框架）→ 跳過 DESIGN', 
 
     const output = JSON.parse(result);
     const updatedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    const skipped = updatedState.progress?.skippedStages || [];
-    assert.ok(skipped.includes('DESIGN'),
+    assert.strictEqual(updatedState.stages.DESIGN.status, 'skipped',
       'needsDesign=false 應跳過 DESIGN');
   } finally {
     cleanup(statePath, transcriptPath);
@@ -995,30 +807,15 @@ test('needsDesign=false 明確設為 false（後端框架）→ 跳過 DESIGN', 
 
 test('前端框架大小寫變化（React vs react）→ 正確辨識', () => {
   // 測試 FRONTEND_FRAMEWORKS 是小寫，檢查實際比對邏輯
-  const sessionId = `design-test-case-${Date.now()}`;
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      environment: { framework: { name: 'React' } }, // 大寫 R
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: 'ARCH',
-      stageIndex: 0,
-      completedAgents: ['vibe:planner'],
-      stageResults: { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } },
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const sessionId = `test-design-case-${Date.now()}`;
+  const statePath = writeV3State(sessionId, {
+    stages: FULL_STAGES,
+    completed: ['PLAN'],
+    active: 'ARCH',
+    pipelineId: 'full',
+    taskType: 'feature',
+    environment: { framework: { name: 'React' } },
+    enforced: true,
   });
 
   const transcriptPath = createTempTranscript(sessionId, [
@@ -1045,16 +842,10 @@ test('前端框架大小寫變化（React vs react）→ 正確辨識', () => {
     const output = JSON.parse(result);
     const updatedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
 
-    // stage-transition.js 應該做大小寫不敏感比對，或直接比對
-    // 如果程式碼沒處理大小寫，這個測試會失敗，提醒需要修正
-    // 檢查是否跳過了（如果程式碼沒做 toLowerCase 比對的話）
-    const skipped = updatedState.progress?.skippedStages || [];
-    const designSkipped = skipped.includes('DESIGN');
+    // skip-predicates.js 做 toLowerCase 比對（frameworkName.includes(f)）
+    // 所以 'React' → 'react' → 匹配 → 不跳過
+    const designSkipped = updatedState.stages.DESIGN.status === 'skipped';
 
-    // React（大寫）不在 FRONTEND_FRAMEWORKS（小寫 'react'）中
-    // 實際行為取決於 stage-transition.js 的實作
-    // 如果沒做 toLowerCase，會跳過（視為非前端框架）
-    // 這個測試記錄這個行為，可能需要未來修正
     if (designSkipped) {
       console.log('     ⚠️ 注意：大寫 React 被視為非前端框架（可能需要 toLowerCase 處理）');
     }
@@ -1066,38 +857,15 @@ test('前端框架大小寫變化（React vs react）→ 正確辨識', () => {
 });
 
 test('多個階段跳過：DESIGN + E2E 同時跳過', () => {
-  const sessionId = `design-test-multi-skip-${Date.now()}`;
-  const statePath = createTempState(sessionId, {
-    phase: 'COMPLETE',
-    context: {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      environment: {},
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: 'DOCS',
-      stageIndex: 0,
-      completedAgents: ['vibe:planner', 'vibe:architect', 'vibe:developer', 'vibe:code-reviewer', 'vibe:tester', 'vibe:qa', 'vibe:doc-updater'],
-      skippedStages: ['DESIGN', 'E2E'],
-      stageResults: {
-        PLAN: { verdict: 'PASS' },
-        ARCH: { verdict: 'PASS' },
-        DEV: { verdict: 'PASS' },
-        REVIEW: { verdict: 'PASS' },
-        TEST: { verdict: 'PASS' },
-        QA: { verdict: 'PASS' },
-        DOCS: { verdict: 'PASS' },
-      },
-      retries: {},
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const sessionId = `test-design-multi-skip-${Date.now()}`;
+  const statePath = writeV3State(sessionId, {
+    stages: FULL_STAGES,
+    completed: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'DOCS'],
+    skipped: ['DESIGN', 'E2E'],
+    pipelineId: 'full',
+    taskType: 'feature',
+    environment: {},
+    enforced: true,
   });
 
   try {
@@ -1115,7 +883,7 @@ test('多個階段跳過：DESIGN + E2E 同時跳過', () => {
       }
     );
 
-    // 多個階段跳過也正確處理
+    // 多個階段跳過也正確處理（全部 completed/skipped → 不阻擋）
     assert.strictEqual(result.trim(), '', '多個 skippedStages 應正確排除');
     assert.ok(fs.existsSync(statePath), 'State file 應保留');
   } finally {

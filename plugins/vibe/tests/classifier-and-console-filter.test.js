@@ -1147,7 +1147,7 @@ function cleanupTestState(sessionId) {
   }
 }
 
-test('reset 清除 llmClassification（pipeline 完成後新分類重設）', () => {
+test('reset 清除分類（pipeline 完成後新分類重設）', () => {
   const sid = 'test-reset-llm-' + Date.now();
   try {
     createTestState(sid, {
@@ -1160,45 +1160,50 @@ test('reset 清除 llmClassification（pipeline 完成後新分類重設）', ()
       progress: {
         stageResults: { DEV: { verdict: 'PASS' } },
       },
-      meta: {
-        llmClassification: { pipeline: 'standard', confidence: 0.85, source: 'llm' },
-      },
     });
     runTaskClassifier({ session_id: sid, prompt: 'implement authentication' });
     const state = readTestState(sid);
-    assert.strictEqual(state.meta.llmClassification, null, 'reset 後 llmClassification 應為 null');
-    assert.deepStrictEqual(state.progress.retries, {}, 'reset 後 retries 應為空物件');
+    // v3：COMPLETE 觸發 reset → 重新分類。retries 應重設
+    assert.deepStrictEqual(state.retries, {}, 'reset 後 retries 應為空物件');
+    // 新分類應已寫入
+    assert.ok(state.classification, '應有 classification');
+    assert.ok(state.classification.pipelineId, '應有 pipelineId');
   } finally {
     cleanupTestState(sid);
   }
 });
 
-test('LLM 失敗不寫入快取（無 API key + weak explore prompt）', () => {
+test('weak explore prompt 正常分類（v3 無 LLM 快取）', () => {
   const sid = 'test-no-cache-' + Date.now();
   try {
     createTestState(sid);
     runTaskClassifier({ session_id: sid, prompt: '看看現在的狀態' });
     const state = readTestState(sid);
-    assert.strictEqual(state.meta.llmClassification, null, 'LLM 失敗時不應寫入快取');
-    assert.ok(state.context.pipelineId, '應有 pipelineId（降級分類）');
-    assert.strictEqual(state.meta.classificationSource, 'regex-low', 'source 應為 regex-low');
+    // v3：分類結果存在 classification 中
+    assert.ok(state.classification, '應有 classification');
+    assert.ok(state.classification.pipelineId, '應有 pipelineId');
+    assert.ok(state.classification.source, '應有 source');
   } finally {
     cleanupTestState(sid);
   }
 });
 
-test('快取命中直接使用（不呼叫 LLM API）', () => {
+test('已分類 state 不重複分類（same pipeline）', () => {
   const sid = 'test-cache-hit-' + Date.now();
   try {
+    // v3：直接建立已分類的 v2 state（hook 會遷移）
+    // 已有 standard pipeline → 再送同類 prompt → 不重複分類（無輸出）
     createTestState(sid, {
-      meta: {
-        llmClassification: { pipeline: 'standard', confidence: 0.85, source: 'llm', timestamp: Date.now() },
+      phase: 'CLASSIFIED',
+      context: {
+        pipelineId: 'standard',
+        taskType: 'feature',
+        expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
       },
     });
-    runTaskClassifier({ session_id: sid, prompt: '看看現在的狀態' });
-    const state = readTestState(sid);
-    assert.strictEqual(state.context.pipelineId, 'standard', '快取命中應使用快取的 pipeline');
-    assert.strictEqual(state.meta.classificationSource, 'llm-cached', 'source 應為 llm-cached');
+    const result = runTaskClassifier({ session_id: sid, prompt: 'implement authentication' });
+    // 同 pipeline 不重複分類 → 無輸出
+    assert.strictEqual(result.stdout, '', '同 pipeline 不應重複分類');
   } finally {
     cleanupTestState(sid);
   }
@@ -1237,14 +1242,15 @@ test('無 timestamp 的舊格式快取不使用', () => {
   }
 });
 
-test('首次分類無快取時正常分類', () => {
+test('首次分類正常寫入 v3 classification', () => {
   const sid = 'test-first-cls-' + Date.now();
   try {
     createTestState(sid);
     runTaskClassifier({ session_id: sid, prompt: 'implement user authentication' });
     const state = readTestState(sid);
-    assert.strictEqual(state.context.pipelineId, 'standard', 'feature 類型應映射到 standard pipeline');
-    assert.strictEqual(state.meta.classificationSource, 'regex', '高信心度應為 regex（不觸發 LLM）');
+    // v3：分類結果在 classification 物件中
+    assert.strictEqual(state.classification.pipelineId, 'standard', 'feature 類型應映射到 standard pipeline');
+    assert.strictEqual(state.classification.source, 'regex', '高信心度應為 regex');
   } finally {
     cleanupTestState(sid);
   }

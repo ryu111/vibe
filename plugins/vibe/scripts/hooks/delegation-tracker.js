@@ -2,78 +2,40 @@
 /**
  * delegation-tracker.js — PreToolUse hook (matcher: Task)
  *
- * v2.0.0 FSM 重構：
- * 使用 transition(DELEGATE) 取代 state.delegationActive = true。
- * phase 從 CLASSIFIED/RETRYING/IDLE → DELEGATING。
+ * v3.0.0 重構：精簡為 controller.onDelegate() 代理。
  */
 'use strict';
 const path = require('path');
 
-const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
+const { safeRun } = require(path.join(__dirname, '..', 'lib', 'hook-utils.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
-const { AGENT_TO_STAGE } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
-const {
-  transition, readState, writeState, getPhase, getPendingRetry, PHASES,
-} = require(path.join(__dirname, '..', 'lib', 'flow', 'state-machine.js'));
+const ctrl = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-controller.js'));
 
-let input = '';
-process.stdin.on('data', d => input += d);
-process.stdin.on('end', () => {
-  try {
-    const data = JSON.parse(input);
-    const sessionId = data.session_id || 'unknown';
+safeRun('delegation-tracker', (data) => {
+  const sessionId = data.session_id || 'unknown';
+  const toolInput = data.tool_input || {};
+  const agentType = toolInput.subagent_type || '';
 
-    const state = readState(sessionId);
-    if (!state) process.exit(0);
+  const result = ctrl.onDelegate(sessionId, agentType, toolInput);
 
-    // Extract agent info from Task tool input
-    const toolInput = data.tool_input || {};
-    const agentType = toolInput.subagent_type || '';
-    const shortAgent = agentType.includes(':') ? agentType.split(':')[1] : agentType;
-    const stage = AGENT_TO_STAGE[shortAgent] || '';
+  // Emit events
+  const shortAgent = result.shortAgent || (agentType.includes(':') ? agentType.split(':')[1] : agentType);
+  const stage = result.stage || '';
 
-    // pendingRetry 防護：RETRYING 階段只允許 DEV 委派
-    const phase = getPhase(state);
-    if (phase === PHASES.RETRYING) {
-      const pendingRetry = getPendingRetry(state);
-      if (pendingRetry && stage && stage !== 'DEV') {
-        const targetStage = pendingRetry.stage || '?';
-        const severity = pendingRetry.severity || '?';
-        process.stderr.write(
-          `⛔ [Pipeline Guard] 回退中：必須先委派 DEV agent 修復 ${targetStage} 的 ${severity} 問題，` +
-          `不可直接委派 ${shortAgent}（${stage}）。請使用正確的委派方法呼叫 developer agent。\n`
-        );
-        process.exit(2);
-      }
-    }
-
-    // Transition: CLASSIFIED/RETRYING/IDLE → DELEGATING
-    if (phase === PHASES.CLASSIFIED || phase === PHASES.RETRYING || phase === PHASES.IDLE) {
-      try {
-        const newState = transition(state, { type: 'DELEGATE', stage, agentType: shortAgent });
-        writeState(sessionId, newState);
-      } catch (err) {
-        // 不合法轉換不阻擋 Task 工具，只記錄
-        hookLogger.error('delegation-tracker', err);
-      }
-    }
-
-    // Emit stage start + delegation event
-    if (stage) {
-      emit(EVENT_TYPES.STAGE_START, sessionId, {
-        stage,
-        agentType: shortAgent,
-      });
-    }
-    emit(EVENT_TYPES.DELEGATION_START, sessionId, {
-      agentType: shortAgent,
-      stage,
-      description: (toolInput.description || '').slice(0, 60),
-      promptPreview: (toolInput.prompt || '').slice(0, 120),
-    });
-
-    process.exit(0); // 永遠放行 Task
-  } catch (err) {
-    hookLogger.error('delegation-tracker', err);
+  if (stage) {
+    emit(EVENT_TYPES.STAGE_START, sessionId, { stage, agentType: shortAgent });
   }
+  emit(EVENT_TYPES.DELEGATION_START, sessionId, {
+    agentType: shortAgent,
+    stage,
+    description: (toolInput.description || '').slice(0, 60),
+    promptPreview: (toolInput.prompt || '').slice(0, 120),
+  });
+
+  if (!result.allow) {
+    process.stderr.write(result.message || '⛔ 委派被阻擋。\n');
+    process.exit(2);
+  }
+
+  process.exit(0); // 永遠放行（除非被 pendingRetry 阻擋）
 });

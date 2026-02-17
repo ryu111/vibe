@@ -1,0 +1,51 @@
+#!/usr/bin/env node
+/**
+ * hook-utils.js — Hook 共用工具
+ *
+ * 提供 safeRun() 包裝：安全解析 JSON stdin，
+ * 捕捉所有錯誤避免 hook 崩潰導致級聯失敗。
+ *
+ * @module hook-utils
+ */
+'use strict';
+
+const hookLogger = require('./hook-logger.js');
+
+/**
+ * 安全執行 hook 主邏輯
+ *
+ * 用法：
+ *   safeRun('hook-name', (data) => { ... })
+ *   safeRun('hook-name', async (data) => { ... })
+ *
+ * @param {string} hookName - hook 名稱（用於錯誤日誌）
+ * @param {Function} handler - (data: Object) => void | Promise<void>
+ */
+function safeRun(hookName, handler) {
+  let input = '';
+  process.stdin.on('data', d => input += d);
+  process.stdin.on('end', () => {
+    let data;
+    try {
+      data = JSON.parse(input);
+    } catch (err) {
+      hookLogger.error(hookName, new Error(`JSON 解析失敗: ${err.message}`));
+      process.exit(0); // 不阻擋
+      return;
+    }
+
+    try {
+      const result = handler(data);
+      // 支援 async handler
+      if (result && typeof result.then === 'function') {
+        result.catch(err => {
+          hookLogger.error(hookName, err);
+        });
+      }
+    } catch (err) {
+      hookLogger.error(hookName, err);
+    }
+  });
+}
+
+module.exports = { safeRun };

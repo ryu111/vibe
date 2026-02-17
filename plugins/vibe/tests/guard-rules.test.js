@@ -23,11 +23,50 @@ const {
   WRITE_PATTERNS,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
 
-// v2.0.0 FSM: evaluate() 使用 state-machine 衍生查詢，需要 FSM 結構的 enforced state
+// v3.0.0 DAG: evaluate() 使用 dag-state 衍生查詢，需要 v3 結構的 enforced state
 const ENFORCED_STATE = {
-  phase: 'CLASSIFIED',
-  context: { taskType: 'feature' },
-  progress: {},
+  version: 3,
+  classification: { taskType: 'feature', pipelineId: 'standard', source: 'test' },
+  dag: {
+    DEV: { deps: [] },
+    REVIEW: { deps: ['DEV'] },
+    TEST: { deps: ['DEV'] },
+  },
+  stages: {
+    DEV: { status: 'pending', agent: null, verdict: null },
+    REVIEW: { status: 'pending', agent: null, verdict: null },
+    TEST: { status: 'pending', agent: null, verdict: null },
+  },
+  enforced: true,
+  retries: {},
+  pendingRetry: null,
+  meta: { initialized: true },
+};
+
+// DELEGATING 狀態（有 active stage）
+function makeDelegatingState(currentStage = 'DEV') {
+  const s = JSON.parse(JSON.stringify(ENFORCED_STATE));
+  if (s.stages[currentStage]) s.stages[currentStage].status = 'active';
+  return s;
+}
+
+// PLAN + DELEGATING（用於 AskUserQuestion PLAN 放行測試）
+const PLAN_DELEGATING_STATE = {
+  version: 3,
+  classification: { taskType: 'feature', pipelineId: 'standard', source: 'test' },
+  dag: {
+    PLAN: { deps: [] },
+    ARCH: { deps: ['PLAN'] },
+    DEV: { deps: ['ARCH'] },
+  },
+  stages: {
+    PLAN: { status: 'active', agent: 'planner' },
+    ARCH: { status: 'pending', agent: null, verdict: null },
+    DEV: { status: 'pending', agent: null, verdict: null },
+  },
+  enforced: true,
+  retries: {},
+  pendingRetry: null,
   meta: { initialized: true },
 };
 
@@ -179,13 +218,7 @@ test('AskUserQuestion → 阻擋（CLASSIFIED must-delegate）', () => {
 
 test('AskUserQuestion — PLAN 階段放行（需 DELEGATING phase）', () => {
   // CLASSIFIED 階段 must-delegate 會先阻擋，PLAN 放行只在 DELEGATING 有效
-  const planDelegatingState = {
-    phase: 'DELEGATING',
-    context: { taskType: 'feature' },
-    progress: { currentStage: 'PLAN' },
-    meta: { initialized: true },
-  };
-  const result = evaluate('AskUserQuestion', {}, planDelegatingState);
+  const result = evaluate('AskUserQuestion', {}, PLAN_DELEGATING_STATE);
   assert.strictEqual(result.decision, 'allow');
 });
 
@@ -423,12 +456,7 @@ test('Bash 安全指令 — CLASSIFIED → must-delegate 阻擋', () => {
 });
 
 test('Bash 安全指令 — DELEGATING → allow', () => {
-  const delegatingState = {
-    phase: 'DELEGATING',
-    context: { taskType: 'feature' },
-    progress: {},
-    meta: { initialized: true },
-  };
+  const delegatingState = makeDelegatingState();
   const r = evaluate('Bash', { command: 'npm test' }, delegatingState);
   assert.strictEqual(r.decision, 'allow');
 });
@@ -448,12 +476,7 @@ test('Bash 寫入非程式碼 — CLASSIFIED → must-delegate 阻擋', () => {
 });
 
 test('Bash 寫入 — 委派中（DELEGATING）→ allow', () => {
-  const delegatingState = {
-    phase: 'DELEGATING',
-    context: { taskType: 'feature' },
-    progress: {},
-    meta: { initialized: true },
-  };
+  const delegatingState = makeDelegatingState();
   const r = evaluate('Bash', { command: "echo 'x' > src/app.js" }, delegatingState);
   assert.strictEqual(r.decision, 'allow');
 });
@@ -465,12 +488,7 @@ test('Bash 寫入 — 無 taskType → allow（未分類）', () => {
 });
 
 test('Bash danger — 委派中也阻擋（無條件）', () => {
-  const delegatingState = {
-    phase: 'DELEGATING',
-    context: { taskType: 'feature' },
-    progress: {},
-    meta: { initialized: true },
-  };
+  const delegatingState = makeDelegatingState();
   const r = evaluate('Bash', { command: 'chmod 777 /' }, delegatingState);
   assert.strictEqual(r.decision, 'block');
   assert.strictEqual(r.reason, 'danger-pattern');

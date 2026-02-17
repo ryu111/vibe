@@ -87,7 +87,8 @@ test('pipeline-init 偵測 openspec/ 目錄存在時設 openspecEnabled=true', (
   });
 
   const state = readState(sessionId);
-  assert.strictEqual(state.context.openspecEnabled, true, 'openspecEnabled 應為 true');
+  // v3：openspecEnabled 在頂層
+  assert.strictEqual(state.openspecEnabled, true, 'openspecEnabled 應為 true');
   assert.strictEqual(state.meta.initialized, true, 'initialized 應為 true');
   cleanup(statePath);
 });
@@ -104,7 +105,8 @@ test('pipeline-init 偵測 openspec/ 不存在時設 openspecEnabled=false', () 
   });
 
   const state = readState(sessionId);
-  assert.strictEqual(state.context.openspecEnabled, false, 'openspecEnabled 應為 false');
+  // v3：openspecEnabled 在頂層
+  assert.strictEqual(state.openspecEnabled, false, 'openspecEnabled 應為 false');
   cleanup(statePath);
 });
 

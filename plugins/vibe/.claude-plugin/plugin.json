@@ -1,6 +1,6 @@
 {
   "name": "vibe",
-  "version": "1.0.51",
+  "version": "1.0.53",
   "description": "全方位開發工作流 — 規劃、設計、品質守衛、知識庫、即時監控、遠端控制",
   "skills": ["./skills/"],
   "agents": [
@@ -14,6 +14,7 @@
     "./agents/build-error-resolver.md",
     "./agents/e2e-runner.md",
     "./agents/qa.md",
-    "./agents/doc-updater.md"
+    "./agents/doc-updater.md",
+    "./agents/pipeline-architect.md"
   ]
 }

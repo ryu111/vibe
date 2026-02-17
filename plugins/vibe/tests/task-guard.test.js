@@ -211,7 +211,7 @@ test('\u963b\u64cb \u2014 \u55ae\u500b\u4efb\u52d9\u672a\u5b8c\u6210\uff08pendin
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   assert.strictEqual(result.exitCode, 0);
   const output = JSON.parse(result.stdout);
-  assert.strictEqual(output.decision, 'block');
+  assert.strictEqual(output.continue, false);
   assert.ok(output.systemMessage.includes('\u5efa\u7acb\u5143\u4ef6'));
   assert.ok(output.systemMessage.includes('\u26d4'));
   cleanState(sessionId);
@@ -229,7 +229,7 @@ test('\u963b\u64cb \u2014 \u55ae\u500b\u4efb\u52d9 in_progress', () => {
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   assert.strictEqual(result.exitCode, 0);
   const output = JSON.parse(result.stdout);
-  assert.strictEqual(output.decision, 'block');
+  assert.strictEqual(output.continue, false);
   assert.ok(output.systemMessage.includes('\u5be6\u4f5c API'));
   cleanState(sessionId);
 });
@@ -250,7 +250,7 @@ test('\u963b\u64cb \u2014 \u591a\u500b\u4efb\u52d9\u90e8\u5206\u5b8c\u6210', () 
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   assert.strictEqual(result.exitCode, 0);
   const output = JSON.parse(result.stdout);
-  assert.strictEqual(output.decision, 'block');
+  assert.strictEqual(output.continue, false);
   assert.ok(output.systemMessage.includes('2/3'));
   assert.ok(output.systemMessage.includes('\u4efb\u52d9 B'));
   assert.ok(output.systemMessage.includes('\u4efb\u52d9 C'));
@@ -258,7 +258,7 @@ test('\u963b\u64cb \u2014 \u591a\u500b\u4efb\u52d9\u90e8\u5206\u5b8c\u6210', () 
   cleanState(sessionId);
 });
 
-test('\u963b\u64cb \u2014 reason \u5305\u542b\u7e7c\u7e8c\u63d0\u793a', () => {
+test('\u963b\u64cb \u2014 stopReason \u5305\u542b\u4efb\u52d9\u672a\u5b8c\u6210\u63d0\u793a', () => {
   const sessionId = 'tg-test-13';
   cleanState(sessionId);
   const tp = writeTranscript([
@@ -267,8 +267,8 @@ test('\u963b\u64cb \u2014 reason \u5305\u542b\u7e7c\u7e8c\u63d0\u793a', () => {
   ]);
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   const output = JSON.parse(result.stdout);
-  assert.ok(output.reason.includes('\u5beb\u6e2c\u8a66'));
-  assert.ok(output.reason.includes('\u7e7c\u7e8c\u5b8c\u6210'));
+  assert.ok(output.stopReason.includes('\u672a\u5b8c\u6210'));
+  assert.ok(output.systemMessage.includes('\u5beb\u6e2c\u8a66'));
   cleanState(sessionId);
 });
 
@@ -306,7 +306,7 @@ test('\u963b\u64cb \u2014 \u4e0d\u5305\u542b\u5df2\u522a\u9664\u4efb\u52d9', () 
   ]);
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   const output = JSON.parse(result.stdout);
-  assert.strictEqual(output.decision, 'block');
+  assert.strictEqual(output.continue, false);
   assert.ok(output.systemMessage.includes('\u4efb\u52d9 B'));
   assert.ok(!output.systemMessage.includes('\u4efb\u52d9 A'));
   assert.ok(output.systemMessage.includes('1/2'));
@@ -362,7 +362,7 @@ test('\u89e3\u6790 \u2014 \u53ea\u6709 TaskUpdate \u7121 TaskCreate\uff08\u76f4\
   ]);
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   const output = JSON.parse(result.stdout);
-  assert.strictEqual(output.decision, 'block');
+  assert.strictEqual(output.continue, false);
   assert.ok(output.systemMessage.includes('Task #1'));
   cleanState(sessionId);
 });
@@ -404,7 +404,7 @@ test('\u89e3\u6790 \u2014 tool_result \u5167\u5bb9\u70ba\u9663\u5217\u683c\u5f0f
   const tp = writeTranscript(lines);
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   const output = JSON.parse(result.stdout);
-  assert.strictEqual(output.decision, 'block');
+  assert.strictEqual(output.continue, false);
   assert.ok(output.systemMessage.includes('\u4efb\u52d9'));
   cleanState(sessionId);
 });
@@ -459,7 +459,7 @@ test('\u963b\u64cb \u2014 promise \u4e0d\u5339\u914d\uff08\u5167\u5bb9\u4e0d\u54
   ]);
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   const output = JSON.parse(result.stdout);
-  assert.strictEqual(output.decision, 'block');
+  assert.strictEqual(output.continue, false);
   cleanState(sessionId);
 });
 
@@ -473,7 +473,7 @@ test('\u963b\u64cb \u2014 \u7121 promise \u6a19\u7c64', () => {
   ]);
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   const output = JSON.parse(result.stdout);
-  assert.strictEqual(output.decision, 'block');
+  assert.strictEqual(output.continue, false);
   cleanState(sessionId);
 });
 
@@ -515,7 +515,7 @@ test('\u963b\u64cb \u2014 promise \u5728\u975e\u6700\u5f8c assistant \u8a0a\u606
   ]);
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   const output = JSON.parse(result.stdout);
-  assert.strictEqual(output.decision, 'block');
+  assert.strictEqual(output.continue, false);
   cleanState(sessionId);
 });
 

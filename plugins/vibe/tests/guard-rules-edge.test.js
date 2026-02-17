@@ -20,13 +20,32 @@ const {
   NON_CODE_EXTS,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
 
-// v2.0.0 FSM: evaluate() 使用 state-machine 衍生查詢，需要 FSM 結構的 enforced state
+// v3.0.0 DAG: evaluate() 使用 dag-state 衍生查詢，需要 v3 結構的 enforced state
 const ENFORCED_STATE = {
-  phase: 'CLASSIFIED',
-  context: { taskType: 'feature' },
-  progress: {},
+  version: 3,
+  classification: { taskType: 'feature', pipelineId: 'standard', source: 'test' },
+  dag: {
+    DEV: { deps: [] },
+    REVIEW: { deps: ['DEV'] },
+    TEST: { deps: ['DEV'] },
+  },
+  stages: {
+    DEV: { status: 'pending', agent: null, verdict: null },
+    REVIEW: { status: 'pending', agent: null, verdict: null },
+    TEST: { status: 'pending', agent: null, verdict: null },
+  },
+  enforced: true,
+  retries: {},
+  pendingRetry: null,
   meta: { initialized: true },
 };
+
+// DELEGATING 狀態（有 active stage）
+function makeDelegatingState(currentStage = 'DEV') {
+  const s = JSON.parse(JSON.stringify(ENFORCED_STATE));
+  if (s.stages[currentStage]) s.stages[currentStage].status = 'active';
+  return s;
+}
 
 let passed = 0;
 let failed = 0;
@@ -314,23 +333,13 @@ test('Write 程式碼檔案 — state 為 undefined → 放行', () => {
 });
 
 test('Write 程式碼檔案 — state 完整 enforced → 阻擋', () => {
-  const state = {
-    phase: 'CLASSIFIED',
-    context: { taskType: 'feature' },
-    progress: { stageResults: { PLAN: 'PASS', ARCH: 'PASS' } },
-    meta: { initialized: true },
-  };
-  const result = evaluate('Write', { file_path: 'app.js' }, state);
+  // v3: ENFORCED_STATE 已是 CLASSIFIED（有 DAG + pending stages）
+  const result = evaluate('Write', { file_path: 'app.js' }, ENFORCED_STATE);
   assert.strictEqual(result.decision, 'block');
 });
 
 test('Write 程式碼檔案 — phase=DELEGATING → 放行', () => {
-  const state = {
-    phase: 'DELEGATING',
-    context: { taskType: 'feature' },
-    progress: {},
-    meta: { initialized: true },
-  };
+  const state = makeDelegatingState();
   const result = evaluate('Write', { file_path: 'app.js' }, state);
   assert.strictEqual(result.decision, 'allow');
 });

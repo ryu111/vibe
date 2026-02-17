@@ -81,10 +81,18 @@ process.stdin.on('end', () => {
         const stateFile = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
         if (fs.existsSync(stateFile)) {
           const st = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-          // FSM 結構：progress.currentStage + phase === 'DELEGATING'
-          const stage = st.progress?.currentStage || st.currentStage;
+          // v3 結構：從 stages 找 active stage + derivePhase
+          let stage;
+          if (st.stages) {
+            // v3: 找第一個 active stage
+            stage = Object.keys(st.stages).find(s => st.stages[s]?.status === 'active');
+          }
+          // v2 向後相容
+          if (!stage) stage = st.progress?.currentStage || st.currentStage;
           if (stage) info.stage = stage;
-          if (st.phase === 'DELEGATING' || st.delegationActive) info.delegationActive = true;
+          // v3: 檢查是否有 active stage（= DELEGATING）
+          const hasActive = st.stages && Object.values(st.stages).some(s => s?.status === 'active');
+          if (hasActive || st.phase === 'DELEGATING' || st.delegationActive) info.delegationActive = true;
         }
       } catch (_) {}
       emit(EVENT_TYPES.TOOL_USED, sessionId, info);

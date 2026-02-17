@@ -3,7 +3,7 @@
  * task-guard.js — Stop hook
  *
  * 未完成任務時阻擋 Claude 結束回合。
- * 強度：絕對阻擋（decision: "block"）。
+ * 強度：絕對阻擋（continue: false）。
  *
  * 從 transcript JSONL 解析 TaskCreate/TaskUpdate 工具呼叫，
  * 重建任務狀態，偵測未完成的任務。
@@ -13,7 +13,7 @@
  * 強制宣告完成，繞過 TaskUpdate 狀態檢查。
  *
  * 阻擋格式：
- *   { decision: "block", reason: "繼續提示", systemMessage: "狀態資訊" }
+ *   { continue: false, stopReason: "描述", systemMessage: "狀態資訊" }
  */
 'use strict';
 const fs = require('fs');
@@ -230,9 +230,10 @@ process.stdin.on('end', () => {
       incompleteTasks: incomplete.map(t => t.subject),
     });
 
+    // continue: false 阻擋 session 結束（Command hook 必須用 continue，非 decision）
     console.log(JSON.stringify({
-      decision: 'block',
-      reason: `繼續完成未完成的任務：\n${todoList}`,
+      continue: false,
+      stopReason: `${incomplete.length} 個任務未完成`,
       systemMessage: `⛔ 任務尚未完成（第 ${state.blockCount}/${state.maxBlocks || MAX_BLOCKS} 次阻擋）\n\n未完成項目（${incomplete.length}/${taskIds.length}）：\n${todoList}\n\n請繼續完成以上項目。完成後請將所有任務標記為 completed。\n如果確實已全部完成，輸出 <promise>${expectedPromise}</promise> 以退出。`,
     }));
   } catch (err) {

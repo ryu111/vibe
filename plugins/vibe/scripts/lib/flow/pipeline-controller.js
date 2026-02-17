@@ -1,0 +1,661 @@
+#!/usr/bin/env node
+/**
+ * pipeline-controller.js — Pipeline v3 統一 API
+ *
+ * 所有 hook 的唯一邏輯入口。每個方法對應一個 hook 事件。
+ * Hook 腳本只需：解析 stdin → 呼叫 controller → 輸出結果。
+ *
+ * API:
+ * - classify(sessionId, prompt, options) — 快篩 + 分類
+ * - canProceed(sessionId, toolName, toolInput) — 工具防護
+ * - onDelegate(sessionId, agentType, toolInput) — 委派追蹤
+ * - onStageComplete(sessionId, agentType, transcriptPath) — 階段完成
+ * - onSessionStop(sessionId) — 閉環檢查
+ *
+ * @module flow/pipeline-controller
+ */
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { execSync } = require('child_process');
+
+// Core modules
+const ds = require('./dag-state.js');
+const { getBaseStage, resolveAgent, validateDag, linearToDag, buildBlueprint } = require('./dag-utils.js');
+const { shouldSkip } = require('./skip-predicates.js');
+const { ensureV3 } = require('./state-migrator.js');
+const { parseVerdict } = require('./verdict.js');
+const { shouldRetryStage } = require('./retry-policy.js');
+const { discoverPipeline } = require('./pipeline-discovery.js');
+
+// Registry
+const {
+  STAGES, AGENT_TO_STAGE, NAMESPACED_AGENT_TO_STAGE,
+  PIPELINES, PIPELINE_PRIORITY, PIPELINE_TO_TASKTYPE,
+  MAX_RETRIES, QUALITY_STAGES,
+  STAGE_CONTEXT, POST_STAGE_HINTS, OPENSPEC_CONTEXT,
+  FRONTEND_FRAMEWORKS, API_ONLY_FRAMEWORKS,
+} = require('../registry.js');
+
+// Classifier (Layer 1/2 only — Layer 3 LLM 由 Agent 取代)
+const { classifyWithConfidence } = require('./classifier.js');
+
+const CLAUDE_DIR = path.join(os.homedir(), '.claude');
+
+// ────────────────── 工具函式 ──────────────────
+
+/** 讀取 state（自動遷移 v2→v3） */
+function loadState(sessionId) {
+  const raw = ds.readState(sessionId);
+  if (!raw) return null;
+  return ensureV3(raw);
+}
+
+/** git checkpoint */
+function autoCheckpoint(stage) {
+  try {
+    const base = getBaseStage(stage).toLowerCase();
+    execSync(`git tag -f "vibe-pipeline/${base}"`, { stdio: 'pipe', timeout: 5000 });
+    const patchPath = path.join(CLAUDE_DIR, `vibe-patch-${base}.patch`);
+    execSync(`git diff HEAD > "${patchPath}"`, { stdio: 'pipe', timeout: 5000 });
+  } catch (_) {}
+}
+
+/** 清理 patches */
+function cleanupPatches() {
+  try {
+    const files = fs.readdirSync(CLAUDE_DIR);
+    for (const f of files) {
+      if (f.startsWith('vibe-patch-') && f.endsWith('.patch')) {
+        try { fs.unlinkSync(path.join(CLAUDE_DIR, f)); } catch (_) {}
+      }
+    }
+  } catch (_) {}
+}
+
+/** 組裝委派指令 */
+function buildDelegationHint(stageId, stageMap) {
+  const info = resolveAgent(stageId, stageMap);
+  if (!info) return `委派 ${stageId}`;
+  const prefix = info.plugin ? `${info.plugin}:` : '';
+  if (info.skill) return `執行 ${info.skill}`;
+  return `委派 ${prefix}${info.agent}`;
+}
+
+/** 組裝階段上下文（QA/E2E/OpenSpec 提示） */
+function buildStageContext(nextStage, prevStage, state) {
+  const parts = [];
+  const env = state.environment || {};
+  const frameworkName = ((env.framework?.name) || '').toLowerCase();
+  const isApiOnly = API_ONLY_FRAMEWORKS.includes(frameworkName);
+
+  if (nextStage === 'QA') parts.push(STAGE_CONTEXT.QA);
+  else if (nextStage === 'E2E') parts.push(isApiOnly ? STAGE_CONTEXT.E2E_API : STAGE_CONTEXT.E2E_UI);
+
+  if (state.openspecEnabled && OPENSPEC_CONTEXT[nextStage]) {
+    parts.push(OPENSPEC_CONTEXT[nextStage]);
+  }
+
+  if (!state.openspecEnabled && nextStage === 'DEV') {
+    try {
+      if (fs.existsSync(path.join(process.cwd(), 'design-system', 'MASTER.md'))) {
+        parts.push('🎨 前端實作請參考 design-system/MASTER.md');
+      }
+    } catch (_) {}
+  }
+
+  const postHint = POST_STAGE_HINTS[prevStage];
+  if (postHint) {
+    const designSkipped = ds.getSkippedStages(state).includes('DESIGN');
+    if (!(prevStage === 'ARCH' && designSkipped)) parts.push(postHint);
+  }
+
+  return parts.length > 0 ? '\n' + parts.join('\n') : '';
+}
+
+/** 偵測 design 需求（ARCH 完成後） */
+function detectDesignNeed(state, stageId) {
+  if (getBaseStage(stageId) !== 'ARCH' || !state.openspecEnabled) return false;
+  try {
+    const changesDir = path.join(process.cwd(), 'openspec', 'changes');
+    if (!fs.existsSync(changesDir)) return false;
+    const dirs = fs.readdirSync(changesDir)
+      .filter(d => d !== 'archive' && fs.statSync(path.join(changesDir, d)).isDirectory());
+    for (const dir of dirs) {
+      if (fs.existsSync(path.join(changesDir, dir, 'design-system.md'))) return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
+// ────────────────── 1. classify ──────────────────
+
+/**
+ * 快篩 + 分類（UserPromptSubmit hook）
+ *
+ * @returns {{ output: Object }} — 要寫到 stdout 的 JSON
+ */
+function classify(sessionId, prompt, options = {}) {
+  // 三層快篩（Layer 1/2）
+  const result = classifyWithConfidence(prompt);
+  const pipelineId = result.pipeline;
+  const stages = PIPELINES[pipelineId]?.stages || [];
+  const taskType = PIPELINE_TO_TASKTYPE[pipelineId] || 'quickfix';
+
+  let state = loadState(sessionId);
+
+  // COMPLETE → reset
+  if (state && ds.isComplete(state)) {
+    state = ds.reset(state);
+    ds.writeState(sessionId, state);
+  }
+
+  // 未初始化 → 建立
+  if (!state) {
+    state = ds.createInitialState(sessionId, {});
+    ds.writeState(sessionId, state);
+  }
+
+  // 已分類 + 同一 pipeline → 不重複
+  const existingPipelineId = ds.getPipelineId(state);
+  if (existingPipelineId === pipelineId && existingPipelineId) {
+    return { output: null }; // 不輸出
+  }
+
+  // 升級判斷
+  if (existingPipelineId && existingPipelineId !== pipelineId) {
+    const isUpgrade = (PIPELINE_PRIORITY[pipelineId] || 0) > (PIPELINE_PRIORITY[existingPipelineId] || 0);
+    if (!isUpgrade) {
+      // 降級：檢查 stale
+      const last = state.meta?.lastTransition ? new Date(state.meta.lastTransition).getTime() : 0;
+      const isStale = (Date.now() - last) > 10 * 60 * 1000;
+      if (!isStale) return { output: null };
+      // stale → reset + 重分類
+      state = ds.reset(state);
+    }
+  }
+
+  // 設定分類
+  state = ds.classify(state, {
+    pipelineId,
+    taskType,
+    source: result.source,
+    confidence: result.confidence,
+    matchedRule: result.matchedRule,
+  });
+  ds.writeState(sessionId, state);
+
+  // trivial/research → additionalContext
+  if (stages.length === 0 || pipelineId === 'none') {
+    return {
+      output: { additionalContext: `[分類] ${pipelineId} — 直接回答` },
+    };
+  }
+
+  // 有 pipeline → systemMessage 指示呼叫 /vibe:pipeline
+  // [pipeline:xxx] 顯式指定 → 快速路徑（直接建 DAG，不經 Agent）
+  if (result.source === 'explicit') {
+    // 顯式指定：直接建立線性 DAG
+    const dag = linearToDag(stages);
+    const blueprint = buildBlueprint(dag);
+    state = ds.setDag(state, dag, blueprint, PIPELINES[pipelineId]?.enforced);
+
+    // 跳過判斷
+    for (const stageId of Object.keys(dag)) {
+      const skip = shouldSkip(stageId, state);
+      if (skip.skip) {
+        state = ds.markStageSkipped(state, stageId, skip.reason);
+      }
+    }
+    ds.writeState(sessionId, state);
+
+    const ready = ds.getReadyStages(state);
+    const pipeline = discoverPipeline();
+    const firstHint = ready.map(s => buildDelegationHint(s, pipeline.stageMap)).join(' + ');
+    const stageStr = stages.join(' → ');
+
+    return {
+      output: {
+        systemMessage:
+          `⛔ Pipeline [${pipelineId}]（${stageStr}）已建立。\n` +
+          `➡️ ${firstHint}`,
+      },
+    };
+  }
+
+  // 非顯式 → 指示呼叫 /vibe:pipeline skill（讓 Agent 動態生成 DAG）
+  return {
+    output: {
+      systemMessage:
+        `⛔ 任務需要 Pipeline。呼叫 /vibe:pipeline skill 啟動 pipeline-architect 分析需求並產出執行計劃。\n` +
+        `預估模板：${pipelineId}（${stages.join(' → ')}）`,
+    },
+  };
+}
+
+// ────────────────── 2. canProceed ──────────────────
+
+/**
+ * 工具防護（PreToolUse hook）
+ *
+ * @returns {{ decision: 'allow'|'block', message?: string, reason?: string }}
+ */
+function canProceed(sessionId, toolName, toolInput) {
+  // 引入 guard-rules 的危險指令檢查
+  const { evaluateBashDanger, detectBashWriteTarget } = require('../sentinel/guard-rules.js');
+
+  // EnterPlanMode → 無條件 block
+  if (toolName === 'EnterPlanMode') {
+    return {
+      decision: 'block',
+      reason: 'plan-mode-disabled',
+      message: '⛔ 禁止使用 EnterPlanMode。請使用 /vibe:scope 委派給 planner agent。\n',
+    };
+  }
+
+  // Bash DANGER_PATTERNS → 無條件 block
+  if (toolName === 'Bash') {
+    const danger = evaluateBashDanger(toolInput?.command || '');
+    if (danger) return danger;
+  }
+
+  // 讀取 state
+  const state = loadState(sessionId);
+  if (!state) return { decision: 'allow' };
+  if (!ds.isInitialized(state)) return { decision: 'allow' };
+  if (!ds.isEnforced(state)) return { decision: 'allow' };
+  if (ds.isDelegating(state)) return { decision: 'allow' };
+  if (ds.isCancelled(state)) return { decision: 'allow' };
+
+  // 唯讀工具白名單
+  const READ_ONLY = new Set(['Read', 'Grep', 'Glob', 'WebSearch', 'WebFetch', 'TaskList', 'TaskGet']);
+  const phase = ds.derivePhase(state);
+
+  if (phase === ds.PHASES.CLASSIFIED || phase === ds.PHASES.RETRYING) {
+    if (toolName === 'Task' || toolName === 'Skill' || READ_ONLY.has(toolName)) {
+      return { decision: 'allow' };
+    }
+    return {
+      decision: 'block',
+      reason: 'must-delegate',
+      message: `⛔ Pipeline 等待委派 — 禁止 ${toolName}。請使用 Skill 或 Task 工具委派 sub-agent。\n`,
+    };
+  }
+
+  // Bash 寫檔繞過
+  if (toolName === 'Bash') {
+    const writeResult = detectBashWriteTarget(toolInput?.command || '');
+    if (writeResult) return writeResult;
+    return { decision: 'allow' };
+  }
+
+  // Write/Edit/NotebookEdit
+  if (['Write', 'Edit', 'NotebookEdit'].includes(toolName)) {
+    return {
+      decision: 'block',
+      reason: 'pipeline-enforced',
+      message: `⛔ Pipeline 模式下禁止 ${toolName}。請委派 sub-agent。\n`,
+    };
+  }
+
+  // AskUserQuestion
+  if (toolName === 'AskUserQuestion') {
+    return {
+      decision: 'block',
+      reason: 'pipeline-auto-mode',
+      message: '⛔ Pipeline 自動模式：禁止 AskUserQuestion。請按 pipeline 指示執行。\n',
+    };
+  }
+
+  return { decision: 'allow' };
+}
+
+// ────────────────── 3. onDelegate ──────────────────
+
+/**
+ * 委派追蹤（PreToolUse Task hook）
+ *
+ * @returns {{ allow: boolean, message?: string }}
+ */
+function onDelegate(sessionId, agentType, toolInput) {
+  let state = loadState(sessionId);
+  if (!state) return { allow: true };
+
+  const shortAgent = agentType.includes(':') ? agentType.split(':')[1] : agentType;
+  const stage = AGENT_TO_STAGE[shortAgent] || '';
+
+  // pendingRetry 防護：只允許 DEV
+  const phase = ds.derivePhase(state);
+  if (phase === ds.PHASES.RETRYING && stage && getBaseStage(stage) !== 'DEV') {
+    const pending = ds.getPendingRetry(state);
+    const target = pending?.stages?.[0]?.id || '?';
+    return {
+      allow: false,
+      message: `⛔ 回退中：必須先委派 DEV 修復 ${target}，不可委派 ${shortAgent}。\n`,
+    };
+  }
+
+  // 標記 stage active
+  if (stage && state.dag && state.stages[stage]) {
+    state = ds.markStageActive(state, stage, shortAgent);
+    ds.writeState(sessionId, state);
+  }
+
+  return { allow: true, stage, shortAgent };
+}
+
+// ────────────────── 4. onStageComplete ──────────────────
+
+/**
+ * 階段完成（SubagentStop hook）
+ *
+ * @returns {{ systemMessage: string, continue?: boolean }}
+ */
+function onStageComplete(sessionId, agentType, transcriptPath) {
+  const pipeline = discoverPipeline();
+  const shortAgent = agentType.includes(':') ? agentType.split(':')[1] : agentType;
+
+  // 偵測是否為 pipeline-architect
+  if (shortAgent === 'pipeline-architect') {
+    return handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline);
+  }
+
+  // 正常 stage agent
+  const currentStage = pipeline.agentToStage[agentType] || AGENT_TO_STAGE[shortAgent];
+  if (!currentStage) return { systemMessage: '' };
+
+  let state = loadState(sessionId);
+  if (!state) return { systemMessage: '' };
+
+  // Design 需求偵測
+  if (detectDesignNeed(state, currentStage)) {
+    state = { ...state, needsDesign: true };
+  }
+
+  // 解析 verdict
+  const verdict = parseVerdict(transcriptPath);
+
+  // 回退決策
+  const retries = ds.getRetries(state);
+  const retryCount = retries[currentStage] || 0;
+  const { shouldRetry } = shouldRetryStage(currentStage, verdict, retryCount);
+
+  // ── 分支 A: 回退 ──
+  if (shouldRetry) {
+    // 檢查 DAG 中是否有 DEV
+    const hasDev = state.dag && Object.keys(state.dag).some(s => getBaseStage(s) === 'DEV');
+
+    if (!hasDev) {
+      // 無 DEV → 強制繼續
+      state = ds.markStageCompleted(state, currentStage, verdict);
+      ds.writeState(sessionId, state);
+      autoCheckpoint(currentStage);
+
+      const ready = ds.getReadyStages(state);
+      if (ready.length > 0) {
+        const hints = ready.map(s => buildDelegationHint(s, pipeline.stageMap)).join(' + ');
+        return { systemMessage: `⚠️ ${currentStage} FAIL 但無 DEV 可回退，強制繼續。\n➡️ ${hints}` };
+      }
+      // 無更多階段 → 強制完成（保留 FAIL 資訊）
+      const completeMsg = buildCompleteOutput(state, currentStage, pipeline);
+      return {
+        systemMessage: `⚠️ ${currentStage} FAIL 但無 DEV 可回退，強制繼續。\n` + completeMsg.systemMessage,
+      };
+    }
+
+    // 有 DEV → 回退
+    state = ds.markStageFailed(state, currentStage, verdict);
+    state = ds.setPendingRetry(state, {
+      stages: [{ id: currentStage, severity: verdict?.severity, round: retryCount + 1 }],
+    });
+    ds.writeState(sessionId, state);
+
+    const devHint = buildDelegationHint('DEV', pipeline.stageMap);
+    return {
+      systemMessage:
+        `🔄 ${currentStage} FAIL:${verdict?.severity}（${retryCount + 1}/${MAX_RETRIES}）\n` +
+        `➡️ ${devHint}`,
+    };
+  }
+
+  // ── 分支 B: 回退重驗（DEV 完成後重跑失敗的 stage）──
+  const pendingRetry = ds.getPendingRetry(state);
+  if (pendingRetry?.stages?.length > 0 && getBaseStage(currentStage) === 'DEV') {
+    state = ds.markStageCompleted(state, currentStage, verdict);
+
+    // 重設所有 failed stages 為 pending
+    for (const retry of pendingRetry.stages) {
+      state = ds.resetStageToPending(state, retry.id);
+    }
+    state = ds.clearPendingRetry(state);
+    ds.writeState(sessionId, state);
+    autoCheckpoint(currentStage);
+
+    const retryTargets = pendingRetry.stages.map(r => r.id);
+    const hints = retryTargets.map(s => buildDelegationHint(s, pipeline.stageMap)).join(' + ');
+    return {
+      systemMessage: `🔄 DEV 修復完成 → 重跑 ${retryTargets.join(' + ')}\n➡️ ${hints}`,
+    };
+  }
+
+  // ── 分支 C: 正常前進 ──
+  state = ds.markStageCompleted(state, currentStage, verdict);
+
+  // 跳過判斷：檢查新 ready stages 是否需要 skip
+  let readyStages = ds.getReadyStages(state);
+  for (const stageId of readyStages) {
+    const skip = shouldSkip(stageId, state);
+    if (skip.skip) {
+      state = ds.markStageSkipped(state, stageId, skip.reason);
+    }
+  }
+
+  // 跳過後重新計算 ready
+  readyStages = ds.getReadyStages(state);
+
+  // 遞迴跳過（如果新 ready 也需要跳）
+  let maxIter = 10;
+  while (readyStages.length > 0 && maxIter-- > 0) {
+    let anySkipped = false;
+    for (const stageId of readyStages) {
+      const skip = shouldSkip(stageId, state);
+      if (skip.skip) {
+        state = ds.markStageSkipped(state, stageId, skip.reason);
+        anySkipped = true;
+      }
+    }
+    if (!anySkipped) break;
+    readyStages = ds.getReadyStages(state);
+  }
+
+  ds.writeState(sessionId, state);
+  autoCheckpoint(currentStage);
+
+  // 檢查是否完成
+  if (ds.isComplete(state)) {
+    cleanupPatches();
+    return buildCompleteOutput(state, currentStage, pipeline);
+  }
+
+  if (readyStages.length === 0) {
+    // 沒有 ready stages 但也沒完成 → 等待其他 active stages
+    const active = ds.getActiveStages(state);
+    if (active.length > 0) {
+      return { systemMessage: `✅ ${currentStage} 完成。等待 ${active.join(', ')} 完成...` };
+    }
+    // 理論上不該發生
+    return { systemMessage: `✅ ${currentStage} 完成。` };
+  }
+
+  // 有 ready stages → 發出委派指令
+  const stageContext = readyStages.map(s => buildStageContext(s, currentStage, state)).join('');
+  const hints = readyStages.map(s => buildDelegationHint(s, pipeline.stageMap));
+  const parallel = readyStages.length > 1;
+  const label = parallel
+    ? `${readyStages.join(' + ')}（並行）`
+    : readyStages[0];
+
+  return {
+    systemMessage:
+      `✅ ${currentStage} → ${label}\n` +
+      `➡️ ${hints.join(' + ')}${stageContext}`,
+  };
+}
+
+/** 處理 pipeline-architect agent 完成 */
+function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline) {
+  let state = loadState(sessionId);
+  if (!state) state = ds.createInitialState(sessionId);
+
+  // 從 transcript 解析 DAG
+  let dag = null;
+  let blueprint = null;
+  let enforced = true;
+  let rationale = '';
+
+  if (transcriptPath && fs.existsSync(transcriptPath)) {
+    try {
+      const content = fs.readFileSync(transcriptPath, 'utf8');
+      const dagMatch = content.match(/<!-- PIPELINE_DAG_START -->\s*([\s\S]*?)\s*<!-- PIPELINE_DAG_END -->/);
+      if (dagMatch) {
+        const parsed = JSON.parse(dagMatch[1]);
+        dag = parsed.dag;
+        blueprint = parsed.blueprint || null;
+        enforced = parsed.enforced !== false;
+        rationale = parsed.rationale || '';
+      }
+    } catch (_) {}
+  }
+
+  // DAG 驗證
+  if (dag) {
+    const validation = validateDag(dag);
+    if (!validation.valid) {
+      // 非法 DAG → 降級為 DEV 安全模板
+      dag = { DEV: { deps: [] } };
+      blueprint = [{ step: 1, stages: ['DEV'], parallel: false }];
+      rationale = `DAG 驗證失敗（${validation.errors.join('; ')}），降級為 DEV`;
+    }
+  } else {
+    // 無法解析 → 安全模板
+    dag = { DEV: { deps: [] } };
+    blueprint = [{ step: 1, stages: ['DEV'], parallel: false }];
+    rationale = 'DAG 解析失敗，降級為 DEV';
+  }
+
+  // 設定 DAG
+  state = ds.setDag(state, dag, blueprint, enforced);
+
+  // 跳過判斷
+  for (const stageId of Object.keys(dag)) {
+    const skip = shouldSkip(stageId, state);
+    if (skip.skip) {
+      state = ds.markStageSkipped(state, stageId, skip.reason);
+    }
+  }
+
+  ds.writeState(sessionId, state);
+
+  // 計算第一批
+  const ready = ds.getReadyStages(state);
+  const stageCount = Object.keys(dag).length;
+  const skippedCount = ds.getSkippedStages(state).length;
+  const parallelGroups = blueprint ? blueprint.filter(b => b.parallel).length : 0;
+
+  const hints = ready.map(s => buildDelegationHint(s, pipeline.stageMap));
+
+  return {
+    systemMessage:
+      `⛔ Pipeline 已建立（${stageCount} 階段` +
+      (skippedCount > 0 ? `，${skippedCount} 跳過` : '') +
+      (parallelGroups > 0 ? `，${parallelGroups} 組並行` : '') +
+      `）。\n` +
+      (rationale ? `📋 ${rationale}\n` : '') +
+      `➡️ ${hints.join(' + ')}`,
+  };
+}
+
+/** 組裝完成輸出 */
+function buildCompleteOutput(state, lastStage, pipeline) {
+  const completed = ds.getCompletedStages(state);
+  const skipped = ds.getSkippedStages(state);
+  const completedStr = completed.join(' → ');
+
+  return {
+    systemMessage:
+      `✅ Pipeline 完成！\n` +
+      `已完成：${completedStr}` +
+      (skipped.length > 0 ? `\n⏭️ 跳過：${skipped.join(', ')}` : '') +
+      `\n\n📌 後續動作：\n` +
+      `1️⃣ 執行 /vibe:verify 最終驗證\n` +
+      `2️⃣ 向使用者報告成果\n` +
+      `3️⃣ AskUserQuestion（multiSelect: true）提供選項\n` +
+      `⚠️ Pipeline 自動模式已解除。`,
+  };
+}
+
+// ────────────────── 5. onSessionStop ──────────────────
+
+/**
+ * 閉環檢查（Stop hook）
+ *
+ * @returns {{ continue: boolean, stopReason?: string, systemMessage?: string } | null}
+ */
+function onSessionStop(sessionId) {
+  const state = loadState(sessionId);
+  if (!state) return null;
+  if (!state.dag) return null;
+
+  const phase = ds.derivePhase(state);
+
+  // COMPLETE / IDLE → 放行
+  if (phase === ds.PHASES.COMPLETE || phase === ds.PHASES.IDLE) return null;
+
+  // enforced + 有遺漏 → 阻擋
+  if (!state.enforced) return null;
+
+  const ready = ds.getReadyStages(state);
+  const active = ds.getActiveStages(state);
+  const failed = Object.entries(state.stages)
+    .filter(([, s]) => s.status === ds.STAGE_STATUS.FAILED)
+    .map(([id]) => id);
+  const pending = Object.entries(state.stages)
+    .filter(([, s]) => s.status === ds.STAGE_STATUS.PENDING)
+    .map(([id]) => id);
+
+  const missing = [...failed, ...active, ...ready, ...pending];
+  if (missing.length === 0) return null;
+
+  const pipeline = discoverPipeline();
+  const hints = missing.slice(0, 3).map(s => {
+    const info = resolveAgent(s, pipeline.stageMap);
+    const label = STAGES[getBaseStage(s)]?.label || s;
+    if (info?.skill) return `- ${label}：${info.skill}`;
+    if (info?.agent) return `- ${label}：委派 ${info.agent}`;
+    return `- ${label}`;
+  }).join('\n');
+
+  return {
+    continue: false,
+    stopReason: `Pipeline 未完成 — 缺 ${missing.length} 個階段`,
+    systemMessage:
+      `⛔ Pipeline 未完成！缺：${missing.join(', ')}\n${hints}\n` +
+      `必須使用 Skill/Task 委派下一階段。禁止純文字回覆。`,
+  };
+}
+
+// ────────────────── Exports ──────────────────
+
+module.exports = {
+  classify,
+  canProceed,
+  onDelegate,
+  onStageComplete,
+  onSessionStop,
+  // 暴露用於測試
+  loadState,
+  buildDelegationHint,
+  buildStageContext,
+};

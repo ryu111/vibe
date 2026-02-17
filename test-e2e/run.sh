@@ -568,7 +568,10 @@ run_scenario() {
   tmux new-session -d -s "$sess" -x 200 -y 50
   sleep 1
 
-  local claude_cmd="cd '$project_dir' && claude --session-id '$uuid' --model '$MODEL' --dangerously-skip-permissions --plugin-dir '$VIBE_PLUGIN' --plugin-dir '$FORGE_PLUGIN'"
+  # claude-mem 隔離：使用空的資料目錄，避免歷史記憶污染 E2E session
+  local mem_dir="/tmp/e2e-claude-mem-$$-${id}"
+  mkdir -p "$mem_dir"
+  local claude_cmd="cd '$project_dir' && CLAUDE_MEM_DATA_DIR='$mem_dir' claude --session-id '$uuid' --model '$MODEL' --dangerously-skip-permissions --plugin-dir '$VIBE_PLUGIN' --plugin-dir '$FORGE_PLUGIN'"
   tmux send-keys -t "$sess" "$claude_cmd" Enter
 
   set_status "$id" "⏳ 啟動 claude..."
@@ -650,6 +653,7 @@ EOF
   # 9. 清理暫存目錄
   if [ "$KEEP_TMP" != "true" ]; then
     rm -rf "$project_dir"
+    rm -rf "/tmp/e2e-claude-mem-$$-${id}"
   fi
 }
 

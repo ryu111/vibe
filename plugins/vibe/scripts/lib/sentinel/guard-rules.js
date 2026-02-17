@@ -2,9 +2,8 @@
 /**
  * guard-rules.js — Pipeline Guard 規則模組（純函式）
  *
- * v2.0.0 FSM 重構：
- * - 使用 state-machine 衍生查詢取代 6 層 flag 判斷
- * - isDelegating() / isEnforced() / isCancelled() 取代直接讀 flag
+ * v3.0.0：改用 dag-state.js 衍生查詢（取代 state-machine.js）。
+ * isDelegating() / isEnforced() / isCancelled() 等 API 不變。
  *
  * @module sentinel/guard-rules
  */
@@ -14,7 +13,7 @@ const path = require('path');
 const {
   getPhase, isDelegating, isEnforced, isCancelled, isInitialized,
   getTaskType, getCurrentStage, getPipelineId, PHASES,
-} = require(path.join(__dirname, '..', 'flow', 'state-machine.js'));
+} = require(path.join(__dirname, '..', 'flow', 'dag-state.js'));
 
 // 唯讀工具白名單（CLASSIFIED/RETRYING 階段允許，不阻擋讀取）
 const READ_ONLY_TOOLS = new Set([

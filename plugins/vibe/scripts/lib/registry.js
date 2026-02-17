@@ -63,8 +63,8 @@ const API_ONLY_FRAMEWORKS = ['express', 'fastify', 'hono', 'koa', 'nest'];
 
 // ────────────────── Pipeline 定義 ──────────────────
 
-// 10 種工作流模板
-const PIPELINES = {
+// 10 種參考工作流模板（v3：DAG 由 pipeline-architect agent 動態生成，這些作為參考範例）
+const REFERENCE_PIPELINES = {
   'full':       { stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'], enforced: true,  label: '完整開發', description: '新功能（含 UI）' },
   'standard':   { stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],                       enforced: true,  label: '標準開發', description: '新功能（無 UI）、大重構' },
   'quick-dev':  { stages: ['DEV', 'REVIEW', 'TEST'],                                               enforced: true,  label: '快速開發', description: 'bugfix + 補測試、小改動' },
@@ -172,7 +172,9 @@ module.exports = {
   // 框架分類
   FRONTEND_FRAMEWORKS, API_ONLY_FRAMEWORKS,
   // Pipeline 定義
-  PIPELINES, PIPELINE_PRIORITY, TASKTYPE_TO_PIPELINE, PIPELINE_TO_TASKTYPE,
+  REFERENCE_PIPELINES,
+  PIPELINES: REFERENCE_PIPELINES,  // 向後相容別名
+  PIPELINE_PRIORITY, TASKTYPE_TO_PIPELINE, PIPELINE_TO_TASKTYPE,
   // Pipeline 行為
   QUALITY_STAGES, IMPL_STAGES, VERDICT_REGEX, MAX_RETRIES,
   // 階段上下文

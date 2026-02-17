@@ -20,11 +20,23 @@ const {
   NON_CODE_DOTFILES,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
 
-// v2.0.0 FSM: evaluate() 使用 state-machine 衍生查詢，需要 FSM 結構的 enforced state
+// v3.0.0 DAG: evaluate() 使用 dag-state 衍生查詢，需要 v3 結構的 enforced state
 const ENFORCED_STATE = {
-  phase: 'CLASSIFIED',
-  context: { taskType: 'feature' },
-  progress: {},
+  version: 3,
+  classification: { taskType: 'feature', pipelineId: 'standard', source: 'test' },
+  dag: {
+    DEV: { deps: [] },
+    REVIEW: { deps: ['DEV'] },
+    TEST: { deps: ['DEV'] },
+  },
+  stages: {
+    DEV: { status: 'pending', agent: null, verdict: null },
+    REVIEW: { status: 'pending', agent: null, verdict: null },
+    TEST: { status: 'pending', agent: null, verdict: null },
+  },
+  enforced: true,
+  retries: {},
+  pendingRetry: null,
   meta: { initialized: true },
 };
 
