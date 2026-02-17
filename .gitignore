@@ -26,5 +26,8 @@ openspec/specs/
 docs/ref/index.md
 docs/ref/vibe.md
 
+# E2E 測試結果（每次執行重新產生）
+test-e2e/results/
+
 # Node
 node_modules/

@@ -153,10 +153,9 @@ function evaluate(toolName, toolInput, state) {
   }
 
   // ── Write / Edit / NotebookEdit ──
+  // Pipeline enforced 模式下，主 Agent 一律不可寫入（不區分檔案類型）
+  // 子 Agent 在 delegating 階段已由上方 isDelegating() 放行
   if (['Write', 'Edit', 'NotebookEdit'].includes(toolName)) {
-    const filePath = toolInput?.file_path || '';
-    if (isNonCodeFile(filePath)) return { decision: 'allow' };
-
     return {
       decision: 'block',
       reason: 'pipeline-enforced',

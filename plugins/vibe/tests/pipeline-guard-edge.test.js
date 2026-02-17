@@ -364,7 +364,7 @@ test('NotebookEdit — pipeline 啟動 + .ipynb → 阻擋', () => {
   }
 });
 
-test('NotebookEdit — pipeline 啟動 + .md → 放行', () => {
+test('NotebookEdit — pipeline 啟動 + .md → 阻擋', () => {
   const sessionId = 'test-nb-2';
   try {
     writeState(sessionId, {
@@ -379,7 +379,8 @@ test('NotebookEdit — pipeline 啟動 + .md → 放行', () => {
       tool_input: { file_path: 'notes.md' },
     });
 
-    assert.strictEqual(result.exitCode, 0);
+    assert.strictEqual(result.exitCode, 2);
+    assert.ok(result.stderr.length > 0, 'stderr 應有阻擋訊息');
   } finally {
     cleanState(sessionId);
   }

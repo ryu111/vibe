@@ -30,7 +30,7 @@ const {
   classifyWithConfidence, classifyWithLLM, buildPipelineCatalogHint,
 } = require(path.join(__dirname, '..', 'lib', 'flow', 'classifier.js'));
 const {
-  transition, readState, writeState, isComplete, getPhase, getPipelineId, PHASES,
+  createInitialState, transition, readState, writeState, isComplete, getPhase, getPipelineId, PHASES,
 } = require(path.join(__dirname, '..', 'lib', 'flow', 'state-machine.js'));
 
 // ────────────────── 工具函式 ──────────────────
@@ -229,19 +229,22 @@ process.stdin.on('end', () => {
     // ── 初始分類 ──
     const currentPipelineId = getPipelineId(state);
     if (!state || !currentPipelineId) {
-      if (state) {
-        state = transition(state, {
-          type: 'CLASSIFY',
-          pipelineId: newPipelineId,
-          taskType: newTaskType,
-          expectedStages: newStages,
-          source: result.source,
-          confidence: result.confidence,
-          matchedRule: result.matchedRule,
-          layer: determineLayer(result),
-        });
-        writeState(sessionId, state);
+      // pipeline-init 失敗時的 fallback：自行建立初始 state
+      if (!state) {
+        state = createInitialState(sessionId, {});
       }
+
+      state = transition(state, {
+        type: 'CLASSIFY',
+        pipelineId: newPipelineId,
+        taskType: newTaskType,
+        expectedStages: newStages,
+        source: result.source,
+        confidence: result.confidence,
+        matchedRule: result.matchedRule,
+        layer: determineLayer(result),
+      });
+      writeState(sessionId, state);
 
       emit(EVENT_TYPES.TASK_CLASSIFIED, sessionId, {
         pipelineId: newPipelineId, taskType: newTaskType,

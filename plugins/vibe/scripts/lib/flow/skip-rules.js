@@ -26,6 +26,8 @@ function shouldSkipStage(stage, state, pipelineStages) {
   const frameworkName = ((envInfo.framework && envInfo.framework.name) || '').toLowerCase();
 
   if (stage === 'DESIGN') {
+    // ui-only pipeline 永遠不跳 DESIGN（整個 pipeline 就是為了 UI 工作）
+    if (state.pipelineId === 'ui-only') return { skip: false, reason: '' };
     // 明確標記 needsDesign 或偵測到前端框架/信號 → 不跳過
     if (state.needsDesign === true) return { skip: false, reason: '' };
     if (state.frontend && state.frontend.detected) return { skip: false, reason: '' };

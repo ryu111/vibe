@@ -15,7 +15,7 @@ const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 const { PIPELINES } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
 const {
-  readState, deleteState,
+  readState,
   getPhase, isEnforced, isComplete,
   getPipelineId, getExpectedStages,
   getCompletedAgents, getSkippedStages,
@@ -41,9 +41,8 @@ process.stdin.on('end', () => {
     if (expectedStages.length === 0) process.exit(0);
     if (!isEnforced(state) && !isComplete(state)) process.exit(0);
 
-    // COMPLETE → 清理 state file
+    // COMPLETE → state 保留（供 Dashboard/驗證/事後分析），由 session-cleanup 3 天後過期清理
     if (isComplete(state)) {
-      deleteState(sessionId);
       process.exit(0);
     }
 
@@ -97,7 +96,6 @@ process.stdin.on('end', () => {
     }
 
     if (missing.length === 0) {
-      deleteState(sessionId);
       process.exit(0);
     }
 

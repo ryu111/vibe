@@ -95,6 +95,7 @@ function detectDesignNeed(state, currentStage) {
  */
 function createFlatAdapter(state) {
   return {
+    pipelineId: getPipelineId(state),
     environment: getEnvironment(state),
     needsDesign: state.context?.needsDesign || false,
     skippedStages: [...getSkippedStages(state)],

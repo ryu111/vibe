@@ -153,13 +153,16 @@ test('Write — file_path 為 undefined', () => {
   assert.strictEqual(result.decision, 'block');
 });
 
-test('Write — file_path 為數字（拋出錯誤）', () => {
-  // isNonCodeFile 內部 path.extname 會拋錯
-  assert.throws(() => evaluate('Write', { file_path: 123 }, ENFORCED_STATE), /path.*string/);
+test('Write — file_path 為數字（返回 block）', () => {
+  // isNonCodeFile 已移除，enforced pipeline 下直接 block（不讀取 file_path）
+  const result = evaluate('Write', { file_path: 123 }, ENFORCED_STATE);
+  assert.strictEqual(result.decision, 'block');
 });
 
-test('Write — file_path 為物件（拋出錯誤）', () => {
-  assert.throws(() => evaluate('Write', { file_path: {} }, ENFORCED_STATE), /path.*string/);
+test('Write — file_path 為物件（返回 block）', () => {
+  // isNonCodeFile 已移除，enforced pipeline 下直接 block（不讀取 file_path）
+  const result = evaluate('Write', { file_path: {} }, ENFORCED_STATE);
+  assert.strictEqual(result.decision, 'block');
 });
 
 // ═══════════════════════════════════════════════
@@ -183,14 +186,17 @@ test('NotebookEdit — 無 file_path → 阻擋', () => {
   assert.strictEqual(result.decision, 'block');
 });
 
-test('NotebookEdit — .md 檔案 → 放行', () => {
+test('NotebookEdit — .md 檔案（enforced）→ 阻擋', () => {
+  // Pipeline enforced 模式下，主 Agent 一律不可寫入（不區分檔案類型）
   const result = evaluate('NotebookEdit', { file_path: 'notes.md' }, ENFORCED_STATE);
-  assert.strictEqual(result.decision, 'allow');
+  assert.strictEqual(result.decision, 'block');
+  assert.strictEqual(result.reason, 'pipeline-enforced');
 });
 
-test('NotebookEdit — .json 檔案 → 放行', () => {
+test('NotebookEdit — .json 檔案（enforced）→ 阻擋', () => {
   const result = evaluate('NotebookEdit', { file_path: 'data.json' }, ENFORCED_STATE);
-  assert.strictEqual(result.decision, 'allow');
+  assert.strictEqual(result.decision, 'block');
+  assert.strictEqual(result.reason, 'pipeline-enforced');
 });
 
 test('NotebookEdit — null toolInput', () => {

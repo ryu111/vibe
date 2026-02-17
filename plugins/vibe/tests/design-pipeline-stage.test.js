@@ -552,8 +552,8 @@ test('skippedStages 包含 DESIGN → 不計入 missing', () => {
     // skippedStages 中的階段不應被視為遺漏（應該清理 state 並無輸出）
     assert.strictEqual(result.trim(), '', 'skippedStages 中的階段不應計入 missing');
 
-    // State file 應該被刪除
-    assert.ok(!fs.existsSync(statePath), 'pipeline 完成後 state file 應被刪除');
+    // State file 應保留（pipeline-check 不再刪除，由 session-cleanup 過期清理）
+    assert.ok(fs.existsSync(statePath), 'pipeline 完成後 state file 應保留');
   } finally {
     cleanup(statePath);
   }
@@ -1117,7 +1117,7 @@ test('多個階段跳過：DESIGN + E2E 同時跳過', () => {
 
     // 多個階段跳過也正確處理
     assert.strictEqual(result.trim(), '', '多個 skippedStages 應正確排除');
-    assert.ok(!fs.existsSync(statePath), 'State file 應被刪除');
+    assert.ok(fs.existsSync(statePath), 'State file 應保留');
   } finally {
     cleanup(statePath);
   }

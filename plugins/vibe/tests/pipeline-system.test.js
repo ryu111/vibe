@@ -484,7 +484,7 @@ test('缺漏 ARCH 和 DEV 階段（混合格式）', () => {
   }
 });
 
-test('全部完成：無輸出且刪除 state file', () => {
+test('全部完成：無輸出且 state 保留', () => {
   const sessionId = 'test-ns-5';
   const statePath = createTempState(sessionId, {
     phase: 'COMPLETE',
@@ -542,10 +542,10 @@ test('全部完成：無輸出且刪除 state file', () => {
     // 應該沒有輸出
     assert.strictEqual(result.trim(), '', '全部完成時應該無輸出');
 
-    // State file 應該被刪除
+    // State file 應保留（pipeline-check 不再刪除，由 session-cleanup 過期清理）
     assert.ok(
-      !fs.existsSync(statePath),
-      'State file 應該被刪除'
+      fs.existsSync(statePath),
+      'State file 應保留供 Dashboard/驗證/分析'
     );
   } finally {
     cleanup(statePath);

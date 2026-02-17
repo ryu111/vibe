@@ -350,6 +350,7 @@ console.log('═'.repeat(55));
       'vibe:e2e-runner', 'vibe:doc-updater',
     ];
     state.progress.stageIndex = state.context.expectedStages.length - 1; // 最後一個階段的索引
+    state.phase = 'COMPLETE'; // 模擬最後一個 stage-transition 完成後的終態
     fs.writeFileSync(
       path.join(CLAUDE_DIR, `pipeline-state-${sid}.json`),
       JSON.stringify(state, null, 2)
@@ -361,11 +362,12 @@ console.log('═'.repeat(55));
       stop_hook_active: false,
     });
 
-    test('B12: pipeline-check 全部完成後清理 state file', () => {
-      // pipeline-check 完成時刪除 state file
+    test('B12: pipeline-check 全部完成後 state 保留', () => {
+      // pipeline-check 不再刪除 state（由 session-cleanup 3 天後過期清理）
       assert.strictEqual(checkResult.exitCode, 0);
       const afterState = readState(sid);
-      assert.strictEqual(afterState, null, 'state file 應已刪除');
+      assert.ok(afterState !== null, 'state file 應保留供 Dashboard/驗證/分析');
+      assert.strictEqual(afterState.phase, 'COMPLETE');
     });
   } finally {
     cleanState(sid);
@@ -625,7 +627,7 @@ console.log('═'.repeat(55));
 })();
 
 // ═══════════════════════════════════════════════
-console.log('\n🔗 Scenario G: pipeline-guard 非程式碼檔案放行（pipeline 啟動中）');
+console.log('\n🔗 Scenario G: pipeline-guard 非程式碼檔案阻擋（pipeline 啟動中）');
 console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
@@ -654,8 +656,9 @@ console.log('═'.repeat(55));
         tool_input: { file_path: file },
       });
 
-      test(`G: 放行非程式碼檔案 ${ext} (${file})`, () => {
-        assert.strictEqual(result.exitCode, 0);
+      test(`G: 阻擋非程式碼檔案 ${ext} (${file})`, () => {
+        assert.strictEqual(result.exitCode, 2);
+        assert.ok(result.stderr.length > 0, `stderr 應有阻擋訊息`);
       });
     }
 
@@ -1226,15 +1229,16 @@ console.log('══════════════════════�
       assert.ok(notebook.stderr.includes('NotebookEdit'));
     });
 
-    // M4: NotebookEdit 非程式碼檔案（.json）放行
+    // M4: NotebookEdit 非程式碼檔案（.json）阻擋
     const notebookNonCode = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'NotebookEdit',
       tool_input: { file_path: 'config.json' },
     });
 
-    test('M4: NotebookEdit 非程式碼檔案 → 放行', () => {
-      assert.strictEqual(notebookNonCode.exitCode, 0);
+    test('M4: NotebookEdit 非程式碼檔案 → 阻擋', () => {
+      assert.strictEqual(notebookNonCode.exitCode, 2);
+      assert.ok(notebookNonCode.stderr.length > 0, `stderr 應有阻擋訊息`);
     });
 
     // M5: phase=DELEGATING 時 EnterPlanMode 仍阻擋（無條件）

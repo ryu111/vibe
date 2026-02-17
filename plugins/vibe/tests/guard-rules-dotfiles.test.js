@@ -220,49 +220,53 @@ console.log('\n🛡️ evaluate() — Dotfile 整合測試（Write/Edit）');
 console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
-test('Write .gitignore（Pipeline enforced）→ allow', () => {
+// Pipeline enforced 模式下，主 Agent 一律不可寫入（不區分檔案類型）
+// 子 Agent 在 delegating 階段由 isDelegating() 放行
+
+test('Write .gitignore（Pipeline enforced）→ block', () => {
   const result = evaluate('Write', { file_path: '.gitignore' }, ENFORCED_STATE);
-  assert.strictEqual(result.decision, 'allow');
+  assert.strictEqual(result.decision, 'block');
+  assert.strictEqual(result.reason, 'pipeline-enforced');
 });
 
-test('Write .env（Pipeline enforced）→ allow', () => {
+test('Write .env（Pipeline enforced）→ block', () => {
   const result = evaluate('Write', { file_path: '.env' }, ENFORCED_STATE);
-  assert.strictEqual(result.decision, 'allow');
+  assert.strictEqual(result.decision, 'block');
 });
 
-test('Write .env.local（Pipeline enforced）→ allow', () => {
+test('Write .env.local（Pipeline enforced）→ block', () => {
   const result = evaluate('Write', { file_path: '.env.local' }, ENFORCED_STATE);
-  assert.strictEqual(result.decision, 'allow');
+  assert.strictEqual(result.decision, 'block');
 });
 
-test('Write .dockerignore（Pipeline enforced）→ allow', () => {
+test('Write .dockerignore（Pipeline enforced）→ block', () => {
   const result = evaluate('Write', { file_path: '.dockerignore' }, ENFORCED_STATE);
-  assert.strictEqual(result.decision, 'allow');
+  assert.strictEqual(result.decision, 'block');
 });
 
-test('Write .editorconfig（Pipeline enforced）→ allow', () => {
+test('Write .editorconfig（Pipeline enforced）→ block', () => {
   const result = evaluate('Write', { file_path: '.editorconfig' }, ENFORCED_STATE);
-  assert.strictEqual(result.decision, 'allow');
+  assert.strictEqual(result.decision, 'block');
 });
 
-test('Write .eslintrc（Pipeline enforced）→ allow', () => {
+test('Write .eslintrc（Pipeline enforced）→ block', () => {
   const result = evaluate('Write', { file_path: '.eslintrc' }, ENFORCED_STATE);
-  assert.strictEqual(result.decision, 'allow');
+  assert.strictEqual(result.decision, 'block');
 });
 
-test('Edit /project/.prettierrc（Pipeline enforced）→ allow', () => {
+test('Edit /project/.prettierrc（Pipeline enforced）→ block', () => {
   const result = evaluate('Edit', { file_path: '/project/.prettierrc' }, ENFORCED_STATE);
-  assert.strictEqual(result.decision, 'allow');
+  assert.strictEqual(result.decision, 'block');
 });
 
-test('Edit config/.env.production（Pipeline enforced）→ allow', () => {
+test('Edit config/.env.production（Pipeline enforced）→ block', () => {
   const result = evaluate('Edit', { file_path: 'config/.env.production' }, ENFORCED_STATE);
-  assert.strictEqual(result.decision, 'allow');
+  assert.strictEqual(result.decision, 'block');
 });
 
-test('NotebookEdit .browserslistrc（Pipeline enforced）→ allow', () => {
+test('NotebookEdit .browserslistrc（Pipeline enforced）→ block', () => {
   const result = evaluate('NotebookEdit', { file_path: '.browserslistrc' }, ENFORCED_STATE);
-  assert.strictEqual(result.decision, 'allow');
+  assert.strictEqual(result.decision, 'block');
 });
 
 test('Write app.js（Pipeline enforced）→ block（確保不受影響）', () => {

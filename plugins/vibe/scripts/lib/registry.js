@@ -28,14 +28,20 @@ const STAGES = {
 const STAGE_ORDER = Object.keys(STAGES);
 
 // agent 短名 → stage（如 'planner' → 'PLAN'）
-const AGENT_TO_STAGE = Object.fromEntries(
-  Object.entries(STAGES).map(([stage, cfg]) => [cfg.agent, stage])
-);
+const AGENT_TO_STAGE = {
+  ...Object.fromEntries(
+    Object.entries(STAGES).map(([stage, cfg]) => [cfg.agent, stage])
+  ),
+  'security-reviewer': 'REVIEW',  // 支援 agent，對應 REVIEW 階段
+};
 
 // agent namespace（ECC 加前綴後）→ stage（如 'vibe:planner' → 'PLAN'）
-const NAMESPACED_AGENT_TO_STAGE = Object.fromEntries(
-  Object.entries(STAGES).map(([stage, cfg]) => [`vibe:${cfg.agent}`, stage])
-);
+const NAMESPACED_AGENT_TO_STAGE = {
+  ...Object.fromEntries(
+    Object.entries(STAGES).map(([stage, cfg]) => [`vibe:${cfg.agent}`, stage])
+  ),
+  'vibe:security-reviewer': 'REVIEW',  // 支援 agent
+};
 
 // 工具 emoji 映射（用於回合摘要通知）
 const TOOL_EMOJI = [

@@ -289,7 +289,7 @@ test('放行 — phase=DELEGATING（sub-agent 操作）', () => {
   }
 });
 
-test('放行 — 非程式碼檔案（.md）', () => {
+test('阻擋 — 非程式碼檔案（.md）同樣受限', () => {
   const sessionId = 'test-pg-4';
   try {
     writeState(sessionId, {
@@ -304,13 +304,13 @@ test('放行 — 非程式碼檔案（.md）', () => {
       tool_input: { file_path: 'README.md' },
     });
 
-    assert.strictEqual(result.exitCode, 0);
+    assert.strictEqual(result.exitCode, 2);
   } finally {
     cleanState(sessionId);
   }
 });
 
-test('放行 — 非程式碼檔案（.json）', () => {
+test('阻擋 — 非程式碼檔案（.json）同樣受限', () => {
   const sessionId = 'test-pg-5';
   try {
     writeState(sessionId, {
@@ -325,7 +325,7 @@ test('放行 — 非程式碼檔案（.json）', () => {
       tool_input: { file_path: 'package.json' },
     });
 
-    assert.strictEqual(result.exitCode, 0);
+    assert.strictEqual(result.exitCode, 2);
   } finally {
     cleanState(sessionId);
   }
@@ -445,7 +445,7 @@ test('阻擋 — Edit 工具同樣受限', () => {
   }
 });
 
-test('放行 — 程式碼檔案但有其他放行條件（.yml 視為非程式碼）', () => {
+test('阻擋 — .yml 同樣受限', () => {
   const sessionId = 'test-pg-11';
   try {
     writeState(sessionId, {
@@ -460,7 +460,7 @@ test('放行 — 程式碼檔案但有其他放行條件（.yml 視為非程式�
       tool_input: { file_path: '.github/workflows/ci.yml' },
     });
 
-    assert.strictEqual(result.exitCode, 0);
+    assert.strictEqual(result.exitCode, 2);
   } finally {
     cleanState(sessionId);
   }

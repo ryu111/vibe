@@ -1,0 +1,411 @@
+{
+  "version": "1.0.0",
+  "description": "Pipeline E2E 測試場景 — 真實 claude session 驗證",
+  "defaults": {
+    "model": "haiku",
+    "projectVariant": "default",
+    "timeout": 300
+  },
+  "scenarios": [
+    {
+      "id": "A01",
+      "category": "A",
+      "categoryLabel": "Pipeline 正路徑",
+      "name": "full pipeline 完整 UI 功能",
+      "prompt": "[pipeline:full] 幫這個專案的 plugins/vibe/scripts/lib/ 新增一個 utils/string-helpers.js 工具模組，包含 truncate、capitalize、slugify 三個函式，附上 JSDoc 和基本錯誤處理",
+      "expected": {
+        "pipelineId": "full",
+        "phase": "COMPLETE",
+        "stageCount": 9,
+        "stages": ["PLAN", "ARCH", "DESIGN", "DEV", "REVIEW", "TEST", "QA", "E2E", "DOCS"],
+        "source": "explicit"
+      },
+      "timeout": 1740
+    },
+    {
+      "id": "A02",
+      "category": "A",
+      "categoryLabel": "Pipeline 正路徑",
+      "name": "standard pipeline 新功能",
+      "prompt": "[pipeline:standard] 在 plugins/vibe/scripts/lib/ 新增一個 utils/math-helpers.js 模組，包含 clamp、lerp、roundTo 三個純函式，加上 JSDoc",
+      "expected": {
+        "pipelineId": "standard",
+        "phase": "COMPLETE",
+        "stageCount": 6,
+        "stages": ["PLAN", "ARCH", "DEV", "REVIEW", "TEST", "DOCS"],
+        "source": "explicit"
+      },
+      "timeout": 1200
+    },
+    {
+      "id": "A03",
+      "category": "A",
+      "categoryLabel": "Pipeline 正路徑",
+      "name": "quick-dev 修復加測試",
+      "prompt": "[pipeline:quick-dev] 修復 plugins/vibe/scripts/lib/hook-logger.js 中 truncate 函式對空字串的處理，空字串應回傳空字串而非 undefined",
+      "expected": {
+        "pipelineId": "quick-dev",
+        "phase": "COMPLETE",
+        "stageCount": 3,
+        "stages": ["DEV", "REVIEW", "TEST"],
+        "source": "explicit"
+      },
+      "timeout": 660
+    },
+    {
+      "id": "A04",
+      "category": "A",
+      "categoryLabel": "Pipeline 正路徑",
+      "name": "fix 快速修復",
+      "prompt": "[pipeline:fix] 把 plugins/vibe/server.js 第一行的 shebang 從 node 改成 env node",
+      "expected": {
+        "pipelineId": "fix",
+        "phase": "COMPLETE",
+        "stageCount": 1,
+        "stages": ["DEV"],
+        "source": "explicit"
+      },
+      "timeout": 300
+    },
+    {
+      "id": "A05",
+      "category": "A",
+      "categoryLabel": "Pipeline 正路徑",
+      "name": "test-first TDD",
+      "prompt": "[pipeline:test-first] 用 TDD 為 plugins/vibe/scripts/lib/registry.js 的 PIPELINES 常量新增一個 getPipelineById(id) 輔助函式，先寫測試再實作",
+      "expected": {
+        "pipelineId": "test-first",
+        "phase": "COMPLETE",
+        "stageCount": 3,
+        "stages": ["TEST", "DEV", "TEST"],
+        "source": "explicit"
+      },
+      "timeout": 660
+    },
+    {
+      "id": "A06",
+      "category": "A",
+      "categoryLabel": "Pipeline 正路徑",
+      "name": "ui-only 純 UI 調整",
+      "prompt": "[pipeline:ui-only] 在 plugins/vibe/web/index.html 的 footer 加一個 vibe 版號顯示",
+      "expected": {
+        "pipelineId": "ui-only",
+        "phase": "COMPLETE",
+        "stageCount": 3,
+        "stages": ["DESIGN", "DEV", "QA"],
+        "source": "explicit"
+      },
+      "timeout": 1020
+    },
+    {
+      "id": "A07",
+      "category": "A",
+      "categoryLabel": "Pipeline 正路徑",
+      "name": "review-only 程式碼審查",
+      "prompt": "[pipeline:review-only] 審查 plugins/vibe/scripts/lib/hook-logger.js 的程式碼品質",
+      "expected": {
+        "pipelineId": "review-only",
+        "phase": "COMPLETE",
+        "stageCount": 1,
+        "stages": ["REVIEW"],
+        "source": "explicit"
+      },
+      "timeout": 300
+    },
+    {
+      "id": "A08",
+      "category": "A",
+      "categoryLabel": "Pipeline 正路徑",
+      "name": "docs-only 文件更新",
+      "prompt": "[pipeline:docs-only] 更新 plugins/vibe/skills/health/SKILL.md 加上使用範例",
+      "expected": {
+        "pipelineId": "docs-only",
+        "phase": "COMPLETE",
+        "stageCount": 1,
+        "stages": ["DOCS"],
+        "source": "explicit"
+      },
+      "timeout": 300
+    },
+    {
+      "id": "A09",
+      "category": "A",
+      "categoryLabel": "Pipeline 正路徑",
+      "name": "security 安全修復",
+      "prompt": "[pipeline:security] 檢查並修復 plugins/vibe/scripts/lib/flow/classifier.js 中潛在的 ReDoS 正則表達式風險",
+      "expected": {
+        "pipelineId": "security",
+        "phase": "COMPLETE",
+        "stageCount": 3,
+        "stages": ["DEV", "REVIEW", "TEST"],
+        "source": "explicit"
+      },
+      "timeout": 660
+    },
+    {
+      "id": "A10",
+      "category": "A",
+      "categoryLabel": "Pipeline 正路徑",
+      "name": "none 研究問答",
+      "prompt": "plugins/vibe/scripts/lib/registry.js 裡面定義了幾種 pipeline？每種各有幾個階段？",
+      "expected": {
+        "pipelineId": "none",
+        "phase": "IDLE",
+        "stageCount": 0,
+        "stages": [],
+        "source": null
+      },
+      "timeout": 120
+    },
+    {
+      "id": "B01",
+      "category": "B",
+      "categoryLabel": "自然語言分類",
+      "name": "自然語言→standard",
+      "prompt": "新增一個 session 管理模組到 plugins/vibe/scripts/lib/ 目錄，包含 createSession、destroySession、getSessionInfo 三個函式",
+      "expected": {
+        "pipelineId": "standard",
+        "phase": "COMPLETE"
+      },
+      "timeout": 1200
+    },
+    {
+      "id": "B02",
+      "category": "B",
+      "categoryLabel": "自然語言分類",
+      "name": "自然語言→fix",
+      "prompt": "plugins/vibe/server.js 的 port 寫死 3800 了，改成讀 VIBE_DASHBOARD_PORT 環境變數，預設 3800",
+      "expected": {
+        "pipelineId": "fix",
+        "phase": "COMPLETE"
+      },
+      "timeout": 300
+    },
+    {
+      "id": "B03",
+      "category": "B",
+      "categoryLabel": "自然語言分類",
+      "name": "自然語言→none（問句）",
+      "prompt": "plugins/vibe/scripts/hooks/ 目錄下有幾個 hook 腳本？各自負責什麼事件？",
+      "expected": {
+        "pipelineId": "none",
+        "phase": "IDLE"
+      },
+      "timeout": 120
+    },
+    {
+      "id": "B04",
+      "category": "B",
+      "categoryLabel": "自然語言分類",
+      "name": "自然語言→quick-dev",
+      "prompt": "修復 plugins/vibe/scripts/lib/sentinel/tool-detector.js 的快取機制，加上過期時間 5 分鐘",
+      "expected": {
+        "pipelineId": "quick-dev",
+        "phase": "COMPLETE"
+      },
+      "timeout": 660
+    },
+    {
+      "id": "B05",
+      "category": "B",
+      "categoryLabel": "自然語言分類",
+      "name": "自然語言→docs-only",
+      "prompt": "更新 docs/ref/pipeline.md 加上 Pipeline Catalog 的 10 種模板說明",
+      "expected": {
+        "pipelineId": "docs-only",
+        "phase": "COMPLETE"
+      },
+      "timeout": 300
+    },
+    {
+      "id": "B06",
+      "category": "B",
+      "categoryLabel": "自然語言分類",
+      "name": "自然語言→standard（重構）",
+      "prompt": "重構 plugins/vibe/scripts/lib/sentinel/lang-map.js 把硬編碼的語言映射抽出成可配置的 JSON",
+      "expected": {
+        "pipelineId": "standard",
+        "phase": "COMPLETE"
+      },
+      "timeout": 1200
+    },
+    {
+      "id": "C01",
+      "category": "C",
+      "categoryLabel": "回復路徑",
+      "name": "REVIEW FAIL→DEV→重審",
+      "prompt": "[pipeline:quick-dev] 修復 plugins/vibe/scripts/lib/hook-logger.js 的 error 處理",
+      "projectVariant": "buggy-review",
+      "expected": {
+        "pipelineId": "quick-dev",
+        "phase": "COMPLETE",
+
+        "hasRetries": true
+      },
+      "timeout": 1020,
+      "_note": "buggy 版本植入 console.log 殘留讓 reviewer 報 FAIL（3 stages + 1 retry cycle = 5 × 180 + 120）"
+    },
+    {
+      "id": "C02",
+      "category": "C",
+      "categoryLabel": "回復路徑",
+      "name": "TEST FAIL→DEV→重測",
+      "prompt": "[pipeline:quick-dev] 補完 plugins/vibe/scripts/lib/sentinel/tool-detector.js 的邊界測試",
+      "projectVariant": "buggy-test",
+      "expected": {
+        "pipelineId": "quick-dev",
+        "phase": "COMPLETE",
+
+        "hasRetries": true
+      },
+      "timeout": 1020,
+      "_note": "buggy 版本植入必定失敗的測試（3 stages + 1 retry cycle = 5 × 180 + 120）"
+    },
+    {
+      "id": "C03",
+      "category": "C",
+      "categoryLabel": "回復路徑",
+      "name": "Cancel 中斷",
+      "prompt": "[pipeline:standard] 新增一個完整的快取管理模組到 scripts/lib/",
+      "expected": {
+        "cancelled": true
+      },
+      "timeout": 480,
+      "_note": "等 PLAN 完成後送 /cancel（PLAN 1 stage + 分類 buffer = 2 × 180 + 120）"
+    },
+    {
+      "id": "C04",
+      "category": "C",
+      "categoryLabel": "回復路徑",
+      "name": "Pipeline 升級",
+      "prompt": "[pipeline:fix] 修改 hook-logger.js 的 truncate 長度",
+      "followUp": "其實這個修改影響範圍蠻大的，需要完整測試，幫我升級到 quick-dev pipeline",
+      "expected": {
+        "hasReclassification": true
+      },
+      "timeout": 960,
+      "_note": "先 fix 完成→送 follow-up 觸發升級→驗證 reclassification（fix 1 + quick-dev 3 = 4 × 180 + 120 + buffer）"
+    },
+    {
+      "id": "C05",
+      "category": "C",
+      "categoryLabel": "回復路徑",
+      "name": "連續任務",
+      "prompt": "[pipeline:fix] 把 hook-logger.js 的 MAX_LINES 從 500 改成 1000",
+      "followUp": "plugins/vibe/scripts/lib/registry.js 有哪些 STAGES？",
+      "expected": {
+        "pipelineId": "fix",
+        "phase": "COMPLETE",
+        "sequentialClean": true
+      },
+      "timeout": 420,
+      "_note": "第一個 pipeline 完成→送研究問題→確認 state 正確重設（fix 1 × 180 + none 120 + buffer）"
+    },
+    {
+      "id": "C06",
+      "category": "C",
+      "categoryLabel": "回復路徑",
+      "name": "極短 prompt",
+      "prompt": "加個 logger",
+      "expected": {
+        "noCrash": true
+      },
+      "timeout": 480,
+      "_note": "測試短文本 Layer 3 LLM 觸發，不驗證具體 pipeline（可能觸發任何 pipeline，安全 buffer）"
+    },
+    {
+      "id": "C07",
+      "category": "C",
+      "categoryLabel": "回復路徑",
+      "name": "中英混合",
+      "prompt": "help me refactor plugins/vibe/scripts/lib/hook-logger.js 的 error handling pattern",
+      "expected": {
+        "noCrash": true
+      },
+      "timeout": 1200,
+      "_note": "中英混合輸入不應 crash（refactor 可能分類為 standard 6 × 180 + 120）"
+    },
+    {
+      "id": "C08",
+      "category": "C",
+      "categoryLabel": "回復路徑",
+      "name": "模糊意圖",
+      "prompt": "好像 hook-logger.js 有些問題，幫我看看改一改",
+      "expected": {
+        "noCrash": true
+      },
+      "timeout": 660,
+      "_note": "模糊意圖能合理分類不 crash（可能 quick-dev 3 × 180 + 120）"
+    },
+    {
+      "id": "D01",
+      "category": "D",
+      "categoryLabel": "環境適配",
+      "name": "前端→含 DESIGN",
+      "prompt": "[pipeline:full] 新增一個 React 組件到 src/components/StatusBadge.tsx",
+      "projectVariant": "frontend",
+      "expected": {
+        "pipelineId": "full",
+        "phase": "COMPLETE",
+        "hasDesignStage": true
+      },
+      "timeout": 1740,
+      "_note": "前端專案 env-detector 偵測到 React → DESIGN 不跳過（full 9 × 180 + 120）"
+    },
+    {
+      "id": "D02",
+      "category": "D",
+      "categoryLabel": "環境適配",
+      "name": "後端→跳 DESIGN",
+      "prompt": "[pipeline:full] 新增一個 utils/validator.js 模組",
+      "expected": {
+        "pipelineId": "full",
+        "phase": "COMPLETE",
+        "designSkipped": true
+      },
+      "timeout": 1560,
+      "_note": "純後端（vibe 專案）→ DESIGN 應被跳過（full - DESIGN = 8 × 180 + 120）"
+    },
+    {
+      "id": "D03",
+      "category": "D",
+      "categoryLabel": "環境適配",
+      "name": "有 OpenSpec",
+      "prompt": "[pipeline:standard] 新增 session 清理排程功能到 scripts/lib/",
+      "expected": {
+        "pipelineId": "standard",
+        "phase": "COMPLETE",
+        "openspecEnabled": true
+      },
+      "timeout": 1200,
+      "_note": "vibe 專案含 openspec/ 目錄 → openspecEnabled=true（standard 6 × 180 + 120）"
+    },
+    {
+      "id": "D04",
+      "category": "D",
+      "categoryLabel": "環境適配",
+      "name": "多檔 post-edit hook",
+      "prompt": "[pipeline:quick-dev] 同時修正 hook-logger.js 和 tool-detector.js 的錯誤處理",
+      "expected": {
+        "pipelineId": "quick-dev",
+        "phase": "COMPLETE"
+      },
+      "timeout": 660,
+      "_note": "修改多檔案，驗證 post-edit lint/format hook 每次觸發（quick-dev 3 × 180 + 120）"
+    },
+    {
+      "id": "D05",
+      "category": "D",
+      "categoryLabel": "環境適配",
+      "name": "Dashboard 事件接收",
+      "prompt": "[pipeline:fix] 把 server.js 的 DEFAULT_PORT 常量名稱改成 DASHBOARD_PORT",
+      "expected": {
+        "pipelineId": "fix",
+        "phase": "COMPLETE",
+        "dashboardEvents": true
+      },
+      "timeout": 300,
+      "_note": "確認 pipeline 期間 dashboard 正常接收 timeline 事件（fix 1 × 180 + 120）"
+    }
+  ]
+}

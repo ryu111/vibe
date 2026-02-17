@@ -366,10 +366,12 @@ function runPipelineScenario({ id, pipelineId, prompt, label }) {
   if (stages.length > 0) {
     log('CHECK', 'pipeline-check');
     runHook('pipeline-check', { session_id: sid, stop_hook_active: false });
-    test(`${id}: pipeline-check 後 state 已刪除`, () => {
-      assert.strictEqual(readState(sid), null, 'state 應被刪除');
+    test(`${id}: pipeline-check 後 state 保留`, () => {
+      const s = readState(sid);
+      assert.ok(s !== null, 'state 應保留（由 session-cleanup 過期清理）');
+      assert.strictEqual(s.phase, 'COMPLETE');
     });
-    console.log(`    └─ state deleted ✓`);
+    console.log(`    └─ state preserved (COMPLETE) ✓`);
   }
 
   // 清理
@@ -574,8 +576,10 @@ for (const scenario of SCENARIOS) {
 
   // Pipeline check
   runHook('pipeline-check', { session_id: sid, stop_hook_active: false });
-  test('X1: pipeline-check → state 已刪除', () => {
-    assert.strictEqual(readState(sid), null);
+  test('X1: pipeline-check → state 保留', () => {
+    const s = readState(sid);
+    assert.ok(s !== null, 'state 應保留');
+    assert.strictEqual(s.phase, 'COMPLETE');
   });
   log('COMPLETE', 'FAIL 回退流程完整 ✓');
 
@@ -1041,8 +1045,10 @@ for (const scenario of SCENARIOS) {
 
   // Pipeline check
   runHook('pipeline-check', { session_id: sid, stop_hook_active: false });
-  test('X6: pipeline-check → state 已刪除', () => {
-    assert.strictEqual(readState(sid), null);
+  test('X6: pipeline-check → state 保留', () => {
+    const s = readState(sid);
+    assert.ok(s !== null, 'state 應保留');
+    assert.strictEqual(s.phase, 'COMPLETE');
   });
   log('COMPLETE', 'TDD 雙 TEST 含 FAIL 重試流程完整 ✓');
 
@@ -1185,8 +1191,10 @@ for (const scenario of SCENARIOS) {
   });
 
   runHook('pipeline-check', { session_id: sid, stop_hook_active: false });
-  test('X7: pipeline-check → state 已刪除', () => {
-    assert.strictEqual(readState(sid), null);
+  test('X7: pipeline-check → state 保留', () => {
+    const s = readState(sid);
+    assert.ok(s !== null, 'state 應保留');
+    assert.strictEqual(s.phase, 'COMPLETE');
   });
   log('COMPLETE', 'MAX_RETRIES 耗盡強制繼續流程完整 ✓');
 
@@ -1398,8 +1406,10 @@ for (const scenario of SCENARIOS) {
   });
 
   runHook('pipeline-check', { session_id: sid, stop_hook_active: false });
-  test('X8: pipeline-check → state 已刪除', () => {
-    assert.strictEqual(readState(sid), null);
+  test('X8: pipeline-check → state 保留', () => {
+    const s = readState(sid);
+    assert.ok(s !== null, 'state 應保留');
+    assert.strictEqual(s.phase, 'COMPLETE');
   });
 
   // Timeline 驗證
@@ -1605,10 +1615,12 @@ for (const scenario of SCENARIOS) {
   console.log(`    ├─ phase=${s.phase}, pendingRetry=${s.progress.pendingRetry}`);
   console.log(`    └─ 無法回退，強制完成 ✓`);
 
-  // Pipeline check 應清理 state（因為已 COMPLETE）
+  // Pipeline check — state 保留（不再刪除）
   runHook('pipeline-check', { session_id: sid, stop_hook_active: false });
-  test('X10: pipeline-check → state 已刪除', () => {
-    assert.strictEqual(readState(sid), null);
+  test('X10: pipeline-check → state 保留', () => {
+    const s = readState(sid);
+    assert.ok(s !== null, 'state 應保留');
+    assert.strictEqual(s.phase, 'COMPLETE');
   });
   log('COMPLETE', 'review-only 無 DEV 安全閥流程完整 ✓');
 
