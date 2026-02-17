@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
- * validate.js — Pipeline E2E 驗證模組
+ * validate.js — Pipeline E2E 驗證模組（v3 State Schema）
  *
- * 驗證模型基於 FSM 語意：
- *   phase=COMPLETE → FSM 保證所有品質閘門通過，驗證重點是一致性
+ * 驗證模型基於 DAG 語意：
+ *   phase=COMPLETE → 所有 stages completed/skipped，品質閘門通過
  *   phase=IDLE + none → 分類正確即成功
  *   其他 phase → 非預期終態，驗證失敗
  *
  * 驗證分五層：
  *   L1 結構層 — state/timeline 存在
- *   L2 分類層 — pipelineId、expectedStages 匹配
- *   L3 完成層 — 基於 phase 的一致性檢查（FSM 衍生，非獨立判斷）
+ *   L2 分類層 — pipelineId、DAG stages 匹配
+ *   L3 完成層 — 基於 derivePhase 的一致性檢查
  *   L4 Timeline 層 — 事件佐證
  *   L5 場景特化層 — cancelled/retries/reclassification/design/openspec
  *
@@ -23,6 +23,10 @@ const path = require('path');
 const os = require('os');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
+
+// 從 dag-state.js 引入 derivePhase 和 helper
+const dagStatePath = path.join(__dirname, '..', 'plugins', 'vibe', 'scripts', 'lib', 'flow', 'dag-state.js');
+const { derivePhase, getCompletedStages, getSkippedStages } = require(dagStatePath);
 
 // 品質階段 — 這些階段產生 PASS/FAIL verdict
 const QUALITY_STAGES = ['REVIEW', 'TEST', 'QA', 'E2E'];
@@ -81,71 +85,71 @@ function validate(state, timeline) {
 
   if (!state) return checks; // 無 state 則後續全跳過
 
+  // v3: phase 從 state 推導
+  const phase = derivePhase(state);
+
   // ═══ L2 分類層 ═══
   if (expected.pipelineId) {
-    const actual = state.context && state.context.pipelineId;
+    const actual = state.classification && state.classification.pipelineId;
     add('L2:pipelineId', actual === expected.pipelineId,
       true, `expected=${expected.pipelineId} actual=${actual}`);
   }
 
   if (expected.phase) {
-    add('L2:phase', state.phase === expected.phase,
-      true, `expected=${expected.phase} actual=${state.phase}`);
+    add('L2:phase', phase === expected.phase,
+      true, `expected=${expected.phase} actual=${phase}`);
   }
 
   if (expected.stages) {
-    const actual = state.context && state.context.expectedStages;
+    const actual = state.dag ? Object.keys(state.dag) : [];
     add('L2:stages', deepEqual(actual, expected.stages),
       true, `expected=${JSON.stringify(expected.stages)} actual=${JSON.stringify(actual)}`);
   }
 
   if (expected.stageCount !== undefined) {
-    const actual = (state.context && state.context.expectedStages) || [];
+    const actual = state.dag ? Object.keys(state.dag) : [];
     add('L2:stageCount', actual.length === expected.stageCount,
       true, `expected=${expected.stageCount} actual=${actual.length}`);
   }
 
   if (expected.source !== undefined && expected.source !== null) {
-    const actual = state.meta && state.meta.classificationSource;
+    const actual = state.classification && state.classification.source;
     add('L2:source', actual === expected.source,
       false, `expected=${expected.source} actual=${actual}`);
   }
 
-  // ═══ L3 完成層（基於 phase 的 FSM 一致性）═══
-  const isComplete = state.phase === 'COMPLETE';
-  const isNone = (state.context && state.context.pipelineId) === 'none';
+  // ═══ L3 完成層（基於 derivePhase 的一致性）═══
+  const isPhaseComplete = phase === 'COMPLETE';
+  const isNone = (state.classification && state.classification.pipelineId) === 'none';
 
-  if (isComplete) {
-    // COMPLETE → FSM 已保證品質閘門通過，這裡只驗一致性
+  if (isPhaseComplete) {
+    // COMPLETE → DAG 保證所有 stages done，這裡只驗一致性
 
-    // 3a. completedAgents 數量 ≥ 非跳過階段數
-    const stages = (state.context && state.context.expectedStages) || [];
-    const skipped = (state.progress && state.progress.skippedStages) || [];
-    const agents = (state.progress && state.progress.completedAgents) || [];
-    const expectedAgentCount = stages.length - skipped.length;
-    add('L3:completedAgents', agents.length >= expectedAgentCount,
-      false, `expected>=${expectedAgentCount} actual=${agents.length}`);
+    // 3a. completed stages 數量 ≥ 非跳過階段數
+    const dagStages = state.dag ? Object.keys(state.dag) : [];
+    const skipped = getSkippedStages(state);
+    const completed = getCompletedStages(state);
+    const expectedCompletedCount = dagStages.length - skipped.length;
+    add('L3:completedStages', completed.length >= expectedCompletedCount,
+      false, `expected>=${expectedCompletedCount} actual=${completed.length}`);
 
     // 3b. pendingRetry 已消費（不應殘留）
-    const pending = state.progress && state.progress.pendingRetry;
-    add('L3:noPendingRetry', pending === null || pending === undefined);
+    add('L3:noPendingRetry', state.pendingRetry === null || state.pendingRetry === undefined);
 
     // 3c. 品質階段 verdict 一致性（COMPLETE 保證 PASS，這裡是 double-check）
-    const results = (state.progress && state.progress.stageResults) || {};
-    const qualityResults = Object.entries(results)
-      .filter(([stage]) => QUALITY_STAGES.includes(stage));
+    const stages = state.stages || {};
+    const qualityResults = Object.entries(stages)
+      .filter(([stageId]) => QUALITY_STAGES.includes(stageId))
+      .filter(([, s]) => s.status === 'completed');
     if (qualityResults.length > 0) {
-      const allQualityPass = qualityResults.every(([, r]) => {
-        const v = typeof r === 'string' ? r : (r && r.verdict);
-        return v === 'PASS';
-      });
+      const allQualityPass = qualityResults.every(([, s]) => s.verdict === 'PASS');
       add('L3:qualityVerdicts', allQualityPass,
-        false, `quality stages: ${qualityResults.map(([s, r]) => `${s}=${typeof r === 'string' ? r : r.verdict}`).join(', ')}`);
+        false, `quality stages: ${qualityResults.map(([id, s]) => `${id}=${s.verdict}`).join(', ')}`);
     }
   }
 
   // retries 在限制內（任何 phase 都檢查）
-  const retries = (state.progress && state.progress.retries) || {};
+  const retries = state.retries || {};
   const maxRetry = Math.max(0, ...Object.values(retries));
   add('L3:retriesWithinLimit', maxRetry <= 3,
     true, `max=${maxRetry}`);
@@ -153,12 +157,12 @@ function validate(state, timeline) {
   // ═══ L4 Timeline 層 ═══
   add('L4:hasClassified', timeline.some(e => e.type === 'task.classified'));
 
-  if (isComplete) {
+  if (isPhaseComplete) {
     add('L4:hasPipelineComplete', timeline.some(e => e.type === 'pipeline.complete'),
       false);
   }
 
-  if (!isNone && (isComplete || state.phase === 'DELEGATING' || state.phase === 'RETRYING')) {
+  if (!isNone && (isPhaseComplete || phase === 'DELEGATING' || phase === 'RETRYING')) {
     add('L4:hasDelegation', timeline.some(e => e.type === 'delegation.start'),
       false);
   }
@@ -180,18 +184,18 @@ function validate(state, timeline) {
   }
 
   if (expected.hasDesignStage) {
-    const stages = (state.context && state.context.expectedStages) || [];
-    const skipped = (state.progress && state.progress.skippedStages) || [];
-    add('L5:designIncluded', stages.includes('DESIGN') && !skipped.includes('DESIGN'));
+    const dagStages = state.dag ? Object.keys(state.dag) : [];
+    const skipped = getSkippedStages(state);
+    add('L5:designIncluded', dagStages.includes('DESIGN') && !skipped.includes('DESIGN'));
   }
 
   if (expected.designSkipped) {
-    const skipped = (state.progress && state.progress.skippedStages) || [];
+    const skipped = getSkippedStages(state);
     add('L5:designSkipped', skipped.includes('DESIGN'));
   }
 
   if (expected.openspecEnabled) {
-    add('L5:openspecEnabled', state.context && state.context.openspecEnabled === true);
+    add('L5:openspecEnabled', state.openspecEnabled === true);
   }
 
   if (expected.dashboardEvents) {
@@ -204,7 +208,7 @@ function validate(state, timeline) {
   }
 
   if (expected.sequentialClean) {
-    add('L5:sequentialClean', state.phase === 'COMPLETE' || state.phase === 'IDLE');
+    add('L5:sequentialClean', phase === 'COMPLETE' || phase === 'IDLE');
   }
 
   return checks;
@@ -220,6 +224,9 @@ const passed = checks.filter(c => c.passed).length;
 const failed = checks.filter(c => !c.passed && c.required).length;
 const warnings = checks.filter(c => !c.passed && !c.required).length;
 
+// v3: 從 state 推導 phase + 從 stages 衍生資訊
+const phase = state ? derivePhase(state) : null;
+
 const result = {
   scenarioId: scenario.id,
   scenarioName: scenario.name,
@@ -230,16 +237,16 @@ const result = {
   summary: { passed, failed, warnings, total: checks.length },
   checks,
   state: state ? {
-    phase: state.phase,
-    pipelineId: state.context && state.context.pipelineId,
-    expectedStages: state.context && state.context.expectedStages,
-    completedAgents: state.progress && state.progress.completedAgents,
-    skippedStages: state.progress && state.progress.skippedStages,
-    stageResults: state.progress && state.progress.stageResults,
-    retries: state.progress && state.progress.retries,
-    pendingRetry: state.progress && state.progress.pendingRetry,
+    phase,
+    pipelineId: state.classification && state.classification.pipelineId,
+    dagStages: state.dag ? Object.keys(state.dag) : [],
+    completedStages: getCompletedStages(state),
+    skippedStages: getSkippedStages(state),
+    stages: state.stages,
+    retries: state.retries,
+    pendingRetry: state.pendingRetry,
     cancelled: state.meta && state.meta.cancelled,
-    source: state.meta && state.meta.classificationSource,
+    source: state.classification && state.classification.source,
     reclassifications: state.meta && state.meta.reclassifications,
   } : null,
   timelineStats: {

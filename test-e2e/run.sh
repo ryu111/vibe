@@ -79,7 +79,8 @@ init_dashboard() {
     echo "⬜ 待執行" > "$DASH_DIR/${id}.status"
   done
 
-  # 預留畫面空間（印空行佔位）
+  # 存游標位置（DEC save），再印空行佔位
+  printf '\033[s' >&3
   local i
   for ((i=0; i<DASH_LINES; i++)); do
     echo "" >&3
@@ -103,8 +104,8 @@ set_status() {
 render_dashboard() {
   [ -z "$DASH_DIR" ] && return
 
-  # 游標上移到 dashboard 起始位置
-  printf '\033[%dA' "$DASH_LINES" >&3
+  # 恢復游標到 dashboard 起始位置（DEC restore — 抗並行 race condition）
+  printf '\033[u' >&3
 
   # Header
   printf '\033[K  %b━━━ Pipeline E2E ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n' '\033[0;36m' '\033[0m' >&3
@@ -371,7 +372,8 @@ poll_state() {
       phase=$(node -e "
         try {
           const s = JSON.parse(require('fs').readFileSync('$state_file','utf8'));
-          console.log(s.phase || 'UNKNOWN');
+          const { derivePhase } = require('$VIBE_PLUGIN/scripts/lib/flow/dag-state.js');
+          console.log(derivePhase(s));
         } catch(e) { console.log('UNKNOWN'); }
       " 2>/dev/null)
 
@@ -387,7 +389,7 @@ poll_state() {
           pid=$(node -e "
             try {
               const s = JSON.parse(require('fs').readFileSync('$state_file','utf8'));
-              console.log(s.context && s.context.pipelineId || '');
+              console.log(s.classification && s.classification.pipelineId || '');
             } catch(e) { console.log(''); }
           " 2>/dev/null)
           if [ "$pid" = "none" ]; then
@@ -452,19 +454,18 @@ wait_for_plan_then_cancel() {
       has_plan=$(node -e "
         try {
           const s = JSON.parse(require('fs').readFileSync('$state_file','utf8'));
-          const r = s.progress && s.progress.stageResults;
-          console.log(r && r.PLAN ? 'yes' : 'no');
+          const st = s.stages && s.stages.PLAN;
+          console.log(st && st.status === 'completed' ? 'yes' : 'no');
         } catch(e) { console.log('no'); }
       " 2>/dev/null)
 
       if [ "$has_plan" = "yes" ]; then
         set_status "$scenario_id" "⏳ Cancel 中..."
-        # 直接修改 state file — 繞過 TUI 互動限制
+        # 直接修改 state file — 繞過 TUI 互動限制（v3: 設 meta.cancelled，phase 由 derivePhase 推導）
         node -e "
           const fs = require('fs');
           const f = '$state_file';
           const state = JSON.parse(fs.readFileSync(f, 'utf8'));
-          state.phase = 'IDLE';
           state.meta = state.meta || {};
           state.meta.cancelled = true;
           fs.writeFileSync(f, JSON.stringify(state, null, 2));
