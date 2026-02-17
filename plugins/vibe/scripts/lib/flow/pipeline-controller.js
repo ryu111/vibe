@@ -277,6 +277,14 @@ function canProceed(sessionId, toolName, toolInput) {
     if (toolName === 'Task' || toolName === 'Skill' || READ_ONLY.has(toolName)) {
       return { decision: 'allow' };
     }
+    // Cancel 逃生口：允許 Write/Edit 修改 pipeline/task-guard state 檔案
+    if (['Write', 'Edit'].includes(toolName)) {
+      const fp = toolInput?.file_path;
+      if (typeof fp === 'string' &&
+          /^(pipeline-state|task-guard-state)-[a-f0-9-]+\.json$/.test(path.basename(fp))) {
+        return { decision: 'allow' };
+      }
+    }
     return {
       decision: 'block',
       reason: 'must-delegate',
@@ -621,8 +629,9 @@ function onSessionStop(sessionId) {
   const failed = Object.entries(state.stages)
     .filter(([, s]) => s.status === ds.STAGE_STATUS.FAILED)
     .map(([id]) => id);
+  const readySet = new Set(ready);
   const pending = Object.entries(state.stages)
-    .filter(([, s]) => s.status === ds.STAGE_STATUS.PENDING)
+    .filter(([id, s]) => s.status === ds.STAGE_STATUS.PENDING && !readySet.has(id))
     .map(([id]) => id);
 
   const missing = [...failed, ...active, ...ready, ...pending];
