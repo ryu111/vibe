@@ -432,5 +432,5 @@ if (require.main === module) {
     } catch (err) {
       hookLogger.error(`remote-hub:${subcommand}`, err);
     }
-  })();
+  })().catch(err => hookLogger.error(`remote-hub:${subcommand}:unhandled`, err));
 }

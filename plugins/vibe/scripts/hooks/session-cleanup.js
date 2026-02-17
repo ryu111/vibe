@@ -16,6 +16,7 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const STALE_DAYS = 3;
@@ -61,10 +62,7 @@ process.stdin.on('end', () => {
     }
   } catch (err) {
     // 清理失敗不應阻擋 session 啟動
-    try {
-      const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
-      hookLogger.error('session-cleanup', err);
-    } catch (_) {}
+    hookLogger.error('session-cleanup', err);
   }
 });
 

@@ -10,8 +10,8 @@ const path = require('path');
 const { isRunning, start, getState, getLanIP, PORT } = require(path.join(__dirname, '..', 'lib', 'dashboard', 'server-manager.js'));
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 
-let input = '';
-process.stdin.on('data', d => input += d);
+// stdin 消耗（SessionStart hook 必須讀完 stdin 才能正常退出）
+process.stdin.resume();
 process.stdin.on('end', async () => {
   try {
     const running = await isRunning();

@@ -44,7 +44,15 @@ const { classifyWithConfidence } = require('./classifier.js');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
+// 級聯跳過迴圈上限（pipeline 最多 9 階段，20 足夠任何 DAG）
+const MAX_SKIP_ITERATIONS = 20;
+
 // ────────────────── 工具函式 ──────────────────
+
+/** 提取 short agent 名稱（去 plugin 前綴） */
+function extractShortAgent(agentType) {
+  return agentType.includes(':') ? agentType.split(':')[1] : agentType;
+}
 
 /** 讀取 state（自動遷移 v2→v3） */
 function loadState(sessionId) {
@@ -272,7 +280,7 @@ function onDelegate(sessionId, agentType, toolInput) {
   let state = loadState(sessionId);
   if (!state) return { allow: true };
 
-  const shortAgent = agentType.includes(':') ? agentType.split(':')[1] : agentType;
+  const shortAgent = extractShortAgent(agentType);
   const stage = AGENT_TO_STAGE[shortAgent] || '';
 
   // pendingRetry 防護：只允許 DEV
@@ -307,7 +315,7 @@ function onDelegate(sessionId, agentType, toolInput) {
  */
 function onStageComplete(sessionId, agentType, transcriptPath) {
   const pipeline = discoverPipeline();
-  const shortAgent = agentType.includes(':') ? agentType.split(':')[1] : agentType;
+  const shortAgent = extractShortAgent(agentType);
 
   // 偵測是否為 pipeline-architect
   if (shortAgent === 'pipeline-architect') {
@@ -395,21 +403,10 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
   // ── 分支 C: 正常前進 ──
   state = ds.markStageCompleted(state, currentStage, verdict);
 
-  // 跳過判斷：檢查新 ready stages 是否需要 skip
+  // 級聯跳過：反覆檢查 ready stages 是否需要 skip，直到穩定
   let readyStages = ds.getReadyStages(state);
-  for (const stageId of readyStages) {
-    const skip = shouldSkip(stageId, state);
-    if (skip.skip) {
-      state = ds.markStageSkipped(state, stageId, skip.reason);
-    }
-  }
-
-  // 跳過後重新計算 ready
-  readyStages = ds.getReadyStages(state);
-
-  // 遞迴跳過（如果新 ready 也需要跳）
-  let maxIter = 10;
-  while (readyStages.length > 0 && maxIter-- > 0) {
+  let skipIter = MAX_SKIP_ITERATIONS;
+  while (readyStages.length > 0 && skipIter-- > 0) {
     let anySkipped = false;
     for (const stageId of readyStages) {
       const skip = shouldSkip(stageId, state);
@@ -420,6 +417,12 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
     }
     if (!anySkipped) break;
     readyStages = ds.getReadyStages(state);
+  }
+  if (skipIter <= 0 && readyStages.length > 0) {
+    const hookLogger = require('../hook-logger.js');
+    hookLogger.error('pipeline-controller', new Error(
+      `級聯跳過迴圈超過 ${MAX_SKIP_ITERATIONS} 次上限，剩餘 ready: ${readyStages.join(',')}`
+    ));
   }
 
   ds.writeState(sessionId, state);
@@ -530,7 +533,7 @@ function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline) {
 }
 
 /** 組裝完成輸出 */
-function buildCompleteOutput(state, lastStage, pipeline) {
+function buildCompleteOutput(state, completedStage, pipeline) {
   const completed = ds.getCompletedStages(state);
   const skipped = ds.getSkippedStages(state);
   const completedStr = completed.join(' → ');
@@ -621,4 +624,6 @@ module.exports = {
   loadState,
   buildDelegationHint,
   buildStageContext,
+  extractShortAgent,
+  MAX_SKIP_ITERATIONS,
 };

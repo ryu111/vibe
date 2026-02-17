@@ -8,25 +8,20 @@
  *    - trigger=manual：使用者已提供 hint，只補充 pipeline 狀態
  */
 'use strict';
-const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const { execSync } = require('child_process');
 const { reset } = require(path.join(__dirname, '..', 'lib', 'flow', 'counter.js'));
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
-
-const CLAUDE_DIR = path.join(os.homedir(), '.claude');
+const ds = require(path.join(__dirname, '..', 'lib', 'flow', 'dag-state.js'));
 
 /**
  * 從 pipeline state 提取進度摘要
  */
 function getPipelineSummary(sessionId) {
-  const stateFile = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
   try {
-    if (!fs.existsSync(stateFile)) return null;
-    const st = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-    if (st.version !== 3 || !st.dag) return null;
+    const st = ds.readState(sessionId);
+    if (!st || !st.dag) return null;
 
     const pipelineId = st.classification?.pipelineId || '未知';
     const taskType = st.classification?.taskType || '';
@@ -94,11 +89,9 @@ function getGitSummary(cwd) {
  * 從 TaskList 提取未完成任務（讀 transcript 太慢，用 pipeline stages 代替）
  */
 function getPendingWork(sessionId) {
-  const stateFile = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
   try {
-    if (!fs.existsSync(stateFile)) return null;
-    const st = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-    if (!st.dag || !st.stages) return null;
+    const st = ds.readState(sessionId);
+    if (!st || !st.dag || !st.stages) return null;
 
     const pending = Object.keys(st.dag).filter(id => {
       const s = st.stages[id]?.status;

@@ -103,8 +103,8 @@ function derivePhase(state) {
   const stageIds = Object.keys(state.dag);
   if (stageIds.length === 0) return PHASES.IDLE;
 
-  // pendingRetry → RETRYING
-  if (state.pendingRetry?.stages?.length > 0) {
+  // pendingRetry → RETRYING（防護非陣列型別）
+  if (Array.isArray(state.pendingRetry?.stages) && state.pendingRetry.stages.length > 0) {
     return PHASES.RETRYING;
   }
 
@@ -213,7 +213,7 @@ function getCurrentStage(state) {
 // ────────────────── State 變更操作 ──────────────────
 
 function _touch(state) {
-  return { ...state, meta: { ...state.meta, lastTransition: new Date().toISOString() } };
+  return { ...state, meta: { ...(state.meta || {}), lastTransition: new Date().toISOString() } };
 }
 
 /** 設定分類結果（升級時追蹤 reclassifications） */
@@ -229,7 +229,7 @@ function classify(state, classification) {
   return _touch({
     ...state,
     classification: { ...classification, classifiedAt: new Date().toISOString() },
-    meta: { ...state.meta, cancelled: false, reclassifications },
+    meta: { ...(state.meta || {}), cancelled: false, reclassifications },
   });
 }
 

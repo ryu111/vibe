@@ -73,14 +73,9 @@ process.stdin.on('end', () => {
     const toolName = data.tool_name || '';
     const toolInput = data.tool_input || {};
 
-    // 讀取 pipeline state（M-1 fix: 只讀一次，後續複用）
-    let cachedState = null;
-    const stateFile = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
-    try {
-      if (fs.existsSync(stateFile)) {
-        cachedState = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-      }
-    } catch (_) {}
+    // 讀取 pipeline state（統一透過 ds.readState，只讀一次，後續複用）
+    const { readState: dsReadState } = require(path.join(__dirname, '..', 'lib', 'flow', 'dag-state.js'));
+    const cachedState = dsReadState(sessionId);
 
     // 1. tool.used 事件（Task 由 delegation-tracker 處理）
     if (toolName && toolName !== 'Task') {
