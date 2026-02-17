@@ -175,7 +175,6 @@ test('AskUserQuestion → 阻擋（CLASSIFIED must-delegate）', () => {
   assert.strictEqual(result.reason, 'must-delegate');
   assert.ok(result.message.includes('⛔'));
   assert.ok(result.message.includes('等待委派'));
-  assert.ok(result.message.includes('/vibe:cancel'));
 });
 
 test('AskUserQuestion — PLAN 階段放行（需 DELEGATING phase）', () => {

@@ -324,17 +324,46 @@ TESTEOF
 
 poll_state() {
   local uuid="$1"
-  local timeout="$2"
+  local idle_timeout="$2"
   local scenario_id="$3"
   local sess="$4"
   local elapsed=0
+  local idle_elapsed=0
+  local last_mtime=""
   local state_file="$CLAUDE_DIR/pipeline-state-${uuid}.json"
+  local timeline_file="$CLAUDE_DIR/timeline-${uuid}.jsonl"
   local poll_interval=10
+  local max_wall=1800  # 30 分鐘硬上限
 
   while true; do
-    if (( elapsed > timeout )); then
+    # 硬上限
+    if (( elapsed > max_wall )); then
       echo "TIMEOUT"
       return 1
+    fi
+
+    # 閒置逾時
+    if (( idle_elapsed > idle_timeout )); then
+      echo "TIMEOUT"
+      return 1
+    fi
+
+    # 活躍度偵測：timeline 或 state 檔案更新就重設閒置計時
+    local current_mtime=""
+    if [ -f "$timeline_file" ]; then
+      current_mtime=$(stat -f %m "$timeline_file" 2>/dev/null)
+    elif [ -f "$state_file" ]; then
+      current_mtime=$(stat -f %m "$state_file" 2>/dev/null)
+    fi
+
+    if [ -n "$current_mtime" ]; then
+      if [ "$current_mtime" != "$last_mtime" ]; then
+        idle_elapsed=0
+        last_mtime="$current_mtime"
+      fi
+    else
+      # 檔案尚未建立（啟動中）— 不計入閒置
+      idle_elapsed=0
     fi
 
     if [ -f "$state_file" ]; then
@@ -346,7 +375,7 @@ poll_state() {
         } catch(e) { console.log('UNKNOWN'); }
       " 2>/dev/null)
 
-      set_status "$scenario_id" "⏳ ${phase} (${elapsed}s)"
+      set_status "$scenario_id" "⏳ ${phase} (閒置${idle_elapsed}s/總${elapsed}s)"
 
       case "$phase" in
         COMPLETE)
@@ -370,11 +399,12 @@ poll_state() {
           ;;
       esac
     else
-      set_status "$scenario_id" "⏳ 等待 state (${elapsed}s)"
+      set_status "$scenario_id" "⏳ 啟動中 (${elapsed}s)"
     fi
 
     sleep "$poll_interval"
     elapsed=$((elapsed + poll_interval))
+    idle_elapsed=$((idle_elapsed + poll_interval))
   done
 }
 
@@ -383,14 +413,40 @@ poll_state() {
 wait_for_plan_then_cancel() {
   local uuid="$1"
   local sess="$2"
-  local timeout="$3"
+  local idle_timeout="$3"
   local scenario_id="$4"
   local state_file="$CLAUDE_DIR/pipeline-state-${uuid}.json"
+  local timeline_file="$CLAUDE_DIR/timeline-${uuid}.jsonl"
   local elapsed=0
+  local idle_elapsed=0
+  local last_mtime=""
+  local max_wall=1800
 
   set_status "$scenario_id" "⏳ 等待 PLAN..."
 
-  while (( elapsed < timeout )); do
+  while true; do
+    if (( elapsed > max_wall )) || (( idle_elapsed > idle_timeout )); then
+      echo "TIMEOUT"
+      return 1
+    fi
+
+    # 活躍度偵測
+    local current_mtime=""
+    if [ -f "$timeline_file" ]; then
+      current_mtime=$(stat -f %m "$timeline_file" 2>/dev/null)
+    elif [ -f "$state_file" ]; then
+      current_mtime=$(stat -f %m "$state_file" 2>/dev/null)
+    fi
+
+    if [ -n "$current_mtime" ]; then
+      if [ "$current_mtime" != "$last_mtime" ]; then
+        idle_elapsed=0
+        last_mtime="$current_mtime"
+      fi
+    else
+      idle_elapsed=0
+    fi
+
     if [ -f "$state_file" ]; then
       local has_plan
       has_plan=$(node -e "
@@ -404,8 +460,6 @@ wait_for_plan_then_cancel() {
       if [ "$has_plan" = "yes" ]; then
         set_status "$scenario_id" "⏳ Cancel 中..."
         # 直接修改 state file — 繞過 TUI 互動限制
-        # /cancel skill 在 sub-agent 執行中無法被處理（排入 TUI 佇列），
-        # 所以直接寫 state 是唯一可靠的方法
         node -e "
           const fs = require('fs');
           const f = '$state_file';
@@ -422,15 +476,13 @@ wait_for_plan_then_cancel() {
         return 0
       fi
 
-      set_status "$scenario_id" "⏳ 等待 PLAN (${elapsed}s)"
+      set_status "$scenario_id" "⏳ 等待 PLAN (閒置${idle_elapsed}s/總${elapsed}s)"
     fi
 
     sleep 5
     elapsed=$((elapsed + 5))
+    idle_elapsed=$((idle_elapsed + 5))
   done
-
-  echo "TIMEOUT"
-  return 1
 }
 
 # ────────────────── Follow-up 場景處理 ──────────────────
@@ -555,14 +607,14 @@ run_scenario() {
   "category": "$category",
   "sessionId": "$uuid",
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "status": "TIMEOUT",
+  "status": "逾時",
   "timeout": $timeout_sec,
   "duration": $duration,
   "summary": { "passed": 0, "failed": 1, "warnings": 0, "total": 1 },
-  "checks": [{ "name": "timeout", "passed": false, "required": true, "error": "超過 ${timeout_sec}s 時限" }]
+  "checks": [{ "name": "timeout", "passed": false, "required": true, "error": "閒置超過 ${timeout_sec}s" }]
 }
 EOF
-    set_status "$id" "✗ TIMEOUT (${duration}s)"
+    set_status "$id" "✗ 逾時 (${duration}s)"
   else
     node "$VALIDATE_SCRIPT" "$uuid" "$id" "$SCENARIOS_FILE" > "$result_file" 2>/dev/null || true
 
@@ -581,10 +633,10 @@ EOF
       catch(e) { console.log('ERROR'); }
     " 2>/dev/null)
 
-    if [ "$status" = "PASS" ]; then
-      set_status "$id" "✓ PASS (${duration}s)"
+    if [ "$status" = "通過" ] || [ "$status" = "PASS" ]; then
+      set_status "$id" "✓ 通過 (${duration}s)"
     else
-      set_status "$id" "✗ $status (${duration}s)"
+      set_status "$id" "✗ ${status} (${duration}s)"
     fi
   fi
 
@@ -754,7 +806,7 @@ main() {
           try { console.log(JSON.parse(require('fs').readFileSync('$result_file','utf8')).status); }
           catch(e) { console.log('ERROR'); }
         " 2>/dev/null)
-        if [ "$status" = "PASS" ]; then
+        if [ "$status" = "通過" ] || [ "$status" = "PASS" ]; then
           passed=$((passed + 1))
         else
           failed=$((failed + 1))
@@ -766,7 +818,7 @@ main() {
 
     echo "" >&3
     printf '  %b━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n' '\033[0;36m' '\033[0m' >&3
-    printf '  %b執行完成: %d PASS / %d FAIL (共 %d)%b\n' '\033[1m' "$passed" "$failed" "$total" '\033[0m' >&3
+    printf '  %b執行完成: %d 通過 / %d 失敗 (共 %d)%b\n' '\033[1m' "$passed" "$failed" "$total" '\033[0m' >&3
     echo "" >&3
 
     printf '  %b產出報告...%b\n' '\033[2m' '\033[0m' >&3

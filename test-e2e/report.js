@@ -72,9 +72,9 @@ for (const r of results) {
     categories[cat] = { total: 0, passed: 0, failed: [], timedOut: [] };
   }
   categories[cat].total++;
-  if (r.status === 'PASS') {
+  if (r.status === '通過' || r.status === 'PASS') {
     categories[cat].passed++;
-  } else if (r.status === 'TIMEOUT') {
+  } else if (r.status === '逾時' || r.status === 'TIMEOUT') {
     categories[cat].timedOut.push(r);
   } else {
     categories[cat].failed.push(r);
@@ -82,9 +82,9 @@ for (const r of results) {
 }
 
 const totalScenarios = results.length;
-const totalPassed = results.filter(r => r.status === 'PASS').length;
-const totalFailed = results.filter(r => r.status === 'FAIL').length;
-const totalTimeout = results.filter(r => r.status === 'TIMEOUT').length;
+const totalPassed = results.filter(r => r.status === '通過' || r.status === 'PASS').length;
+const totalFailed = results.filter(r => r.status === '失敗' || r.status === 'FAIL').length;
+const totalTimeout = results.filter(r => r.status === '逾時' || r.status === 'TIMEOUT').length;
 
 // ────────────────── 計算耗時 ──────────────────
 
@@ -120,8 +120,8 @@ for (const cat of ['A', 'B', 'C', 'D']) {
   const label = CATEGORY_LABELS[cat] || cat;
   const passStr = `${data.passed}/${data.total}`;
   const statusStr = data.passed === data.total
-    ? `${C.green}PASS${C.reset}`
-    : `${C.red}PASS${C.reset}`;
+    ? `${C.green}通過${C.reset}`
+    : `${C.red}通過${C.reset}`;
 
   const failNames = [...data.failed, ...data.timedOut].map(r => r.scenarioId).join(', ');
   const failSuffix = failNames ? `  ${C.dim}(${failNames})${C.reset}` : '';
@@ -142,7 +142,7 @@ console.log(`${C.cyan}╠${line}╣${C.reset}`);
 const passRate = totalScenarios > 0 ? Math.round((totalPassed / totalScenarios) * 100) : 0;
 const passColor = passRate === 100 ? C.green : passRate >= 80 ? C.yellow : C.red;
 
-const summaryLine = `  總計: ${totalPassed}/${totalScenarios} PASS  (${passRate}%)`;
+const summaryLine = `  總計: ${totalPassed}/${totalScenarios} 通過  (${passRate}%)`;
 const durationSuffix = durationMin > 0 ? `  耗時 ${durationMin}m` : '';
 const summaryFull = summaryLine + durationSuffix;
 const summaryPad = Math.max(0, W - summaryFull.length);
@@ -153,14 +153,14 @@ console.log(`${C.cyan}╚${line}╝${C.reset}`);
 
 // ────────────────── 失敗詳情 ──────────────────
 
-const allFailed = results.filter(r => r.status !== 'PASS');
+const allFailed = results.filter(r => r.status !== '通過' && r.status !== 'PASS');
 if (allFailed.length > 0) {
   console.log('');
   console.log(`${C.red}${C.bold}失敗詳情：${C.reset}`);
 
   for (const r of allFailed) {
-    if (r.status === 'TIMEOUT') {
-      console.log(`  ${C.yellow}${r.scenarioId}${C.reset}: TIMEOUT (${r.timeout || '?'}s) — pipeline 未在時限內完成`);
+    if (r.status === '逾時') {
+      console.log(`  ${C.yellow}${r.scenarioId}${C.reset}: 逾時 (${r.timeout || '?'}s) — 閒置超過時限`);
       continue;
     }
 
@@ -178,7 +178,7 @@ if (allFailed.length > 0) {
           const actual = r.state.expectedStages ? r.state.expectedStages.length : '?';
           actualHint = ` (實際=${actual})`;
         }
-        console.log(`  ${C.red}${r.scenarioId}${C.reset}: ${fc.name} FAIL${actualHint}${detail}`);
+        console.log(`  ${C.red}${r.scenarioId}${C.reset}: ${fc.name} 失敗${actualHint}${detail}`);
       }
     } else {
       console.log(`  ${C.red}${r.scenarioId}${C.reset}: ${r.status}`);

@@ -226,7 +226,7 @@ const result = {
   category: scenario.category,
   sessionId,
   timestamp: new Date().toISOString(),
-  status: failed === 0 ? 'PASS' : 'FAIL',
+  status: failed === 0 ? '通過' : '失敗',
   summary: { passed, failed, warnings, total: checks.length },
   checks,
   state: state ? {

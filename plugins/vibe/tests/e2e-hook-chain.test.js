@@ -1144,12 +1144,12 @@ console.log('══════════════════════�
       assert.strictEqual(r3.exitCode, 2);
     });
 
-    test('L4: 阻擋訊息包含 /vibe:cancel 逃生口', () => {
-      assert.ok(r3.stderr.includes('cancel'), '應提示 /vibe:cancel 退出方式');
+    test('L4: 阻擋訊息包含 must-delegate 指示', () => {
+      assert.ok(r3.stderr.includes('等待委派'), '應提示委派 sub-agent');
     });
 
-    test('L5: 阻擋訊息說明 pipeline 自動模式', () => {
-      assert.ok(r3.stderr.includes('自動'), '應提及自動模式');
+    test('L5: 阻擋訊息包含工具名稱', () => {
+      assert.ok(r3.stderr.includes('AskUserQuestion'), '應提及被阻擋的工具');
     });
 
     // L6: cancelled=true → 放行（phase=CLASSIFIED 但 cancelled=true 放行）

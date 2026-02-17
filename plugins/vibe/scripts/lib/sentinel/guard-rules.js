@@ -16,6 +16,12 @@ const {
   getTaskType, getCurrentStage, getPipelineId, PHASES,
 } = require(path.join(__dirname, '..', 'flow', 'state-machine.js'));
 
+// 唯讀工具白名單（CLASSIFIED/RETRYING 階段允許，不阻擋讀取）
+const READ_ONLY_TOOLS = new Set([
+  'Read', 'Grep', 'Glob', 'WebSearch', 'WebFetch',
+  'TaskList', 'TaskGet',
+]);
+
 // 非程式碼檔案副檔名（允許直接編輯）
 const NON_CODE_EXTS = new Set([
   '.md', '.txt', '.json', '.yml', '.yaml', '.toml',
@@ -144,22 +150,20 @@ function evaluate(toolName, toolInput, state) {
   if (isDelegating(state)) return { decision: 'allow' };
   if (isCancelled(state)) return { decision: 'allow' };
 
-  // ── CLASSIFIED / RETRYING — 強制委派（只允許 Task/Skill） ──
-  // Pipeline 已分類但尚未委派：Main Agent 不得做任何事，必須立即委派 sub-agent
+  // ── CLASSIFIED / RETRYING — 強制委派（允許 Task/Skill + 唯讀工具） ──
+  // Pipeline 已分類但尚未委派：Main Agent 可讀取但不可寫入，必須委派 sub-agent
   const phase = getPhase(state);
   if (phase === PHASES.CLASSIFIED || phase === PHASES.RETRYING) {
-    if (toolName !== 'Task' && toolName !== 'Skill') {
-      return {
-        decision: 'block',
-        reason: 'must-delegate',
-        message:
-          `⛔ Pipeline [${getPipelineId(state)}] 等待委派 — 禁止直接操作。\n` +
-          `請立即使用 Skill 或 Task 工具委派 sub-agent。\n` +
-          `不需要先讀取程式碼，sub-agent 會自行處理。\n` +
-          `如需退出自動模式，使用 /vibe:cancel。\n`,
-      };
+    if (toolName === 'Task' || toolName === 'Skill' || READ_ONLY_TOOLS.has(toolName)) {
+      return { decision: 'allow' };
     }
-    return { decision: 'allow' };
+    return {
+      decision: 'block',
+      reason: 'must-delegate',
+      message:
+        `⛔ Pipeline [${getPipelineId(state)}] 等待委派 — 禁止 ${toolName}。\n` +
+        `請使用 Skill 或 Task 工具委派 sub-agent 執行此任務。\n`,
+    };
   }
 
   // ── Bash 寫檔繞過阻擋（僅 pipeline enforced 時） ──
@@ -196,8 +200,7 @@ function evaluate(toolName, toolInput, state) {
       message:
         '⛔ Pipeline 自動模式：禁止使用 AskUserQuestion。\n' +
         'Pipeline 是全自動閉環流程，stage-transition 會指示下一步。\n' +
-        '請直接按照 pipeline 指示執行下一階段。\n' +
-        '如需退出 pipeline 自動模式，使用 /vibe:cancel。\n',
+        '請直接按照 pipeline 指示執行下一階段。\n',
     };
   }
 
