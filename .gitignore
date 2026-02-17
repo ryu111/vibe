@@ -6,6 +6,10 @@
 .claude/projects/
 .claude/agent-memory/
 .claude/skills/
+.claude/agents/
+.claude/settings/
+.claude/system-prompts/
+.claude/plans/
 
 # 子目錄中 uipro init 產生的 .claude/
 dashboard/.claude/
