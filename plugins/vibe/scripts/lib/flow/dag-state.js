@@ -92,7 +92,12 @@ function createInitialState(sessionId, options = {}) {
 function derivePhase(state) {
   if (!state) return PHASES.IDLE;
   if (state.meta?.cancelled) return PHASES.IDLE;
-  if (!state.dag) return PHASES.IDLE;
+  if (!state.dag) {
+    // 安全網：有分類但無 DAG（極端情況）→ CLASSIFIED（讓 guard 生效）
+    const pid = state.classification?.pipelineId;
+    if (pid && pid !== 'none') return PHASES.CLASSIFIED;
+    return PHASES.IDLE;
+  }
 
   const stages = state.stages || {};
   const stageIds = Object.keys(state.dag);
@@ -185,7 +190,11 @@ function isDelegating(state) { return derivePhase(state) === PHASES.DELEGATING; 
 function isEnforced(state) {
   if (!state) return false;
   const phase = derivePhase(state);
-  return !!state.enforced && [PHASES.CLASSIFIED, PHASES.DELEGATING, PHASES.RETRYING].includes(phase);
+  if (![PHASES.CLASSIFIED, PHASES.DELEGATING, PHASES.RETRYING].includes(phase)) return false;
+  if (state.enforced) return true;
+  // 安全網：有分類的非 trivial pipeline = enforced（即使 setDag 尚未執行）
+  const pid = state?.classification?.pipelineId;
+  return !!pid && pid !== 'none';
 }
 function isComplete(state) { return derivePhase(state) === PHASES.COMPLETE; }
 function isInitialized(state) { return !!state?.meta?.initialized; }

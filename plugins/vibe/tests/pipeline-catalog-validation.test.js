@@ -243,8 +243,8 @@ function runPipelineScenario({ id, pipelineId, prompt, label }) {
       assert.deepStrictEqual(Object.keys(sc.dag || {}), stages);
     }
   });
-  // v3: 重複 stage pipeline 的 DAG 為 null → derivePhase = IDLE
-  const expectedPhase = (enforced && !hasDuplicateStages) ? 'CLASSIFIED' : 'IDLE';
+  // v3 safety net: 有分類的非 trivial pipeline → CLASSIFIED（即使 DAG 為 null）
+  const expectedPhase = stages.length > 0 ? 'CLASSIFIED' : 'IDLE';
   test(`${id}: derivePhase = ${expectedPhase}`, () => {
     assert.strictEqual(derivePhase(sc), expectedPhase);
   });
@@ -259,8 +259,8 @@ function runPipelineScenario({ id, pipelineId, prompt, label }) {
 
   // ─── Step 3: Guard 阻擋 ────────────────────────
   log('STEP', '2. pipeline-guard 驗證');
-  // v3: 重複 stage pipeline DAG 為 null → 不 enforced
-  const actuallyEnforced = enforced && !hasDuplicateStages;
+  // v3 safety net: 非 trivial pipeline 都會被 guard 阻擋（含重複 stage）
+  const actuallyEnforced = stages.length > 0;
   if (actuallyEnforced) {
     const gr = runHook('pipeline-guard', {
       session_id: sid, tool_name: 'Write',

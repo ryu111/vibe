@@ -21,6 +21,9 @@ const READ_ONLY_TOOLS = new Set([
   'TaskList', 'TaskGet',
 ]);
 
+// Cancel 逃生口：允許寫入的 state 檔案（pipeline-state / task-guard-state）
+const CANCEL_STATE_FILE_RE = /^(pipeline-state|task-guard-state)-[a-f0-9-]+\.json$/;
+
 // 非程式碼檔案副檔名（允許直接編輯）
 const NON_CODE_EXTS = new Set([
   '.md', '.txt', '.json', '.yml', '.yaml', '.toml',
@@ -119,8 +122,9 @@ function detectBashWriteTarget(command) {
  * 4. phase === DELEGATING → allow
  * 5. 未 enforced → allow
  * 6. 已取消 → allow
- * 7. Bash 寫檔繞過 → 阻擋（僅 pipeline enforced）
- * 8. 工具特定規則（Write/Edit/AskUserQuestion）
+ * 7. CLASSIFIED/RETRYING → 允許 Task/Skill/唯讀 + cancel state 檔案寫入
+ * 8. Bash 寫檔繞過 → 阻擋（僅 pipeline enforced）
+ * 9. 工具特定規則（Write/Edit/AskUserQuestion）
  */
 function evaluate(toolName, toolInput, state) {
   // ── EnterPlanMode — 無條件阻擋 ──
@@ -155,6 +159,13 @@ function evaluate(toolName, toolInput, state) {
   if (phase === PHASES.CLASSIFIED || phase === PHASES.RETRYING) {
     if (toolName === 'Task' || toolName === 'Skill' || READ_ONLY_TOOLS.has(toolName)) {
       return { decision: 'allow' };
+    }
+    // Cancel 逃生口：允許 Write/Edit 修改 pipeline/task-guard state 檔案
+    if (['Write', 'Edit'].includes(toolName)) {
+      const filePath = toolInput?.file_path;
+      if (typeof filePath === 'string' && CANCEL_STATE_FILE_RE.test(path.basename(filePath))) {
+        return { decision: 'allow' };
+      }
     }
     return {
       decision: 'block',
@@ -215,4 +226,5 @@ module.exports = {
   NON_CODE_DOTFILES,
   DANGER_PATTERNS,
   WRITE_PATTERNS,
+  CANCEL_STATE_FILE_RE,
 };

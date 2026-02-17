@@ -115,6 +115,9 @@ function findIncompletePipelines(currentSessionId, options = {}) {
     // 排除 IDLE 和 COMPLETE
     if (phase === PHASES.IDLE || phase === PHASES.COMPLETE) continue;
 
+    // 排除無 DAG 的 state（僅有分類、未建立 DAG 的 session 不值得接續）
+    if (!state.dag) continue;
+
     const { completedCount, totalCount } = countStages(state);
     const pipelineId = state.classification?.pipelineId || null;
     const lastTransition = state.meta?.lastTransition || null;

@@ -194,10 +194,10 @@ function classify(sessionId, prompt, options = {}) {
     };
   }
 
-  // 有 pipeline → systemMessage 指示呼叫 /vibe:pipeline
-  // [pipeline:xxx] 顯式指定 → 快速路徑（直接建 DAG，不經 Agent）
-  if (result.source === 'explicit') {
-    // 顯式指定：直接建立線性 DAG
+  // 已知模板 → 立即建 DAG（不論 explicit 或 regex/LLM 來源）
+  // pipeline-architect 只用於未知模板、自訂 DAG、或重複 stage（如 test-first [TEST,DEV,TEST]）
+  const hasUniqueStages = new Set(stages).size === stages.length;
+  if (PIPELINES[pipelineId] && stages.length > 0 && hasUniqueStages) {
     const dag = linearToDag(stages);
     const blueprint = buildBlueprint(dag);
     state = ds.setDag(state, dag, blueprint, PIPELINES[pipelineId]?.enforced);
@@ -215,22 +215,22 @@ function classify(sessionId, prompt, options = {}) {
     const pipeline = discoverPipeline();
     const firstHint = ready.map(s => buildDelegationHint(s, pipeline.stageMap)).join(' + ');
     const stageStr = stages.join(' → ');
+    const sourceLabel = result.source === 'explicit' ? `[${pipelineId}]` : pipelineId;
 
     return {
       output: {
         systemMessage:
-          `⛔ Pipeline [${pipelineId}]（${stageStr}）已建立。\n` +
+          `⛔ Pipeline ${sourceLabel}（${stageStr}）已建立。\n` +
           `➡️ ${firstHint}`,
       },
     };
   }
 
-  // 非顯式 → 指示呼叫 /vibe:pipeline skill（讓 Agent 動態生成 DAG）
+  // 未知模板 → 指示呼叫 /vibe:pipeline skill（讓 Agent 動態生成 DAG）
   return {
     output: {
       systemMessage:
-        `⛔ 任務需要 Pipeline。呼叫 /vibe:pipeline skill 啟動 pipeline-architect 分析需求並產出執行計劃。\n` +
-        `預估模板：${pipelineId}（${stages.join(' → ')}）`,
+        `⛔ 任務需要自訂 Pipeline。呼叫 /vibe:pipeline skill 啟動 pipeline-architect 分析需求並產出執行計劃。`,
     },
   };
 }
