@@ -110,7 +110,7 @@ function countActual(pluginRoot) {
     agents = fs.readdirSync(agentsDir).filter(f => f.endsWith('.md')).length;
   }
 
-  // Hooks：計算 hooks.json 中的 hook 條目數（每個 matcher group 算一個）
+  // Hooks：計算 hooks.json 中的個別 hook 條目數
   let hooks = 0;
   if (fs.existsSync(hooksFile)) {
     try {
@@ -118,7 +118,9 @@ function countActual(pluginRoot) {
       const events = hooksJson.hooks || {};
       for (const groups of Object.values(events)) {
         if (Array.isArray(groups)) {
-          hooks += groups.length;
+          for (const group of groups) {
+            hooks += (group.hooks || []).length;
+          }
         }
       }
     } catch (_) {}
@@ -136,12 +138,20 @@ function countActual(pluginRoot) {
     libScripts = countJsFiles(libDir);
   }
 
+  // Tool 腳本：scripts/tools/ 下的所有腳本（.js + .sh）
+  const toolsDir = path.join(pluginRoot, 'scripts', 'tools');
+  let toolScripts = 0;
+  if (fs.existsSync(toolsDir)) {
+    toolScripts = fs.readdirSync(toolsDir)
+      .filter(f => f.endsWith('.js') || f.endsWith('.sh')).length;
+  }
+
   return {
     skills,
     agents,
     hooks,
     hookScripts,
-    scripts: hookScripts + libScripts,
+    scripts: hookScripts + libScripts + toolScripts,
   };
 }
 
