@@ -37,7 +37,8 @@ process.stdin.on("end", () => {
         ...new Set([...staged.split("\n"), ...unstaged.split("\n")]),
       ]
         .filter((f) => f && /\.(js|jsx|ts|tsx|vue|svelte)$/.test(f))
-        .filter((f) => !/(^|\/)scripts\/hooks\//.test(f) && !/hook-logger\.js$/.test(f));
+        .filter((f) => !/(^|\/)scripts\/hooks\//.test(f) && !/hook-logger\.js$/.test(f))
+        .filter((f) => !/(^|\/)tests\//.test(f) && !/\.test\.(js|ts|jsx|tsx)$/.test(f));
     } catch {
       // 非 git 目錄或 git 不可用
       process.exit(0);

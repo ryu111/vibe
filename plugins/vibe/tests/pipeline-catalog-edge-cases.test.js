@@ -42,21 +42,7 @@ const {
   extractExplicitPipeline,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'classifier.js'));
 
-const {
-  findNextStageInPipeline,
-} = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'pipeline-discovery.js'));
-
-const mockStageMap = {
-  PLAN: { agent: 'planner', skill: '/vibe:scope' },
-  ARCH: { agent: 'architect', skill: '/vibe:architect' },
-  DESIGN: { agent: 'designer', skill: '/vibe:design' },
-  DEV: { agent: 'developer' },
-  REVIEW: { agent: 'code-reviewer', skill: '/vibe:review' },
-  TEST: { agent: 'tester', skill: '/vibe:tdd' },
-  QA: { agent: 'qa', skill: '/vibe:qa' },
-  E2E: { agent: 'e2e-runner', skill: '/vibe:e2e' },
-  DOCS: { agent: 'doc-updater', skill: '/vibe:doc-sync' },
-};
+// 注意：findNextStageInPipeline 已從 pipeline-discovery.js 移除（v3 由 dag-utils.js 接管）
 
 // ===== 1. 空值處理測試 =====
 
@@ -73,33 +59,6 @@ test('classifyWithConfidence: undefined → 預設 fix', () => {
   assert.strictEqual(result.confidence, 0.7);
 });
 
-test('findNextStageInPipeline: 空 pipelineStages → null', () => {
-  const result = findNextStageInPipeline([], mockStageMap, 'DEV', 0);
-  assert.strictEqual(result.stage, null);
-  assert.strictEqual(result.index, -1);
-});
-
-test('findNextStageInPipeline: undefined currentStage → null', () => {
-  const stages = PIPELINES['quick-dev'].stages;
-  const result = findNextStageInPipeline(stages, mockStageMap, undefined);
-  assert.strictEqual(result.stage, null);
-});
-
-test('findNextStageInPipeline: stageIndex = undefined（TDD 場景）', () => {
-  const stages = PIPELINES['test-first'].stages;
-  // undefined stageIndex → 降級到 indexOf
-  const result = findNextStageInPipeline(stages, mockStageMap, 'TEST', undefined);
-  assert.strictEqual(result.stage, 'DEV');
-  assert.strictEqual(result.index, 1);
-});
-
-test('findNextStageInPipeline: stageIndex = -1（無效索引）', () => {
-  const stages = PIPELINES['quick-dev'].stages;
-  // -1 不滿足 >= 0 條件，應降級到 indexOf
-  const result = findNextStageInPipeline(stages, mockStageMap, 'DEV', -1);
-  // 因為 typeof -1 === 'number' 且 -1 >= 0 為 false，應該走 else 分支
-  assert.strictEqual(result.stage, 'REVIEW');
-});
 
 test('PIPELINES: 所有 label 和 description 非空', () => {
   Object.entries(PIPELINES).forEach(([id, p]) => {
@@ -112,47 +71,14 @@ test('PIPELINES: 所有 label 和 description 非空', () => {
 
 console.log('\n🧪 Part 2: 階段未安裝場景');
 
-test('部分階段未安裝：DESIGN 未安裝時跳過', () => {
-  const stages = PIPELINES['full'].stages;
-  const limitedStageMap = { ...mockStageMap };
-  delete limitedStageMap.DESIGN;
-
-  const result = findNextStageInPipeline(stages, limitedStageMap, 'ARCH', 1);
-  // ARCH(1) → DESIGN(2)未安裝 → DEV(3)
-  assert.strictEqual(result.stage, 'DEV');
-  assert.strictEqual(result.index, 3);
+test('quick-dev pipeline 不含 DESIGN', () => {
+  const stages = PIPELINES['quick-dev'].stages;
+  assert.ok(!stages.includes('DESIGN'));
 });
 
-test('連續多個階段未安裝', () => {
-  const stages = PIPELINES['full'].stages; // PLAN,ARCH,DESIGN,DEV,REVIEW,TEST,QA,E2E,DOCS
-  const limitedStageMap = { ...mockStageMap };
-  delete limitedStageMap.DESIGN;
-  delete limitedStageMap.DEV;
-  delete limitedStageMap.REVIEW;
-
-  const result = findNextStageInPipeline(stages, limitedStageMap, 'ARCH', 1);
-  // ARCH(1) → DESIGN(2)×, DEV(3)×, REVIEW(4)× → TEST(5)
-  assert.strictEqual(result.stage, 'TEST');
-  assert.strictEqual(result.index, 5);
-});
-
-test('所有後續階段都未安裝 → null', () => {
-  const stages = PIPELINES['full'].stages;
-  const limitedStageMap = {
-    PLAN: mockStageMap.PLAN,
-    ARCH: mockStageMap.ARCH,
-  };
-
-  const result = findNextStageInPipeline(stages, limitedStageMap, 'ARCH', 1);
-  assert.strictEqual(result.stage, null);
-  assert.strictEqual(result.index, -1);
-});
-
-test('currentStage 不在 pipelineStages 中（錯誤輸入）', () => {
-  const stages = PIPELINES['quick-dev'].stages; // ['DEV', 'REVIEW', 'TEST']
-  const result = findNextStageInPipeline(stages, mockStageMap, 'PLAN');
-  assert.strictEqual(result.stage, null);
-  assert.strictEqual(result.index, -1);
+test('standard pipeline 不含 DESIGN', () => {
+  const stages = PIPELINES['standard'].stages;
+  assert.ok(!stages.includes('DESIGN'));
 });
 
 // ===== 3. 向後相容測試 =====
@@ -176,79 +102,12 @@ test('舊 state 沒有 pipelineId → 不崩潰', () => {
   assert.ok(!mockOldState.context.pipelineId);
 });
 
-test('舊 state 沒有 stageIndex → 降級到 indexOf', () => {
-  const mockOldState = {
-    phase: 'CLASSIFIED',
-    context: {
-      pipelineId: 'test-first',
-    },
-    progress: {
-      currentStage: 'TEST',
-      // 沒有 stageIndex
-    },
-    meta: { initialized: true },
-  };
+test('TDD pipeline 允許重複 TEST（test-first 結構）', () => {
   const stages = PIPELINES['test-first'].stages;
-  const result = findNextStageInPipeline(stages, mockStageMap, mockOldState.progress.currentStage);
-  // 無 stageIndex → indexOf('TEST') = 0
-  assert.strictEqual(result.stage, 'DEV');
-  assert.strictEqual(result.index, 1);
-});
-
-// ===== 4. TDD 特殊場景深度測試 =====
-
-console.log('\n🧪 Part 4: TDD 特殊場景');
-
-test('TDD: stageIndex 超出範圍 → null', () => {
-  const stages = PIPELINES['test-first'].stages; // 長度 3
-  const result = findNextStageInPipeline(stages, mockStageMap, 'TEST', 10);
-  assert.strictEqual(result.stage, null);
-  assert.strictEqual(result.index, -1);
-});
-
-test('TDD: stageIndex=0 但 currentStage=DEV（不一致）', () => {
-  const stages = PIPELINES['test-first'].stages;
-  // stageIndex=0 應該是第一個 TEST，但 currentStage=DEV
-  // 函式優先使用 stageIndex（因為 TDD 需要準確追蹤）
-  const result = findNextStageInPipeline(stages, mockStageMap, 'DEV', 0);
-  // 從 index=0 的下一個 = index=1 = DEV
-  assert.strictEqual(result.stage, 'DEV');
-  assert.strictEqual(result.index, 1);
-});
-
-test('TDD: 回退後 stageIndex 恢復正確', () => {
-  const stages = PIPELINES['test-first'].stages;
-  // 模擬：DEV(1) → 第二個 TEST(2) → FAIL → 回退到 DEV
-  // 回退後 stageIndex 應恢復為 1
-  // DEV(1) 完成 → 找下一個
-  const result = findNextStageInPipeline(stages, mockStageMap, 'DEV', 1);
-  assert.strictEqual(result.stage, 'TEST');
-  assert.strictEqual(result.index, 2);
-});
-
-test('TDD: 三個 TEST 的 pipeline（極端情況）', () => {
-  const customStages = ['TEST', 'DEV', 'TEST', 'DEV', 'TEST'];
-  // 模擬 TDD 多次循環
-
-  let result = findNextStageInPipeline(customStages, mockStageMap, 'TEST', 0);
-  assert.strictEqual(result.stage, 'DEV');
-  assert.strictEqual(result.index, 1);
-
-  result = findNextStageInPipeline(customStages, mockStageMap, 'DEV', 1);
-  assert.strictEqual(result.stage, 'TEST');
-  assert.strictEqual(result.index, 2);
-
-  result = findNextStageInPipeline(customStages, mockStageMap, 'TEST', 2);
-  assert.strictEqual(result.stage, 'DEV');
-  assert.strictEqual(result.index, 3);
-
-  result = findNextStageInPipeline(customStages, mockStageMap, 'DEV', 3);
-  assert.strictEqual(result.stage, 'TEST');
-  assert.strictEqual(result.index, 4);
-
-  result = findNextStageInPipeline(customStages, mockStageMap, 'TEST', 4);
-  assert.strictEqual(result.stage, null); // 循環結束
-  assert.strictEqual(result.index, -1);
+  assert.strictEqual(stages.length, 3);
+  assert.strictEqual(stages[0], 'TEST');
+  assert.strictEqual(stages[1], 'DEV');
+  assert.strictEqual(stages[2], 'TEST');
 });
 
 // ===== 5. Pipeline 優先級邊界測試 =====
@@ -367,15 +226,6 @@ test('同一 prompt 多次分類應回傳相同結果', () => {
   });
 });
 
-test('findNextStageInPipeline 純函式（無副作用）', () => {
-  const stages = PIPELINES['quick-dev'].stages;
-  const originalStages = [...stages];
-
-  findNextStageInPipeline(stages, mockStageMap, 'DEV', 0);
-
-  // 確認輸入參數未被修改
-  assert.deepStrictEqual(stages, originalStages);
-});
 
 // ===== 9. 錯誤恢復場景 =====
 

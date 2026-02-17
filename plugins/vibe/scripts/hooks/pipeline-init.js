@@ -15,6 +15,7 @@ const { detect } = require(path.join(__dirname, '..', 'lib', 'flow', 'env-detect
 const { reset: resetCounter } = require(path.join(__dirname, '..', 'lib', 'flow', 'counter.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 const ds = require(path.join(__dirname, '..', 'lib', 'flow', 'dag-state.js'));
+const { findIncompletePipelines, resumePipeline, formatRelativeTime } = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-resume.js'));
 
 safeRun('pipeline-init', (data) => {
   const sessionId = data.session_id || 'unknown';
@@ -28,6 +29,54 @@ safeRun('pipeline-init', (data) => {
       ds.deleteState(sessionId);
     } else {
       process.exit(0);
+    }
+  }
+
+  // 改善 2：Pipeline 自動接續（只在 startup 時偵測，resume/clear/compact 已有 session）
+  if (triggerSource === 'startup' || triggerSource === '') {
+    try {
+      const incomplete = findIncompletePipelines(sessionId);
+      if (incomplete.length > 0) {
+        const latest = incomplete[0];
+        const result = resumePipeline(latest.sessionId, sessionId);
+        if (result.success) {
+          // H-2 fix: 刪除舊 state 檔案（防止 race condition — 雙 session 同時寫入）
+          try { ds.deleteState(latest.sessionId); } catch (delErr) {
+            require(path.join(__dirname, '..', 'lib', 'hook-logger.js')).error('pipeline-init', `deleteState 失敗: ${delErr.message}`);
+          }
+
+          // 重設計數器
+          resetCounter(sessionId);
+
+          // Timeline 事件
+          emit(EVENT_TYPES.SESSION_START, sessionId, {
+            cwd,
+            reason: 'resume-pipeline',
+            resumedFrom: latest.sessionId,
+          });
+
+          // 通知模型（已自動接續，使用者可 cancel）
+          const shortId = latest.sessionId.slice(0, 8);
+          const relativeTime = formatRelativeTime(latest.lastTransition);
+          const pipelineLabel = latest.pipelineId ? `${latest.pipelineId} pipeline` : 'pipeline';
+          const progressText = latest.totalCount > 0
+            ? `${latest.completedCount}/${latest.totalCount} 階段完成`
+            : '剛開始';
+
+          const resumeContext = [
+            `✅ 已自動接續未完成的 Pipeline：`,
+            `- 來源 Session: ${shortId}... (${relativeTime})`,
+            `- Pipeline: ${pipelineLabel}`,
+            `- 進度: ${progressText}`,
+            `如不需要此 pipeline，可使用 /vibe:cancel 取消。`,
+          ].join('\n');
+
+          console.log(JSON.stringify({ additionalContext: resumeContext }));
+          process.exit(0); // 跳過 fresh state 建立（已用 resumed state）
+        }
+      }
+    } catch (_) {
+      // 接續偵測失敗不影響正常啟動
     }
   }
 

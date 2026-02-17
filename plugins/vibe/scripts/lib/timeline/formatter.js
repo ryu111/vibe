@@ -114,7 +114,7 @@ function formatEventText(event) {
         }
         return base;
       }
-      return `分類=${d.taskType || '?'}, 預期階段=[${(d.expectedStages || []).join(',')}]`;
+      return `分類=${d.taskType || d.pipelineId || '?'}`;
     }
     case 'ask.question':
       return `詢問使用者 (${d.questionCount || '?'} 題)`;

@@ -46,9 +46,7 @@ const {
   classify,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'classifier.js'));
 
-const {
-  findNextStageInPipeline,
-} = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'pipeline-discovery.js'));
+// 注意：findNextStageInPipeline 已從 pipeline-discovery.js 移除（v3 由 dag-utils.js 接管）
 
 // ===== 1. Registry 常量正確性測試 =====
 
@@ -226,18 +224,6 @@ test('classifyWithConfidence 與 classify 映射一致', () => {
 
 console.log('\n🧪 Part 5: Pipeline 子集前進路徑');
 
-const mockStageMap = {
-  PLAN: { agent: 'planner', skill: '/vibe:scope' },
-  ARCH: { agent: 'architect', skill: '/vibe:architect' },
-  DESIGN: { agent: 'designer', skill: '/vibe:design' },
-  DEV: { agent: 'developer' },
-  REVIEW: { agent: 'code-reviewer', skill: '/vibe:review' },
-  TEST: { agent: 'tester', skill: '/vibe:tdd' },
-  QA: { agent: 'qa', skill: '/vibe:qa' },
-  E2E: { agent: 'e2e-runner', skill: '/vibe:e2e' },
-  DOCS: { agent: 'doc-updater', skill: '/vibe:doc-sync' },
-};
-
 test('quick-dev pipeline 不包含 PLAN/ARCH/DESIGN', () => {
   const stages = PIPELINES['quick-dev'].stages;
   assert.ok(!stages.includes('PLAN'));
@@ -246,98 +232,53 @@ test('quick-dev pipeline 不包含 PLAN/ARCH/DESIGN', () => {
   assert.deepStrictEqual(stages, ['DEV', 'REVIEW', 'TEST']);
 });
 
-test('ui-only pipeline: DESIGN → DEV → QA（跳過 REVIEW/TEST）', () => {
+test('ui-only pipeline 階段結構', () => {
   const stages = PIPELINES['ui-only'].stages;
-  let result = findNextStageInPipeline(stages, mockStageMap, 'DESIGN', 0);
-  assert.strictEqual(result.stage, 'DEV');
-  assert.strictEqual(result.index, 1);
-
-  result = findNextStageInPipeline(stages, mockStageMap, 'DEV', 1);
-  assert.strictEqual(result.stage, 'QA');
-  assert.strictEqual(result.index, 2);
-
-  result = findNextStageInPipeline(stages, mockStageMap, 'QA', 2);
-  assert.strictEqual(result.stage, null);
+  assert.deepStrictEqual(stages, ['DESIGN', 'DEV', 'QA']);
 });
 
-test('security pipeline: DEV → REVIEW → TEST（含安全審查）', () => {
+test('security pipeline 階段結構', () => {
   const stages = PIPELINES['security'].stages;
-  let result = findNextStageInPipeline(stages, mockStageMap, 'DEV', 0);
-  assert.strictEqual(result.stage, 'REVIEW');
-
-  result = findNextStageInPipeline(stages, mockStageMap, 'REVIEW', 1);
-  assert.strictEqual(result.stage, 'TEST');
-
-  result = findNextStageInPipeline(stages, mockStageMap, 'TEST', 2);
-  assert.strictEqual(result.stage, null);
+  assert.deepStrictEqual(stages, ['DEV', 'REVIEW', 'TEST']);
 });
 
 // ===== 6. TDD Pipeline 雙 TEST 邊界測試 =====
 
 console.log('\n🧪 Part 6: TDD Pipeline 雙 TEST 邊界測試');
 
-test('TDD 第一個 TEST: indexOf=0, stageIndex=0 → DEV index=1', () => {
+test('TDD pipeline 結構：TEST-DEV-TEST', () => {
   const stages = PIPELINES['test-first'].stages;
-  const result = findNextStageInPipeline(stages, mockStageMap, 'TEST', 0);
-  assert.strictEqual(result.stage, 'DEV');
-  assert.strictEqual(result.index, 1);
+  assert.deepStrictEqual(stages, ['TEST', 'DEV', 'TEST']);
 });
 
-test('TDD DEV: stageIndex=1 → 第二個 TEST index=2', () => {
+test('TDD pipeline 有兩個 TEST', () => {
   const stages = PIPELINES['test-first'].stages;
-  const result = findNextStageInPipeline(stages, mockStageMap, 'DEV', 1);
-  assert.strictEqual(result.stage, 'TEST');
-  assert.strictEqual(result.index, 2);
+  const testCount = stages.filter(s => s === 'TEST').length;
+  assert.strictEqual(testCount, 2);
 });
 
-test('TDD 第二個 TEST: stageIndex=2 → null（pipeline 完成）', () => {
+test('TDD pipeline 包含 DEV', () => {
   const stages = PIPELINES['test-first'].stages;
-  const result = findNextStageInPipeline(stages, mockStageMap, 'TEST', 2);
-  assert.strictEqual(result.stage, null);
-  assert.strictEqual(result.index, -1);
-});
-
-test('TDD 無 stageIndex 時預設用 indexOf → 回到第一個 TEST 的邏輯', () => {
-  const stages = PIPELINES['test-first'].stages;
-  // 不提供 stageIndex → 用 currentStage='TEST' → indexOf=0
-  const result = findNextStageInPipeline(stages, mockStageMap, 'TEST');
-  assert.strictEqual(result.stage, 'DEV');
-  assert.strictEqual(result.index, 1);
-});
-
-test('TDD 回退到 DEV 後重跑第二個 TEST', () => {
-  const stages = PIPELINES['test-first'].stages;
-  // 模擬：第二個 TEST 失敗 → 回退到 DEV（stageIndex 不變=1）
-  // DEV 修復完成 → 從 index=1 找下一個 = index=2 的 TEST
-  const result = findNextStageInPipeline(stages, mockStageMap, 'DEV', 1);
-  assert.strictEqual(result.stage, 'TEST');
-  assert.strictEqual(result.index, 2);
+  assert.ok(stages.includes('DEV'));
 });
 
 // ===== 7. 單階段 Pipeline 邊界測試 =====
 
 console.log('\n🧪 Part 7: 單階段 Pipeline 邊界測試');
 
-test('fix pipeline: 只有 DEV，完成即結束', () => {
+test('fix pipeline: 只有 DEV', () => {
   const stages = PIPELINES['fix'].stages;
   assert.deepStrictEqual(stages, ['DEV']);
-  const result = findNextStageInPipeline(stages, mockStageMap, 'DEV', 0);
-  assert.strictEqual(result.stage, null);
-  assert.strictEqual(result.index, -1);
 });
 
-test('review-only pipeline: 只有 REVIEW，完成即結束', () => {
+test('review-only pipeline: 只有 REVIEW', () => {
   const stages = PIPELINES['review-only'].stages;
   assert.deepStrictEqual(stages, ['REVIEW']);
-  const result = findNextStageInPipeline(stages, mockStageMap, 'REVIEW', 0);
-  assert.strictEqual(result.stage, null);
 });
 
-test('docs-only pipeline: 只有 DOCS，完成即結束', () => {
+test('docs-only pipeline: 只有 DOCS', () => {
   const stages = PIPELINES['docs-only'].stages;
   assert.deepStrictEqual(stages, ['DOCS']);
-  const result = findNextStageInPipeline(stages, mockStageMap, 'DOCS', 0);
-  assert.strictEqual(result.stage, null);
 });
 
 test('none pipeline: 空階段列表', () => {

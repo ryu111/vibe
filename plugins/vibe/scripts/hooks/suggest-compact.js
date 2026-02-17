@@ -73,40 +73,78 @@ process.stdin.on('end', () => {
     const toolName = data.tool_name || '';
     const toolInput = data.tool_input || {};
 
+    // 讀取 pipeline state（M-1 fix: 只讀一次，後續複用）
+    let cachedState = null;
+    const stateFile = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
+    try {
+      if (fs.existsSync(stateFile)) {
+        cachedState = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+      }
+    } catch (_) {}
+
     // 1. tool.used 事件（Task 由 delegation-tracker 處理）
     if (toolName && toolName !== 'Task') {
       const info = extractToolInfo(toolName, toolInput);
       // 嵌入當前 stage 和 delegation 狀態（供 replay 時正確顯示 emoji）
-      try {
-        const stateFile = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
-        if (fs.existsSync(stateFile)) {
-          const st = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-          // v3 結構：從 stages 找 active stage + derivePhase
-          let stage;
-          if (st.stages) {
-            // v3: 找第一個 active stage
-            stage = Object.keys(st.stages).find(s => st.stages[s]?.status === 'active');
-          }
-          // v2 向後相容
-          if (!stage) stage = st.progress?.currentStage || st.currentStage;
-          if (stage) info.stage = stage;
-          // v3: 檢查是否有 active stage（= DELEGATING）
-          const hasActive = st.stages && Object.values(st.stages).some(s => s?.status === 'active');
-          if (hasActive || st.phase === 'DELEGATING' || st.delegationActive) info.delegationActive = true;
-        }
-      } catch (_) {}
+      if (cachedState?.stages) {
+        const stage = Object.keys(cachedState.stages).find(s => cachedState.stages[s]?.status === 'active');
+        if (stage) info.stage = stage;
+        const hasActive = Object.values(cachedState.stages).some(s => s?.status === 'active');
+        if (hasActive) info.delegationActive = true;
+      }
       emit(EVENT_TYPES.TOOL_USED, sessionId, info);
     }
 
     // 2. Compact 計數與提醒（原有邏輯）
     const result = increment(sessionId);
 
+    // 收集所有 systemMessage（避免多次 console.log 衝突）
+    const systemMessages = [];
+
     if (result.shouldRemind && result.message) {
       emit(EVENT_TYPES.COMPACT_SUGGESTED, sessionId, {
         count: result.count,
         threshold: result.threshold,
       });
-      console.log(JSON.stringify({ systemMessage: result.message }));
+      systemMessages.push(result.message);
+    }
+
+    // 3. CLASSIFIED 階段 delegation 提醒（複用 cachedState）
+    try {
+      if (cachedState) {
+        const { derivePhase, getReadyStages } = require(path.join(__dirname, '..', 'lib', 'flow', 'dag-state.js'));
+        const phase = derivePhase(cachedState);
+
+        if (phase === 'CLASSIFIED') {
+          // 追蹤連續唯讀呼叫次數
+          const count = (cachedState.meta?.classifiedReadCount || 0) + 1;
+          cachedState.meta = cachedState.meta || {};
+          cachedState.meta.classifiedReadCount = count;
+          fs.writeFileSync(stateFile, JSON.stringify(cachedState, null, 2));
+
+          // M-2 fix: 間隔提醒（閾值首次 + 之後每 5 次）
+          const THRESHOLD = 3;
+          if (count === THRESHOLD || (count > THRESHOLD && (count - THRESHOLD) % 5 === 0)) {
+            const ready = getReadyStages(cachedState);
+            const nextStage = ready[0] || '下一階段';
+            const pipelineId = cachedState.classification?.pipelineId || '';
+            const pipelineLabel = pipelineId ? ` (${pipelineId})` : '';
+            const reminder = `⚠️ Pipeline${pipelineLabel} 已分類完成，已連續 ${count} 次唯讀操作。請使用 Skill 或 Task 工具委派 sub-agent 進行 ${nextStage} 階段。`;
+            systemMessages.push(reminder);
+          }
+        } else if (phase === 'DELEGATING') {
+          // 進入委派後重設計數器
+          if (cachedState.meta?.classifiedReadCount) {
+            cachedState.meta.classifiedReadCount = 0;
+            fs.writeFileSync(stateFile, JSON.stringify(cachedState, null, 2));
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 統一輸出（合併多個 systemMessage）
+    if (systemMessages.length > 0) {
+      console.log(JSON.stringify({ systemMessage: systemMessages.join('\n\n') }));
     }
   } catch (err) {
     hookLogger.error('suggest-compact', err);

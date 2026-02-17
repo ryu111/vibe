@@ -1797,10 +1797,11 @@ test('formatter: task.classified 升級格式', () => {
 });
 
 test('formatter: task.classified 舊格式向後相容（無 layer）', () => {
-  const event = { type: 'task.classified', data: { taskType: 'feature', expectedStages: ['PLAN', 'ARCH', 'DEV'] } };
+  // v3：舊格式只有 taskType，不再顯示 expectedStages 列表
+  const event = { type: 'task.classified', data: { taskType: 'feature' } };
   const text = fmtEvt(event);
   assert.ok(text.includes('feature'), '應含 taskType');
-  assert.ok(text.includes('PLAN,ARCH,DEV'), '應含 stages');
+  assert.ok(text.startsWith('分類='), '應含分類前綴');
   assert.ok(!/L\d\(/.test(text), '不應含 Layer 標記（L1(/L2(/L3(）');
 });
 

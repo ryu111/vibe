@@ -427,6 +427,97 @@ test('\u9032\u5EA6\u689D\u542B\u7BAD\u982D\u5206\u9694', () => {
 });
 
 // ═══════════════════════════════════════════════
+console.log('\n🧪 P7. extractCompletedStages v3 state 結構');
+// ═══════════════════════════════════════════════
+
+test('extractCompletedStages: v3 state.stages 正確提取 completed', () => {
+  const { extractCompletedStages } = require(path.join(SCRIPTS_DIR, 'hooks', 'remote-hub.js'));
+  const state = {
+    version: 3,
+    stages: {
+      PLAN: { status: 'completed', verdict: 'PASS', agent: 'vibe:planner' },
+      ARCH: { status: 'completed', verdict: 'PASS', agent: 'vibe:architect' },
+      DEV:  { status: 'active', agent: 'vibe:developer' },
+      REVIEW: { status: 'pending' },
+    },
+  };
+  const completed = extractCompletedStages(state);
+  assert.deepStrictEqual(completed.sort(), ['ARCH', 'PLAN']);
+});
+
+test('extractCompletedStages: 空 stages 回傳空陣列', () => {
+  const { extractCompletedStages } = require(path.join(SCRIPTS_DIR, 'hooks', 'remote-hub.js'));
+  const completed = extractCompletedStages({ version: 3, stages: {} });
+  assert.deepStrictEqual(completed, []);
+});
+
+test('extractCompletedStages: 無 stages 欄位（防禦性處理）', () => {
+  const { extractCompletedStages } = require(path.join(SCRIPTS_DIR, 'hooks', 'remote-hub.js'));
+  const completed = extractCompletedStages({ version: 3 });
+  assert.deepStrictEqual(completed, []);
+});
+
+test('extractCompletedStages: 全部 completed', () => {
+  const { extractCompletedStages } = require(path.join(SCRIPTS_DIR, 'hooks', 'remote-hub.js'));
+  const state = {
+    version: 3,
+    stages: {
+      DEV:    { status: 'completed', verdict: 'PASS' },
+      REVIEW: { status: 'completed', verdict: 'PASS' },
+      TEST:   { status: 'completed', verdict: 'PASS' },
+    },
+  };
+  const completed = extractCompletedStages(state);
+  assert.strictEqual(completed.length, 3);
+  assert.ok(completed.includes('DEV'));
+  assert.ok(completed.includes('REVIEW'));
+  assert.ok(completed.includes('TEST'));
+});
+
+test('extractCompletedStages: skipped 不視為 completed', () => {
+  const { extractCompletedStages } = require(path.join(SCRIPTS_DIR, 'hooks', 'remote-hub.js'));
+  const state = {
+    version: 3,
+    stages: {
+      PLAN:   { status: 'completed', verdict: 'PASS' },
+      DESIGN: { status: 'skipped' },
+      DEV:    { status: 'pending' },
+    },
+  };
+  const completed = extractCompletedStages(state);
+  assert.deepStrictEqual(completed, ['PLAN']);
+});
+
+test('extractCompletedStages: failed 不視為 completed', () => {
+  const { extractCompletedStages } = require(path.join(SCRIPTS_DIR, 'hooks', 'remote-hub.js'));
+  const state = {
+    version: 3,
+    stages: {
+      PLAN:   { status: 'completed', verdict: 'PASS' },
+      ARCH:   { status: 'failed', verdict: 'FAIL' },
+    },
+  };
+  const completed = extractCompletedStages(state);
+  assert.deepStrictEqual(completed, ['PLAN']);
+});
+
+test('v3 stageResults 從 stages 映射正確推導 FAIL 進度條', () => {
+  const { buildProgressBar } = require(path.join(SCRIPTS_DIR, 'hooks', 'remote-hub.js'));
+  const stageResults = {
+    PLAN: { verdict: 'PASS' },
+    ARCH: { verdict: 'PASS' },
+    DEV:  { verdict: 'FAIL' },
+  };
+  const bar = buildProgressBar(
+    ['PLAN', 'ARCH', 'DEV'], stageResults,
+    ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST']
+  );
+  assert.ok(bar.includes('\u2705'), '進度條含 PASS');
+  assert.ok(bar.includes('\u274C'), '進度條含 FAIL');
+  assert.ok(bar.includes('\u2B1C'), '進度條含未完成');
+});
+
+// ═══════════════════════════════════════════════
 // 清理 + 結果
 // ═══════════════════════════════════════════════
 

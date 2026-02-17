@@ -20,6 +20,8 @@ const os = require('os');
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const STALE_DAYS = 3;
 const STALE_MS = STALE_DAYS * 24 * 60 * 60 * 1000;
+// COMPLETE 或超過 48h 的 pipeline state 提前清理（支援 pipeline-resume 功能）
+const PIPELINE_STALE_MS = 48 * 60 * 60 * 1000;
 
 let input = '';
 process.stdin.on('data', d => input += d);
@@ -38,6 +40,8 @@ process.stdin.on('end', () => {
     // --- 4. 清理過時 state 檔案 ---
     cleanStaleFiles('timeline-*.jsonl', results);
     cleanStaleFiles('pipeline-state-*.json', results);
+    // 提前清理：COMPLETE pipeline 或超過 48h 的 pipeline state
+    cleanCompletedPipelineStates(sessionId, results);
 
     // --- 5. 清理 MCP log ---
     cleanMcpLogs(results);
@@ -177,6 +181,49 @@ function cleanStaleFiles(pattern, results) {
       try {
         const stat = fs.statSync(filePath);
         if (now - stat.mtimeMs > STALE_MS) {
+          fs.unlinkSync(filePath);
+          results.filesRemoved++;
+        }
+      } catch (_) {}
+    }
+  } catch (_) {}
+}
+
+/**
+ * 提前清理 pipeline-state：
+ * - COMPLETE 的（已完成，不需再接續）
+ * - 超過 48h 的（即使未完成，也不值得接續）
+ * 排除當前 session 自己的 state
+ */
+function cleanCompletedPipelineStates(currentSessionId, results) {
+  try {
+    // 延遲 require 以避免循環依賴
+    const { derivePhase, PHASES } = require(path.join(__dirname, '..', 'lib', 'flow', 'dag-state.js'));
+    const files = fs.readdirSync(CLAUDE_DIR).filter(
+      f => f.startsWith('pipeline-state-') && f.endsWith('.json')
+    );
+    const now = Date.now();
+
+    for (const file of files) {
+      const sessionId = file.replace('pipeline-state-', '').replace('.json', '');
+      // 排除自己（當前 session 的 state 在此 hook 執行時可能剛建立）
+      if (sessionId === currentSessionId) continue;
+
+      const filePath = path.join(CLAUDE_DIR, file);
+      try {
+        const stat = fs.statSync(filePath);
+        const ageMs = now - stat.mtimeMs;
+
+        // 超過 48h 直接刪
+        if (ageMs > PIPELINE_STALE_MS) {
+          fs.unlinkSync(filePath);
+          results.filesRemoved++;
+          continue;
+        }
+
+        // 讀取 state 檢查是否 COMPLETE
+        const state = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        if (state.version === 3 && derivePhase(state) === PHASES.COMPLETE) {
           fs.unlinkSync(filePath);
           results.filesRemoved++;
         }

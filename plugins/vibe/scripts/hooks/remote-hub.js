@@ -196,19 +196,12 @@ function formatDuration(ms) {
 }
 
 /**
- * 從 FSM state 提取已完成的 stage 名稱
- * completedAgents 是 agent 名稱陣列（如 'vibe:planner'），需轉換為 stage 名稱
+ * 從 v3 DAG state 提取已完成的 stage 名稱
+ * v3 state.stages 是 { stageId: { status, agent, verdict, ... } } 映射
  */
 function extractCompletedStages(state) {
-  const progress = state.progress || {};
-  const agents = progress.completedAgents || state.completed || [];
-  const stages = [];
-  for (const agent of agents) {
-    const sn = agent.includes(':') ? agent.split(':')[1] : agent;
-    const stage = AGENT_TO_STAGE[sn];
-    if (stage && !stages.includes(stage)) stages.push(stage);
-  }
-  return stages;
+  const stages = state.stages || {};
+  return Object.keys(stages).filter(s => stages[s]?.status === 'completed');
 }
 
 async function handleSender(data) {
@@ -232,32 +225,57 @@ async function handleSender(data) {
   try { state = JSON.parse(fs.readFileSync(statePath, 'utf8')); }
   catch (_) { process.exit(0); }
 
-  // FSM state 結構適配
-  const progress = state.progress || {};
-  const context = state.context || {};
+  // v3 DAG state 結構
   const meta = state.meta || {};
+  const stagesMap = state.stages || {};
+  const classification = state.classification || {};
 
   const completedStages = extractCompletedStages(state);
-  const stageResults = progress.stageResults || state.stageResults || {};
-  const expectedStages = context.expectedStages || state.expectedStages || STAGE_ORDER;
-  const taskType = context.taskType || state.taskType || null;
+
+  // v3: stageResults 從 stages 映射推導（每個 stage 有 verdict 欄位）
+  // verdict 可能是物件 { verdict: 'PASS'|'FAIL', severity: ... }（由 verdict.js parseVerdict 產出）
+  // 展平為字串格式，確保 buildProgressBar 等地方的字串比較正確
+  const stageResults = {};
+  for (const [stageId, stageInfo] of Object.entries(stagesMap)) {
+    if (stageInfo?.verdict) {
+      const rawVerdict = stageInfo.verdict;
+      const verdictStr = (typeof rawVerdict === 'object' && rawVerdict !== null)
+        ? (rawVerdict.verdict || null)
+        : rawVerdict;
+      if (verdictStr) {
+        stageResults[stageId] = { verdict: verdictStr };
+      }
+    }
+  }
+
+  // v3: expectedStages 從 dag 取得所有已宣告的 stage
+  const expectedStages = Object.keys(state.dag || {});
+  if (expectedStages.length === 0) {
+    // 無 DAG 結構，可能是未分類 session — 靜默退出
+    process.exit(0);
+  }
+
+  const taskType = classification.taskType || null;
 
   // 耗時計算（lastTransition 是 ISO 字串）
   const lastTransitionStr = meta.lastTransition || null;
   const lastTransitionMs = lastTransitionStr ? new Date(lastTransitionStr).getTime() : null;
   const stageDuration = lastTransitionMs ? formatDuration(Date.now() - lastTransitionMs) : null;
 
-  const result = stageResults[currentStage];
-  const verdictIcon = result
-    ? (result.verdict === 'PASS' ? '\u2705' : '\u274C')
+  const stageInfo = stagesMap[currentStage];
+  // v3 verdict 可能是物件 { verdict: 'PASS'|'FAIL', severity: ... }，展平為字串
+  const rawVerdict = stageInfo?.verdict;
+  const verdictStr = (typeof rawVerdict === 'object' && rawVerdict !== null)
+    ? (rawVerdict.verdict || null)
+    : rawVerdict;
+  const verdictIcon = verdictStr
+    ? (verdictStr === 'PASS' ? '\u2705' : '\u274C')
     : '\u2753';
 
-  // retries（FSM: per-stage 物件）
-  const retriesObj = progress.retries || {};
-  const retryCount = typeof retriesObj === 'object'
-    ? (retriesObj[currentStage] || 0)
-    : (state.retries || 0);
-  const retryStr = (result && result.verdict === 'FAIL' && retryCount > 0)
+  // v3: retries 是 { stageId: count } 物件
+  const retriesObj = state.retries || {};
+  const retryCount = retriesObj[currentStage] || 0;
+  const retryStr = (verdictStr && verdictStr !== 'PASS' && retryCount > 0)
     ? ` (retry ${retryCount}/3)`
     : '';
 
@@ -274,7 +292,7 @@ async function handleSender(data) {
 
   const display = STAGES[currentStage];
   const progressBar = buildProgressBar(completedStages, stageResults, expectedStages);
-  const allDone = expectedStages.every(s => completedStages.includes(s));
+  const allDone = expectedStages.length > 0 && expectedStages.every(s => completedStages.includes(s));
 
   let text;
   if (allDone) {
@@ -283,8 +301,8 @@ async function handleSender(data) {
       const r = stageResults[s];
       return !r || r.verdict !== 'FAIL';
     });
-    // 總耗時：用 classifiedAt 作為 pipeline 起始
-    const startStr = meta.classifiedAt || null;
+    // 總耗時：用 classifiedAt 作為 pipeline 起始（v3 存在 classification.classifiedAt）
+    const startStr = classification.classifiedAt || null;
     const startMs = startStr ? new Date(startStr).getTime() : null;
     const totalDuration = startMs ? formatDuration(Date.now() - startMs) : null;
     const durationStr = totalDuration ? ` ${totalDuration}` : '';

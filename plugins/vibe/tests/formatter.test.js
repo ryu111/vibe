@@ -81,9 +81,74 @@ section('formatEventText');
 assert(formatEventText(makeEvent('session.start')) === 'Session 啟動', 'session.start 文字');
 assert(formatEventText(makeEvent('prompt.received')) === '收到使用者輸入', 'prompt.received 文字');
 
-const classifiedEvent = makeEvent('task.classified', { taskType: 'feature', expectedStages: ['PLAN', 'ARCH', 'DEV'] });
+const classifiedEvent = makeEvent('task.classified', { taskType: 'feature' });
 assert(formatEventText(classifiedEvent).includes('feature'), 'task.classified 含 taskType');
-assert(formatEventText(classifiedEvent).includes('PLAN,ARCH,DEV'), 'task.classified 含 stages');
+// v3 舊格式：只顯示 taskType，不再顯示 expectedStages 列表
+assert(formatEventText(classifiedEvent).startsWith('分類='), 'task.classified 舊格式含分類前綴');
+
+// ── task.classified Phase 3 新格式（有 layer + confidence + matchedRule）──
+
+// Scenario: 完整格式（有 layer + confidence + matchedRule）
+const classifiedPhase3Event = makeEvent('task.classified', {
+  pipelineId: 'standard', layer: 2, confidence: 0.8, matchedRule: 'action:feature',
+});
+assert(
+  formatEventText(classifiedPhase3Event) === '分類=standard L2(0.80) [action:feature]',
+  'task.classified Phase3 完整格式'
+);
+
+// Scenario: Layer 1 顯式覆寫
+const classifiedL1Event = makeEvent('task.classified', {
+  pipelineId: 'full', layer: 1, confidence: 1.0, matchedRule: 'explicit',
+});
+assert(
+  formatEventText(classifiedL1Event) === '分類=full L1(1.00) [explicit]',
+  'task.classified Layer 1 顯式覆寫格式'
+);
+
+// Scenario: Layer 3 LLM 分類
+const classifiedL3Event = makeEvent('task.classified', {
+  pipelineId: 'standard', layer: 3, confidence: 0.85, source: 'llm', matchedRule: 'weak-explore',
+});
+assert(
+  formatEventText(classifiedL3Event) === '分類=standard L3(0.85) [weak-explore]',
+  'task.classified Layer 3 LLM 分類格式'
+);
+
+// Scenario: 升級分類（reclassified）
+const classifiedUpgradeEvent = makeEvent('task.classified', {
+  reclassified: true, from: 'fix', pipelineId: 'quick-dev',
+  layer: 2, confidence: 0.8, matchedRule: 'action:bugfix',
+});
+const upgradeText = formatEventText(classifiedUpgradeEvent);
+assert(upgradeText.startsWith('升級 fix→quick-dev'), 'task.classified 升級格式含升級前綴');
+assert(upgradeText.includes('L2(0.80)'), 'task.classified 升級格式含 Layer 信心度');
+assert(upgradeText.includes('[action:bugfix]'), 'task.classified 升級格式含 matchedRule');
+
+// Scenario: 信心度固定兩位小數
+const classifiedConfEvent = makeEvent('task.classified', {
+  pipelineId: 'quick-dev', layer: 2, confidence: 0.5, matchedRule: 'action:bugfix',
+});
+assert(
+  formatEventText(classifiedConfEvent) === '分類=quick-dev L2(0.50) [action:bugfix]',
+  'task.classified 信心度顯示為兩位小數（0.50）'
+);
+
+// Scenario: 向後相容（無 layer 欄位，舊格式）
+const classifiedOldFormat = makeEvent('task.classified', { taskType: 'docs' });
+const oldText = formatEventText(classifiedOldFormat);
+assert(oldText.startsWith('分類='), '舊格式（無 layer）回退到分類=前綴');
+assert(oldText.includes('docs'), '舊格式含 taskType');
+assert(!oldText.includes('L1(') && !oldText.includes('L2(') && !oldText.includes('L3('), '舊格式不含 Layer 標記');
+
+// Scenario: pipelineId 優先於 taskType（Phase 3 格式）
+const classifiedPipelineIdEvent = makeEvent('task.classified', {
+  pipelineId: 'security', taskType: 'feature', layer: 2, confidence: 0.75, matchedRule: 'action:feature',
+});
+assert(
+  formatEventText(classifiedPipelineIdEvent).startsWith('分類=security'),
+  'task.classified Phase3 pipelineId 優先於 taskType'
+);
 
 const delegationEvent = makeEvent('delegation.start', { agentType: 'architect', description: '設計架構' });
 assert(formatEventText(delegationEvent).includes('architect'), 'delegation.start 含 agentType');
