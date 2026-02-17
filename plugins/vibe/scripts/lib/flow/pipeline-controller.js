@@ -463,6 +463,16 @@ function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline) {
   let state = loadState(sessionId);
   if (!state) state = ds.createInitialState(sessionId);
 
+  // pipeline-architect 被使用者明確呼叫 → 若分類為 none 則重分類為 custom
+  const currentPid = ds.getPipelineId(state);
+  if (!currentPid || currentPid === 'none') {
+    state = ds.classify(state, {
+      pipelineId: 'custom',
+      taskType: 'feature',
+      source: 'pipeline-architect',
+    });
+  }
+
   // 從 transcript 解析 DAG
   let dag = null;
   let blueprint = null;

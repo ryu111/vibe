@@ -373,6 +373,161 @@ const c = require(${JSON.stringify(classifierModulePath)});
   }
 });
 
+// ─── Part 1e2: LLM 回應解析 mock 測試 ──────────
+
+console.log('\n🧪 Part 1e2: LLM 回應解析 mock 測試');
+console.log('═'.repeat(50));
+
+/**
+ * 執行子進程 mock 測試：monkeypatch https.request 後呼叫 classifyWithLLM
+ * @param {Object} mockResponse - { statusCode, body } 模擬回應
+ * @param {Object} [opts] - { error: true } 模擬網路錯誤
+ * @returns {string} 子進程 stdout 輸出
+ */
+function runLLMMockTest(mockResponse, opts = {}) {
+  const tmpFile = path.join(os.tmpdir(), `vibe-llm-mock-${Date.now()}-${Math.random().toString(36).slice(2)}.js`);
+  const mockCode = opts.error
+    ? `
+// 模擬網路錯誤
+const origRequest = require('https').request;
+require('https').request = function(options, cb) {
+  const req = new (require('events').EventEmitter)();
+  req.write = () => {};
+  req.end = () => { setTimeout(() => req.emit('error', new Error('MOCK_NETWORK_ERROR')), 5); };
+  req.setTimeout = (ms, cb2) => {};
+  req.destroy = () => {};
+  return req;
+};
+`
+    : opts.timeout
+    ? `
+// 模擬超時
+const origRequest = require('https').request;
+require('https').request = function(options, cb) {
+  const req = new (require('events').EventEmitter)();
+  req.write = () => {};
+  req.end = () => {};
+  let timeoutCb;
+  req.setTimeout = (ms, cb2) => { timeoutCb = cb2; setTimeout(cb2, 5); };
+  req.destroy = () => {};
+  return req;
+};
+`
+    : `
+// 模擬成功回應
+const { EventEmitter } = require('events');
+const origRequest = require('https').request;
+require('https').request = function(options, cb) {
+  const res = new EventEmitter();
+  res.statusCode = ${mockResponse.statusCode || 200};
+  const req = new EventEmitter();
+  req.write = () => {};
+  req.end = () => {
+    setTimeout(() => {
+      cb(res);
+      const body = ${JSON.stringify(JSON.stringify(mockResponse.body || ''))};
+      res.emit('data', body);
+      res.emit('end');
+    }, 5);
+  };
+  req.setTimeout = () => {};
+  req.destroy = () => {};
+  return req;
+};
+`;
+
+  fs.writeFileSync(tmpFile, `
+${mockCode}
+const c = require(${JSON.stringify(classifierModulePath)});
+(async () => {
+  const result = await c.classifyWithLLM('建立一個完整的 REST API');
+  process.stdout.write(JSON.stringify(result));
+})();
+`);
+  try {
+    return execSync(`node "${tmpFile}"`, {
+      env: { ...process.env, ANTHROPIC_API_KEY: 'test-mock-key' },
+      timeout: 10000,
+    }).toString();
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
+  }
+}
+
+test('LLM mock: 成功回應 → 正確解析 pipeline', () => {
+  const result = runLLMMockTest({
+    statusCode: 200,
+    body: { content: [{ text: '{"pipeline":"standard"}' }] },
+  });
+  const parsed = JSON.parse(result);
+  assert.strictEqual(parsed.pipeline, 'standard');
+  assert.strictEqual(parsed.source, 'llm');
+  assert.strictEqual(parsed.confidence, 0.85);
+  assert.strictEqual(parsed.matchedRule, 'llm');
+});
+
+test('LLM mock: fix pipeline → 正確解析', () => {
+  const result = runLLMMockTest({
+    statusCode: 200,
+    body: { content: [{ text: '```json\n{"pipeline":"fix"}\n```' }] },
+  });
+  const parsed = JSON.parse(result);
+  assert.strictEqual(parsed.pipeline, 'fix');
+});
+
+test('LLM mock: none pipeline → 正確解析', () => {
+  const result = runLLMMockTest({
+    statusCode: 200,
+    body: { content: [{ text: '{"pipeline":"none"}' }] },
+  });
+  const parsed = JSON.parse(result);
+  assert.strictEqual(parsed.pipeline, 'none');
+});
+
+test('LLM mock: 不合法 pipeline ID → null', () => {
+  const result = runLLMMockTest({
+    statusCode: 200,
+    body: { content: [{ text: '{"pipeline":"invalid-id"}' }] },
+  });
+  assert.strictEqual(result, 'null');
+});
+
+test('LLM mock: 非 JSON 回應 → null', () => {
+  const result = runLLMMockTest({
+    statusCode: 200,
+    body: { content: [{ text: 'I think you should use full pipeline' }] },
+  });
+  assert.strictEqual(result, 'null');
+});
+
+test('LLM mock: 空 content → null', () => {
+  const result = runLLMMockTest({
+    statusCode: 200,
+    body: { content: [] },
+  });
+  assert.strictEqual(result, 'null');
+});
+
+test('LLM mock: HTTP 401 → null', () => {
+  const result = runLLMMockTest({ statusCode: 401, body: { error: 'unauthorized' } });
+  assert.strictEqual(result, 'null');
+});
+
+test('LLM mock: HTTP 500 → null', () => {
+  const result = runLLMMockTest({ statusCode: 500, body: { error: 'server error' } });
+  assert.strictEqual(result, 'null');
+});
+
+test('LLM mock: 網路錯誤 → null', () => {
+  const result = runLLMMockTest({}, { error: true });
+  assert.strictEqual(result, 'null');
+});
+
+test('LLM mock: 超時 → null', () => {
+  const result = runLLMMockTest({}, { timeout: true });
+  assert.strictEqual(result, 'null');
+});
+
 // ─── Part 1f: classify() 向後相容 ──────────────
 
 console.log('\n🧪 Part 1f: classify() 向後相容（deprecated）');

@@ -23,7 +23,7 @@ allowed-tools: Read, Write
 
 告知使用者：
 - **Task-guard**：被阻擋次數、未完成任務
-- **Pipeline**：目前 phase（`state.phase`）、pipeline ID（`state.context.pipelineId`）、當前階段（`state.progress.currentStage`）、已完成階段
+- **Pipeline**：目前 phase（由 stages 推導）、pipeline ID（`state.classification.pipelineId`）、DAG stages、已完成階段
 
 ### 3. 解除鎖定
 
@@ -31,9 +31,10 @@ allowed-tools: Read, Write
 
 **Task-guard 解除**：將 `task-guard-state` 的 `cancelled` 設為 `true`
 
-**Pipeline 解除**：修改 `pipeline-state` 的 FSM 狀態：
-- `phase` → `'IDLE'`（停止 pipeline-guard 阻擋）
-- `meta.cancelled` → `true`（標記已取消）
+**Pipeline 解除**：修改 `pipeline-state`（v3 結構）：
+- `meta.cancelled` → `true`（derivePhase 會回傳 IDLE，停止 pipeline-guard 阻擋）
+- `dag` → `null`（移除 DAG）
+- `enforced` → `false`
 - 清理 `~/.claude/vibe-patch-*.patch` 殘留快照（遍歷刪除）
 
 ### 4. 取消原因回饋（Correction Loop）
@@ -63,7 +64,7 @@ allowed-tools: Read, Write
 
 ### 5. 自動蒐集誤判語料
 
-當解除的是 pipeline 且原 phase 在 enforced 狀態時，記錄到語料檔和統計檔。
+當解除的是 pipeline 且原 phase 在 enforced 狀態時，記錄到語料檔。
 
 **語料檔路徑**：`~/.claude/classifier-corpus.jsonl`
 
@@ -71,48 +72,20 @@ allowed-tools: Read, Write
 ```json
 {
   "prompt": "觸發 pipeline 的原始 prompt（從 state 或 transcript 取得）",
-  "actual": "state.context.taskType",
-  "pipelineId": "state.context.pipelineId",
+  "actual": "state.classification.taskType",
+  "pipelineId": "state.classification.pipelineId",
   "cancelled": true,
   "reason": "classification-error | no-pipeline-needed | skipped",
   "expectedPipeline": "使用者選擇的正確 pipeline（僅 reason=classification-error 時有值）",
-  "layer": "state.meta.layer",
-  "confidence": "state.meta.classificationConfidence",
-  "source": "state.meta.classificationSource",
-  "matchedRule": "state.meta.matchedRule",
+  "source": "state.classification.source",
+  "confidence": "state.classification.confidence",
+  "matchedRule": "state.classification.matchedRule",
   "completedStages": [],
   "timestamp": "ISO"
 }
 ```
 
-**統計檔路徑**：`~/.claude/classifier-stats.json`
-
-讀取現有統計檔（不存在則初始化），更新 `recentWindow` 滑動窗口：
-
-```json
-{
-  "recentWindow": [
-    {
-      "pipelineId": "state.context.pipelineId",
-      "layer": 2,
-      "source": "regex",
-      "corrected": true,
-      "expectedPipeline": "full",
-      "timestamp": "ISO"
-    }
-  ],
-  "totalClassifications": 42,
-  "totalCorrections": 3
-}
-```
-
-更新規則：
-- **分類錯誤**（reason=classification-error）：`corrected=true` + `expectedPipeline` 填入使用者選擇 + `totalCorrections` +1
-- **不需要 pipeline / 跳過**：`corrected=false`
-- `totalClassifications` +1
-- `recentWindow` 保留最近 50 筆（超過時移除最舊的）
-
-使用 Write 工具追加 corpus / 覆寫 stats（如果檔案不存在則建立）。這步驟靜默執行，不需要告知使用者。
+使用 Write 工具追加 corpus（如果檔案不存在則建立）。這步驟靜默執行，不需要告知使用者。
 
 ### 6. 確認結果
 

@@ -797,20 +797,12 @@ pipeline-architect 可以產出超越模板的自訂 DAG，例如並行排程：
 
 > 檔案路徑：`plugins/vibe/scripts/lib/flow/classifier.js`
 
-Pipeline v3 保留 v2 的三層級聯分類器，但 Layer 3 的角色從直接決策變為輔助建議（pipeline-architect agent 負責最終決策）。
+v1.0.60 重寫為 LLM-first 架構，移除所有 regex 分類：
 
 | Layer | 機制 | 信心度 | 觸發條件 |
 |-------|------|:------:|---------|
 | 1 | `[pipeline:xxx]` 顯式語法 | 1.0 | prompt 包含語法標記 |
-| 2 | Regex 級聯（疑問守衛 -> trivial -> 弱探索 -> 動作關鍵字） | 0.5~0.95 | Layer 1 未命中 |
-| 3 | LLM Sonnet 語意分類 | 0.85 | Layer 2 信心度 < adaptive threshold |
+| 2 | LLM Sonnet 語意分類 | 0.85 | Layer 1 未命中 + API key 可用 |
+| Fallback | none pipeline | 0 | API 不可用 |
 
-**Layer 2 內部優先級**：
-1. Phase 0：強動作信號（「更新 xxx.md」等明確動作意圖）
-2. Phase 1：Strong Question Guard（6 類中文疑問信號 + 英文 WH）
-3. Phase 2：Trivial Detection（hello world / poc / demo）
-4. Phase 3：Weak Explore（看看 / 查看 / 說明）
-5. Phase 4：Action Keywords（tdd / feature / refactor / bugfix / docs）
-6. Default：quickfix
-
-**Adaptive Threshold**：根據 `classifier-stats.json` 的修正率動態調整（0.5 或 0.7），環境變數 `VIBE_CLASSIFIER_THRESHOLD` 最高優先。
+**環境變數**：`VIBE_CLASSIFIER_MODEL`（LLM 模型）、`VIBE_CLASSIFIER_THRESHOLD`（設 ≥1.0 停用 LLM）。

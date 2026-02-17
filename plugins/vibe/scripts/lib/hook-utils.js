@@ -24,7 +24,7 @@ const hookLogger = require('./hook-logger.js');
 function safeRun(hookName, handler) {
   let input = '';
   process.stdin.on('data', d => input += d);
-  process.stdin.on('end', () => {
+  process.stdin.on('end', async () => {
     let data;
     try {
       data = JSON.parse(input);
@@ -35,13 +35,7 @@ function safeRun(hookName, handler) {
     }
 
     try {
-      const result = handler(data);
-      // 支援 async handler
-      if (result && typeof result.then === 'function') {
-        result.catch(err => {
-          hookLogger.error(hookName, err);
-        });
-      }
+      await handler(data);
     } catch (err) {
       hookLogger.error(hookName, err);
     }
