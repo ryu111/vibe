@@ -1,1005 +1,816 @@
-# Pipeline 委派架構
+# Pipeline v3 -- 動態 DAG 架構
 
-> **定位**：Agent Pipeline 的完整設計規格 — 任務分類、階段轉換、跨 plugin 解耦、使用者可見文字
-> **擁有者**：vibe plugin / flow 模組（pipeline 順序 + 轉換邏輯）
-> **協作者**：統一在 `pipeline.json` 的 `provides` 欄位宣告
-> **中央參考**：任何影響工作流的變動都與此文件相關 — 新增/移除 agent、調整 stage、修改 plugin 組合時，必須回來更新此文件
+> Vibe Pipeline v3 架構文檔。涵蓋宣告式狀態、DAG 排程引擎、Controller API、Hook Stack、訊息格式與 v2 遷移。
 
 ---
 
-## 0. 變動影響範圍
+## 1. 架構總覽
 
-Pipeline 是 Vibe marketplace 的骨幹。以下變動都需要回來檢查此文件：
+### 核心理念
 
-| 變動類型 | 影響範圍 |
-|---------|---------|
-| 新增 agent | 對應 plugin 的 `pipeline.json.provides` 宣告 |
-| 新增 pipeline stage | `pipeline.json` 的 `stages` 順序 |
-| 新增/移除 plugin | 自動生效（動態發現），但需確認 `pipeline.json` 的 `provides` 欄位 |
-| 修改 agent 名稱 | 對應 plugin 的 `pipeline.json.provides` 宣告 |
-| 修改使用者可見文字 | 本文件 §5 + Claude 行為模式 |
-| 修改 dashboard | `dashboard/scripts/generate.js` 的 pipeline 視覺化 |
+Pipeline v3 採用三元架構：
 
-**連動清單**（改 pipeline 時需一併檢查）：
+- **Pipeline Agent（智慧）** -- `pipeline-architect` agent 根據使用者需求和專案環境，動態產出最佳的 DAG 執行計劃
+- **Pipeline Skill（規則）** -- `/vibe:pipeline` skill 作為啟動入口，讀取環境 context 後委派 agent
+- **Hook Stack（邊界）** -- 5 個核心 hook 組成防護閉環，每個 hook 精簡為 controller 方法的代理
+
+### v2 vs v3 變更摘要
+
+| 維度 | v2（FSM） | v3（DAG） |
+|------|-----------|-----------|
+| 狀態模型 | 有限狀態機 + 手動轉換矩陣 | 宣告式 stages + derivePhase() 自動推導 |
+| Pipeline 結構 | 靜態模板（10 種固定 stages 序列） | DAG（有向無環圖）動態生成 |
+| 執行方式 | 嚴格串行 | 支援並行（共享依賴的 stages 同步執行） |
+| 邏輯分布 | 散落在 6+ 個 hook 腳本 | 集中在 pipeline-controller.js |
+| Hook 職責 | 包含業務邏輯 | 純代理（解析 stdin -> 呼叫 controller -> 輸出結果） |
+| systemMessage 長度 | ~2200 tokens | ~200 tokens |
+| 模板選擇 | task-classifier regex | pipeline-architect agent 語意分析 |
+| 回退機制 | pendingRetry flat flag | pendingRetry.stages 陣列（支援多 stage 回退） |
+
+### 模組依賴圖
 
 ```
-docs/ref/pipeline.md          ← 本文件（規格）
-docs/ref/vibe.md              ← vibe plugin 設計文件（自動生成）
-docs/plugin-specs.json         ← 數量統計
-dashboard/scripts/generate.js  ← pipeline 視覺化
-plugins/vibe/pipeline.json     ← stage 順序 + provides 統一定義
+                       ┌──────────────────────────────┐
+                       │     pipeline-controller.js   │ <── 統一 API
+                       │   classify / canProceed /     │
+                       │   onDelegate / onStageComplete│
+                       │   / onSessionStop             │
+                       └──────┬───┬───┬───┬───┬───────┘
+                              │   │   │   │   │
+              ┌───────────────┤   │   │   │   └──────────────────┐
+              │               │   │   │   │                      │
+              v               v   │   v   v                      v
+     ┌────────────┐  ┌──────────┐ │ ┌──────────┐        ┌──────────────┐
+     │  dag-state  │  │dag-utils │ │ │  verdict  │        │   classifier │
+     │  .js        │  │  .js     │ │ │  .js      │        │   .js        │
+     │             │  │          │ │ │           │        │ (Layer 1/2)  │
+     │ PHASES      │  │linearToDag│ │ │parseVerdict│       └──────────────┘
+     │ STAGE_STATUS│  │validateDag│ │ └──────────┘
+     │ derivePhase │  │topoSort  │ │
+     │ readState   │  │buildBP   │ │
+     │ writeState  │  │resolveAgt│ │
+     └─────────────┘  └──────────┘ │
+                                   v
+                          ┌──────────────────┐
+                          │  skip-predicates  │
+                          │  .js              │
+                          │                  │
+                          │  shouldSkip()     │
+                          └──────────────────┘
+                                   │
+              ┌────────────────────┤
+              v                    v
+     ┌──────────────┐    ┌──────────────────┐
+     │ retry-policy  │    │ state-migrator   │
+     │ .js           │    │ .js              │
+     │               │    │                  │
+     │shouldRetryStage│   │ ensureV3()       │
+     └───────────────┘    └──────────────────┘
+
+ ── Hook Stack（每個 hook 精簡為 controller 代理）──
+
+ ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐
+ │task-classifier│  │pipeline-guard│  │delegation-tracker│
+ │(UserPrompt)   │  │(PreToolUse)  │  │(PreToolUse Task) │
+ │ ctrl.classify │  │ctrl.canProceed│ │ ctrl.onDelegate  │
+ └──────────────┘  └──────────────┘  └──────────────────┘
+
+ ┌──────────────────┐  ┌──────────────┐
+ │ stage-transition  │  │pipeline-check│
+ │  (SubagentStop)   │  │   (Stop)     │
+ │ctrl.onStageComplete│ │ctrl.onSessionStop│
+ └───────────────────┘  └──────────────┘
 ```
 
 ---
 
-## 1. 核心決策
+## 2. 宣告式狀態（v3 State Schema）
 
-| 決策 | 結論 | 原因 |
-|------|------|------|
-| Orchestrator agent | **不需要** | Sub-agent 無法再生 sub-agent，hooks 已足夠 |
-| 委派方式 | **A+D 方案**（hooks-only） | 4 層防禦，無需額外 agent |
-| 規則存放 | **全部在 hooks 內**，不依賴 CLAUDE.md | Plugin 可攜性 — 別人裝了就生效 |
-| 跨 plugin 耦合 | **靜態順序 + 動態發現** | flow 管順序，各 plugin 自己宣告 agent |
-| Pipeline 配置 | `pipeline.json`（flow 管順序）+ 各 plugin 的 `pipeline.json.provides` | 零人工維護，安裝/移除自動生效 |
+> 檔案路徑：`plugins/vibe/scripts/lib/flow/dag-state.js`
 
----
+### 完整欄位定義
 
-## 2. 五層防禦機制（v1.0.43 重構）
-
-```
-使用者送出訊息
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│ ① task-classifier（UserPromptSubmit）    │  ← 軟→強：分類 + 注入委派規則
-│    command hook                         │
-└─────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│ ② pipeline-guard（PreToolUse）           │  ← 硬阻擋：exit 2 擋寫碼/Ask/PlanMode
-│    command hook · guard-rules.js 純函式  │
-└─────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│ ③ delegation-tracker（PreToolUse Task）  │  ← 狀態：設 delegationActive=true
-│    command hook                         │
-└─────────────────────────────────────────┘
-    │
-    ▼
-  Sub-agent 執行（delegation 期間 guard 放行）
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│ ④ stage-transition（SubagentStop）       │  ← 強指令：前進/回退/跳過/完成
-│    command hook · 4 純函式模組           │
-└─────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│ ⑤ pipeline-check（Stop）                │  ← 硬阻擋：decision:block 強制完成
-│    command hook                         │
-└─────────────────────────────────────────┘
-```
-
-### 各層詳細
-
-| # | 名稱 | 事件 | 類型 | 強度 | 輸出管道 | 說明 |
-|:-:|------|------|:----:|:----:|:--------:|------|
-| ① | task-classifier | UserPromptSubmit | command | 軟→強 | additionalContext / systemMessage | 分類任務類型 + 按需注入委派規則 |
-| ② | pipeline-guard | PreToolUse | command | **硬阻擋** | stderr + exit 2 | 阻擋 Main Agent 寫碼/AskUserQuestion/EnterPlanMode（PLAN 階段 Ask 放行） |
-| ③ | delegation-tracker | PreToolUse(Task) | command | 狀態切換 | — | 設 delegationActive=true，讓 sub-agent 通過 guard |
-| ④ | stage-transition | SubagentStop | command | 強指令 | systemMessage | Agent 完成後判斷：前進/回退/跳過/完成 |
-| ⑤ | pipeline-check | Stop | command | **硬阻擋** | decision:block + reason | 結束前檢查遺漏階段，硬阻擋並強制繼續 |
-
-### 輸出管道差異
-
-| 管道 | 誰看得到 | 強度 | 用途 |
-|------|:--------:|:----:|------|
-| `additionalContext` | 只有 Claude | 軟 | 背景知識、建議（Claude 可忽略） |
-| `systemMessage` | 只有 Claude | 強 | 系統級指令（Claude 幾乎不會忽略） |
-| `statusMessage` | 使用者（狀態列） | — | 進度提示（純 UI） |
-| `stderr`（exit 0） | 使用者（終端） | — | 動態警告/提醒 |
-| `stderr`（exit 2） | 使用者（終端） | 硬阻擋 | 阻止工具執行 |
-
----
-
-## 3. Pipeline Catalog — 10 種可組合工作流模板
-
-### 3.0 核心設計
-
-從 v1.0.33 起，Pipeline 從「全有或全無」升級為「組合式模板」架構：
-
-- **10 種 pipeline 模板**：定義在 `registry.js` 的 `PIPELINES` 常量
-- **自動選擇**：task-classifier 根據使用者意圖選擇適合的 pipeline
-- **顯式覆寫**：使用者可用 `[pipeline:xxx]` 語法指定 pipeline（如 `[pipeline:tdd] 實作 XXX 功能`）
-- **動態階段子集**：每個 pipeline 使用全域 9 階段的子集，stage-transition 只在子集內運作
-
-### 3.1 Pipeline 模板定義
-
-| Pipeline ID | 階段子集 | 描述 | 強制性 | 典型用途 |
-|------------|---------|------|:-----:|---------|
-| **full** | `['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS']` | 完整開發（含 UI） | ✅ | 新功能 + UI/UX 設計 |
-| **standard** | `['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS']` | 標準開發（無 UI） | ✅ | 後端 API、CLI 工具、大重構 |
-| **quick-dev** | `['DEV', 'REVIEW', 'TEST']` | 快速開發 | ✅ | bugfix、小改動、補測試 |
-| **fix** | `['DEV']` | 快速修復 | ❌ | hotfix、config、一行修改 |
-| **test-first** | `['TEST', 'DEV', 'TEST']` | TDD 開發 | ✅ | TDD 工作流（先寫測試→實作→測試） |
-| **ui-only** | `['DESIGN', 'DEV', 'QA']` | UI 調整 | ✅ | 純 UI/樣式調整（不改邏輯） |
-| **review-only** | `['REVIEW']` | 程式碼審查 | ❌ | 單純審查現有程式碼 |
-| **docs-only** | `['DOCS']` | 文件更新 | ❌ | 純文件更新（不改程式碼） |
-| **security** | `['DEV', 'REVIEW', 'TEST']` | 安全修復 | ✅ | 安全漏洞修復（REVIEW 含安全審查） |
-| **none** | `[]` | 無 Pipeline | ❌ | 問答、研究、trivial |
-
-**欄位說明**：
-- **階段子集**：該 pipeline 使用的 stage 列表（從全域 9 階段中挑選）
-- **強制性（enforced）**：
-  - ✅ 強制 — pipeline-guard 硬阻擋 Main Agent 直接操作（必須透過 delegation）
-  - ❌ 非強制 — 只作為建議，允許 Main Agent 直接操作
-- **典型用途**：自動分類的參考場景
-
-### 3.2 使用方式
-
-#### 自動分類（預設模式）
-
-task-classifier 根據使用者 prompt 的關鍵字和語意自動選擇 pipeline：
-
-| 使用者意圖 | 自動選擇 |
-|----------|---------|
-| 「加一個登入功能，要有 UI」 | `full` |
-| 「實作 RESTful API /users 端點」 | `standard` |
-| 「修一下按鈕的顏色」 | `ui-only` |
-| 「修復 XXX bug」 | `quick-dev` |
-| 「改一下 config」 | `fix` |
-| 「我想用 TDD 方式寫這個功能」 | `test-first` |
-| 「審查一下 auth.js」 | `review-only` |
-| 「更新 README」 | `docs-only` |
-| 「修復 SQL injection 漏洞」 | `security` |
-| 「解釋一下這段程式碼」 | `none` |
-
-#### 顯式指定（覆寫模式）
-
-在 prompt 中使用 `[pipeline:xxx]` 語法強制指定 pipeline（不區分大小寫）：
-
-```
-[pipeline:tdd] 實作計算器的加法功能
-[pipeline:full] 做一個 Todo App
-[pipeline:quick-dev] 修這個 bug
-```
-
-顯式指定的優先級**高於**自動分類，即使 prompt 語意不匹配也會使用指定的 pipeline。
-
-### 3.3 統一 pipeline.json（全域 9 階段 + pipeline ID 列表）
-
-```json
-// plugins/vibe/pipeline.json
+```javascript
 {
-  "stages": ["PLAN", "ARCH", "DESIGN", "DEV", "REVIEW", "TEST", "QA", "E2E", "DOCS"],
-  "stageLabels": {
-    "PLAN": "規劃",
-    "ARCH": "架構",
-    "DESIGN": "設計",
-    "DEV": "開發",
-    "REVIEW": "審查",
-    "TEST": "測試",
-    "QA": "行為驗證",
-    "E2E": "端對端測試",
-    "DOCS": "文件整理"
+  version: 3,                    // schema 版本（遷移用）
+  sessionId: string,             // ECC session ID
+
+  // -- 分類 --
+  classification: {
+    pipelineId: string,          // 'full' | 'standard' | ... | 'none'
+    taskType: string,            // 'feature' | 'bugfix' | 'research' | ...（向後相容）
+    source: string,              // 'explicit' | 'regex' | 'pending-llm' | 'llm'
+    confidence: number,          // 0~1
+    matchedRule: string,         // 'explicit' | 'strong-question' | 'action:feature' | ...
+    classifiedAt: ISO8601,
+  } | null,
+
+  // -- 環境 --
+  environment: {                 // pipeline-init 偵測
+    language: { name, version },
+    framework: { name, version },
+    frontend: { detected: boolean },
+    // ...
   },
-  "pipelines": ["full", "standard", "quick-dev", "fix", "test-first", "ui-only", "review-only", "docs-only", "security", "none"],
-  "provides": {
-    "PLAN":   { "agent": "planner",        "skill": "/vibe:scope" },
-    "ARCH":   { "agent": "architect",      "skill": "/vibe:architect" },
-    "DESIGN": { "agent": "designer",       "skill": "/vibe:design" },
-    "DEV":    { "agent": "developer",      "skill": null },
-    "REVIEW": { "agent": "code-reviewer",  "skill": "/vibe:review" },
-    "TEST":   { "agent": "tester",         "skill": "/vibe:tdd" },
-    "QA":     { "agent": "qa",             "skill": "/vibe:qa" },
-    "E2E":    { "agent": "e2e-runner",     "skill": "/vibe:e2e" },
-    "DOCS":   { "agent": "doc-updater",    "skill": "/vibe:doc-sync" }
-  }
-}
-```
-
-**設計原則**：
-- `stages` 和 `stageLabels`：全域 9 階段定義（新增全新 stage 時才修改）
-- `pipelines`：可用的 pipeline ID 列表（純聲明，供 dashboard/pipeline-discovery 使用）
-- `provides`：stage → agent/skill 映射（9 個 stage 的完整映射）
-
-> **PIPELINES 完整定義**在 `registry.js`（stages 子集、enforced、label、description），`pipeline.json` 只聲明 ID 列表。
-
-### 3.2 pipeline.json 設計原則
-
-> **重要**：pipeline 資料放在獨立的 `pipeline.json` 而非 `plugin.json`，因為 Claude Code 的 `plugin.json` schema 嚴格驗證，不允許自定義欄位（Unrecognized key 錯誤）。
-
-`pipeline-discovery.js` 仍支援動態掃描多 plugin 的 `pipeline.json`，確保未來擴展性（如新增獨立 plugin 可宣告自己的 `provides`）。
-
-### 3.3 Runtime 動態發現邏輯
-
-```js
-// scripts/lib/pipeline-discovery.js — 共用模組
-'use strict';
-const fs = require('fs');
-const path = require('path');
-
-function discoverPipeline() {
-  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
-  const pluginsDir = path.join(pluginRoot, '..');
-
-  // 讀取 flow 的 stage 順序
-  const pipelineConfig = JSON.parse(
-    fs.readFileSync(path.join(pluginRoot, 'pipeline.json'), 'utf8')
-  );
-
-  const stageMap = {};      // stage → { agent, skill, plugin }
-  const agentToStage = {};  // agent name → stage name
-
-  // 掃描所有已安裝 plugin 的 pipeline.json
-  for (const dir of fs.readdirSync(pluginsDir)) {
-    const pipePath = path.join(pluginsDir, dir, 'pipeline.json');
-    if (!fs.existsSync(pipePath)) continue;
-
-    const pipeFile = JSON.parse(fs.readFileSync(pipePath, 'utf8'));
-    if (!pipeFile.provides) continue;
-
-    // 讀取 plugin 名稱（用於標記來源）
-    let pluginName = dir;
-    const pjPath = path.join(pluginsDir, dir, '.claude-plugin', 'plugin.json');
-    try {
-      const pj = JSON.parse(fs.readFileSync(pjPath, 'utf8'));
-      pluginName = pj.name || dir;
-    } catch (_) {}
-
-    for (const [stage, config] of Object.entries(pipeFile.provides)) {
-      stageMap[stage] = { ...config, plugin: pluginName };
-      if (config.agent) agentToStage[config.agent] = stage;
-    }
-  }
-
-  return {
-    stageOrder: pipelineConfig.stages,
-    stageLabels: pipelineConfig.stageLabels,
-    stageMap,
-    agentToStage,
-  };
-}
-
-// 查找下一個「已安裝」的 stage
-function findNextStage(stageOrder, stageMap, currentStage) {
-  const idx = stageOrder.indexOf(currentStage);
-  for (let i = idx + 1; i < stageOrder.length; i++) {
-    if (stageMap[stageOrder[i]]) return stageOrder[i];
-  }
-  return null; // pipeline 結束
-}
-
-module.exports = { discoverPipeline, findNextStage };
-```
-
-### 3.4 安裝組合與 Graceful Degradation
-
-| 安裝組合 | 實際 pipeline |
-|---------|--------------|
-| 只裝 flow | PLAN → ARCH → DESIGN → DEV |
-| flow + sentinel | PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E |
-| flow + evolve | PLAN → ARCH → DESIGN → DEV → DOCS |
-| 全裝 | PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS |
-| 移除 sentinel | 自動跳過 REVIEW、TEST、QA、E2E，無需改任何 config |
-| 純 API + 全裝 | PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → ~~E2E~~ → DOCS（智慧跳過） |
-
----
-
-## 4. Hook 實作規格
-
-### 4.1 task-classifier（UserPromptSubmit · command hook）
-
-**腳本**：`scripts/hooks/task-classifier.js`
-
-**三層分類架構**（v1.0.33 — Pipeline Catalog）：
-
-1. **Layer 1：顯式覆寫**（最高優先級）
-   - 解析 `[pipeline:xxx]` 語法（不區分大小寫）
-   - 信心度 1.0，立即確定 pipeline
-
-2. **Layer 2：Regex 分類**（中優先級）
-   - 關鍵字匹配（trivial、research、feature、bugfix、refactor、test、tdd 等）
-   - 映射到 10 種 pipeline ID
-   - 信心度 0.7~0.95
-
-3. **Layer 3：LLM 語意判斷**（低優先級，選配）
-   - 當 Layer 2 信心度低於閾值時（預設 0.7）
-   - 透過 LLM 語意推斷（延後實作）
-
-**Pipeline 選擇映射**（Layer 2 regex → pipeline ID）：
-
-| Regex 分類 | Pipeline ID | 階段 |
-|-----------|-------------|------|
-| trivial / research | `none` | （空） |
-| quickfix | `fix` | DEV |
-| bugfix | `quick-dev` | DEV → REVIEW → TEST |
-| feature（前端框架） | `full` | PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS |
-| feature（後端/其他） | `standard` | PLAN → ARCH → DEV → REVIEW → TEST → DOCS |
-| refactor | `standard` | PLAN → ARCH → DEV → REVIEW → TEST → DOCS |
-| test | `review-only` 或 `none` | REVIEW 或（空） |
-| tdd | `test-first` | TEST → DEV → TEST |
-| ui | `ui-only` | DESIGN → DEV → QA |
-| security | `security` | DEV → REVIEW → TEST |
-| docs | `docs-only` | DOCS |
-
-首次分類為開發型任務（enforced pipeline）時，透過 `systemMessage` 注入完整 pipeline 委派規則。
-支援中途重新分類（漸進式升級）：優先級高的 pipeline 可覆蓋低的，反之阻擋（以 `PIPELINE_PRIORITY` 判斷）。
-
-**知識 Skills 自動注入**（v1.0.21）：
-
-讀取 `state.environment`（由 pipeline-init 的 env-detect 寫入），根據語言/框架自動注入對應的知識 skills 參考：
-
-| 偵測結果 | 注入的 Skill |
-|---------|-------------|
-| TypeScript | `/vibe:typescript-patterns` |
-| Python | `/vibe:python-patterns` |
-| Go | `/vibe:go-patterns` |
-| React/Vue/Next.js/Svelte/Angular | `/vibe:frontend-patterns` |
-| Express/Fastify/Hono | `/vibe:backend-patterns` |
-| 任何語言偵測 | `/vibe:coding-standards` + `/vibe:testing-patterns` |
-
-注入位置：systemMessage（feature/refactor/tdd）或 additionalContext（其他分類）的「可用知識庫」區塊。
-
-### 4.2 pipeline-rules（SessionStart · 合併在 pipeline-init.js）
-
-合併在 `pipeline-init.js` 中，在環境偵測的同時注入 pipeline 規則。
-
-> **Note**：跨 session context 載入由 claude-mem 的 SessionStart hook 獨立處理。
-
-**輸出**：JSON `{ "additionalContext": "..." }`
-
-#### Claude 看到的 additionalContext 內容（動態產生）：
-
-```
-[Pipeline 委派規則]
-程式碼變更應透過對應的 sub-agent 執行，而非 Main Agent 直接處理：
-- 規劃：planner（/vibe:scope）
-- 架構：architect（/vibe:architect）
-- 開發：developer
-- 審查：code-reviewer（/vibe:review）
-- 測試：tester（/vibe:tdd）
-- 文件：doc-updater（/vibe:doc-sync）
-task-classifier 會建議需要的階段，請依建議執行。
-未安裝的 plugin 對應的階段可以跳過。
-```
-
-> 上方清單由 `discoverPipeline()` 動態產生，反映實際安裝的 plugin。
-
-### 4.3 stage-transition（SubagentStop · command hook）
-
-**腳本**：`scripts/hooks/stage-transition.js`
-
-hooks.json 定義：
-
-```json
-{
-  "matcher": null,
-  "hooks": [{
-    "type": "command",
-    "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/stage-transition.js",
-    "timeout": 10,
-    "statusMessage": "處理 pipeline 轉換..."
-  }]
-}
-```
-
-**輸入**（stdin JSON）：
-
-```json
-{
-  "stop_hook_active": false,
-  "agent_id": "...",
-  "agent_type": "developer",
-  "agent_transcript_path": "..."
-}
-```
-
-**模組化架構**（v1.0.43 重構）：
-
-stage-transition.js 從 530 行單體重構為 ~275 行薄 orchestrator + 4 個純函式模組：
-
-| 模組 | 路徑 | 職責 |
-|------|------|------|
-| **verdict.js** | `scripts/lib/flow/verdict.js` | `parseVerdict(transcriptPath)` — 從 JSONL 解析 PIPELINE_VERDICT 標記 |
-| **retry-policy.js** | `scripts/lib/flow/retry-policy.js` | `shouldRetryStage(stage, verdict, retryCount)` — 品質階段回退判斷 |
-| **skip-rules.js** | `scripts/lib/flow/skip-rules.js` | `shouldSkipStage(stage, state, stages)` + `resolveNextStage(...)` — DESIGN/E2E 智慧跳過 |
-| **message-builder.js** | `scripts/lib/flow/message-builder.js` | 7 個訊息組裝函式（委派方法/context/前進/回退/完成等） |
-
-**邏輯**（v1.0.43 — 含智慧回退/重驗/跳過/context 注入/自動 enforce/自動檢查點/階段提示）：
-
-1. `stop_hook_active === true` → exit 0（防無限迴圈，必須第一步檢查）
-2. `discoverPipeline()` 動態載入 pipeline 配置
-3. `agentToStage[agent_type]` 查找所屬 stage
-4. `parseVerdict(agent_transcript_path)` 從 transcript JSONL 解析 `PIPELINE_VERDICT` 標記（純函式）
-5. `shouldRetryStage()` 判斷是否需要回退（純函式）
-6. **自動 enforce**：下一階段為 DEV+ 且 `pipelineEnforced=false` → 自動升級（見下方說明）
-7. **回退路徑**：品質階段 FAIL:CRITICAL/HIGH → 設定 `pendingRetry` 標記 → 回到 DEV
-8. **回退重驗路徑**：DEV 完成且 `pendingRetry` 存在 → 消費標記 → 強制重跑原品質階段
-9. **前進路徑**：`resolveNextStage()` 智慧跳過 → `buildStageContext()` 注入 → 指示下一步
-10. 更新 state file（含 `stageResults`、`retries`、`pendingRetry`、`pipelineEnforced`）
-11. **自動檢查點**（v1.0.21）：非回退時，建立 `git tag -f vibe-pipeline/{stage}` 標記
-12. 輸出 `{ "continue": true, "systemMessage": "..." }`
-
-**智慧回退機制**：
-
-| 條件 | 行為 |
-|------|------|
-| PIPELINE_VERDICT: PASS | 正常前進 |
-| PIPELINE_VERDICT: FAIL:CRITICAL/HIGH | 回退到 DEV 修復後重試 |
-| PIPELINE_VERDICT: FAIL:MEDIUM/LOW | 正常前進（只是建議） |
-| 無 VERDICT | 正常前進（graceful degradation） |
-| 回退次數 ≥ MAX_RETRIES | 強制前進 + 警告 |
-
-- 每個品質階段（REVIEW/TEST/QA/E2E）有獨立的回退計數器
-- 預設上限 3 輪（`CLAUDE_PIPELINE_MAX_RETRIES` 環境變數可覆寫）
-
-**回退重驗機制**（v1.0.6）：
-
-回退流程使用 `pendingRetry` 狀態標記確保 DEV 修復後**必定重跑品質檢查**，不會跳到後續階段：
-
-```
-REVIEW FAIL:CRITICAL
-  → 設定 pendingRetry = { stage: "REVIEW", severity: "CRITICAL", round: 1 }
-  → systemMessage: "回退到 DEV 修復"
-DEV 完成修復
-  → 偵測 pendingRetry 存在 + currentStage === DEV
-  → 消費 pendingRetry 標記
-  → systemMessage: "回退重驗 — 重新執行 REVIEW"（專用訊息，與正常前進不同）
-REVIEW 重跑
-  → PASS → 正常前進到 TEST
-  → FAIL → 再次回退（retries +1）
-```
-
-三分支判斷順序：`shouldRetry`（回退）→ `pendingRetry && DEV`（回退重驗）→ `else`（正常前進）
-
-**自動 Pipeline Enforce**（v1.0.16）：
-
-修補手動觸發 `/vibe:scope` + `/vibe:architect` 時 task-classifier 未分類為 feature 的缺口。
-當 stage-transition 判斷下一階段為 DEV 或更後面（REVIEW/TEST/QA/E2E/DOCS）且 `pipelineEnforced=false` 時，自動升級：
-
-```
-if nextStage ∈ [DEV, REVIEW, TEST, QA, E2E, DOCS] && !pipelineEnforced:
-  1. pipelineEnforced → true
-  2. taskType: quickfix/research → feature
-  3. expectedStages: 不含 REVIEW → 補全為完整 pipeline
-```
-
-這確保即使使用者用「開始規劃」等語句（task-classifier 無法匹配為 feature），手動走完 PLAN → ARCH 後，pipeline-guard 仍會正確阻擋 Main Agent 直接寫碼。
-
-**自動檢查點**（v1.0.21）：
-
-每個階段正常完成（非回退）後，自動建立輕量 git tag 作為可回溯的檢查點：
-
-```js
-function autoCheckpoint(stage, sessionId) {
-  try {
-    const tagName = `vibe-pipeline/${stage.toLowerCase()}`;
-    execSync(`git tag -f "${tagName}"`, { stdio: 'pipe', timeout: 5000 });
-  } catch (_) {} // 靜默失敗（不影響 pipeline 流程）
-}
-```
-
-- Tag 格式：`vibe-pipeline/{stage}`（如 `vibe-pipeline/dev`、`vibe-pipeline/review`）
-- 使用 `-f` 強制覆寫，每個階段只保留最新一次
-- 回退情境不建立 tag（`shouldRetry` 時跳過）
-- 失敗靜默處理，不中斷 pipeline
-
-**POST_STAGE_HINTS 階段後提示**（v1.0.21）：
-
-特定階段完成後，在下一階段的 context 中注入品質意識提示：
-
-| 完成階段 | 注入提示 |
-|---------|---------|
-| REVIEW | 安全提示 — 建議在 TEST 也關注 auth/input validation/injection，pipeline 完成後可深度掃描 |
-| TEST | 覆蓋率提示 — 建議關注覆蓋率，pipeline 完成後可用 `/vibe:coverage` 取得報告 |
-
-提示以 `additionalContext` 附加在階段 context 後方，不影響核心指令。
-
-**智慧跳過**：
-- 純 API 框架（express/fastify/hono/koa/nest）自動跳過 E2E 階段
-- 基於 `state.environment.framework.name` 判斷
-
-**階段 context 注入**：
-- QA → 強調 API/CLI 行為正確性，不寫測試碼
-- E2E（UI 專案）→ 強調瀏覽器使用者流程
-- E2E（API 專案）→ 強調跨步驟資料一致性
-
-**PIPELINE_VERDICT 協議**：sentinel agents 在報告末尾輸出 HTML comment 標記：
-
-```
-<!-- PIPELINE_VERDICT: PASS -->
-<!-- PIPELINE_VERDICT: FAIL:CRITICAL -->
-<!-- PIPELINE_VERDICT: FAIL:HIGH -->
-<!-- PIPELINE_VERDICT: FAIL:MEDIUM -->
-<!-- PIPELINE_VERDICT: FAIL:LOW -->
-```
-
-stage-transition 從 `agent_transcript_path`（JSONL）最後 20 行中搜尋此標記。
-
-**State file**：`~/.claude/pipeline-state-{sessionId}.json`
-
-> 使用 session ID 區分，避免多視窗同時使用時 state 互相覆蓋。
-> `sessionId` 從 hook stdin 的 `session_id` 取得。
-
-```json
-{
-  "sessionId": "abc123",
-  "initialized": true,
-  "pipelineEnforced": true,
-  "taskType": "feature",
-  "completed": ["planner", "architect", "designer", "developer"],
-  "expectedStages": ["PLAN", "ARCH", "DESIGN", "DEV", "REVIEW", "TEST", "QA", "E2E", "DOCS"],
-  "skippedStages": ["E2E"],
-  "stageResults": {
-    "REVIEW": { "verdict": "FAIL", "severity": "HIGH" },
-    "TEST": { "verdict": "PASS", "severity": null }
-  },
-  "retries": { "REVIEW": 1 },
-  "pendingRetry": { "stage": "REVIEW", "severity": "HIGH", "round": 1 },
-  "lastTransition": "2026-02-09T14:30:00Z"
-}
-```
-
-> `pendingRetry` 僅在品質階段回退時設定，DEV 修復完成後消費（delete）。不存在時表示正常流程。
-> `pipelineEnforced` 可由 task-classifier 初始設定，或由 stage-transition 自動升級（v1.0.16）。
-
-#### Claude 看到的 systemMessage 內容：
-
-**正常前進**（v1.0.22 精簡版）：
-
-```
-⛔ [Pipeline] developer✅ → REVIEW（審查）
-➡️ 執行方法：使用 Skill 工具呼叫 /vibe:review
-禁止 AskUserQuestion。已完成：PLAN → ARCH → DESIGN → DEV
-```
-
-**智慧回退**（v1.0.22 精簡版）：
-
-```
-🔄 [Pipeline 回退] REVIEW FAIL:HIGH（1/3）
-回退原因：HIGH 等級問題需要修復
-執行：使用 Task 工具委派給 vibe:developer agent（subagent_type: "vibe:developer"）
-修復後 stage-transition 會指示重跑 REVIEW。禁止 AskUserQuestion。
-已完成：PLAN → ARCH → DESIGN → DEV → REVIEW
-```
-
-**回退重驗**（DEV 修復完成後，v1.0.22 精簡版）：
-
-```
-🔄 [回退重驗] DEV 修復完成（第 1 輪）→ 重跑 REVIEW（審查）
-執行：使用 Skill 工具呼叫 /vibe:review
-不可跳過，不可跳到其他階段。禁止 AskUserQuestion。
-已完成：PLAN → ARCH → DESIGN → DEV → REVIEW
-```
-
-**Pipeline 結束**（v1.0.21 三步驟閉環）：
-
-```
-✅ [Pipeline 完成] doc-updater 已完成（文件整理階段）。
-所有階段已完成：PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
-
-📋 請執行以下步驟：
-1️⃣ 執行 /vibe:verify 進行綜合驗證（Build → Types → Lint → Tests → Git 狀態）
-2️⃣ 向使用者報告成果摘要
-3️⃣ 使用 AskUserQuestion（multiSelect: true）提供後續選項：
-   - 提交並推送（git commit + push）
-   - 覆蓋率分析（/vibe:coverage）
-   - 安全掃描（/vibe:security）
-   - 知識進化（/vibe:evolve — 將本次經驗進化為可重用能力）
-```
-
-不認識的 agent（不在任何 plugin 的 pipeline 宣告中）→ exit 0，不輸出。
-
-### 4.4 pipeline-check（Stop · command hook · 硬阻擋）
-
-**腳本**：`scripts/hooks/pipeline-check.js`
-
-hooks.json 定義：
-
-```json
-{
-  "matcher": null,
-  "hooks": [{
-    "type": "command",
-    "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/pipeline-check.js",
-    "timeout": 10,
-    "statusMessage": "檢查工作完整性..."
-  }]
-}
-```
-
-**輸入**（stdin JSON）：`{ "stop_hook_active": false }`
-
-**邏輯**（v1.0.43 升級為硬阻擋）：
-
-1. `stop_hook_active === true` → exit 0
-2. 讀取 state file，不存在 → exit 0（沒有進行中的 pipeline）
-3. 比較 `expectedStages` vs 已完成的 stages（排除 `skippedStages`）
-4. 有遺漏 → 輸出 `decision: "block"` + `reason`（硬阻擋，強制繼續）
-5. 全完成或無 pipeline → exit 0
-
-#### 硬阻擋輸出（有遺漏時）：
-
-```json
-{
-  "decision": "block",
-  "reason": "🚫 [Pipeline 未完成] 缺：審查、測試\n- REVIEW：code-reviewer 執行程式碼審查\n- TEST：tester 執行測試\n已完成：PLAN → ARCH → DEV\n\n請立即委派下一個遺漏的階段。Pipeline 是閉環流程，必須跑完所有階段才能結束。"
-}
-```
-
-> **v1.0.43 升級**：從 `{continue: true, systemMessage}` 軟建議改為 `{decision: "block", reason}` 硬阻擋。ECC 的 Stop hook `decision: "block"` 機制會將 `reason` 作為下一個 prompt 注入 Claude，形成強制性的「必須繼續」指令。
-
-全完成或無 pipeline → 不輸出，exit 0。
-
-### 4.5 task-guard（Stop · command hook · 絕對阻擋）
-
-**腳本**：`scripts/hooks/task-guard.js`
-
-**定位**：吸納自 ralph-wiggum plugin 的 Stop hook blocking 技術。與 pipeline-check 互補 — pipeline-check 用 systemMessage 建議；task-guard 用 `decision: "block"` 強制阻擋。
-
-hooks.json 定義：
-
-```json
-{
-  "matcher": null,
-  "hooks": [{
-    "type": "command",
-    "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/task-guard.js",
-    "timeout": 10,
-    "statusMessage": "檢查任務完成狀態..."
-  }]
-}
-```
-
-**State file**：`~/.claude/task-guard-state-{sessionId}.json`
-
-```json
-{
-  "blockCount": 0,
-  "maxBlocks": 5,
-  "cancelled": false,
-  "activatedAt": "2026-02-09T14:30:00Z"
-}
-```
-
-> `maxBlocks` 可透過環境變數 `CLAUDE_TASK_GUARD_MAX_BLOCKS` 覆寫。
-
-**TodoWrite 狀態讀取**：Hook stdin 不含 TodoWrite 資訊。task-guard 透過 `transcript_path` 讀取對話紀錄 JSONL，解析最後一次 TodoWrite 呼叫的 `input.todos` 陣列來判斷任務狀態。
-
-**完成判定**：transcript 中最後一次 TodoWrite 的 todos 陣列全部為 `completed`。無 TodoWrite 記錄時不阻擋。
-
-**邏輯**：
-
-```
-Stop 觸發
-  1. stop_hook_active === true → exit 0（防迴圈）
-  2. 讀取 transcript，找最後一次 TodoWrite
-  3. 無 TodoWrite → exit 0（無任務追蹤）
-  4. state 存在且 cancelled === true → cleanup + exit 0（/vibe:cancel 手動取消）
-  5. state 存在且 blockCount >= maxBlocks → cleanup + exit 0 + 警告（安全閥）
-  6. TodoWrite 全部 completed → cleanup + exit 0（任務完成）
-  7. 否則 → blockCount++ → 輸出 block
-```
-
-**Block 輸出**：
-
-```json
-{
-  "decision": "block",
-  "reason": "繼續完成未完成的任務",
-  "systemMessage": "⚠️ 任務尚未完成（第 2/5 次阻擋）\n\n未完成項目：\n- [ ] 撰寫單元測試\n- [ ] 執行 lint 檢查\n\n請繼續完成以上項目。如果確實無法繼續，請告知使用者原因。"
-}
-```
-
-**Counter 規則**：
-- 只有 Stop hook 實際 block 時才 +1（agent 切換不計入）
-- 完成或取消時歸零 + 清理 state file
-- 5 次上限（可透過 `CLAUDE_TASK_GUARD_MAX_BLOCKS` 環境變數覆寫）= Claude 嘗試停止 5 次都被擋回去，第 6 次無條件放行
-
-**手動取消**：`/vibe:cancel` skill 設定 `cancelled: true` → 下次 Stop hook 放行。
-
-**Scope Creep 處理**：不限制。Claude 中途加 todo → guard 持續有效。安全閥（5 次）防止真正的無限迴圈。
-
-**Stop ≠ Session 結束**：Stop 只是 Claude 結束當前回合，session 依然開著。使用者可以繼續輸入新需求 → 新的 TodoWrite → task-guard 重新啟動。
-
-### 4.6 pipeline-guard + guard-rules（PreToolUse · command hook · 硬阻擋）
-
-**腳本**：`scripts/hooks/pipeline-guard.js`（薄代理）+ `scripts/lib/sentinel/guard-rules.js`（純函式）
-
-**v1.0.43 架構**：pipeline-guard.js 精簡為 ~53 行薄代理，所有判斷邏輯集中在 guard-rules.js 的 `evaluate()` 純函式中。
-
-**Matcher**：`Write|Edit|NotebookEdit|AskUserQuestion|EnterPlanMode`
-
-**guard-rules.js evaluate() 六級前置條件短路**：
-
-```
-evaluate(toolName, toolInput, state)
-  │
-  ├─ !state → allow（無 state）
-  ├─ !state.initialized → allow（未初始化）
-  ├─ !state.taskType → allow（未分類）
-  ├─ !state.pipelineEnforced → allow（非強制 pipeline）
-  ├─ state.delegationActive → allow（sub-agent 執行中）
-  ├─ state.cancelled → allow（已取消）
-  │
-  ├─ Write/Edit/NotebookEdit
-  │   ├─ isNonCodeFile(file_path) → allow（.md/.json/.yaml 等非程式碼）
-  │   └─ 程式碼檔案 → block（阻擋 Main Agent 直接寫碼）
-  │
-  ├─ AskUserQuestion
-  │   ├─ currentStage === 'PLAN' → allow（PLAN 階段允許詢問）
-  │   └─ 其他階段 → block（Pipeline 自動模式禁止詢問）
-  │
-  └─ EnterPlanMode → block（Pipeline 模式禁止內建 Plan Mode）
-```
-
-**PLAN 階段例外**（v1.0.43 新增）：Pipeline 閉環的核心設計 — 選定 pipeline 後自動跑完，不再被 AskUserQuestion 中斷。唯一例外是 PLAN 階段，planner 可能需要向使用者釐清需求。
-
-**非程式碼檔案放行**：`isNonCodeFile()` 判斷 `.md`/`.json`/`.yaml`/`.toml`/`.txt`/`.env`/`.csv` 等 20+ 種副檔名，允許 Main Agent 直接編輯文件/配置（不強制 delegation）。
-
----
-
-## 5. 使用者可見文字規範
-
-Pipeline hooks 的 systemMessage / additionalContext **對使用者不可見**。
-使用者能感知到的只有以下兩類：
-
-### 5.1 statusMessage（狀態列 — 短暫顯示）
-
-| Hook | statusMessage |
-|------|--------------|
-| session-start（含 pipeline-rules） | `載入工作環境...` |
-| stage-transition | `處理 pipeline 轉換...` |
-| pipeline-check | `檢查工作完整性...` |
-
-### 5.2 Claude 的自然語言回應（間接可見）
-
-Claude 收到 systemMessage 後會用自然語言向使用者報告。
-以下是期望的行為模式（非硬性規定，但 systemMessage 強度夠高，Claude 幾乎都會遵循）：
-
-**Agent 完成，有下一步時：**
-
-> developer 完成了開發階段的工作。
-> 接下來建議進行程式碼審查（REVIEW），我可以使用 `/vibe:review` 啟動。
-> 要繼續嗎？
-
-**結束前發現遺漏時：**
-
-> 本次工作大致完成，但 task-classifier 建議的 REVIEW 和 TEST 階段尚未執行。
-> 這些階段可以幫助確保程式碼品質。要跳過還是繼續？
-
-**Pipeline 完整結束時：**
-
-> 所有階段都已完成（PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → DOCS）。
-> 以下是本次工作摘要：...
-
----
-
-## 6. 實作檔案清單
-
-### 新建
-
-| 優先 | 檔案 | 說明 |
-|:----:|------|------|
-| 1 | `plugins/vibe/pipeline.json` | Stage 順序 + provides 統一定義 |
-| 2 | `plugins/vibe/scripts/lib/pipeline-discovery.js` | 共用掃描邏輯（§3.3） |
-| 3 | `plugins/vibe/scripts/hooks/stage-transition.js` | SubagentStop hook（§4.3） |
-| 4 | `plugins/vibe/scripts/hooks/pipeline-check.js` | Stop hook（§4.4） |
-| 5 | `plugins/vibe/scripts/hooks/task-guard.js` | Stop hook — 任務鎖定（§4.5） |
-
-### 修改
-
-| 優先 | 檔案 | 變動 |
-|:----:|------|------|
-| 5 | `plugins/vibe/scripts/hooks/pipeline-init.js` | 環境偵測 + pipeline-rules 注入（§4.2） |
-| 6 | `plugins/vibe/hooks/hooks.json` | 統一 22 hooks 定義 |
-| 7 | `plugins/vibe/pipeline.json` | 所有 stages + provides |
-| 10 | `docs/ref/vibe.md` | 自動生成 — 含所有 skills/agents/hooks/scripts |
-| 11 | `docs/plugin-specs.json` | vibe hooks 22、scripts 45 |
-| 12 | `dashboard/scripts/generate.js` | Pipeline 視覺化同步更新 |
-
-### vibe.md 自動同步
-
-> **已完成** — vibe.md 由 `dashboard/scripts/generate-vibe-doc.js` 自動生成，
-> 包含所有 skills、agents、hooks、scripts 的完整清單。
-> Stop hook 觸發 → `refresh.js` → `generate.js` → vibe.md 自動更新。
-
----
-
-## 7. 並行執行架構
-
-### 7.1 核心限制
-
-| 限制 | 說明 |
-|------|------|
-| 前景 Sub-agent | 同一時間只能有 **1 個**前景 sub-agent |
-| 背景 Sub-agent | 可多個，透過 Task 工具的 `run_in_background: true` 啟動 |
-| SubagentStop | **只有前景 sub-agent** 結束時才觸發 |
-| statusMessage | 背景 sub-agent 的 hook **不會**顯示 statusMessage |
-| 輸出取回 | 背景 sub-agent 結果需透過 Read 工具讀取 `output_file` |
-
-### 7.2 並行宣告（pipeline.json 擴充）
-
-在 `pipeline.json` 新增 `parallel` 欄位，在設計時就決定哪些階段可以並行：
-
-```json
-{
-  "stages": ["PLAN", "ARCH", "DESIGN", "DEV", "REVIEW", "TEST", "DOCS"],
-  "parallel": {
-    "REVIEW+TEST": {
-      "stages": ["REVIEW", "TEST"],
-      "description": "審查和測試可同時進行",
-      "foreground": "REVIEW",
-      "background": ["TEST"]
-    }
-  }
-}
-```
-
-**規則**：
-- `foreground`：佔前景的 stage（觸發 SubagentStop）
-- `background`：背景執行的 stages（不觸發 SubagentStop）
-- 未宣告在 `parallel` 中的 stage 預設串行執行
-
-### 7.3 agent-tracker Hook（提案）
-
-**問題**：hooks 無法原生得知「哪個 agent 正在做什麼」。SubagentStop 只告訴你「某個 agent 結束了」，PreToolUse/PostToolUse 不含 agent 資訊。
-
-**方案**：在 PreToolUse 上監聽 Task 工具呼叫，追蹤 agent 生命週期。
-
-```
-事件：PreToolUse（matcher: "Task"）
-觸發：每次 Task 工具被呼叫時
-```
-
-**追蹤邏輯**：
-1. 攔截 Task 工具的輸入參數（含 `subagent_type`、`description`、`run_in_background`）
-2. 寫入 `pipeline-state.json` 的 `activeAgents` 陣列
-3. 搭配 SubagentStop（前景）和定期檢查 output_file（背景）更新狀態
-
-**擴充 pipeline-state.json**：
-
-```json
-{
-  "completed": ["planner", "architect"],
-  "expectedStages": ["PLAN", "ARCH", "DESIGN", "DEV", "REVIEW", "TEST"],
-  "skippedStages": [],
-  "activeAgents": [
-    {
-      "type": "developer",
-      "stage": "DEV",
-      "background": false,
-      "startedAt": "2026-02-09T15:00:00Z"
+  openspecEnabled: boolean,
+  needsDesign: boolean,          // ARCH 完成後動態偵測
+
+  // -- DAG --
+  dag: {                         // pipeline-architect 產出（或 linearToDag 自動生成）
+    [stageId]: {
+      deps: string[],            // 依賴的 stage ID 列表
     },
-    {
-      "type": "tester",
-      "stage": "TEST",
-      "background": true,
-      "outputFile": "/tmp/claude-agent-xxx.jsonl",
-      "startedAt": "2026-02-09T15:00:05Z"
-    }
-  ],
-  "lastTransition": "2026-02-09T15:00:00Z"
+  } | null,
+  enforced: boolean,             // 是否強制委派（Main Agent 不可直接寫碼）
+  blueprint: [                   // 執行步驟（buildBlueprint 產出）
+    { step: number, stages: string[], parallel: boolean },
+  ] | null,
+
+  // -- 各 stage 狀態 --
+  stages: {
+    [stageId]: {
+      status: 'pending'|'active'|'completed'|'failed'|'skipped',
+      agent: string | null,      // 執行的 agent 名稱
+      verdict: { verdict, severity } | null,  // 品質階段的結論
+      reason: string,            // skipped 原因
+      startedAt: ISO8601 | null,
+      completedAt: ISO8601 | null,
+    },
+  },
+
+  // -- 重試 --
+  retries: { [stageId]: number },  // 每個 stage 已回退次數
+  pendingRetry: {                  // 等待 DEV 修復的回退資訊
+    stages: [{ id: string, severity: string, round: number }],
+  } | null,
+
+  // -- 元資訊 --
+  meta: {
+    initialized: boolean,
+    cancelled: boolean,
+    lastTransition: ISO8601,
+    reclassifications: [{ from, to, at }],
+    pipelineRules: string[],
+  },
 }
 ```
 
-### 7.4 stage-transition 並行群組完成偵測
+### derivePhase() 推導邏輯
 
-當使用並行執行時，stage-transition 需要增強：
-
-```
-SubagentStop 觸發（前景 agent 完成）
-  1. 標記該 agent 為 completed
-  2. 檢查是否屬於 parallel group
-  3. 是 → 檢查 group 內所有 agents 是否都完成
-     - 前景：SubagentStop 自動偵測
-     - 背景：檢查 output_file 是否存在最終輸出
-  4. 群組全部完成 → 建議下一個 stage
-  5. 群組部分完成 → systemMessage 報告進度，等待剩餘
-```
-
-### 7.5 statusMessage 可見性規則
-
-| 情境 | statusMessage 可見？ | 原因 |
-|------|:-------------------:|------|
-| 前景 agent 的 hook | ✅ | 正常 hook 流程 |
-| 背景 agent 的 hook | ❌ | 背景 agent 無 UI 管道 |
-| Stop hook（主 agent） | ✅ | 狀態列正常運作 |
-| SubagentStop hook | ✅ | 前景 agent 結束時觸發 |
-| SessionStart hook | ✅ | Session 開始時觸發 |
-
-### 7.6 V1 策略：全串行
-
-**初期實作不需並行**。所有 pipeline 階段串行執行：
+Phase 不是手動設定的值，而是從 state 自動推導的衍生屬性。推導規則（短路求值）：
 
 ```
-PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
- │       │      │      │       │     │     │      │
- └───────┴──────┴──────┴───────┴─────┴─────┴──────┘
-         全部前景，逐一執行（含智慧回退 + 智慧跳過）
+1. state 不存在 / cancelled / 無 DAG / DAG 為空  -> IDLE
+2. pendingRetry.stages 有內容                     -> RETRYING
+3. 所有 stages 為 completed 或 skipped            -> COMPLETE
+4. 任一 stage 為 active                           -> DELEGATING
+5. 其餘（有 DAG 但無 active）                     -> CLASSIFIED
 ```
 
-**V1 已包含**：
-- SubagentStop 正常運作
-- 智慧回退（品質階段失敗 → DEV → 重試，每階段最多 3 輪）
-- 智慧跳過（純 API 專案自動跳過 E2E 瀏覽器測試）
-- 階段 context 注入（QA/E2E 各有專屬提示）
-- statusMessage 全部可見
-- 不需 agent-tracker hook
+| Phase | 含義 | Main Agent 可用工具 |
+|-------|------|-------------------|
+| IDLE | 無 pipeline / 已取消 | 所有工具 |
+| CLASSIFIED | 已分類、等待委派 | Task / Skill + 唯讀（Read/Grep/Glob/WebSearch/WebFetch） |
+| DELEGATING | Sub-agent 執行中 | 所有工具（sub-agent 內部） |
+| RETRYING | 等待 DEV 修復 | Task / Skill + 唯讀 |
+| COMPLETE | Pipeline 完成 | 所有工具 |
 
-**並行執行留待 V2**：當串行版本穩定後，再啟用 `parallel` 欄位 + agent-tracker。
+### STAGE_STATUS 生命週期
+
+```
+                    markStageActive()
+  pending ──────────────────────────────> active
+    ^                                      │
+    │                                      ├── markStageCompleted()  -> completed
+    │                                      └── markStageFailed()    -> failed
+    │
+    │  resetStageToPending()
+    └────────────── failed
+                    （回退重跑時重設為 pending）
+
+  pending ── markStageSkipped() ──> skipped
+             （shouldSkip() 判定跳過）
+```
 
 ---
 
-## 8. Timeline 統一事件模組（v1.0.16）
+## 3. DAG 排程引擎
 
-### 8.1 定位
+> 檔案路徑：`plugins/vibe/scripts/lib/flow/dag-utils.js`
 
-Timeline 是 Pipeline 的統一事件記錄層，取代 Dashboard 和 Remote 各自獨立的資料流。
-所有 hook/agent/skill/task 的使用摘要統一寫入 Timeline，消費端（Dashboard、Remote）按需訂閱。
+### DAG 資料結構
 
+DAG 是一個物件，每個 key 是 stage ID，value 包含 `deps`（依賴列表）：
+
+```javascript
+// 線性範例（PLAN -> ARCH -> DEV -> REVIEW -> DOCS）
+{
+  PLAN:   { deps: [] },
+  ARCH:   { deps: ['PLAN'] },
+  DEV:    { deps: ['ARCH'] },
+  REVIEW: { deps: ['DEV'] },
+  DOCS:   { deps: ['REVIEW'] },
+}
+
+// 並行範例（DEV 完成後 REVIEW + TEST 並行，兩者都完成後 DOCS）
+{
+  DEV:    { deps: [] },
+  REVIEW: { deps: ['DEV'] },
+  TEST:   { deps: ['DEV'] },
+  DOCS:   { deps: ['REVIEW', 'TEST'] },
+}
+
+// TDD 範例（帶後綴 ID）
+{
+  'TEST:write':  { deps: [] },
+  DEV:           { deps: ['TEST:write'] },
+  'TEST:verify': { deps: ['DEV'] },
+}
 ```
-Hooks ──emit()──→ Timeline（JSONL）──watch()──→ Dashboard Consumer
-                                              ──watch()──→ Remote Consumer
+
+### 核心函式
+
+**linearToDag(stages)** -- 從線性 stage 列表建立串行 DAG
+
+```javascript
+linearToDag(['DEV', 'REVIEW', 'TEST'])
+// => { DEV: { deps: [] }, REVIEW: { deps: ['DEV'] }, TEST: { deps: ['REVIEW'] } }
 ```
 
-### 8.2 核心模組
+**validateDag(dag)** -- 驗證 DAG 結構合法性
 
-| 檔案 | 功能 |
+檢查項目：
+1. DAG 必須是非空物件
+2. 每個 stage 的 `deps` 必須是陣列
+3. 依賴的 stage 必須存在於 DAG 中
+4. 基礎 stage 名稱必須在 `STAGES` 中已定義
+5. 不能有環（透過拓撲排序檢查）
+
+```javascript
+validateDag(dag)
+// => { valid: true, errors: [] }
+// => { valid: false, errors: ['TEST: 依賴 DEV 不存在於 DAG 中'] }
+```
+
+**topologicalSort(dag)** -- Kahn's algorithm 拓撲排序
+
+回傳 stage ID 的執行順序。有環時拋出 Error。
+
+**buildBlueprint(dag)** -- 從 DAG 提取執行步驟
+
+共享同一批依賴的 stages 歸為同一步（可並行）：
+
+```javascript
+buildBlueprint({
+  PLAN:   { deps: [] },
+  ARCH:   { deps: ['PLAN'] },
+  DEV:    { deps: ['ARCH'] },
+  REVIEW: { deps: ['DEV'] },
+  TEST:   { deps: ['DEV'] },
+  DOCS:   { deps: ['REVIEW', 'TEST'] },
+})
+// => [
+//   { step: 1, stages: ['PLAN'],            parallel: false },
+//   { step: 2, stages: ['ARCH'],            parallel: false },
+//   { step: 3, stages: ['DEV'],             parallel: false },
+//   { step: 4, stages: ['REVIEW', 'TEST'],  parallel: true },
+//   { step: 5, stages: ['DOCS'],            parallel: false },
+// ]
+```
+
+**getBaseStage(stageId)** -- 從帶後綴 ID 取基礎名稱
+
+```javascript
+getBaseStage('TEST:write')  // => 'TEST'
+getBaseStage('DEV')          // => 'DEV'
+```
+
+**resolveAgent(stageId, stageMap)** -- 解析 stage 對應的 agent 和 skill
+
+先查 `pipeline.json` 的 provides 映射，再 fallback 到 `STAGES` 定義：
+
+```javascript
+resolveAgent('DEV', stageMap)
+// => { agent: 'developer', skill: '/vibe:dev', plugin: 'vibe' }
+```
+
+### 並行排程邏輯
+
+`getReadyStages(state)` 是排程核心。回傳所有依賴已滿足（completed 或 skipped）且自身為 pending 的 stages：
+
+```javascript
+// 假設 DAG: DEV -> [REVIEW + TEST] -> DOCS
+// DEV completed, REVIEW pending, TEST pending, DOCS pending
+getReadyStages(state)  // => ['REVIEW', 'TEST'] （兩個可同時開始）
+```
+
+當 `getReadyStages()` 回傳多個 stage 時，controller 會在 systemMessage 中同時列出所有委派指令，Main Agent 需要依序或並行委派它們。
+
+---
+
+## 4. Pipeline Controller API
+
+> 檔案路徑：`plugins/vibe/scripts/lib/flow/pipeline-controller.js`
+
+Pipeline Controller 是所有 hook 的唯一邏輯入口。5 個方法各對應一個 hook 事件。
+
+### classify(sessionId, prompt)
+
+**觸發時機**：UserPromptSubmit（使用者送出 prompt 時）
+
+**流程**：
+1. Layer 1/2 分類（classifyWithConfidence）
+2. 檢查既有 state：COMPLETE -> reset；同 pipeline -> 跳過
+3. 升級/降級判斷（priority 比較 + stale 檢查 10min）
+4. 設定 classification 到 state
+
+**分支**：
+
+| 情境 | 輸出 |
 |------|------|
-| `scripts/lib/timeline/schema.js` | 23 種事件類型、6 分類、envelope 建構/驗證 |
-| `scripts/lib/timeline/timeline.js` | emit / query / queryLast / watch / cleanup / listSessions |
-| `scripts/lib/timeline/consumer.js` | createConsumer 宣告式訂閱（分類展開、錯誤隔離、replay） |
-| `scripts/lib/timeline/formatter.js` | 三模式格式化（full/compact/summary）+ 統計 + 事件聚合 |
-| `scripts/lib/timeline/index.js` | 統一 re-export 入口 |
+| none / 無 stages | `additionalContext` -- 直接回答 |
+| explicit（`[pipeline:xxx]`） | 直接 `linearToDag()` 建 DAG + `systemMessage` 委派 |
+| 非 explicit | `systemMessage` 指示呼叫 `/vibe:pipeline` skill |
 
-### 8.3 事件類型（23 種 × 6 分類）
+**顯式路徑（快速路徑）**：使用者用 `[pipeline:full]` 語法時，跳過 pipeline-architect agent，直接從模板建立線性 DAG。同時執行 `shouldSkip()` 跳過不需要的 stages（如後端專案跳過 DESIGN）。
 
-| 分類 | 事件 | 數量 |
-|------|------|:----:|
-| **session** | session.start | 1 |
-| **task** | task.classified · prompt.received · delegation.start · task.incomplete | 4 |
-| **pipeline** | stage.start · stage.complete · stage.retry · pipeline.complete · pipeline.incomplete | 5 |
-| **quality** | tool.blocked · tool.guarded · quality.lint · quality.format · quality.test-needed | 5 |
-| **agent** | tool.used · delegation.start | 2 |
-| **remote** | ask.question · ask.answered · turn.summary · say.sent · say.completed · compact.suggested · compact.executed | 7 |
+### canProceed(sessionId, toolName, toolInput)
 
-> **注意**：`delegation.start` 同時屬於 `task` 和 `agent` 兩個分類
+**觸發時機**：PreToolUse（任何工具呼叫前）
 
-### 8.4 儲存格式
+**防護層級**（短路求值）：
 
-- **路徑**：`~/.claude/timeline-{sessionId}.jsonl`
-- **格式**：Append-only JSONL（每行一個 JSON envelope）
-- **Envelope**：`{ id, type, sessionId, timestamp, data }`
-- **截斷**：超過 2000 筆時自動保留最近 1500 筆
-- **與 pipeline-state 共存**：Timeline 記錄事件歷史，pipeline-state 記錄當前快照，兩者互補
-
-### 8.5 Consumer 模式
-
-```js
-const consumer = createConsumer({
-  name: 'dashboard',
-  types: ['pipeline', 'quality'],  // 支援分類名展開
-  handlers: {
-    'stage.complete': (event) => updateUI(event),
-    '*': (event) => logEvent(event),
-  },
-  onError: (name, err) => logger.error(name, err),
-});
-consumer.start(sessionId, { replay: true });
+```
+1. EnterPlanMode        -> 無條件 block
+2. Bash DANGER_PATTERNS -> 無條件 block（rm -rf /、DROP TABLE 等 8 種）
+3. 無 state / 未初始化   -> allow
+4. 未 enforced          -> allow
+5. DELEGATING phase     -> allow（sub-agent 內部不阻擋）
+6. 已取消               -> allow
+7. CLASSIFIED/RETRYING  -> Task/Skill/唯讀 allow，其餘 block
+8. Bash 寫檔偵測        -> 程式碼檔案 block
+9. Write/Edit/Notebook  -> block
+10. AskUserQuestion     -> block（PLAN 階段除外）
+11. 其餘                -> allow
 ```
 
-### 8.6 實作階段
+**唯讀白名單**：`Read`、`Grep`、`Glob`、`WebSearch`、`WebFetch`、`TaskList`、`TaskGet`
 
-| Phase | 狀態 | 內容 |
-|:-----:|:----:|------|
-| 1 | ✅ 完成 | Timeline Core（schema + timeline + consumer + 55 tests） |
-| 2 | ✅ 完成 | Hook emit 整合（17 hooks 加入 `emit()` 呼叫） |
-| 3 | ✅ 完成 | Dashboard 整合 Timeline consumer（server.js 事件推播 + UI 事件面板） |
-| 4 | ✅ 完成 | Remote 整合 Timeline consumer（bot.js 事件推播 + `/timeline` 查詢） |
-| 5 | ✅ 完成 | 清理收斂（Phase 狀態同步、文件對齊） |
-| 6 | ✅ 完成 | 完整事件追蹤（tool.used 記錄 + delegation 詳情 + formatter 顯示層 + `/vibe:timeline` skill） |
+### onDelegate(sessionId, agentType, toolInput)
+
+**觸發時機**：PreToolUse Task（委派 sub-agent 時）
+
+**行為**：
+1. 解析 agent 短名（`vibe:architect` -> `architect`）
+2. 查找對應 stage（`AGENT_TO_STAGE` 映射）
+3. pendingRetry 防護：RETRYING 階段只允許 DEV（阻擋其他 agent）
+4. 標記 stage 為 active
+
+### onStageComplete(sessionId, agentType, transcriptPath)
+
+**觸發時機**：SubagentStop（sub-agent 結束時）
+
+這是最複雜的方法，處理三種分支：
+
+**分支 A -- 回退（shouldRetry = true）**：
+1. 品質 stage（REVIEW/TEST/QA/E2E）verdict 為 FAIL:CRITICAL 或 FAIL:HIGH
+2. 未超過 MAX_RETRIES（預設 3）
+3. DAG 中有 DEV stage
+4. 設定 `pendingRetry` -> 委派 DEV 修復
+
+**分支 B -- 回退重驗（DEV 完成 + pendingRetry 存在）**：
+1. DEV 修復完成後，重設所有 failed stages 為 pending
+2. 清除 pendingRetry
+3. 重新委派失敗的品質 stages
+
+**分支 C -- 正常前進**：
+1. 標記完成
+2. 遞迴跳過判斷（新 ready stages 可能需要 skip）
+3. 計算下一批 ready stages
+4. 全部完成 -> buildCompleteOutput()
+5. 有 ready -> 發出委派指令（支援並行 `stage1 + stage2`）
+6. 無 ready 但有 active -> 等待其他 stage 完成
+
+**pipeline-architect 完成的特殊處理**：
+1. 從 transcript 解析 `<!-- PIPELINE_DAG_START -->` 標記
+2. validateDag() 驗證
+3. 非法 DAG -> 降級為 `{ DEV: { deps: [] } }`
+4. 設定 DAG + 跳過判斷 + 計算第一批 ready stages
+
+### onSessionStop(sessionId)
+
+**觸發時機**：Stop（Claude 嘗試結束對話時）
+
+**行為**：
+- COMPLETE / IDLE -> 放行
+- enforced + 有遺漏 stages -> `continue: false` 硬阻擋 + systemMessage 列出遺漏
+
+---
+
+## 5. 執行流程（完整時序）
+
+### 正常路徑
+
+```
+使用者 prompt
+  |
+  v
+task-classifier hook (UserPromptSubmit)
+  |-- ctrl.classify()
+  |   |-- Layer 1: [pipeline:xxx] 顯式? -> 快速路徑（直接建 DAG）
+  |   |-- Layer 2: regex 分類 + 信心度
+  |   └-- 低信心度? -> systemMessage 指示呼叫 /vibe:pipeline
+  |
+  v
+Main Agent 呼叫 /vibe:pipeline skill
+  |-- 委派 pipeline-architect agent
+  |
+  v
+delegation-tracker hook (PreToolUse Task)
+  |-- ctrl.onDelegate() -> 標記 agent stage active
+  |
+  v
+pipeline-architect agent 分析需求
+  |-- 輸出 <!-- PIPELINE_DAG_START --> ... <!-- PIPELINE_DAG_END -->
+  |
+  v
+stage-transition hook (SubagentStop)
+  |-- ctrl.onStageComplete()
+  |   |-- 解析 DAG -> validateDag() -> setDag()
+  |   |-- shouldSkip() 跳過判斷
+  |   |-- getReadyStages() 計算第一批
+  |   └-- systemMessage: "Pipeline 已建立。 -> 委派 PLAN"
+  |
+  v
+Main Agent 委派第一個 stage（如 planner）
+  |
+  v
+delegation-tracker hook
+  |-- 標記 PLAN active
+  |
+  v
+planner agent 執行
+  |
+  v
+stage-transition hook
+  |-- PLAN completed -> getReadyStages() -> ARCH ready
+  |-- systemMessage: "PLAN -> ARCH。 -> 執行 /vibe:architect"
+  |
+  v
+  ... 依序執行各 stage ...
+  |
+  v
+最後一個 stage 完成
+  |-- isComplete(state) = true
+  |-- systemMessage: "Pipeline 完成！"
+  |
+  v
+pipeline-check hook (Stop)
+  |-- phase = COMPLETE -> 放行
+```
+
+### 並行路徑
+
+```
+DEV 完成
+  |
+  v
+stage-transition hook
+  |-- getReadyStages() -> ['REVIEW', 'TEST']（共享 DEV 依賴）
+  |-- systemMessage: "DEV -> REVIEW + TEST（並行）。-> /vibe:review + /vibe:tdd"
+  |
+  v
+Main Agent 依序委派 REVIEW 和 TEST
+  |
+  v
+REVIEW 完成（SubagentStop）
+  |-- REVIEW completed, TEST 仍 active
+  |-- getReadyStages() -> []（DOCS 依賴 TEST 未完成）
+  |-- systemMessage: "REVIEW 完成。等待 TEST 完成..."
+  |
+  v
+TEST 完成（SubagentStop）
+  |-- TEST completed
+  |-- getReadyStages() -> ['DOCS']
+  |-- systemMessage: "TEST -> DOCS。-> /vibe:doc-sync"
+```
+
+### 回退路徑
+
+```
+REVIEW 完成，verdict = FAIL:HIGH
+  |
+  v
+stage-transition hook
+  |-- shouldRetryStage() -> { shouldRetry: true }
+  |-- markStageFailed(REVIEW)
+  |-- setPendingRetry({ stages: [{ id: 'REVIEW', severity: 'HIGH', round: 1 }] })
+  |-- systemMessage: "REVIEW FAIL:HIGH（1/3）。-> /vibe:dev"
+  |
+  v
+Main Agent 委派 DEV 修復
+  |
+  v
+DEV 完成（SubagentStop）
+  |-- pendingRetry 存在 + currentStage = DEV
+  |-- markStageCompleted(DEV)
+  |-- resetStageToPending(REVIEW)
+  |-- clearPendingRetry()
+  |-- systemMessage: "DEV 修復完成 -> 重跑 REVIEW。-> /vibe:review"
+  |
+  v
+REVIEW 再次執行
+  |-- verdict = PASS -> 正常前進
+```
+
+### 無 DEV 安全閥
+
+```
+review-only pipeline: { REVIEW: { deps: [] } }
+  |
+  v
+REVIEW FAIL:HIGH
+  |-- DAG 無 DEV stage
+  |-- 強制繼續（markStageCompleted）
+  |-- systemMessage: "REVIEW FAIL 但無 DEV 可回退，強制繼續。"
+```
+
+### 強制繼續（MAX_RETRIES 耗盡）
+
+```
+第 3 輪 REVIEW FAIL:HIGH
+  |-- retryCount >= MAX_RETRIES (3)
+  |-- shouldRetryStage() -> { shouldRetry: false, reason: '已達回退上限' }
+  |-- 正常前進（不再回退）
+```
+
+---
+
+## 6. Hook Stack（5 核心 hook）
+
+v3 的每個 hook 腳本精簡為 3 層結構：
+
+```javascript
+safeRun('hook-name', (data) => {
+  // 1. 解析 stdin JSON
+  // 2. 呼叫 controller 方法
+  // 3. 輸出結果（stdout JSON / stderr + exit 2）
+});
+```
+
+`safeRun()`（來自 `hook-utils.js`）提供安全包裝：JSON 解析失敗或 handler 拋異常時記入 hook-logger 並 exit 0（不阻擋）。
+
+### 各 hook 職責
+
+| Hook | 事件 | Controller 方法 | 輸出管道 |
+|------|------|----------------|---------|
+| task-classifier | UserPromptSubmit | `ctrl.classify()` | stdout（additionalContext / systemMessage） |
+| pipeline-guard | PreToolUse * | `ctrl.canProceed()` | allow: exit 0 / block: stderr + exit 2 |
+| delegation-tracker | PreToolUse Task | `ctrl.onDelegate()` | allow: exit 0 / block: stderr + exit 2 |
+| stage-transition | SubagentStop | `ctrl.onStageComplete()` | stdout（systemMessage + continue: true） |
+| pipeline-check | Stop | `ctrl.onSessionStop()` | stdout（continue: false + systemMessage） |
+
+### 事件流向
+
+```
+UserPromptSubmit
+  |
+  v
+task-classifier  ------>  classify()  ------> systemMessage / additionalContext
+                                |
+                                v
+                          /vibe:pipeline skill
+                                |
+                                v
+                          pipeline-architect agent
+                                |
+PreToolUse Task                 |
+  |                             |
+  v                             v
+delegation-tracker -> onDelegate() -> markStageActive()
+  |
+  v
+PreToolUse *
+  |
+  v
+pipeline-guard ----> canProceed() ----> allow / block
+
+SubagentStop
+  |
+  v
+stage-transition -> onStageComplete() -> markStageCompleted()
+  |                                       + getReadyStages()
+  v                                       + systemMessage: next stage
+
+Stop
+  |
+  v
+pipeline-check ---> onSessionStop() ---> continue: false (if incomplete)
+```
+
+---
+
+## 7. Message 格式
+
+v3 的 systemMessage 設計原則：只告訴模型「下一步做什麼」，不重複 context。
+
+### 建立 Pipeline
+
+```
+⛔ Pipeline [standard]（PLAN -> ARCH -> DEV -> REVIEW -> TEST -> DOCS）已建立。
+-> 執行 /vibe:scope
+```
+
+### pipeline-architect 產出
+
+```
+⛔ Pipeline 已建立（6 階段，1 跳過，1 組並行）。
+📋 新功能需要完整品質流程，DESIGN 跳過（後端專案）
+-> 執行 /vibe:scope
+```
+
+### 正常前進（串行）
+
+```
+✅ PLAN -> ARCH
+-> 執行 /vibe:architect
+📋 OpenSpec：planner 已建立 proposal.md...
+```
+
+### 正常前進（並行）
+
+```
+✅ DEV -> REVIEW + TEST（並行）
+-> /vibe:review + /vibe:tdd
+🔒 安全提示：REVIEW 已完成...
+```
+
+### 回退
+
+```
+🔄 REVIEW FAIL:HIGH（1/3）
+-> 執行 /vibe:dev
+```
+
+### 回退重驗
+
+```
+🔄 DEV 修復完成 -> 重跑 REVIEW
+-> 執行 /vibe:review
+```
+
+### Pipeline 完成
+
+```
+✅ Pipeline 完成！
+已完成：PLAN -> ARCH -> DEV -> REVIEW -> TEST -> DOCS
+⏭️ 跳過：DESIGN
+
+📌 後續動作：
+1️⃣ 執行 /vibe:verify 最終驗證
+2️⃣ 向使用者報告成果
+3️⃣ AskUserQuestion（multiSelect: true）提供選項
+⚠️ Pipeline 自動模式已解除。
+```
+
+### 閉環阻擋（pipeline-check）
+
+```
+⛔ Pipeline 未完成！缺：TEST, DOCS
+- 測試：/vibe:tdd
+- 文件整理：委派 doc-updater
+必須使用 Skill/Task 委派下一階段。禁止純文字回覆。
+```
+
+### Token 對比
+
+v2 的 systemMessage 包含完整的 pipeline 規則禁止列表（約 2200 tokens），v3 精簡為行動指令（約 200 tokens），依賴 pipeline-guard hook 硬阻擋取代冗長的文字禁令。
+
+---
+
+## 8. v2 -> v3 遷移
+
+> 檔案路徑：`plugins/vibe/scripts/lib/flow/state-migrator.js`
+
+### 自動遷移機制
+
+`pipeline-controller.js` 的 `loadState()` 在每次讀取 state 時呼叫 `ensureV3()`，自動偵測版本並遷移。使用者無需任何手動操作。
+
+### 版本偵測
+
+```javascript
+detectVersion(state)
+// version: 3             -> 3（已是 v3）
+// phase + context 存在   -> 2（v2 FSM 格式）
+// 其餘                   -> 0（無法辨識）
+```
+
+### 欄位映射表
+
+| v2 欄位 | v3 欄位 | 轉換邏輯 |
+|--------|--------|---------|
+| `context.pipelineId` | `classification.pipelineId` | 直接映射 |
+| `context.taskType` | `classification.taskType` | 直接映射 |
+| `context.environment` | `environment` | 提升到頂層 |
+| `context.openspecEnabled` | `openspecEnabled` | 提升到頂層 |
+| `context.needsDesign` | `needsDesign` | 提升到頂層 |
+| `context.expectedStages` | `dag`（linearToDag 建立） | 線性 stages 轉 DAG |
+| `progress.completedAgents` | `stages[x].status = completed` | 透過 AGENT_TO_STAGE 映射推導 |
+| `progress.skippedStages` | `stages[x].status = skipped` | 直接映射 |
+| `progress.currentStage` + `phase=DELEGATING` | `stages[x].status = active` | 當前活躍 stage |
+| `progress.pendingRetry.stage` | `pendingRetry.stages[0].id` | 單值 -> 陣列 |
+| `progress.retries` | `retries` | 直接映射 |
+| `meta.cancelled` | `meta.cancelled` | 直接映射 |
+| `meta.reclassifications` | `meta.reclassifications` | 直接映射 |
+| `meta.lastTransition` | `meta.lastTransition` | 直接映射 |
+| --（不存在） | `meta.migratedFrom = 'v2'` | 遷移標記 |
+| --（不存在） | `meta.migratedAt` | 遷移時間 |
+
+### 遷移保證
+
+- **無損**：所有已完成的進度（completed agents、skipped stages）保留
+- **自動**：`loadState()` 每次讀取時透明遷移
+- **向後相容**：v3 API（`derivePhase`、`isEnforced` 等）在遷移後的 state 上正常運作
+- **blueprint 為 null**：v2 沒有 blueprint 概念，遷移後為 null（不影響排程，getReadyStages 只依賴 DAG）
+
+---
+
+## 9. 參考模板（10 種）
+
+v3 的模板定義在 `registry.js` 的 `REFERENCE_PIPELINES`。pipeline-architect agent 可以參考這些模板，也可以動態產出自訂 DAG。
+
+使用者以 `[pipeline:xxx]` 語法指定模板時，controller 走快速路徑（linearToDag + skip），不經 agent。
+
+| ID | stages（線性 DAG） | enforced | 說明 |
+|----|-------------------|:--------:|------|
+| `full` | PLAN -> ARCH -> DESIGN -> DEV -> REVIEW -> TEST -> QA -> E2E -> DOCS | Y | 新功能（含 UI），完整 9 階段 |
+| `standard` | PLAN -> ARCH -> DEV -> REVIEW -> TEST -> DOCS | Y | 新功能（無 UI）、大重構 |
+| `quick-dev` | DEV -> REVIEW -> TEST | Y | Bugfix + 補測試、小改動 |
+| `fix` | DEV | Y | Hotfix、config、一行修改 |
+| `test-first` | TEST -> DEV -> TEST | Y | TDD 工作流（雙 TEST 循環） |
+| `ui-only` | DESIGN -> DEV -> QA | Y | 純 UI/樣式調整 |
+| `review-only` | REVIEW | Y | 程式碼審查 |
+| `docs-only` | DOCS | Y | 純文件更新 |
+| `security` | DEV -> REVIEW -> TEST | Y | 安全修復（REVIEW 含安全審查） |
+| `none` | （空） | N | 問答、研究、trivial |
+
+### pipeline-architect 動態 DAG 範例
+
+pipeline-architect 可以產出超越模板的自訂 DAG，例如並行排程：
+
+```json
+{
+  "dag": {
+    "PLAN":   { "deps": [] },
+    "ARCH":   { "deps": ["PLAN"] },
+    "DEV":    { "deps": ["ARCH"] },
+    "REVIEW": { "deps": ["DEV"] },
+    "TEST":   { "deps": ["DEV"] },
+    "DOCS":   { "deps": ["REVIEW", "TEST"] }
+  },
+  "enforced": true,
+  "rationale": "標準功能開發，REVIEW 和 TEST 可並行",
+  "blueprint": [
+    { "step": 1, "stages": ["PLAN"],            "parallel": false },
+    { "step": 2, "stages": ["ARCH"],            "parallel": false },
+    { "step": 3, "stages": ["DEV"],             "parallel": false },
+    { "step": 4, "stages": ["REVIEW", "TEST"],  "parallel": true },
+    { "step": 5, "stages": ["DOCS"],            "parallel": false }
+  ]
+}
+```
+
+### 跳過規則（skip-predicates.js）
+
+在 DAG 建立後、首次排程前，每個 stage 都會經過 `shouldSkip()` 檢查：
+
+| Stage | 跳過條件 | 原因 |
+|-------|---------|------|
+| DESIGN | 非前端專案（無前端框架 + `frontend.detected = false` + `needsDesign = false`） | 純後端/CLI 專案不需視覺設計 |
+| E2E | 純 API 框架（express / fastify / hono / koa / nest） | 純 API 專案不需瀏覽器測試 |
+
+跳過後 `getReadyStages()` 會視同依賴已滿足，不會阻塞後續 stages。
+
+---
+
+## 附錄：三層分類器
+
+> 檔案路徑：`plugins/vibe/scripts/lib/flow/classifier.js`
+
+Pipeline v3 保留 v2 的三層級聯分類器，但 Layer 3 的角色從直接決策變為輔助建議（pipeline-architect agent 負責最終決策）。
+
+| Layer | 機制 | 信心度 | 觸發條件 |
+|-------|------|:------:|---------|
+| 1 | `[pipeline:xxx]` 顯式語法 | 1.0 | prompt 包含語法標記 |
+| 2 | Regex 級聯（疑問守衛 -> trivial -> 弱探索 -> 動作關鍵字） | 0.5~0.95 | Layer 1 未命中 |
+| 3 | LLM Sonnet 語意分類 | 0.85 | Layer 2 信心度 < adaptive threshold |
+
+**Layer 2 內部優先級**：
+1. Phase 0：強動作信號（「更新 xxx.md」等明確動作意圖）
+2. Phase 1：Strong Question Guard（6 類中文疑問信號 + 英文 WH）
+3. Phase 2：Trivial Detection（hello world / poc / demo）
+4. Phase 3：Weak Explore（看看 / 查看 / 說明）
+5. Phase 4：Action Keywords（tdd / feature / refactor / bugfix / docs）
+6. Default：quickfix
+
+**Adaptive Threshold**：根據 `classifier-stats.json` 的修正率動態調整（0.5 或 0.7），環境變數 `VIBE_CLASSIFIER_THRESHOLD` 最高優先。
