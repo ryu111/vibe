@@ -49,7 +49,6 @@ const {
 const {
   classifyWithConfidence,
   extractExplicitPipeline,
-  classify,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'classifier.js'));
 
 // ===== 1. Registry 常量正確性測試 =====
@@ -185,26 +184,7 @@ asyncTest('classifyWithConfidence: 空字串 → none, 0, fallback, empty', asyn
   assert.strictEqual(result.matchedRule, 'empty');
 });
 
-// ===== 4. Classifier 向後相容測試 =====
-
-console.log('\n🧪 Part 4: Classifier 向後相容');
-
-test('classify() deprecated: 非顯式全部回傳 quickfix', () => {
-  assert.strictEqual(classify('什麼'), 'quickfix');
-  assert.strictEqual(classify('hello world'), 'quickfix');
-  assert.strictEqual(classify('TDD'), 'quickfix');
-  assert.strictEqual(classify('implement API'), 'quickfix');
-  assert.strictEqual(classify('fix bug'), 'quickfix');
-});
-
-test('classify() deprecated: 顯式 [pipeline:xxx] 正確映射', () => {
-  const expected_full = PIPELINE_TO_TASKTYPE['full'] || 'quickfix';
-  assert.strictEqual(classify('[pipeline:full] 建立系統'), expected_full);
-  const expected_fix = PIPELINE_TO_TASKTYPE['fix'] || 'quickfix';
-  assert.strictEqual(classify('[pipeline:fix] 修個 typo'), expected_fix);
-});
-
-// ===== 5. Pipeline 子集前進路徑測試 =====
+// ===== 4. Pipeline 子集前進路徑測試 =====
 
 console.log('\n🧪 Part 5: Pipeline 子集前進路徑');
 

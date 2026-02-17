@@ -6,7 +6,7 @@
  * 1. autoCheckpoint — git tag 建立
  * 2. POST_STAGE_HINTS — REVIEW→security / TEST→coverage 提示
  * 3. buildKnowledgeHints — env-detect 語言/框架映射知識 skills
- * 4. Pipeline 完成三步閉環 — verify + 報告 + AskUserQuestion
+ * 4. Pipeline 完成訊息 — 精簡格式（已完成 + 跳過 + 自動模式解除）
  *
  * 執行：node plugins/vibe/tests/automation-features.test.js
  */
@@ -458,7 +458,7 @@ console.log('\n🧪 Part 4: Pipeline 完成三步閉環');
 // 注意：v3 使用 writeV3State 建立 DAG 結構。DOCS 是最後階段，
 // doc-updater 完成後觸發 pipeline 完成流程。
 
-test('Pipeline 完成訊息包含 verify 指令', () => {
+test('Pipeline 完成訊息包含已完成階段列表', () => {
   const sessionId = 'test-complete-1';
   const { writeV3State } = require('./test-helpers');
   const statePath = writeV3State(sessionId, {
@@ -478,15 +478,15 @@ test('Pipeline 完成訊息包含 verify 指令', () => {
     });
 
     const output = JSON.parse(result);
-    assert.ok(output.systemMessage.includes('/vibe:verify'), '完成訊息應包含 /vibe:verify');
-    assert.ok(output.systemMessage.includes('最終驗證'), '應提及最終驗證');
+    assert.ok(output.systemMessage.includes('Pipeline [standard] 完成'), '應包含 pipeline ID');
+    assert.ok(output.systemMessage.includes('已完成'), '應包含已完成階段列表');
   } finally {
     cleanup(statePath);
     cleanupGitTag('vibe-pipeline/docs');
   }
 });
 
-test('Pipeline 完成訊息包含 AskUserQuestion 指令', () => {
+test('Pipeline 完成訊息包含跳過階段（如有）', () => {
   const sessionId = 'test-complete-2';
   const { writeV3State } = require('./test-helpers');
   const statePath = writeV3State(sessionId, {
@@ -506,15 +506,16 @@ test('Pipeline 完成訊息包含 AskUserQuestion 指令', () => {
     });
 
     const output = JSON.parse(result);
-    assert.ok(output.systemMessage.includes('AskUserQuestion'), '完成訊息應包含 AskUserQuestion');
-    assert.ok(output.systemMessage.includes('multiSelect'), '應指定 multiSelect');
+    // DEV + DOCS 完成，無跳過
+    assert.ok(output.systemMessage.includes('Pipeline [standard] 完成'), '應包含完成標題');
+    assert.ok(output.systemMessage.includes('自動模式已解除'), '應提示自動模式解除');
   } finally {
     cleanup(statePath);
     cleanupGitTag('vibe-pipeline/docs');
   }
 });
 
-test('Pipeline 完成訊息結構正確（完成列表 + 後續動作）', () => {
+test('Pipeline 完成訊息結構正確（精簡格式）', () => {
   const sessionId = 'test-complete-3';
   const { writeV3State } = require('./test-helpers');
   const statePath = writeV3State(sessionId, {
@@ -534,11 +535,13 @@ test('Pipeline 完成訊息結構正確（完成列表 + 後續動作）', () =>
     });
 
     const output = JSON.parse(result);
-    // v3 完成訊息結構：已完成列表 + 後續動作 + 自動模式解除
-    assert.ok(output.systemMessage.includes('Pipeline 完成'), '應包含完成標題');
+    // v3 精簡完成訊息：已完成列表 + 跳過（如有）+ 自動模式解除
+    assert.ok(output.systemMessage.includes('Pipeline [standard] 完成'), '應包含完成標題');
     assert.ok(output.systemMessage.includes('已完成'), '應包含已完成階段列表');
-    assert.ok(output.systemMessage.includes('後續動作'), '應包含後續動作區塊');
     assert.ok(output.systemMessage.includes('自動模式已解除'), '應提示自動模式解除');
+    // 不再要求 verify/AskUserQuestion 硬編碼指令
+    assert.ok(!output.systemMessage.includes('/vibe:verify'), '不應包含 /vibe:verify 硬編碼');
+    assert.ok(!output.systemMessage.includes('multiSelect'), '不應包含 AskUserQuestion 硬編碼');
   } finally {
     cleanup(statePath);
     cleanupGitTag('vibe-pipeline/docs');

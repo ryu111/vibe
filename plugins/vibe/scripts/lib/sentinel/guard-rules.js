@@ -12,8 +12,9 @@
 const path = require('path');
 const {
   getPhase, isDelegating, isEnforced, isCancelled, isInitialized,
-  getTaskType, getCurrentStage, getPipelineId, PHASES,
+  getTaskType, getCurrentStage, getPipelineId, PHASES, getReadyStages,
 } = require(path.join(__dirname, '..', 'flow', 'dag-state.js'));
+const { STAGES } = require(path.join(__dirname, '..', 'registry.js'));
 
 // 唯讀工具白名單（CLASSIFIED/RETRYING 階段允許，不阻擋讀取）
 const READ_ONLY_TOOLS = new Set([
@@ -30,6 +31,42 @@ const NON_CODE_EXTS = new Set([
   '.cfg', '.ini', '.csv', '.xml', '.html', '.css', '.svg',
   '.conf', '.lock',
 ]);
+
+// Pipeline.json 中的 stageMap（stage → skill 對應）
+// 注意：pipeline-discovery.js 需要 CLAUDE_PLUGIN_ROOT，guard-rules 盡量保持純函式
+// 改用 STAGES（registry.js）查找 skill — 以 buildDelegationHint 模式為主
+// 實際 skill 在 pipeline.json stageMap，但 guard-rules 不應依賴 pipeline-discovery
+// 折衷：直接在此維護 STAGE_SKILL_MAP（與 pipeline.json 保持同步）
+const STAGE_SKILL_MAP = {
+  PLAN:   '/vibe:scope',
+  ARCH:   '/vibe:architect',
+  DESIGN: '/vibe:design',
+  DEV:    '/vibe:dev',
+  REVIEW: '/vibe:review',
+  TEST:   '/vibe:tdd',
+  QA:     '/vibe:qa',
+  E2E:    '/vibe:e2e',
+  DOCS:   '/vibe:doc-sync',
+};
+
+/**
+ * 從 state 取得下一步委派提示
+ *
+ * @param {Object|null} state - pipeline state（v3）
+ * @returns {string} 委派提示文字
+ */
+function buildDelegateHint(state) {
+  if (!state) return '（DAG 尚未建立）';
+  const ready = getReadyStages(state);
+  if (!ready || ready.length === 0) return '（DAG 尚未建立）';
+  const hints = ready.map(stage => {
+    const skill = STAGE_SKILL_MAP[stage];
+    const label = (STAGES[stage] && STAGES[stage].label) || stage;
+    if (skill) return `呼叫 ${skill} 委派 ${label} (${stage}) 階段`;
+    return `委派 ${label} (${stage}) 階段`;
+  });
+  return hints.join(' 或 ');
+}
 
 // dotfiles
 const NON_CODE_DOTFILES = new Set([
@@ -172,7 +209,8 @@ function evaluate(toolName, toolInput, state) {
       reason: 'must-delegate',
       message:
         `⛔ Pipeline [${getPipelineId(state)}] 等待委派 — 禁止 ${toolName}。\n` +
-        `請使用 Skill 或 Task 工具委派 sub-agent 執行此任務。\n`,
+        `請使用 Skill 或 Task 工具委派 sub-agent 執行此任務。\n` +
+        `➡️ 下一步：${buildDelegateHint(state)}\n`,
     };
   }
 
@@ -194,8 +232,7 @@ function evaluate(toolName, toolInput, state) {
       message:
         `⛔ Pipeline 模式下禁止直接使用 ${toolName} 寫程式碼。\n` +
         `你是管理者（Orchestrator），不是執行者。\n` +
-        `請使用 Task 工具委派給對應的 sub-agent：\n` +
-        `  Task({ subagent_type: "vibe:developer", prompt: "..." })\n`,
+        `➡️ 下一步：${buildDelegateHint(state)}\n`,
     };
   }
 
@@ -222,9 +259,11 @@ module.exports = {
   isNonCodeFile,
   evaluateBashDanger,
   detectBashWriteTarget,
+  buildDelegateHint,
   NON_CODE_EXTS,
   NON_CODE_DOTFILES,
   DANGER_PATTERNS,
   WRITE_PATTERNS,
   CANCEL_STATE_FILE_RE,
+  STAGE_SKILL_MAP,
 };

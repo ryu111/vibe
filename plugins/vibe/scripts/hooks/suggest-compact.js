@@ -13,6 +13,7 @@ const os = require('os');
 const { increment } = require(path.join(__dirname, '..', 'lib', 'flow', 'counter.js'));
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
+const { readState: dsReadState, derivePhase, getReadyStages } = require(path.join(__dirname, '..', 'lib', 'flow', 'dag-state.js'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
@@ -73,8 +74,7 @@ process.stdin.on('end', () => {
     const toolName = data.tool_name || '';
     const toolInput = data.tool_input || {};
 
-    // 讀取 pipeline state（統一透過 ds.readState，只讀一次，後續複用）
-    const { readState: dsReadState } = require(path.join(__dirname, '..', 'lib', 'flow', 'dag-state.js'));
+    // 讀取 pipeline state（只讀一次，後續複用）
     const cachedState = dsReadState(sessionId);
 
     // 1. tool.used 事件（Task 由 delegation-tracker 處理）
@@ -107,7 +107,6 @@ process.stdin.on('end', () => {
     // 3. CLASSIFIED 階段 delegation 提醒（獨立計數檔案，不寫 pipeline state）
     try {
       if (cachedState) {
-        const { derivePhase, getReadyStages } = require(path.join(__dirname, '..', 'lib', 'flow', 'dag-state.js'));
         const phase = derivePhase(cachedState);
         const countFile = path.join(CLAUDE_DIR, `classified-reads-${sessionId}.json`);
 

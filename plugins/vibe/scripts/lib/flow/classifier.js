@@ -122,7 +122,7 @@ function classifyWithLLM(prompt) {
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+        'anthropic-version': '2024-10-22',
         'Content-Length': Buffer.byteLength(body),
       },
     }, (res) => {
@@ -185,17 +185,6 @@ async function classifyWithConfidence(prompt) {
 }
 
 /**
- * 同步分類（向後相容 — 僅 explicit 有效，其餘預設 quickfix）
- * @deprecated 使用 classifyWithConfidence() 取代
- */
-function classify(prompt) {
-  if (!prompt) return 'quickfix';
-  const explicit = extractExplicitPipeline(prompt);
-  if (explicit) return PIPELINE_TO_TASKTYPE[explicit] || 'quickfix';
-  return 'quickfix';
-}
-
-/**
  * 產生 Pipeline 目錄提示（Fallback 時注入 additionalContext）
  * @returns {string}
  */
@@ -221,9 +210,6 @@ module.exports = {
   extractExplicitPipeline,
   mapTaskTypeToPipeline,
   buildPipelineCatalogHint,
-
-  // 向後相容
-  classify,
 
   // 常量（供測試）
   LLM_MODEL,

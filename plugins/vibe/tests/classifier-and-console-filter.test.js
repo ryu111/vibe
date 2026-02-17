@@ -42,7 +42,6 @@ function asyncTest(name, fn) {
 // ═══════════════════════════════════════════════
 
 const {
-  classify,
   classifyWithConfidence,
   classifyWithLLM,
   extractExplicitPipeline,
@@ -528,50 +527,7 @@ test('LLM mock: 超時 → null', () => {
   assert.strictEqual(result, 'null');
 });
 
-// ─── Part 1f: classify() 向後相容 ──────────────
-
-console.log('\n🧪 Part 1f: classify() 向後相容（deprecated）');
-console.log('═'.repeat(50));
-
-test('classify: null → quickfix', () => {
-  assert.strictEqual(classify(null), 'quickfix');
-});
-
-test('classify: undefined → quickfix', () => {
-  assert.strictEqual(classify(undefined), 'quickfix');
-});
-
-test('classify: 空字串 → quickfix', () => {
-  assert.strictEqual(classify(''), 'quickfix');
-});
-
-test('classify: 一般 prompt → quickfix（不做語意分析）', () => {
-  assert.strictEqual(classify('建立一個完整的 REST API server'), 'quickfix');
-});
-
-test('classify: 疑問句 → quickfix（不做語意分析）', () => {
-  assert.strictEqual(classify('什麼是 pipeline?'), 'quickfix');
-});
-
-test('classify: [pipeline:full] → 對應 taskType', () => {
-  const { PIPELINE_TO_TASKTYPE } = require(path.join(__dirname, '..', 'scripts', 'lib', 'registry.js'));
-  const expected = PIPELINE_TO_TASKTYPE['full'] || 'quickfix';
-  assert.strictEqual(classify('[pipeline:full] 建立系統'), expected);
-});
-
-test('classify: [pipeline:security] → 對應 taskType', () => {
-  const { PIPELINE_TO_TASKTYPE } = require(path.join(__dirname, '..', 'scripts', 'lib', 'registry.js'));
-  const expected = PIPELINE_TO_TASKTYPE['security'] || 'quickfix';
-  assert.strictEqual(classify('[pipeline:security] 修復 XSS'), expected);
-});
-
-test('classify: [pipeline:test-first] → 對應 taskType', () => {
-  const { PIPELINE_TO_TASKTYPE } = require(path.join(__dirname, '..', 'scripts', 'lib', 'registry.js'));
-  const expected = PIPELINE_TO_TASKTYPE['test-first'] || 'quickfix';
-  assert.strictEqual(classify('[pipeline:test-first] TDD 開發'), expected);
-});
-
-// ─── Part 1g: mapTaskTypeToPipeline ─────────────
+// ─── Part 1f: mapTaskTypeToPipeline ─────────────
 
 console.log('\n🧪 Part 1g: mapTaskTypeToPipeline');
 console.log('═'.repeat(50));

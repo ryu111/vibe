@@ -545,18 +545,14 @@ function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline) {
 function buildCompleteOutput(state, completedStage, pipeline) {
   const completed = ds.getCompletedStages(state);
   const skipped = ds.getSkippedStages(state);
-  const completedStr = completed.join(' → ');
+  const pipelineId = ds.getPipelineId(state) || 'pipeline';
 
   return {
     systemMessage:
-      `✅ Pipeline 完成！\n` +
-      `已完成：${completedStr}` +
+      `✅ Pipeline [${pipelineId}] 完成！\n` +
+      `已完成：${completed.join(', ')}` +
       (skipped.length > 0 ? `\n⏭️ 跳過：${skipped.join(', ')}` : '') +
-      `\n\n📌 後續動作：\n` +
-      `1️⃣ 執行 /vibe:verify 最終驗證\n` +
-      `2️⃣ 向使用者報告成果\n` +
-      `3️⃣ AskUserQuestion（multiSelect: true）提供選項\n` +
-      `⚠️ Pipeline 自動模式已解除。`,
+      `\n\nPipeline 自動模式已解除，可以直接操作。`,
   };
 }
 
