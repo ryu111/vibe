@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.59 | 全方位開發工作流 | 34 | 12 | 19 | 44 |
+| **vibe** | 1.0.60 | 全方位開發工作流 | 34 | 12 | 19 | 44 |
 
 ### vibe plugin 功能模組
 
@@ -246,7 +246,7 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 推薦 Main Agent 使用 Sonnet（`claude --model sonnet`），所有實際工作由特化 sub-agents 完成。
 
 - **安全保障**：pipeline-guard 硬阻擋 Main Agent 寫碼 | sub-agents 使用各自指定模型
-- **環境變數**：`VIBE_CLASSIFIER_MODEL`（Layer 3 LLM 模型，預設 Sonnet）| `VIBE_CLASSIFIER_THRESHOLD`（Layer 2→3 閾值，設 `0` 停用 LLM）
+- **環境變數**：`VIBE_CLASSIFIER_MODEL`（LLM 模型，預設 Sonnet）| `VIBE_CLASSIFIER_THRESHOLD`（設 `≥1.0` 停用 LLM，fallback 到 none pipeline）
 
 ## 文檔體系
 

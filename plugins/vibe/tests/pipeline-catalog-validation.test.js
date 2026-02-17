@@ -248,8 +248,8 @@ function runPipelineScenario({ id, pipelineId, prompt, label }) {
   test(`${id}: derivePhase = ${expectedPhase}`, () => {
     assert.strictEqual(derivePhase(sc), expectedPhase);
   });
-  // none 用 regex 分類，其他用 explicit
-  const expectedSource = pipelineId === 'none' ? 'regex' : 'explicit';
+  // none 用 fallback 分類（v4 LLM-first，無 API key），其他用 explicit
+  const expectedSource = pipelineId === 'none' ? 'fallback' : 'explicit';
   test(`${id}: source = ${expectedSource}`, () => {
     assert.strictEqual(sc.classification.source, expectedSource);
   });

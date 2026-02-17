@@ -30,6 +30,11 @@ function test(name, fn) {
   }
 }
 
+const asyncQueue = [];
+function asyncTest(name, fn) {
+  asyncQueue.push({ name, fn });
+}
+
 // ===== 模組載入 =====
 
 const {
@@ -42,8 +47,6 @@ const {
   extractExplicitPipeline,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'classifier.js'));
 
-// 注意：findNextStageInPipeline 已從 pipeline-discovery.js 移除（v3 由 dag-utils.js 接管）
-
 // ===== 1. 空值處理測試 =====
 
 console.log('\n🧪 Part 1: 空值/null/undefined 處理');
@@ -53,12 +56,11 @@ test('extractExplicitPipeline: undefined → null', () => {
   assert.strictEqual(result, null);
 });
 
-test('classifyWithConfidence: undefined → 預設 fix', () => {
-  const result = classifyWithConfidence(undefined);
-  assert.strictEqual(result.pipeline, 'fix');
-  assert.strictEqual(result.confidence, 0.7);
+asyncTest('classifyWithConfidence: undefined → 預設 none', async () => {
+  const result = await classifyWithConfidence(undefined);
+  assert.strictEqual(result.pipeline, 'none');
+  assert.strictEqual(result.confidence, 0);
 });
-
 
 test('PIPELINES: 所有 label 和 description 非空', () => {
   Object.entries(PIPELINES).forEach(([id, p]) => {
@@ -86,7 +88,6 @@ test('standard pipeline 不含 DESIGN', () => {
 console.log('\n🧪 Part 3: 向後相容（舊 state）');
 
 test('舊 state 沒有 pipelineId → 不崩潰', () => {
-  // 模擬舊 state 只有 taskType 和 expectedStages（FSM 結構）
   const mockOldState = {
     phase: 'CLASSIFIED',
     context: {
@@ -96,8 +97,6 @@ test('舊 state 沒有 pipelineId → 不崩潰', () => {
     progress: {},
     meta: { initialized: true },
   };
-  // 檢查是否可以從 expectedStages 推導 pipeline
-  // 邏輯在 task-classifier 中：有 pipelineId 優先用，沒有就用 expectedStages fallback
   assert.ok(Array.isArray(mockOldState.context.expectedStages));
   assert.ok(!mockOldState.context.pipelineId);
 });
@@ -115,10 +114,8 @@ test('TDD pipeline 允許重複 TEST（test-first 結構）', () => {
 console.log('\n🧪 Part 5: Pipeline 優先級邊界');
 
 test('同級 pipeline 比較（ui-only vs security）', () => {
-  // 兩者 priority 都是 3
   assert.strictEqual(PIPELINE_PRIORITY['ui-only'], 3);
   assert.strictEqual(PIPELINE_PRIORITY['security'], 3);
-  // 同級不應視為升級
   const isUpgrade = PIPELINE_PRIORITY['security'] > PIPELINE_PRIORITY['ui-only'];
   assert.strictEqual(isUpgrade, false);
 });
@@ -151,7 +148,6 @@ console.log('\n🧪 Part 6: 階段列表組合邊界');
 test('Pipeline 包含所有 9 個階段（full）', () => {
   const stages = PIPELINES['full'].stages;
   assert.strictEqual(stages.length, 9);
-  // 確認順序與 STAGE_ORDER 一致
   const { STAGE_ORDER } = require(path.join(__dirname, '..', 'scripts', 'lib', 'registry.js'));
   stages.forEach((stage, i) => {
     assert.strictEqual(stage, STAGE_ORDER[i], `full pipeline 第 ${i} 個階段應為 ${STAGE_ORDER[i]}，實際為 ${stage}`);
@@ -161,7 +157,6 @@ test('Pipeline 包含所有 9 個階段（full）', () => {
 test('Pipeline 不包含中間階段（standard 跳過 DESIGN）', () => {
   const stages = PIPELINES['standard'].stages;
   assert.ok(!stages.includes('DESIGN'));
-  // ARCH 的下一個應是 DEV
   const archIndex = stages.indexOf('ARCH');
   const nextStage = stages[archIndex + 1];
   assert.strictEqual(nextStage, 'DEV');
@@ -185,14 +180,21 @@ test('Pipeline 從中間開始（ui-only 從 DESIGN）', () => {
 
 console.log('\n🧪 Part 7: Classifier 邊界輸入');
 
-test('只有空白字元的 prompt → 預設 fix', () => {
-  const result = classifyWithConfidence('   \t\n  ');
-  assert.strictEqual(result.pipeline, 'fix');
+asyncTest('只有空白字元的 prompt → 預設 none', async () => {
+  const result = await classifyWithConfidence('   \t\n  ');
+  assert.strictEqual(result.pipeline, 'none');
 });
 
-test('只有 emoji 的 prompt → 預設 fix', () => {
-  const result = classifyWithConfidence('🚀🎉✨');
-  assert.strictEqual(result.pipeline, 'fix');
+asyncTest('只有 emoji 的 prompt（無 API key）→ none/fallback', async () => {
+  const origKey = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  try {
+    const result = await classifyWithConfidence('🚀🎉✨');
+    assert.strictEqual(result.pipeline, 'none');
+    assert.strictEqual(result.source, 'fallback');
+  } finally {
+    if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
+  }
 });
 
 test('prompt 含特殊字元不影響 [pipeline:xxx] 解析', () => {
@@ -200,12 +202,13 @@ test('prompt 含特殊字元不影響 [pipeline:xxx] 解析', () => {
   assert.strictEqual(result, 'fix');
 });
 
-test('prompt 含 Unicode 不影響分類', () => {
-  const result = classifyWithConfidence('實作🎨設計系統');
-  assert.strictEqual(result.pipeline, 'standard'); // feature 關鍵字
+asyncTest('prompt 含 Unicode + 顯式標記 → 正確解析', async () => {
+  const result = await classifyWithConfidence('實作🎨設計系統 [pipeline:standard]');
+  assert.strictEqual(result.pipeline, 'standard');
+  assert.strictEqual(result.source, 'explicit');
 });
 
-test('[pipeline:xxx] 在 code block 內不應被解析', () => {
+test('[pipeline:xxx] 在 code block 內不應被解析（當前行為記錄）', () => {
   const prompt = '```\n[pipeline:full]\n```\n實際任務';
   // 目前 extractExplicitPipeline 不檢查 code block 上下文
   // 這個測試記錄當前行為（會誤判），未來可能需要改進
@@ -217,29 +220,46 @@ test('[pipeline:xxx] 在 code block 內不應被解析', () => {
 
 console.log('\n🧪 Part 8: 併發與競態條件');
 
-test('同一 prompt 多次分類應回傳相同結果', () => {
-  const prompt = '建立完整的 REST API';
-  const results = Array.from({ length: 10 }, () => classifyWithConfidence(prompt));
+asyncTest('同一 prompt 多次分類應回傳相同結果（顯式）', async () => {
+  const prompt = '[pipeline:standard] 建立完整的 REST API';
+  const results = [];
+  for (let i = 0; i < 5; i++) {
+    results.push(await classifyWithConfidence(prompt));
+  }
   const firstPipeline = results[0].pipeline;
   results.forEach(r => {
     assert.strictEqual(r.pipeline, firstPipeline);
+    assert.strictEqual(r.source, 'explicit');
   });
 });
 
+asyncTest('同一 prompt 多次分類應回傳相同結果（fallback）', async () => {
+  const origKey = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  try {
+    const prompt = '建立完整的 REST API';
+    const results = [];
+    for (let i = 0; i < 5; i++) {
+      results.push(await classifyWithConfidence(prompt));
+    }
+    results.forEach(r => {
+      assert.strictEqual(r.pipeline, 'none');
+      assert.strictEqual(r.source, 'fallback');
+    });
+  } finally {
+    if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
+  }
+});
 
 // ===== 9. 錯誤恢復場景 =====
 
 console.log('\n🧪 Part 9: 錯誤恢復');
 
 test('Pipeline 完成後再次分類應能重新啟動', () => {
-  // 模擬：fix pipeline 完成 → 新任務觸發 feature 分類
-  // 應該能從 none → standard 升級
   assert.ok(PIPELINE_PRIORITY['standard'] > PIPELINE_PRIORITY['fix']);
 });
 
 test('回退次數達上限後應停止', () => {
-  // 這個邏輯在 stage-transition.js 中
-  // 測試只驗證 MAX_RETRIES 是否合理
   const MAX_RETRIES = parseInt(process.env.CLAUDE_PIPELINE_MAX_RETRIES || '3', 10);
   assert.ok(MAX_RETRIES > 0 && MAX_RETRIES <= 10, `MAX_RETRIES=${MAX_RETRIES} 不合理`);
 });
@@ -279,12 +299,29 @@ test('TDD pipeline 允許重複 TEST（唯一例外）', () => {
 
 // ===== 摘要 =====
 
-console.log(`\n========================================`);
-console.log(`Pipeline Catalog 邊界案例測試結果`);
-console.log(`========================================`);
-console.log(`✅ 通過: ${passed}`);
-console.log(`❌ 失敗: ${failed}`);
-console.log(`總計: ${passed + failed}`);
-console.log(`========================================\n`);
+(async () => {
+  if (asyncQueue.length > 0) {
+    console.log('\n🧪 Async Tests');
+    for (const { name, fn } of asyncQueue) {
+      try {
+        await fn();
+        passed++;
+        console.log(`✅ ${name}`);
+      } catch (err) {
+        failed++;
+        console.error(`❌ ${name}`);
+        console.error(`   ${err.message}`);
+      }
+    }
+  }
 
-if (failed > 0) process.exit(1);
+  console.log(`\n========================================`);
+  console.log(`Pipeline Catalog 邊界案例測試結果`);
+  console.log(`========================================`);
+  console.log(`✅ 通過: ${passed}`);
+  console.log(`❌ 失敗: ${failed}`);
+  console.log(`總計: ${passed + failed}`);
+  console.log(`========================================\n`);
+
+  if (failed > 0) process.exit(1);
+})();

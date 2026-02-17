@@ -3,12 +3,12 @@
  * pipeline-catalog-integration.test.js — Pipeline Catalog 整合測試
  *
  * 測試分類器→初始化→前進→完成的完整流程，涵蓋：
- * 1. classifyWithConfidence 三層級聯分類（Layer 1+2）
- * 2. registry.js PIPELINES/PRIORITY/TASKTYPE 映射正確性
- * 3. task-classifier 動態設定 expectedStages + pipelineId
- * 4. stage-transition 在 pipeline 子集中查找下一階段
- * 5. pipeline-check stageIndex 感知檢查
- * 6. 邊界案例：TDD 雙 TEST、單階段 pipeline、舊 state 向後相容
+ * 1. registry.js PIPELINES/PRIORITY/TASKTYPE 映射正確性
+ * 2. classifyWithConfidence Layer 1 顯式覆寫
+ * 3. classify() 向後相容
+ * 4. Pipeline 子集前進路徑
+ * 5. TDD/單階段/回退場景
+ * 6. 注入防護/邊界值
  */
 'use strict';
 const assert = require('assert');
@@ -30,12 +30,18 @@ function test(name, fn) {
   }
 }
 
+const asyncQueue = [];
+function asyncTest(name, fn) {
+  asyncQueue.push({ name, fn });
+}
+
 // ===== 模組載入 =====
 
 const {
   PIPELINES,
   PIPELINE_PRIORITY,
   TASKTYPE_TO_PIPELINE,
+  PIPELINE_TO_TASKTYPE,
   FRONTEND_FRAMEWORKS,
   STAGE_ORDER,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'registry.js'));
@@ -45,8 +51,6 @@ const {
   extractExplicitPipeline,
   classify,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'classifier.js'));
-
-// 注意：findNextStageInPipeline 已從 pipeline-discovery.js 移除（v3 由 dag-utils.js 接管）
 
 // ===== 1. Registry 常量正確性測試 =====
 
@@ -132,92 +136,72 @@ test('extractExplicitPipeline: 不合法 pipeline ID → null', () => {
   assert.strictEqual(result, null);
 });
 
-test('classifyWithConfidence: Layer 1 覆寫信心度 1.0', () => {
-  const result = classifyWithConfidence('[pipeline:quick-dev] 修個 bug');
+asyncTest('classifyWithConfidence: Layer 1 覆寫信心度 1.0', async () => {
+  const result = await classifyWithConfidence('[pipeline:quick-dev] 修個 bug');
   assert.strictEqual(result.pipeline, 'quick-dev');
   assert.strictEqual(result.confidence, 1.0);
   assert.strictEqual(result.source, 'explicit');
 });
 
-test('classifyWithConfidence: Layer 1 語法在結尾', () => {
-  const result = classifyWithConfidence('建立完整 API [pipeline:full]');
+asyncTest('classifyWithConfidence: Layer 1 語法在結尾', async () => {
+  const result = await classifyWithConfidence('建立完整 API [pipeline:full]');
   assert.strictEqual(result.pipeline, 'full');
   assert.strictEqual(result.source, 'explicit');
 });
 
-// ===== 3. Classifier Layer 2 信心度評分測試 =====
+// ===== 3. Classifier Fallback 行為（無 API key）=====
 
-console.log('\n🧪 Part 3: Classifier Layer 2 信心度評分');
+console.log('\n🧪 Part 3: Classifier Fallback 行為');
 
-test('classifyWithConfidence: Strong question → none, 0.95', () => {
-  const result = classifyWithConfidence('什麼是 pipeline?');
+asyncTest('classifyWithConfidence: 一般 prompt（無 API key）→ none/fallback', async () => {
+  const origKey = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  try {
+    const result = await classifyWithConfidence('建立一個完整的 REST API server');
+    assert.strictEqual(result.pipeline, 'none');
+    assert.strictEqual(result.source, 'fallback');
+  } finally {
+    if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
+  }
+});
+
+asyncTest('classifyWithConfidence: 疑問句（無 API key）→ none/fallback', async () => {
+  const origKey = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  try {
+    const result = await classifyWithConfidence('什麼是 pipeline?');
+    assert.strictEqual(result.pipeline, 'none');
+    assert.strictEqual(result.source, 'fallback');
+  } finally {
+    if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
+  }
+});
+
+asyncTest('classifyWithConfidence: 空字串 → none, 0, fallback, empty', async () => {
+  const result = await classifyWithConfidence('');
   assert.strictEqual(result.pipeline, 'none');
-  assert.ok(result.confidence >= 0.9, `信心度只有 ${result.confidence}`);
-  assert.strictEqual(result.source, 'regex');
-});
-
-test('classifyWithConfidence: Trivial → fix, 0.9', () => {
-  const result = classifyWithConfidence('做個 hello world 試試');
-  assert.strictEqual(result.pipeline, 'fix');
-  assert.ok(result.confidence >= 0.85, `信心度只有 ${result.confidence}`);
-  assert.strictEqual(result.source, 'regex');
-});
-
-test('classifyWithConfidence: TDD 關鍵字 → test-first, 0.8', () => {
-  const result = classifyWithConfidence('用 TDD 方式開發');
-  assert.strictEqual(result.pipeline, 'test-first');
-  assert.ok(result.confidence >= 0.75, `信心度只有 ${result.confidence}`);
-  assert.strictEqual(result.source, 'regex');
-});
-
-test('classifyWithConfidence: Feature 關鍵字 → standard, 0.8', () => {
-  const result = classifyWithConfidence('建立一個完整的 REST API server');
-  assert.strictEqual(result.pipeline, 'standard');
-  assert.ok(result.confidence >= 0.75, `信心度只有 ${result.confidence}`);
-  assert.strictEqual(result.source, 'regex');
-});
-
-test('classifyWithConfidence: Weak explore → none, 0.6', () => {
-  const result = classifyWithConfidence('看看這個專案');
-  assert.strictEqual(result.pipeline, 'none');
-  assert.ok(result.confidence >= 0.5 && result.confidence < 0.8, `信心度應在 0.5~0.8 之間，實際為 ${result.confidence}`);
-  // 信心度 < 0.7 時 source 標記為 pending-llm（Phase 5 LLM fallback 佔位）
-  assert.strictEqual(result.source, 'pending-llm');
-});
-
-test('classifyWithConfidence: 預設 quickfix（短文本）→ fix, 0.5, pending-llm', () => {
-  const result = classifyWithConfidence('改個名');
-  assert.strictEqual(result.pipeline, 'fix');
-  assert.strictEqual(result.confidence, 0.5, '短文本 default 應降低信心度');
-  assert.strictEqual(result.source, 'pending-llm', '短文本 default 應觸發 Layer 3');
+  assert.strictEqual(result.confidence, 0);
+  assert.strictEqual(result.source, 'fallback');
+  assert.strictEqual(result.matchedRule, 'empty');
 });
 
 // ===== 4. Classifier 向後相容測試 =====
 
 console.log('\n🧪 Part 4: Classifier 向後相容');
 
-test('classify() 繼續回傳 taskType（向後相容）', () => {
-  assert.strictEqual(classify('什麼'), 'research');
+test('classify() deprecated: 非顯式全部回傳 quickfix', () => {
+  assert.strictEqual(classify('什麼'), 'quickfix');
   assert.strictEqual(classify('hello world'), 'quickfix');
-  assert.strictEqual(classify('TDD'), 'tdd');
-  assert.strictEqual(classify('implement API'), 'feature');
-  assert.strictEqual(classify('fix bug'), 'bugfix');
+  assert.strictEqual(classify('TDD'), 'quickfix');
+  assert.strictEqual(classify('implement API'), 'quickfix');
+  assert.strictEqual(classify('fix bug'), 'quickfix');
 });
 
-test('classifyWithConfidence 與 classify 映射一致', () => {
-  const prompts = [
-    '什麼',
-    'hello world',
-    'TDD',
-    'implement API',
-    'fix bug',
-  ];
-  prompts.forEach(prompt => {
-    const taskType = classify(prompt);
-    const { pipeline } = classifyWithConfidence(prompt);
-    const expectedPipeline = TASKTYPE_TO_PIPELINE[taskType];
-    assert.strictEqual(pipeline, expectedPipeline, `${prompt} → taskType=${taskType} → pipeline=${pipeline}（預期 ${expectedPipeline}）`);
-  });
+test('classify() deprecated: 顯式 [pipeline:xxx] 正確映射', () => {
+  const expected_full = PIPELINE_TO_TASKTYPE['full'] || 'quickfix';
+  assert.strictEqual(classify('[pipeline:full] 建立系統'), expected_full);
+  const expected_fix = PIPELINE_TO_TASKTYPE['fix'] || 'quickfix';
+  assert.strictEqual(classify('[pipeline:fix] 修個 typo'), expected_fix);
 });
 
 // ===== 5. Pipeline 子集前進路徑測試 =====
@@ -293,10 +277,8 @@ console.log('\n🧪 Part 8: 短 Pipeline 回退場景');
 
 test('quick-dev pipeline: REVIEW 失敗可回退到 DEV', () => {
   const stages = PIPELINES['quick-dev'].stages;
-  // DEV 在 pipeline 中的 index=0
   assert.ok(stages.includes('DEV'));
   assert.ok(stages.includes('REVIEW'));
-  // 回退邏輯：從 REVIEW 回到 DEV，修復後重跑 REVIEW
   const devIndex = stages.indexOf('DEV');
   assert.strictEqual(devIndex, 0);
 });
@@ -304,7 +286,6 @@ test('quick-dev pipeline: REVIEW 失敗可回退到 DEV', () => {
 test('review-only pipeline: 不包含 DEV，無法回退', () => {
   const stages = PIPELINES['review-only'].stages;
   assert.ok(!stages.includes('DEV'));
-  // 回退邏輯應該檢查 pipeline 中是否有 DEV，沒有則不回退
 });
 
 test('docs-only pipeline: 不包含品質階段，無回退場景', () => {
@@ -373,20 +354,20 @@ test('[pipeline:xxx] 不允許指令注入', () => {
 
 console.log('\n🧪 Part 11: 邊界值');
 
-test('空字串 prompt → 預設 fix', () => {
-  const result = classifyWithConfidence('');
-  assert.strictEqual(result.pipeline, 'fix');
-  assert.strictEqual(result.confidence, 0.7);
+asyncTest('空字串 prompt → 預設 none', async () => {
+  const result = await classifyWithConfidence('');
+  assert.strictEqual(result.pipeline, 'none');
+  assert.strictEqual(result.confidence, 0);
 });
 
-test('null prompt → 預設 fix', () => {
-  const result = classifyWithConfidence(null);
-  assert.strictEqual(result.pipeline, 'fix');
+asyncTest('null prompt → 預設 none', async () => {
+  const result = await classifyWithConfidence(null);
+  assert.strictEqual(result.pipeline, 'none');
 });
 
-test('超長 prompt 不影響分類', () => {
+asyncTest('超長 prompt 不影響 Layer 1 分類', async () => {
   const longPrompt = 'A'.repeat(10000) + ' [pipeline:full]';
-  const result = classifyWithConfidence(longPrompt);
+  const result = await classifyWithConfidence(longPrompt);
   assert.strictEqual(result.pipeline, 'full');
   assert.strictEqual(result.source, 'explicit');
 });
@@ -434,12 +415,29 @@ test('FRONTEND_FRAMEWORKS 全部小寫（env-detector 回傳小寫）', () => {
 
 // ===== 摘要 =====
 
-console.log(`\n========================================`);
-console.log(`Pipeline Catalog 整合測試結果`);
-console.log(`========================================`);
-console.log(`✅ 通過: ${passed}`);
-console.log(`❌ 失敗: ${failed}`);
-console.log(`總計: ${passed + failed}`);
-console.log(`========================================\n`);
+(async () => {
+  if (asyncQueue.length > 0) {
+    console.log('\n🧪 Async Tests');
+    for (const { name, fn } of asyncQueue) {
+      try {
+        await fn();
+        passed++;
+        console.log(`✅ ${name}`);
+      } catch (err) {
+        failed++;
+        console.error(`❌ ${name}`);
+        console.error(`   ${err.message}`);
+      }
+    }
+  }
 
-if (failed > 0) process.exit(1);
+  console.log(`\n========================================`);
+  console.log(`Pipeline Catalog 整合測試結果`);
+  console.log(`========================================`);
+  console.log(`✅ 通過: ${passed}`);
+  console.log(`❌ 失敗: ${failed}`);
+  console.log(`總計: ${passed + failed}`);
+  console.log(`========================================\n`);
+
+  if (failed > 0) process.exit(1);
+})();

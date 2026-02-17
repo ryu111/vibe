@@ -39,7 +39,7 @@ const {
   FRONTEND_FRAMEWORKS, API_ONLY_FRAMEWORKS,
 } = require('../registry.js');
 
-// Classifier (Layer 1/2 only — Layer 3 LLM 由 Agent 取代)
+// Classifier（LLM-first — Layer 1 explicit + Layer 2 LLM）
 const { classifyWithConfidence } = require('./classifier.js');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
@@ -141,13 +141,12 @@ function detectDesignNeed(state, stageId) {
 // ────────────────── 1. classify ──────────────────
 
 /**
- * 快篩 + 分類（UserPromptSubmit hook）
+ * LLM-first 分類（UserPromptSubmit hook）
  *
- * @returns {{ output: Object }} — 要寫到 stdout 的 JSON
+ * @returns {Promise<{ output: Object }>} — 要寫到 stdout 的 JSON
  */
-function classify(sessionId, prompt, options = {}) {
-  // 三層快篩（Layer 1/2）
-  const result = classifyWithConfidence(prompt);
+async function classify(sessionId, prompt, options = {}) {
+  const result = await classifyWithConfidence(prompt);
   const pipelineId = result.pipeline;
   const stages = PIPELINES[pipelineId]?.stages || [];
   const taskType = PIPELINE_TO_TASKTYPE[pipelineId] || 'quickfix';

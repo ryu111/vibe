@@ -852,56 +852,43 @@ console.log('══════════════════════�
 })();
 
 // ═══════════════════════════════════════════════
-// Scenario J: Trivial 分類優先順序（regex 交叉匹配邊界）
-// 驗證 trivial regex 移到 research 之前後，各種衝突場景的正確分類
+// Scenario J: LLM-first 分類行為驗證
+// v4: 移除 regex，分類由 LLM 負責。無 API key → fallback → none/research
 // ═══════════════════════════════════════════════
 
-console.log('\n🎯 Scenario J: Trivial 分類優先順序（regex 交叉匹配）');
+console.log('\n🎯 Scenario J: LLM-first 分類行為（無 API key → fallback）');
 console.log('═══════════════════════════════════════════════════════');
 
 (() => {
-  const sid = 'e2e-trivial-priority';
+  const sid = 'e2e-llm-first';
   try {
-    // J1-J3: Trivial + Research 衝突 — trivial 應優先
-    const trivialResearchCases = [
-      { prompt: '做一個 poc 測試看看', note: 'poc(trivial) + 看看(research)' },
-      { prompt: 'scaffold 一個新專案', note: 'scaffold(trivial)' },
-      { prompt: '簡單的範例 demo', note: '簡單的 範例(trivial)' },
+    // J1-J5: 無 API key，所有非顯式 prompt → none pipeline → research taskType
+    const fallbackCases = [
+      { prompt: '做一個 poc 測試看看', note: 'poc + 看看 → fallback' },
+      { prompt: 'scaffold 一個新專案', note: 'scaffold → fallback' },
+      { prompt: '簡單的範例 demo', note: '簡單 demo → fallback' },
+      { prompt: '建立 hello world express server', note: 'hello world → fallback' },
+      { prompt: 'develop a prototype app', note: 'prototype → fallback' },
     ];
 
-    for (let i = 0; i < trivialResearchCases.length; i++) {
-      const { prompt, note } = trivialResearchCases[i];
+    for (let i = 0; i < fallbackCases.length; i++) {
+      const { prompt, note } = fallbackCases[i];
       initState(sid);
       runHook('task-classifier', { session_id: sid, prompt });
 
-      test(`J${i + 1}: trivial 優先 — ${note}`, () => {
+      test(`J${i + 1}: fallback → none/research — ${note}`, () => {
         const state = readState(sid);
-        assert.strictEqual(state.classification.taskType, 'quickfix');
+        assert.strictEqual(state.classification.pipelineId, 'none');
+        assert.strictEqual(state.classification.taskType, 'research');
+        assert.strictEqual(state.classification.source, 'fallback');
       });
     }
 
-    // J4-J5: Trivial + Feature 衝突 — trivial 意圖明確時應優先
-    const trivialFeatureCases = [
-      { prompt: '建立 hello world express server', note: 'hello world(trivial) > 建立 server(feature)' },
-      { prompt: 'develop a prototype app', note: 'prototype(trivial) > develop(feature)' },
-    ];
-
-    for (let i = 0; i < trivialFeatureCases.length; i++) {
-      const { prompt, note } = trivialFeatureCases[i];
-      initState(sid);
-      runHook('task-classifier', { session_id: sid, prompt });
-
-      test(`J${i + 4}: trivial > feature — ${note}`, () => {
-        const state = readState(sid);
-        assert.strictEqual(state.classification.taskType, 'quickfix');
-      });
-    }
-
-    // J6-J8: 純 Research 不被 trivial 影響（迴歸驗證）
+    // J6-J8: 純 Research（無 API key 也是 fallback → none → research）
     const pureResearchCases = [
-      { prompt: '查看目前的架構', note: '查看(research)，無 trivial 關鍵字' },
-      { prompt: '這個 API 是什麼？', note: '是什麼(research)' },
-      { prompt: 'how does this work?', note: 'how(research)' },
+      { prompt: '查看目前的架構', note: '查看(research) → fallback' },
+      { prompt: '這個 API 是什麼？', note: '是什麼(research) → fallback' },
+      { prompt: 'how does this work?', note: 'how(research) → fallback' },
     ];
 
     for (let i = 0; i < pureResearchCases.length; i++) {
@@ -909,16 +896,17 @@ console.log('══════════════════════�
       initState(sid);
       runHook('task-classifier', { session_id: sid, prompt });
 
-      test(`J${i + 6}: research 迴歸 — ${note}`, () => {
+      test(`J${i + 6}: fallback → none/research — ${note}`, () => {
         const state = readState(sid);
+        assert.strictEqual(state.classification.pipelineId, 'none');
         assert.strictEqual(state.classification.taskType, 'research');
       });
     }
 
-    // J9-J10: 純 Feature 不被影響（迴歸驗證）
+    // J9-J10: 純 Feature prompt（無 API key 也是 fallback）
     const pureFeatureCases = [
-      { prompt: '建立完整的使用者認證系統', note: '建立...系統(feature)，無 trivial' },
-      { prompt: 'implement user authentication', note: 'implement(feature)' },
+      { prompt: '建立完整的使用者認證系統', note: '建立...系統 → fallback' },
+      { prompt: 'implement user authentication', note: 'implement → fallback' },
     ];
 
     for (let i = 0; i < pureFeatureCases.length; i++) {
@@ -926,9 +914,10 @@ console.log('══════════════════════�
       initState(sid);
       runHook('task-classifier', { session_id: sid, prompt });
 
-      test(`J${i + 9}: feature 迴歸 — ${note}`, () => {
+      test(`J${i + 9}: fallback → none/research（無 LLM）— ${note}`, () => {
         const state = readState(sid);
-        assert.strictEqual(state.classification.taskType, 'feature');
+        assert.strictEqual(state.classification.pipelineId, 'none');
+        assert.strictEqual(state.classification.taskType, 'research');
       });
     }
 
