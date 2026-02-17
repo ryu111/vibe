@@ -162,6 +162,7 @@ const KNOWLEDGE_SKILLS = {
     fastify: '/vibe:backend-patterns',
     hono: '/vibe:backend-patterns',
   },
+  common: ['/vibe:coding-standards', '/vibe:testing-patterns'],
 };
 
 // ────────────────── Exports ──────────────────

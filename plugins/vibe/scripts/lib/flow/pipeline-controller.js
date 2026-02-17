@@ -37,6 +37,7 @@ const {
   MAX_RETRIES, QUALITY_STAGES,
   STAGE_CONTEXT, POST_STAGE_HINTS, OPENSPEC_CONTEXT,
   FRONTEND_FRAMEWORKS, API_ONLY_FRAMEWORKS,
+  KNOWLEDGE_SKILLS,
 } = require('../registry.js');
 
 // Classifier（LLM-first — Layer 1 explicit + Layer 2 LLM）
@@ -123,6 +124,44 @@ function buildStageContext(nextStage, prevStage, state) {
   return parts.length > 0 ? '\n' + parts.join('\n') : '';
 }
 
+/**
+ * 根據環境偵測結果建構知識 skill 提示。
+ * @param {object} state - pipeline state（含 environment）
+ * @returns {string} 知識庫提示字串，無匹配時回空字串
+ */
+function buildKnowledgeHints(state) {
+  const env = state.environment || {};
+  const primary = (env.languages?.primary || '').toLowerCase();
+  const secondary = (env.languages?.secondary || [])
+    .filter(s => typeof s === 'string')
+    .map(s => s.toLowerCase());
+  const framework = (env.framework?.name || '').toLowerCase();
+
+  const hints = new Set();
+
+  // 語言匹配
+  const allLangs = primary ? [primary, ...secondary] : secondary;
+  for (const lang of allLangs) {
+    const skill = KNOWLEDGE_SKILLS.languages[lang];
+    if (skill) hints.add(skill);
+  }
+
+  // 框架匹配
+  if (framework) {
+    const skill = KNOWLEDGE_SKILLS.frameworks[framework];
+    if (skill) hints.add(skill);
+  }
+
+  // 有任何語言/框架匹配時，自動加入通用 skills（從 registry 讀取）
+  if (hints.size > 0) {
+    for (const s of (KNOWLEDGE_SKILLS.common || [])) hints.add(s);
+  }
+
+  return hints.size > 0
+    ? `可用知識庫：${[...hints].join(' ')}`
+    : '';
+}
+
 /** 偵測 design 需求（ARCH 完成後） */
 function detectDesignNeed(state, stageId) {
   if (getBaseStage(stageId) !== 'ARCH' || !state.openspecEnabled) return false;
@@ -206,8 +245,10 @@ async function classify(sessionId, prompt, options = {}) {
 
   // trivial/research → additionalContext
   if (stages.length === 0 || pipelineId === 'none') {
+    const kh = buildKnowledgeHints(state);
+    const ctx = kh ? `[分類] ${pipelineId} — 直接回答\n${kh}` : `[分類] ${pipelineId} — 直接回答`;
     return {
-      output: { additionalContext: `[分類] ${pipelineId} — 直接回答` },
+      output: { additionalContext: ctx },
     };
   }
 
@@ -234,20 +275,24 @@ async function classify(sessionId, prompt, options = {}) {
     const stageStr = stages.join(' → ');
     const sourceLabel = result.source === 'explicit' ? `[${pipelineId}]` : pipelineId;
 
+    const kh = buildKnowledgeHints(state);
     return {
       output: {
         systemMessage:
           `⛔ Pipeline ${sourceLabel}（${stageStr}）已建立。\n` +
           `➡️ ${firstHint}`,
+        ...(kh ? { additionalContext: kh } : {}),
       },
     };
   }
 
   // 未知模板 → 指示呼叫 /vibe:pipeline skill（讓 Agent 動態生成 DAG）
+  const kh = buildKnowledgeHints(state);
   return {
     output: {
       systemMessage:
         `⛔ 任務需要自訂 Pipeline。呼叫 /vibe:pipeline skill 啟動 pipeline-architect 分析需求並產出執行計劃。`,
+      ...(kh ? { additionalContext: kh } : {}),
     },
   };
 }
@@ -629,6 +674,7 @@ module.exports = {
   loadState,
   buildDelegationHint,
   buildStageContext,
+  buildKnowledgeHints,
   extractShortAgent,
   MAX_SKIP_ITERATIONS,
 };

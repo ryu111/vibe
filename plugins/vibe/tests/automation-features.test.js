@@ -392,46 +392,162 @@ test('DEV → REVIEW 無額外提示（DEV 不在 POST_STAGE_HINTS 中）', () =
 console.log('\n🧪 Part 3: buildKnowledgeHints — 知識 skills 自動注入');
 // ═══════════════════════════════════════════════
 
-// TODO: v3 重構移除了知識 skill 注入功能（pipeline-controller.classify() 不產出 knowledge hints），
-//       待 pipeline-controller 恢復知識 skill 注入後再啟用這些測試。
+/**
+ * 建立含 environment 的 v3 state（IDLE，無分類）
+ * classify() 讀到此 state 後會保留 environment 並進行分類
+ */
+function createEnvState(sessionId, environment) {
+  return {
+    version: 3,
+    sessionId,
+    classification: null,
+    environment,
+    openspecEnabled: false,
+    needsDesign: false,
+    dag: null,
+    enforced: false,
+    blueprint: null,
+    stages: {},
+    retries: {},
+    pendingRetry: null,
+    meta: {
+      initialized: true,
+      cancelled: false,
+      lastTransition: new Date().toISOString(),
+      reclassifications: [],
+      pipelineRules: [],
+    },
+  };
+}
 
-// test('TypeScript 專案注入 typescript-patterns + coding-standards + testing-patterns', () => { ... });
-// test('Python 專案注入 python-patterns', () => { ... });
-// test('React + TypeScript 專案注入 frontend-patterns + typescript-patterns', () => { ... });
-// test('Express 專案注入 backend-patterns', () => { ... });
-// test('Go 專案注入 go-patterns', () => { ... });
+test('TypeScript 專案注入 typescript-patterns + coding-standards + testing-patterns', () => {
+  const sessionId = 'test-knowledge-1';
+  const statePath = createTempState(sessionId, createEnvState(sessionId, {
+    languages: { primary: 'typescript', secondary: [] },
+    framework: null,
+    packageManager: null,
+    tools: {},
+  }));
+
+  try {
+    const result = runHook('task-classifier.js', {
+      prompt: '建立完整的 TypeScript 系統',
+      session_id: sessionId,
+    });
+
+    const output = JSON.parse(result);
+    const msg = (output.systemMessage || '') + (output.additionalContext || '');
+    assert.ok(msg.includes('/vibe:typescript-patterns'), '應注入 typescript-patterns');
+    assert.ok(msg.includes('/vibe:coding-standards'), '應注入 coding-standards');
+    assert.ok(msg.includes('/vibe:testing-patterns'), '應注入 testing-patterns');
+  } finally {
+    cleanup(statePath);
+  }
+});
+
+test('Python 專案注入 python-patterns', () => {
+  const sessionId = 'test-knowledge-2';
+  const statePath = createTempState(sessionId, createEnvState(sessionId, {
+    languages: { primary: 'python', secondary: [] },
+    framework: null,
+    packageManager: null,
+    tools: {},
+  }));
+
+  try {
+    const result = runHook('task-classifier.js', {
+      prompt: '建立完整的 Python 應用程式',
+      session_id: sessionId,
+    });
+
+    const output = JSON.parse(result);
+    const msg = (output.systemMessage || '') + (output.additionalContext || '');
+    assert.ok(msg.includes('/vibe:python-patterns'), '應注入 python-patterns');
+  } finally {
+    cleanup(statePath);
+  }
+});
+
+test('React + TypeScript 專案注入 frontend-patterns + typescript-patterns', () => {
+  const sessionId = 'test-knowledge-3';
+  const statePath = createTempState(sessionId, createEnvState(sessionId, {
+    languages: { primary: 'typescript', secondary: [] },
+    framework: { name: 'react' },
+    packageManager: null,
+    tools: {},
+  }));
+
+  try {
+    const result = runHook('task-classifier.js', {
+      prompt: '建立 React 元件系統',
+      session_id: sessionId,
+    });
+
+    const output = JSON.parse(result);
+    const msg = (output.systemMessage || '') + (output.additionalContext || '');
+    assert.ok(msg.includes('/vibe:frontend-patterns'), '應注入 frontend-patterns');
+    assert.ok(msg.includes('/vibe:typescript-patterns'), '應注入 typescript-patterns');
+  } finally {
+    cleanup(statePath);
+  }
+});
+
+test('Express 專案注入 backend-patterns', () => {
+  const sessionId = 'test-knowledge-4';
+  const statePath = createTempState(sessionId, createEnvState(sessionId, {
+    languages: { primary: 'javascript', secondary: [] },
+    framework: { name: 'express' },
+    packageManager: null,
+    tools: {},
+  }));
+
+  try {
+    const result = runHook('task-classifier.js', {
+      prompt: '建立 Express API 伺服器',
+      session_id: sessionId,
+    });
+
+    const output = JSON.parse(result);
+    const msg = (output.systemMessage || '') + (output.additionalContext || '');
+    // express 框架會觸發 backend-patterns（+ coding-standards + testing-patterns）
+    // javascript 不在 KNOWLEDGE_SKILLS.languages，所以不注入語言 skill
+    assert.ok(msg.includes('/vibe:backend-patterns'), '應注入 backend-patterns');
+  } finally {
+    cleanup(statePath);
+  }
+});
+
+test('Go 專案注入 go-patterns', () => {
+  const sessionId = 'test-knowledge-5';
+  const statePath = createTempState(sessionId, createEnvState(sessionId, {
+    languages: { primary: 'go', secondary: [] },
+    framework: null,
+    packageManager: null,
+    tools: {},
+  }));
+
+  try {
+    const result = runHook('task-classifier.js', {
+      prompt: '建立 Go 微服務',
+      session_id: sessionId,
+    });
+
+    const output = JSON.parse(result);
+    const msg = (output.systemMessage || '') + (output.additionalContext || '');
+    assert.ok(msg.includes('/vibe:go-patterns'), '應注入 go-patterns');
+  } finally {
+    cleanup(statePath);
+  }
+});
 
 test('無語言偵測時不注入知識 skills', () => {
   const sessionId = 'test-knowledge-6';
-  const statePath = createTempState(sessionId, {
-    phase: 'IDLE',
-    context: {
-      pipelineId: null,
-      taskType: null,
-      expectedStages: [],
-      environment: {
-        languages: { primary: null, secondary: [] },
-        framework: null,
-        packageManager: null,
-        tools: {},
-      },
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: null,
-      stageIndex: 0,
-      completedAgents: [],
-      stageResults: {},
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
-  });
+  const statePath = createTempState(sessionId, createEnvState(sessionId, {
+    languages: { primary: null, secondary: [] },
+    framework: null,
+    packageManager: null,
+    tools: {},
+  }));
 
   try {
     const result = runHook('task-classifier.js', {
@@ -440,16 +556,62 @@ test('無語言偵測時不注入知識 skills', () => {
     });
 
     const output = JSON.parse(result);
-    const msg = output.systemMessage || output.additionalContext || '';
+    const msg = (output.systemMessage || '') + (output.additionalContext || '');
     assert.ok(!msg.includes('可用知識庫'), '無語言偵測時不應注入知識庫提示');
   } finally {
     cleanup(statePath);
   }
 });
 
-// TODO: v3 重構移除了知識 skill 注入功能，待恢復
-// test('research 分類也能注入知識提示', () => { ... });
-// test('多語言專案注入所有匹配的知識 skills', () => { ... });
+test('research 分類（none pipeline）也能注入知識提示', () => {
+  const sessionId = 'test-knowledge-7';
+  const statePath = createTempState(sessionId, createEnvState(sessionId, {
+    languages: { primary: 'typescript', secondary: [] },
+    framework: null,
+    packageManager: null,
+    tools: {},
+  }));
+
+  try {
+    const result = runHook('task-classifier.js', {
+      // 問句觸發 none pipeline
+      prompt: '這個 TypeScript API 怎麼用？',
+      session_id: sessionId,
+    });
+
+    const output = JSON.parse(result);
+    const msg = (output.systemMessage || '') + (output.additionalContext || '');
+    // none pipeline 也應注入知識庫提示（additionalContext 中）
+    assert.ok(msg.includes('可用知識庫'), '即使是 none pipeline 也應注入知識庫提示');
+  } finally {
+    cleanup(statePath);
+  }
+});
+
+test('多語言專案注入所有匹配的知識 skills', () => {
+  const sessionId = 'test-knowledge-8';
+  const statePath = createTempState(sessionId, createEnvState(sessionId, {
+    languages: { primary: 'typescript', secondary: ['python'] },
+    framework: { name: 'next.js' },
+    packageManager: null,
+    tools: {},
+  }));
+
+  try {
+    const result = runHook('task-classifier.js', {
+      prompt: '建立 Next.js 全端應用程式',
+      session_id: sessionId,
+    });
+
+    const output = JSON.parse(result);
+    const msg = (output.systemMessage || '') + (output.additionalContext || '');
+    assert.ok(msg.includes('/vibe:typescript-patterns'), '應注入 typescript-patterns');
+    assert.ok(msg.includes('/vibe:python-patterns'), '應注入 python-patterns');
+    assert.ok(msg.includes('/vibe:frontend-patterns'), '應注入 frontend-patterns');
+  } finally {
+    cleanup(statePath);
+  }
+});
 
 // ═══════════════════════════════════════════════
 console.log('\n🧪 Part 4: Pipeline 完成三步閉環');
