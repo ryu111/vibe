@@ -266,9 +266,10 @@ test('buildClassifierPrompt: 包含回覆格式', () => {
   assert.ok(prompt.includes('systemMessage'), '應包含 systemMessage 欄位說明');
 });
 
-test('buildClassifierPrompt: 包含所有 pipeline ID', () => {
+test('buildClassifierPrompt: 包含所有有效 pipeline ID', () => {
   const prompt = buildClassifierPrompt();
-  const ids = ['full', 'standard', 'quick-dev', 'fix', 'test-first', 'ui-only', 'review-only', 'docs-only', 'security', 'none'];
+  // none 是隱式的（不確定 → allow），不在 prompt 中顯式列出
+  const ids = ['full', 'standard', 'quick-dev', 'fix', 'test-first', 'ui-only', 'review-only', 'docs-only', 'security'];
   for (const id of ids) {
     assert.ok(prompt.includes(id), `應包含 pipeline ${id}`);
   }

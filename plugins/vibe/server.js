@@ -25,16 +25,57 @@ let sessions = {};
 const clients = new Set();
 const timelineConsumers = new Map(); // sessionId → consumer
 
+/** 判斷 session 是否值得顯示在 Dashboard */
+function isDisplayWorthy(state) {
+  if (!state) return false;
+  // 有 DAG（活躍/已完成 pipeline）→ 顯示
+  if (state.dag && Object.keys(state.dag).length > 0) return true;
+  // 有非 none 分類 → 顯示
+  if (state.classification?.pipelineId && state.classification.pipelineId !== 'none') return true;
+  // v2 相容
+  if (state.expectedStages?.length > 0) return true;
+  return false;
+}
+
 function scanSessions() {
   if (!existsSync(CLAUDE_DIR)) return {};
   const out = {};
   for (const f of readdirSync(CLAUDE_DIR)) {
     if (!f.startsWith('pipeline-state-') || !f.endsWith('.json')) continue;
     try {
-      out[f.slice(15, -5)] = JSON.parse(readFileSync(join(CLAUDE_DIR, f), 'utf8'));
+      const state = JSON.parse(readFileSync(join(CLAUDE_DIR, f), 'utf8'));
+      if (isDisplayWorthy(state)) {
+        out[f.slice(15, -5)] = state;
+      }
     } catch { /* 忽略損壞檔案 */ }
   }
   return out;
+}
+
+/** 自動清理空/過期 state 檔案 */
+function autoCleanup() {
+  if (!existsSync(CLAUDE_DIR)) return;
+  const now = Date.now();
+  let changed = false;
+  for (const f of readdirSync(CLAUDE_DIR)) {
+    if (!f.startsWith('pipeline-state-') || !f.endsWith('.json')) continue;
+    const fp = join(CLAUDE_DIR, f);
+    try {
+      const state = JSON.parse(readFileSync(fp, 'utf8'));
+      // 空 session（無 DAG、無分類）且超過 30 分鐘 → 清理
+      if (!isDisplayWorthy(state)) {
+        const mtime = statSync(fp).mtimeMs;
+        if (now - mtime > 30 * 60 * 1000) {
+          const sid = f.slice(15, -5);
+          unlinkSync(fp);
+          delete sessions[sid];
+          stopTimelineConsumer(sid);
+          changed = true;
+        }
+      }
+    } catch { /* 忽略 */ }
+  }
+  if (changed) broadcast({ type: 'update', sessions });
 }
 
 function broadcast(msg) {
@@ -151,10 +192,16 @@ if (existsSync(CLAUDE_DIR)) {
       const fp = join(CLAUDE_DIR, filename);
       try {
         if (existsSync(fp)) {
-          sessions[sid] = JSON.parse(readFileSync(fp, 'utf8'));
-          // 新 session 出現 → 啟動 consumer
-          if (!timelineConsumers.has(sid)) {
-            startTimelineConsumer(sid);
+          const state = JSON.parse(readFileSync(fp, 'utf8'));
+          if (isDisplayWorthy(state)) {
+            sessions[sid] = state;
+            // 新 session 出現 → 啟動 consumer
+            if (!timelineConsumers.has(sid)) {
+              startTimelineConsumer(sid);
+            }
+          } else {
+            // 不值得顯示 → 從廣播移除（但保留檔案）
+            if (sessions[sid]) delete sessions[sid];
           }
         } else {
           delete sessions[sid];
@@ -167,12 +214,32 @@ if (existsSync(CLAUDE_DIR)) {
   });
 }
 
+/** Pipeline 100% 完成 */
+function pct100(state) {
+  if (!state?.dag) return false;
+  const dagKeys = Object.keys(state.dag);
+  if (!dagKeys.length) return false;
+  const stages = state.stages || {};
+  return dagKeys.every(id => stages[id]?.status === 'completed' || stages[id]?.status === 'skipped');
+}
+
+/** 過期 session（1h 無活動 + 未完成） */
+function isStaleSession(state) {
+  if (!state) return true;
+  const last = state.meta?.lastTransition || state.lastTransition;
+  if (!last) return true;
+  return (Date.now() - new Date(last).getTime()) > 3600_000;
+}
+
 sessions = scanSessions();
 
 // 啟動已存在 session 的 Timeline consumer
 for (const sid of Object.keys(sessions)) {
   startTimelineConsumer(sid);
 }
+
+// 定時清理空 state（每 5 分鐘）
+setInterval(autoCleanup, 5 * 60 * 1000);
 
 // --- MIME ---
 const MIME = {
@@ -204,6 +271,22 @@ Bun.serve({
     // 查詢連線中的 WebSocket 客戶端數
     if (url.pathname === '/api/clients') {
       return Response.json({ count: clients.size });
+    }
+
+    // 批次清理 stale sessions
+    if (url.pathname === '/api/sessions/cleanup' && req.method === 'POST') {
+      let cleaned = 0;
+      for (const [sid, state] of Object.entries({ ...sessions })) {
+        if (pct100(state) || isStaleSession(state)) {
+          const fp = join(CLAUDE_DIR, `pipeline-state-${sid}.json`);
+          try { if (existsSync(fp)) unlinkSync(fp); } catch {}
+          stopTimelineConsumer(sid);
+          delete sessions[sid];
+          cleaned++;
+        }
+      }
+      if (cleaned > 0) broadcast({ type: 'update', sessions });
+      return Response.json({ ok: true, cleaned });
     }
 
     // 刪除 session state 檔案

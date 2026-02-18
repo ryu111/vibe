@@ -116,10 +116,6 @@ function buildPipelineCatalogHint() {
  * @returns {string}
  */
 function buildClassifierPrompt() {
-  const catalog = Object.entries(PIPELINES)
-    .map(([id, p]) => `- ${id}: ${p.description}`)
-    .join('\n');
-
   return [
     '你是開發任務分類器。你的唯一工作是判斷使用者輸入適合哪個 pipeline。你不是安全警衛，不要阻擋任何東西。',
     '',

@@ -41,26 +41,34 @@
     /* Session Card */
     .sc { padding: 8px 10px; border-radius: 8px; cursor: pointer; transition: all 0.2s; border: 1px solid transparent; position: relative; }
     .sc:hover { background: var(--surface1); }
-    .sc.active { background: var(--surface1); border-color: var(--blue); }
-    .sc.idle { opacity: 0.5; }
-    .sc.idle:hover { opacity: 0.8; }
-    .sc.zombie { opacity: 0.4; border-color: var(--orange); border-style: dashed; }
-    .sc.zombie:hover { opacity: 0.7; }
+    .sc.selected { background: var(--surface1); border-color: var(--blue); }
+    .sc.live { border-color: var(--green); box-shadow: 0 0 8px rgba(166,227,161,0.15); }
+    .sc.live.selected { border-color: var(--green); box-shadow: 0 0 12px rgba(166,227,161,0.2); }
+    .sc.done { opacity: 0.55; }
+    .sc.done:hover { opacity: 0.8; }
+    .sc.stale { opacity: 0.4; }
+    .sc.stale:hover { opacity: 0.7; }
     .sc .x { position: absolute; top: 3px; right: 5px; width: 16px; height: 16px; border-radius: 50%; background: var(--surface2); color: var(--text); font-size: 9px; line-height: 16px; text-align: center; cursor: pointer; opacity: 0; transition: all 0.2s; border: none; font-family: inherit; }
     .sc:hover .x { opacity: 0.5; }
     .sc .x:hover { opacity: 1; background: var(--red); color: var(--bg); }
-    .sc-id { font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sc-title { font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sc-title .badge { font-size: 8px; padding: 1px 4px; border-radius: 3px; font-weight: 400; }
+    .sc-title .badge.pass { background: rgba(166,227,161,0.2); color: var(--green); }
+    .sc-title .badge.fail { background: rgba(243,139,168,0.2); color: var(--red); }
     .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: livePulse 2s ease infinite; flex-shrink: 0; }
+    .sc-sub { font-size: 9px; color: var(--overlay0); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .sc-meta { font-size: 10px; color: var(--subtext0); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .sc-bar { height: 3px; background: var(--surface1); border-radius: 2px; margin-top: 4px; overflow: hidden; }
     .sc-bar-fill { height: 100%; background: linear-gradient(90deg, var(--blue), var(--green)); border-radius: 2px; transition: width 0.5s; }
-    .cleanup-btn { font-size: 9px; color: var(--orange); background: none; border: 1px solid var(--orange); border-radius: 3px; padding: 1px 6px; cursor: pointer; font-family: inherit; transition: all 0.2s; }
-    .cleanup-btn:hover { background: var(--orange); color: var(--bg); }
-    .zombie-sub { font-size: 9px; color: var(--orange); margin-top: 1px; }
+    .sc-bar-fill.complete { background: var(--green); }
+    .cleanup-btn { font-size: 9px; color: var(--subtext0); background: none; border: 1px solid var(--surface2); border-radius: 3px; padding: 1px 6px; cursor: pointer; font-family: inherit; transition: all 0.2s; }
+    .cleanup-btn:hover { background: var(--red); color: var(--bg); border-color: var(--red); }
+    .stale-toggle { font-size: 9px; color: var(--overlay0); background: none; border: none; cursor: pointer; font-family: inherit; padding: 4px 4px 2px; display: flex; align-items: center; gap: 4px; width: 100%; border-top: 1px solid var(--surface1); margin-top: 6px; transition: color 0.2s; }
+    .stale-toggle:hover { color: var(--subtext0); }
 
     /* Collapsed sidebar mini cards */
     .collapsed .sc { padding: 6px; text-align: center; }
-    .collapsed .sc-id, .collapsed .sc-meta, .collapsed .sc-bar, .collapsed .zombie-sub, .collapsed .sc .x, .collapsed .group-hdr, .collapsed .group-sep, .collapsed .cleanup-btn { display: none; }
+    .collapsed .sc-title, .collapsed .sc-sub, .collapsed .sc-meta, .collapsed .sc-bar, .collapsed .sc .x, .collapsed .group-hdr, .collapsed .group-sep, .collapsed .cleanup-btn, .collapsed .stale-toggle { display: none; }
     .collapsed .sc::before { content: attr(data-pct); font-size: 9px; color: var(--subtext0); }
 
     @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
@@ -366,7 +374,7 @@
     .pixel .group-hdr h2,
     .pixel .card h3, .pixel .summary h3, .pixel .timeline h3,
     .pixel .empty .hint,
-    .pixel .sc-id,
+    .pixel .sc-title,
     .pixel .deco-board { font-family: 'Press Start 2P', monospace !important; }
     .pixel .layout { border: 4px solid #55ff55; }
 
@@ -396,7 +404,7 @@
     .pixel .light-row { font-size: 10px; }
     .pixel .tl-item { font-size: 10px; }
     .pixel .tl-item .time { font-size: 10px; }
-    .pixel .sc-id { font-size: 10px; }
+    .pixel .sc-title { font-size: 10px; }
     .pixel .sc-meta { font-size: 10px; }
     .pixel .task-badge { font-size: 10px; }
     .pixel .conn-indicator { font-size: 10px; }
@@ -822,17 +830,39 @@
     }
     function hasPipeline(s) { return (s?.expectedStages?.length || 0) > 0; }
     function isLive(s) { return s?.delegationActive || false; }
-    function sid(id) { return id?.length > 12 ? id.slice(0, 12) + '…' : id || '—'; }
-    function isZombie(s) {
-      if (!s?.lastTransition) return true;
-      const age = Date.now() - new Date(s.lastTransition).getTime();
-      const oneHour = 3600_000;
-      if (age > oneHour && pct(s) < 100 && !s.delegationActive) return true;
-      if (!hasPipeline(s) && !s.taskType && age > oneHour / 2) return true;
-      return false;
+    function sid(id) { return id?.length > 8 ? id.slice(0, 8) : id || '—'; }
+    /** Session 分類：live > active > done > stale */
+    function sessionCategory(s) {
+      if (!s) return 'stale';
+      const hasStages = hasPipeline(s);
+      if (s.delegationActive) return 'live';
+      if (hasStages && pct(s) >= 100) return 'done';
+      if (hasStages) return 'active';
+      // 無 pipeline
+      const last = s.lastTransition || s.startedAt;
+      if (!last) return 'stale';
+      const age = Date.now() - new Date(last).getTime();
+      if (age > 1800_000) return 'stale'; // 30 min
+      return 'active'; // 近期有活動的非 pipeline session
+    }
+    /** Session 顯示名稱：pipeline 類型 > taskType > 研究模式 */
+    function sessionName(s) {
+      const pid = s?.pipelineId || s?.taskType;
+      if (pid) return typeLabel(pid);
+      return '研究模式';
+    }
+    /** 當前 stage 名稱 */
+    function currentStageName(s) {
+      const cur = getCurrent(s);
+      if (!cur) return null;
+      const meta = SM[cur];
+      return meta ? `${meta.emoji} ${meta.label}` : cur;
     }
     async function deleteSession(id) {
       try { await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }); } catch {}
+    }
+    async function cleanupStale() {
+      try { await fetch('/api/sessions/cleanup', { method: 'POST' }); } catch {}
     }
     function now() { return new Date().toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
     function elapsed(iso) {
@@ -1388,19 +1418,23 @@
       const prevRef = useRef({});
       const confettiShown = useRef(new Set());
 
-      // 分組 + 排序
-      const { pipeline: pipeSessions, zombie: zombieSessions, idle: idleSessions } = useMemo(() => {
-        const pipe = [], zombie = [], idle = [];
+      // 分組：live + active | done | stale
+      const [showStale, setShowStale] = useState(false);
+      const { liveSessions, doneSessions, staleSessions } = useMemo(() => {
+        const live = [], done = [], stale = [];
         for (const [id, s] of Object.entries(sessions)) {
-          if (isZombie(s)) zombie.push([id, s]);
-          else if (hasPipeline(s)) pipe.push([id, s]);
-          else idle.push([id, s]);
+          const cat = sessionCategory(s);
+          if (cat === 'live' || cat === 'active') live.push([id, s]);
+          else if (cat === 'done') done.push([id, s]);
+          else stale.push([id, s]);
         }
         const sortFn = sort === 'progress' ? (a, b) => pct(b[1]) - pct(a[1])
           : sort === 'type' ? (a, b) => (a[1].pipelineId || a[1].taskType || '').localeCompare(b[1].pipelineId || b[1].taskType || '')
           : (a, b) => new Date(b[1].lastTransition || 0) - new Date(a[1].lastTransition || 0);
-        pipe.sort(sortFn);
-        return { pipeline: pipe, zombie, idle };
+        live.sort(sortFn);
+        done.sort((a, b) => new Date(b[1].lastTransition || 0) - new Date(a[1].lastTransition || 0));
+        stale.sort((a, b) => new Date(b[1].lastTransition || 0) - new Date(a[1].lastTransition || 0));
+        return { liveSessions: live, doneSessions: done, staleSessions: stale };
       }, [sessions, sort]);
 
       // --- 計算值（必須在 useEffect 之前）---
@@ -1482,7 +1516,7 @@
         function onKey(e) {
           if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
           if (e.metaKey || e.ctrlKey) return;
-          const sids = [...pipeSessions, ...idleSessions, ...zombieSessions].map(([id]) => id);
+          const sids = [...liveSessions, ...doneSessions, ...staleSessions].map(([id]) => id);
           const idx = sids.indexOf(active);
           switch(e.key) {
             case 'ArrowUp': case 'k': e.preventDefault(); if (idx > 0) selectSession(sids[idx - 1]); break;
@@ -1501,7 +1535,7 @@
         }
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-      }, [active, pipeSessions, idleSessions, zombieSessions, s, events]);
+      }, [active, liveSessions, doneSessions, staleSessions, s, events]);
 
       function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2000); }
 
@@ -1510,14 +1544,14 @@
         const sids = Object.keys(sessions);
         if (!sids.length) return;
         // 找到正在工作的 session（delegationActive）
-        const liveSid = pipeSessions.find(([, ss]) => ss.delegationActive)?.[0];
+        const liveSid = liveSessions.find(([, ss]) => ss.delegationActive)?.[0];
         // 如果有活躍 session 且不是當前選的 → 自動切換
         if (liveSid && liveSid !== active) { selectSession(liveSid); return; }
         // 如果當前 active 已消失 → 選最近的
         if (!active || !sessions[active]) {
-          setActive(pipeSessions[0]?.[0] || sids[sids.length - 1]);
+          setActive(liveSessions[0]?.[0] || doneSessions[0]?.[0] || sids[sids.length - 1]);
         }
-      }, [sessions, pipeSessions]);
+      }, [sessions, liveSessions]);
 
       // Timeline 追蹤
       useEffect(() => {
@@ -1565,46 +1599,51 @@
                 </div>
               `}
 
-              ${pipeSessions.length > 0 && html`
-                <div class="group-hdr"><h2>Sessions</h2><span class="count">${pipeSessions.length}</span></div>
-                ${pipeSessions.map(([id, ss]) => html`
-                  <div class="sc ${id === active ? 'active' : ''}" data-pct="${pct(ss)}%" onClick=${() => selectSession(id)}>
-                    <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
-                    <div class="sc-id">${isLive(ss) && html`<span class="live-dot"></span>`}${sid(id)}</div>
-                    <div class="sc-meta">${typeLabel(ss.pipelineId || ss.taskType)} · ${pct(ss)}% · ${elapsed(ss.startedAt || ss.lastTransition)}</div>
-                    <div class="sc-bar"><div class="sc-bar-fill" style="width:${pct(ss)}%"></div></div>
-                    ${ss.resources && html`
-                      <div class="sc-res">
-                        <div class="sc-res-item">CPU <div class="sc-res-bar"><div class="sc-res-fill cpu" style="width:${ss.resources.cpu || 0}%"></div></div> ${ss.resources.cpu || 0}%</div>
-                        <div class="sc-res-item">RAM <div class="sc-res-bar"><div class="sc-res-fill ram" style="width:${Math.min(100, (ss.resources.ram || 0) / 5.12)}%"></div></div> ${ss.resources.ram || 0}M</div>
+              ${liveSessions.length > 0 && html`
+                <div class="group-hdr"><h2>進行中</h2><span class="count">${liveSessions.length}</span></div>
+                ${liveSessions.map(([id, ss]) => {
+                  const cat = sessionCategory(ss);
+                  const p = pct(ss);
+                  const stage = currentStageName(ss);
+                  return html`
+                    <div class="sc ${cat} ${id === active ? 'selected' : ''}" data-pct="${p}%" onClick=${() => selectSession(id)} title=${id}>
+                      <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
+                      <div class="sc-title">
+                        ${isLive(ss) && html`<span class="live-dot"></span>`}
+                        ${sessionName(ss)}
                       </div>
-                    `}
-                  </div>
-                `)}
+                      <div class="sc-sub">${sid(id)} · ${elapsed(ss.startedAt || ss.lastTransition)}</div>
+                      ${stage && html`<div class="sc-meta">${stage}${p > 0 ? ` · ${p}%` : ''}</div>`}
+                      ${hasPipeline(ss) && html`<div class="sc-bar"><div class="sc-bar-fill" style="width:${p}%"></div></div>`}
+                    </div>`;
+                })}
               `}
 
-              ${idleSessions.length > 0 && html`
-                <div class="group-sep">閒置 (${idleSessions.length})</div>
-                ${idleSessions.map(([id, ss]) => html`
-                  <div class="sc idle ${id === active ? 'active' : ''}" data-pct="—" onClick=${() => selectSession(id)}>
-                    <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
-                    <div class="sc-id">${sid(id)}</div>
-                    <div class="sc-meta">${(ss.pipelineId || ss.taskType) ? typeLabel(ss.pipelineId || ss.taskType) : '初始化'}</div>
-                  </div>
-                `)}
-              `}
-
-              ${zombieSessions.length > 0 && html`
-                <div class="group-sep" style="display:flex;align-items:center;justify-content:space-between">
-                  <span>💀 殭屍 (${zombieSessions.length})</span>
-                  <button class="cleanup-btn" onClick=${() => zombieSessions.forEach(([id]) => deleteSession(id))}>全部清理</button>
+              ${doneSessions.length > 0 && html`
+                <div class="group-sep">
+                  <span>已完成 (${doneSessions.length})</span>
+                  <button class="cleanup-btn" onClick=${() => doneSessions.forEach(([id]) => deleteSession(id))}>清理</button>
                 </div>
-                ${zombieSessions.map(([id, ss]) => html`
-                  <div class="sc zombie ${id === active ? 'active' : ''}" data-pct="💀" onClick=${() => selectSession(id)}>
+                ${doneSessions.map(([id, ss]) => html`
+                  <div class="sc done ${id === active ? 'selected' : ''}" data-pct="✅" onClick=${() => selectSession(id)} title=${id}>
                     <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
-                    <div class="sc-id">💀 ${sid(id)}</div>
-                    <div class="sc-meta">${typeLabel(ss.pipelineId || ss.taskType)} · ${elapsed(ss.lastTransition)} 未活動</div>
-                    <div class="zombie-sub">${hasPipeline(ss) ? `${pct(ss)}% 停滯` : '無 pipeline'}</div>
+                    <div class="sc-title">✅ ${sessionName(ss)}</div>
+                    <div class="sc-sub">${sid(id)} · ${elapsed(ss.lastTransition)}</div>
+                  </div>
+                `)}
+              `}
+
+              ${staleSessions.length > 0 && html`
+                <div class="stale-toggle" onClick=${() => setShowStale(p => !p)}>
+                  <span>${showStale ? '▾' : '▸'}</span>
+                  <span>過期 (${staleSessions.length})</span>
+                  <button class="cleanup-btn" style="margin-left:auto" onClick=${e => { e.stopPropagation(); cleanupStale(); }}>清理</button>
+                </div>
+                ${showStale && staleSessions.map(([id, ss]) => html`
+                  <div class="sc stale ${id === active ? 'selected' : ''}" data-pct="—" onClick=${() => selectSession(id)} title=${id}>
+                    <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
+                    <div class="sc-title">${sessionName(ss)}</div>
+                    <div class="sc-sub">${sid(id)} · ${elapsed(ss.lastTransition)} 前</div>
                   </div>
                 `)}
               `}
