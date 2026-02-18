@@ -429,6 +429,7 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
     return {
       systemMessage:
         `🔄 ${currentStage} FAIL:${verdict?.severity}（${retryCount + 1}/${MAX_RETRIES}）\n` +
+        `⚠️ 禁止直接修改程式碼。必須透過 /vibe:dev 委派 developer agent 修復。\n` +
         `➡️ ${devHint}`,
     };
   }
@@ -505,10 +506,16 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
     ? `${readyStages.join(' + ')}（並行）`
     : readyStages[0];
 
+  // 品質階段完成後：強制禁止 Main Agent 自行修復
+  const qualityWarning = QUALITY_STAGES.includes(getBaseStage(currentStage))
+    ? '\n⚠️ 如上述報告含問題，所有修復**必須**透過 /vibe:dev 委派 developer agent。' +
+      '禁止使用 Write/Edit/Bash 直接修改程式碼 — pipeline-guard 會阻擋。'
+    : '';
+
   return {
     systemMessage:
       `✅ ${currentStage} → ${label}\n` +
-      `➡️ ${hints.join(' + ')}${stageContext}`,
+      `➡️ ${hints.join(' + ')}${stageContext}${qualityWarning}`,
   };
 }
 

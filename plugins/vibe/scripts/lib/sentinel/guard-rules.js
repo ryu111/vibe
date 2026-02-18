@@ -204,12 +204,23 @@ function evaluate(toolName, toolInput, state) {
         return { decision: 'allow' };
       }
     }
+    // RETRYING 特殊提示：品質階段失敗 → 必須經 DEV 修復
+    if (phase === PHASES.RETRYING) {
+      return {
+        decision: 'block',
+        reason: 'must-delegate-retry',
+        message:
+          `⛔ 品質階段失敗，等待 DEV 修復 — 禁止 ${toolName}。\n` +
+          `你是路由器（Router），不是執行者。所有程式碼修復必須透過 /vibe:dev 委派 developer agent。\n` +
+          `➡️ 下一步：${buildDelegateHint(state)}\n`,
+      };
+    }
     return {
       decision: 'block',
       reason: 'must-delegate',
       message:
         `⛔ Pipeline [${getPipelineId(state)}] 等待委派 — 禁止 ${toolName}。\n` +
-        `請使用 Skill 或 Task 工具委派 sub-agent 執行此任務。\n` +
+        `你是路由器（Router），不是執行者。請使用 Skill 或 Task 工具委派 sub-agent 執行此任務。\n` +
         `➡️ 下一步：${buildDelegateHint(state)}\n`,
     };
   }
@@ -231,7 +242,8 @@ function evaluate(toolName, toolInput, state) {
       reason: 'pipeline-enforced',
       message:
         `⛔ Pipeline 模式下禁止直接使用 ${toolName} 寫程式碼。\n` +
-        `你是管理者（Orchestrator），不是執行者。\n` +
+        `你是路由器（Router），不是執行者。所有程式碼變更必須透過 sub-agent 完成。\n` +
+        `如需修復問題 → /vibe:dev 委派 developer agent。\n` +
         `➡️ 下一步：${buildDelegateHint(state)}\n`,
     };
   }

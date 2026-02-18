@@ -209,6 +209,8 @@
     .ac-chip.skill { font-size: 9px; padding: 2px 6px; opacity: 0.4; transition: opacity 0.3s, background 0.3s; border: 1px solid rgba(69,71,90,0.2); }
     .ac-chip.skill-on { opacity: 1; background: rgba(166,227,161,0.15); color: var(--green); font-weight: 600; border-color: rgba(166,227,161,0.3); }
     .agent-dur { font-size: 10px; color: var(--subtext0); text-align: right; font-variant-numeric: tabular-nums; }
+    .agent-group-label { font-size: 9px; color: var(--overlay0); text-transform: uppercase; letter-spacing: 1.2px; padding: 6px 4px 2px; }
+    .agent-sep { border-top: 1px dashed rgba(69,71,90,0.3); margin: 4px 0; }
     .ac-chip.retry-chip { background: rgba(250,179,135,0.15); color: var(--orange); font-weight: 700; font-size: 9px; }
     /* MCP 統計 */
     .mcp-stats { background: var(--surface0); border-radius: 10px; padding: 12px 16px; border: 1px solid var(--surface1); }
@@ -786,9 +788,17 @@
         .map(id => stages[id]?.agent)
         .filter(Boolean);
 
+      const skippedStages = dagKeys.filter(id => stages[id]?.status === 'skipped');
+      // Pipeline 完成旗標（所有 stage 都是 completed/skipped/failed）
+      const isPipelineComplete = dagKeys.length > 0 && dagKeys.every(id => {
+        const st = stages[id]?.status;
+        return st === 'completed' || st === 'skipped' || st === 'failed';
+      });
+
       return {
         ...raw,
         expectedStages: dagKeys,
+        isPipelineComplete,
         stageResults,
         currentStage: activeStage,
         delegationActive: !!activeStage,
@@ -797,7 +807,7 @@
         lastTransition: raw.meta?.lastTransition || null,
         startedAt: raw.classification?.classifiedAt || null,
         completed,
-        skippedStages: dagKeys.filter(id => stages[id]?.status === 'skipped'),
+        skippedStages,
         retries: raw.retries || {},
         environment: raw.environment || {},
       };
@@ -1205,13 +1215,15 @@
     }
 
     // --- Agent 狀態面板 ---
-    function getAgentInfo(agent, s, askPending, events) {
+    function getAgentInfo(agent, s, askPending, events, alive) {
       let status = 'idle', statusLabel = '閒置', dur = null, tools = null, retries = 0;
 
       if (agent.id === 'main') {
         // Main Agent：閒置/等待/委派/運行
-        if (!s || !s.taskType) { /* 尚未分類 → 閒置 */ }
-        else if (askPending) { status = 'waiting'; statusLabel = '等待回覆'; }
+        // alive===false 表示 session heartbeat 已消失 → 強制 idle（undefined=未知，不影響）
+        if (alive === false) { /* session 已結束 → 閒置 */ }
+        else if (!s || !s.taskType) { /* 尚未分類 → 閒置 */ }
+        else if (askPending) { /* 等待使用者輸入 = 閒置 */ }
         else { status = s.delegationActive ? 'delegating' : 'running'; statusLabel = s.delegationActive ? '委派中' : '運行中'; }
       } else {
         // 所有 sub-agents：事件驅動偵測（適用 pipeline + support + system）
@@ -1238,8 +1250,8 @@
             status = 'completed'; statusLabel = '完成';
           }
         }
-        // 4. Pipeline 排程：待命/等待/跳過
-        if (status === 'idle' && agent.stage && s?.expectedStages?.includes(agent.stage)) {
+        // 4. Pipeline 排程：待命/等待/跳過（pipeline 完成後跳過，避免顯示待命）
+        if (status === 'idle' && !s?.isPipelineComplete && agent.stage && s?.expectedStages?.includes(agent.stage)) {
           const st = getStatus(agent.stage, s);
           if (st === 'next') { status = 'standby'; statusLabel = '待命'; }
           else if (st === 'skipped') { status = 'skipped'; statusLabel = '跳過'; }
@@ -1252,59 +1264,72 @@
       return { ...agent, status, statusLabel, dur, tools, retries, isActive, skillsLit };
     }
 
-    function AgentStatus({ s, tick, events, taskLabel }) {
+    function AgentStatus({ s, tick, events, taskLabel, alive }) {
       // 偵測 AskUserQuestion 等待中（最新事件是 ask.question = 正在等待回覆）
       const askPending = useMemo(() => {
         if (!events?.length) return false;
-        // events[0] 是最新事件；如果是 ask.question 表示正在等使用者回覆
-        // 使用者回覆後會產生新的 tool.used 等事件，自動解除
         return events[0]?.eventType === 'ask.question';
       }, [events]);
       // 每個 agent 獨立計時器（agent 變 active 時記錄起始時間）
       const timers = useRef({});
-      const allAgents = AGENT_ROSTER.map(a => getAgentInfo(a, s, askPending, events));
-      // 同步計時器狀態（只在 running 時計時，delegating/waiting 暫停）
+      const allAgents = AGENT_ROSTER.map(a => getAgentInfo(a, s, askPending, events, alive));
+      // 同步計時器狀態（只在 running 時計時，delegating 暫停）
       allAgents.forEach(a => {
         const shouldTimer = a.status === 'running';
         if (shouldTimer && !timers.current[a.id]) timers.current[a.id] = Date.now();
         else if (!shouldTimer) delete timers.current[a.id];
       });
-      // 排除法：隱藏閒置/已完成的，其餘都顯示（error/running/delegating/waiting 等）
-      const HIDDEN_STATUSES = ['idle', 'completed', 'standby', 'pending', 'skipped'];
-      const activeAgents = allAgents.filter(a => !HIDDEN_STATUSES.includes(a.status));
+      // 統計數據
+      const activeCount = allAgents.filter(a => a.isActive).length;
+      const completedCount = allAgents.filter(a => a.status === 'completed').length;
+      const totalDur = allAgents.reduce((sum, a) => sum + (a.dur || 0), 0);
+      // 分組（系統/Pipeline/輔助）
+      const groups = [
+        { label: '系統', agents: allAgents.filter(a => a.group === 'system') },
+        { label: 'PIPELINE', agents: allAgents.filter(a => a.group === 'pipeline') },
+        { label: '輔助', agents: allAgents.filter(a => a.group === 'support') },
+      ];
 
-      // 沒有活躍 agent → 面板隱藏
-      if (activeAgents.length === 0) return null;
+      const renderRow = (a) => {
+        let durText = '';
+        if (a.status === 'running' && timers.current[a.id]) {
+          durText = fmtSec(Math.round((Date.now() - timers.current[a.id]) / 1000));
+        } else if (a.dur) {
+          durText = fmtSec(a.dur);
+        }
+        return html`
+          <div class="agent-row">
+            <span class="al ${a.status}"></span>
+            <span class="agent-name" style="${a.isActive ? `color:${a.color}` : ''}">${a.emoji} ${a.name}</span>
+            <span class="ac-chip">${a.role}</span>
+            <span class="ac-chip model">${a.model}</span>
+            <span class="ac-chip st-${a.status}">${a.statusLabel}</span>
+            <div class="agent-extra">
+              ${a.retries > 0 && html`<span class="ac-chip retry-chip">↻${a.retries}</span>`}
+              ${(a.skills || []).map(sk => html`<span class="ac-chip skill ${a.skillsLit ? 'skill-on' : ''}">${sk}</span>`)}
+              ${a.tools && html`<span class="ac-chip skill-on">🔧${a.tools}</span>`}
+            </div>
+            <span class="agent-dur">${durText}</span>
+          </div>
+        `;
+      };
 
       return html`
         <div class="agent-panel">
           <div class="agent-panel-hdr">
-            <h3>🤖 活躍 Agents${taskLabel ? html` <span class="task-badge">${taskLabel}</span>` : ''}</h3>
+            <h3>🤖 Agents 當前狀態${taskLabel ? html` <span class="task-badge">${taskLabel}</span>` : ''}</h3>
             <div class="agent-panel-stats">
-              <span class="agent-panel-stat">活躍 <span class="num">${activeAgents.length}</span></span>
+              <span class="agent-panel-stat">活躍 <span class="num">${activeCount}</span></span>
+              <span class="agent-panel-stat">完成 <span class="num">${completedCount}</span></span>
+              ${totalDur > 0 && html`<span class="agent-panel-stat">耗時 <span class="num">${fmtSec(totalDur)}</span></span>`}
+              <span class="agent-panel-stat">共 <span class="num">${allAgents.length}</span></span>
             </div>
           </div>
-          ${activeAgents.map(a => {
-            // 時長：活躍中 → 獨立即時計時
-            let durText = '';
-            if (a.status === 'running' && timers.current[a.id]) {
-              durText = fmtSec(Math.round((Date.now() - timers.current[a.id]) / 1000));
-            }
-            return html`
-            <div class="agent-row">
-              <span class="al ${a.status}"></span>
-              <span class="agent-name" style="${a.isActive ? `color:${a.color}` : ''}">${a.emoji} ${a.name}</span>
-              <span class="ac-chip">${a.role}</span>
-              <span class="ac-chip model">${a.model}</span>
-              <span class="ac-chip st-${a.status}">${a.statusLabel}</span>
-              <div class="agent-extra">
-                ${a.retries > 0 && html`<span class="ac-chip retry-chip">↻${a.retries}</span>`}
-                ${(a.skills || []).map(sk => html`<span class="ac-chip skill ${a.skillsLit ? 'skill-on' : ''}">${sk}</span>`)}
-                ${a.tools && html`<span class="ac-chip skill-on">🔧${a.tools}</span>`}
-              </div>
-              <span class="agent-dur">${durText}</span>
-            </div>
-          `})}
+          ${groups.map((g, gi) => html`
+            ${gi > 0 && html`<div class="agent-sep"></div>`}
+            <div class="agent-group-label">${g.label}</div>
+            ${g.agents.map(renderRow)}
+          `)}
         </div>
       `;
     }
@@ -1714,7 +1739,7 @@
               ${mainTab === 'dashboard' && html`
               <div class="dash-grid">
                 <div class="dash-left">
-                  <${AgentStatus} s=${s} tick=${tick} events=${tlAll} taskLabel=${(s.pipelineId || s.taskType) ? typeLabel(s.pipelineId || s.taskType) : ''} />
+                  <${AgentStatus} s=${s} tick=${tick} events=${tlAll} taskLabel=${(s.pipelineId || s.taskType) ? typeLabel(s.pipelineId || s.taskType) : ''} alive=${active ? !!alive[active] : false} />
                   <${MCPStats} events=${tlAll} />
                   ${hasPipeline(s) && !isComplete && html`
                     <div class="summary">
