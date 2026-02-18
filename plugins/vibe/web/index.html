@@ -209,7 +209,6 @@
     .ac-chip.skill { font-size: 9px; padding: 2px 6px; opacity: 0.4; transition: opacity 0.3s, background 0.3s; border: 1px solid rgba(69,71,90,0.2); }
     .ac-chip.skill-on { opacity: 1; background: rgba(166,227,161,0.15); color: var(--green); font-weight: 600; border-color: rgba(166,227,161,0.3); }
     .agent-dur { font-size: 10px; color: var(--subtext0); text-align: right; font-variant-numeric: tabular-nums; }
-    /* Agent 分組標籤 */
     .ac-chip.retry-chip { background: rgba(250,179,135,0.15); color: var(--orange); font-weight: 700; font-size: 9px; }
     /* MCP 統計 */
     .mcp-stats { background: var(--surface0); border-radius: 10px; padding: 12px 16px; border: 1px solid var(--surface1); }
@@ -1679,8 +1678,8 @@
               ${(timelineEvents[active] || []).length > 0 && html`
                 <h2 style="font-size:13px;margin:16px 0 8px;color:var(--subtext0)">Timeline</h2>
                 <div class="tl-list" style="max-height:400px;overflow-y:auto">
-                  ${(timelineEvents[active] || []).slice(-50).reverse().map(ev => html`
-                    <div class="tl-item ${ev.type}">${ev.emoji} <span class="tl-time">${ev.time}</span> ${ev.text}</div>
+                  ${(timelineEvents[active] || []).slice(0, 50).map(ev => html`
+                    <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
                   `)}
                 </div>
               `}
@@ -1717,6 +1716,24 @@
                 <div class="dash-left">
                   <${AgentStatus} s=${s} tick=${tick} events=${tlAll} taskLabel=${(s.pipelineId || s.taskType) ? typeLabel(s.pipelineId || s.taskType) : ''} />
                   <${MCPStats} events=${tlAll} />
+                  ${hasPipeline(s) && !isComplete && html`
+                    <div class="summary">
+                      <h3>📊 Pipeline 進度</h3>
+                      ${(s.expectedStages || []).map(stage => {
+                        const st = getStatus(stage, s);
+                        const r = s.stageResults?.[stage];
+                        const meta = SM[stage];
+                        return html`<div class="light-row">
+                          <span class="light ${st === 'pass' ? 'pass' : st === 'fail' || st === 'active' ? 'fail' : st === 'skipped' ? 'skip' : ''}"></span>
+                          <span class="light-stage">${meta?.emoji || ''} ${stage}</span>
+                          <span class="light-label">${meta?.label || stage}</span>
+                          <span class="light-verdict" style="color:var(--${st === 'pass' ? 'green' : st === 'active' ? 'blue' : st === 'fail' ? 'red' : 'subtext0'})">${
+                            st === 'active' ? '進行中' : st === 'pass' ? 'PASS' : st === 'fail' ? (r?.severity || 'FAIL') : st === 'next' ? '等待中' : st === 'skipped' ? '跳過' : '—'
+                          }</span>
+                        </div>`;
+                      })}
+                    </div>
+                  `}
                   ${isComplete && html`
                     <!-- 完成摘要 -->
                     <div class="cards">
@@ -1747,9 +1764,14 @@
                       ${tlAll.length > 0 && html`<button class="tl-clear" onClick=${clearTimeline}>清除</button>`}
                     </div>
                     <div class="tl-items-wrap">
-                      ${tlAll.length ? tlAll.map(ev => html`
-                        <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
-                      `) : html`<div style="color:var(--subtext0);font-size:10px">等待事件流…</div>`}
+                      ${(() => {
+                        // 里程碑過濾：只顯示重要事件（delegation/stage/pipeline/block/ask），過濾 tool.used 噪音
+                        const MILESTONE_TYPES = ['delegation.start', 'delegation.end', 'stage.start', 'stage.complete', 'stage.retry', 'pipeline.init', 'pipeline.classified', 'pipeline.complete', 'pipeline.cancelled', 'block.prevented', 'ask.question', 'ask.answered', 'session.start'];
+                        const milestones = tlAll.filter(ev => MILESTONE_TYPES.includes(ev.eventType));
+                        return milestones.length ? milestones.map(ev => html`
+                          <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
+                        `) : html`<div style="color:var(--subtext0);font-size:10px">等待事件流…</div>`;
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -1802,9 +1824,8 @@
                 <div style="font-size:18px;font-weight:600">Vibe Pipeline Dashboard</div>
                 <div class="hint">
                   無活躍的 pipeline session<br/><br/>
-                  使用 Claude Code + flow plugin 開始任務<br/>
-                  或執行模擬腳本：<br/>
-                  <code>bun plugins/dashboard/simulate.js</code>
+                  使用 Claude Code + vibe plugin 開始任務<br/>
+                  Pipeline 會自動顯示在此
                 </div>
               </div>
             `}
