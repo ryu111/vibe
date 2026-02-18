@@ -8,7 +8,7 @@
  *
  * 兩層架構：
  *   Layer 1:  Explicit Pipeline — [pipeline:xxx] 語法（100% 信心度，零成本）
- *   Layer 2:  Main Agent 自主判斷（有完整 context，透過 additionalContext 提示）
+ *   Layer 2:  Main Agent 自主判斷（有完整 context，透過 systemMessage 強制分類指令）
  *
  * @module flow/classifier
  */
@@ -75,7 +75,7 @@ async function classifyWithConfidence(prompt) {
 }
 
 /**
- * 產生 Pipeline 目錄提示（供 additionalContext 注入 Main Agent）
+ * 產生 Pipeline 目錄提示（供 systemMessage + additionalContext 注入 Main Agent）
  * @returns {string}
  */
 function buildPipelineCatalogHint() {

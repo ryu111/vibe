@@ -243,17 +243,21 @@ async function classify(sessionId, prompt, options = {}) {
   });
   ds.writeState(sessionId, state);
 
-  // 非顯式 → 注入 pipeline 提示讓 Main Agent 自主判斷
+  // 非顯式 → 注入分類指令（systemMessage 強制）+ pipeline 目錄（additionalContext 參考）
   if (stages.length === 0 || pipelineId === 'none') {
     const kh = buildKnowledgeHints(state);
     const catalogHint = buildPipelineCatalogHint();
-    const parts = [
-      '如果這是開發/修改/優化任務，請主動使用 pipeline（呼叫對應 skill 或 /vibe:pipeline）。',
-      catalogHint,
-    ];
-    if (kh) parts.push(kh);
+    const refParts = [catalogHint];
+    if (kh) refParts.push(kh);
     return {
-      output: { additionalContext: parts.join('\n') },
+      output: {
+        systemMessage:
+          'Pipeline 自主分類：收到任務後，判斷是否需要 pipeline。\n' +
+          '• 涉及寫碼/修改/建立/重構/UI/優化 → 呼叫 /vibe:pipeline 啟動工作流\n' +
+          '• 純問答/研究/解釋 → 直接回答\n' +
+          '不確定時偏向使用 pipeline。參考 additionalContext 中的 pipeline 目錄選擇。',
+        additionalContext: refParts.join('\n'),
+      },
     };
   }
 

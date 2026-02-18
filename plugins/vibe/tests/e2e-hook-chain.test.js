@@ -903,7 +903,7 @@ console.log('══════════════════════�
       });
     }
 
-    // J9-J10: Feature prompt（Main Agent 自主判斷，additionalContext 提供 pipeline 提示）
+    // J9-J10: Feature prompt（Main Agent 自主判斷，systemMessage 注入分類指令）
     const pureFeatureCases = [
       { prompt: '建立完整的使用者認證系統', note: '建立...系統 → main-agent' },
       { prompt: 'implement user authentication', note: 'implement → main-agent' },

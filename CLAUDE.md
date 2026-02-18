@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.68 | 全方位開發工作流 | 34 | 12 | 19 | 45 |
+| **vibe** | 1.0.69 | 全方位開發工作流 | 34 | 12 | 19 | 45 |
 
 ### vibe plugin 功能模組
 
@@ -75,7 +75,7 @@ plugins/vibe/
 ├── .claude-plugin/
 │   └── plugin.json          # manifest（name, version, skills, agents）
 ├── hooks/
-│   └── hooks.json           # 統一 20 hooks（7 事件，順序明確）
+│   └── hooks.json           # 統一 19 hooks（7 事件，順序明確）
 ├── pipeline.json            # Pipeline 階段宣告 + provides
 ├── scripts/
 │   ├── hooks/               # 15 個 hook 腳本
@@ -129,7 +129,7 @@ v3 核心改變：靜態 FSM → 宣告式 DAG 狀態 + pipeline-controller 統�
 | **none** | （空） | 問答、研究、trivial | ❌ |
 
 **使用方式**：
-- **自動分類**：task-classifier 根據關鍵字和語意判斷，自動選擇 pipeline
+- **Main Agent 自主分類**：task-classifier 注入 `systemMessage` 分類指令，Main Agent 根據完整對話 context 選擇 pipeline 並呼叫 `/vibe:pipeline`
 - **顯式指定**：在 prompt 中使用 `[pipeline:xxx]` 語法（如 `[pipeline:tdd] 實作 XXX 功能`）
 
 **強制性**（enforced）：
@@ -157,7 +157,7 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 | DOCS | doc-updater | haiku/purple | `/vibe:doc-sync` |
 
 **防禦機制**（v3：所有 hook 為 pipeline-controller 薄代理）：
-- `task-classifier`（UserPromptSubmit）→ `ctrl.classify()` — 顯式 [pipeline:xxx] 建 DAG + 非顯式注入 pipeline 提示
+- `task-classifier`（UserPromptSubmit）→ `ctrl.classify()` — 顯式 [pipeline:xxx] 建 DAG + 非顯式注入 systemMessage 分類指令
 - `pipeline-guard`（PreToolUse *）→ `ctrl.canProceed()` — derivePhase 決策 + 唯讀白名單
 - `delegation-tracker`（PreToolUse Task）→ `ctrl.onDelegate()` — stage active 標記
 - `stage-transition`（SubagentStop）→ `ctrl.onStageComplete()` — DAG 排程 + 回退/前進/完成
