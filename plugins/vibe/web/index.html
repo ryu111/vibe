@@ -1404,7 +1404,7 @@
       const [alive, setAlive] = useState({}); // sessionId → boolean（heartbeat 活性）
       const [tlFilter, setTlFilter] = useState(0); // 0=全部, 10/30/60=分鐘
       const [tlTab, setTlTab] = useState('all'); // all/agent/pipeline/quality/task
-      const [mainTab, setMainTab] = useState('pipeline'); // pipeline/dashboard/timeline
+      const [mainTab, setMainTab] = useState('dashboard'); // dashboard/pipeline/timeline
       const prevRef = useRef({});
       const confettiShown = useRef(new Set());
 
