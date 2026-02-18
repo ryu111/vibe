@@ -179,7 +179,6 @@
     .agent-panel-stats { display: flex; gap: 12px; }
     .agent-panel-stat { font-size: 10px; color: var(--subtext0); }
     .agent-panel-stat .num { font-weight: 700; color: var(--text); }
-    .agent-sep { height: 0; border-top: 1px dashed var(--surface2); margin: 2px 0; }
     /* Grid 對齊：[燈] [名稱] [職責] [model] [狀態] [chips] [時長] */
     .agent-row { display: grid; grid-template-columns: 16px 140px 68px 54px 64px 1fr 44px; column-gap: 6px; align-items: center; padding: 4px 4px; font-size: 11px; border-bottom: 1px solid rgba(69,71,90,0.15); transition: background 0.15s; }
     .agent-row:last-child { border-bottom: none; }
@@ -211,7 +210,6 @@
     .ac-chip.skill-on { opacity: 1; background: rgba(166,227,161,0.15); color: var(--green); font-weight: 600; border-color: rgba(166,227,161,0.3); }
     .agent-dur { font-size: 10px; color: var(--subtext0); text-align: right; font-variant-numeric: tabular-nums; }
     /* Agent 分組標籤 */
-    .agent-group-label { font-size: 9px; color: var(--subtext1); text-transform: uppercase; letter-spacing: 1.2px; padding: 4px 8px 2px; border-left: 2px solid var(--overlay0); }
     .ac-chip.retry-chip { background: rgba(250,179,135,0.15); color: var(--orange); font-weight: 700; font-size: 9px; }
     /* MCP 統計 */
     .mcp-stats { background: var(--surface0); border-radius: 10px; padding: 12px 16px; border: 1px solid var(--surface1); }
@@ -1265,58 +1263,49 @@
       }, [events]);
       // 每個 agent 獨立計時器（agent 變 active 時記錄起始時間）
       const timers = useRef({});
-      const agents = AGENT_ROSTER.map(a => getAgentInfo(a, s, askPending, events));
+      const allAgents = AGENT_ROSTER.map(a => getAgentInfo(a, s, askPending, events));
       // 同步計時器狀態（只在 running 時計時，delegating/waiting 暫停）
-      agents.forEach(a => {
+      allAgents.forEach(a => {
         const shouldTimer = a.status === 'running';
         if (shouldTimer && !timers.current[a.id]) timers.current[a.id] = Date.now();
         else if (!shouldTimer) delete timers.current[a.id];
       });
-      const running = agents.filter(a => ['running', 'delegating'].includes(a.status)).length;
-      const done = agents.filter(a => a.status === 'completed').length;
-      const totalDur = agents.reduce((sum, a) => sum + (a.dur || 0), 0);
-      const groups = [
-        { key: 'system', label: '系統', items: agents.filter(a => a.group === 'system') },
-        { key: 'pipeline', label: 'Pipeline', items: agents.filter(a => a.group === 'pipeline') },
-        { key: 'support', label: '輔助', items: agents.filter(a => a.group === 'support') },
-      ];
+      // 排除法：隱藏閒置/已完成的，其餘都顯示（error/running/delegating/waiting 等）
+      const HIDDEN_STATUSES = ['idle', 'completed', 'standby', 'pending', 'skipped'];
+      const activeAgents = allAgents.filter(a => !HIDDEN_STATUSES.includes(a.status));
+
+      // 沒有活躍 agent → 面板隱藏
+      if (activeAgents.length === 0) return null;
+
       return html`
         <div class="agent-panel">
           <div class="agent-panel-hdr">
-            <h3>🤖 Agents 當前狀態${taskLabel ? html` <span class="task-badge">${taskLabel}</span>` : ''}</h3>
+            <h3>🤖 活躍 Agents${taskLabel ? html` <span class="task-badge">${taskLabel}</span>` : ''}</h3>
             <div class="agent-panel-stats">
-              <span class="agent-panel-stat">活躍 <span class="num">${running}</span></span>
-              <span class="agent-panel-stat">完成 <span class="num">${done}</span></span>
-              <span class="agent-panel-stat">耗時 <span class="num">${totalDur > 0 ? fmtSec(totalDur) : '—'}</span></span>
-              <span class="agent-panel-stat">共 <span class="num">${agents.length}</span></span>
+              <span class="agent-panel-stat">活躍 <span class="num">${activeAgents.length}</span></span>
             </div>
           </div>
-          ${groups.map((g, gi) => html`
-            ${gi > 0 && html`<div class="agent-sep"></div>`}
-            <div class="agent-group-label" style="border-color: var(--${{ system: 'yellow', pipeline: 'blue', support: 'orange' }[g.key] || 'overlay0'})">${g.label}</div>
-            ${g.items.map(a => {
-              // 時長：完成 → 顯示耗時 / 活躍 → 獨立即時計時
-              let durText = '—';
-              if (a.dur) durText = fmtSec(a.dur);
-              else if (a.status === 'running' && timers.current[a.id]) {
-                durText = fmtSec(Math.round((Date.now() - timers.current[a.id]) / 1000));
-              }
-              return html`
-              <div class="agent-row">
-                <span class="al ${a.status}"></span>
-                <span class="agent-name" style="${a.isActive ? `color:${a.color}` : ''}">${a.emoji} ${a.name}</span>
-                <span class="ac-chip">${a.role}</span>
-                <span class="ac-chip model">${a.model}</span>
-                <span class="ac-chip st-${a.status}">${a.statusLabel}</span>
-                <div class="agent-extra">
-                  ${a.retries > 0 && html`<span class="ac-chip retry-chip">↻${a.retries}</span>`}
-                  ${(a.skills || []).map(sk => html`<span class="ac-chip skill ${a.skillsLit ? 'skill-on' : ''}">${sk}</span>`)}
-                  ${a.tools && html`<span class="ac-chip skill-on">🔧${a.tools}</span>`}
-                </div>
-                <span class="agent-dur">${durText}</span>
+          ${activeAgents.map(a => {
+            // 時長：活躍中 → 獨立即時計時
+            let durText = '';
+            if (a.status === 'running' && timers.current[a.id]) {
+              durText = fmtSec(Math.round((Date.now() - timers.current[a.id]) / 1000));
+            }
+            return html`
+            <div class="agent-row">
+              <span class="al ${a.status}"></span>
+              <span class="agent-name" style="${a.isActive ? `color:${a.color}` : ''}">${a.emoji} ${a.name}</span>
+              <span class="ac-chip">${a.role}</span>
+              <span class="ac-chip model">${a.model}</span>
+              <span class="ac-chip st-${a.status}">${a.statusLabel}</span>
+              <div class="agent-extra">
+                ${a.retries > 0 && html`<span class="ac-chip retry-chip">↻${a.retries}</span>`}
+                ${(a.skills || []).map(sk => html`<span class="ac-chip skill ${a.skillsLit ? 'skill-on' : ''}">${sk}</span>`)}
+                ${a.tools && html`<span class="ac-chip skill-on">🔧${a.tools}</span>`}
               </div>
-            `})}
-          `)}
+              <span class="agent-dur">${durText}</span>
+            </div>
+          `})}
         </div>
       `;
     }
