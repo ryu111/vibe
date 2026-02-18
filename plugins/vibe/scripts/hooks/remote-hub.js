@@ -170,8 +170,8 @@ async function handleAskIntercept(data) {
 
 // ─── sender（SubagentStop）─────────────
 
-function buildProgressBar(completedStages, stageResults, expectedStages) {
-  const stages = expectedStages || STAGE_ORDER;
+function buildProgressBar(completedStages, stageResults, dagStages) {
+  const stages = dagStages || STAGE_ORDER;
   return stages.map(stage => {
     const cfg = STAGES[stage];
     if (!cfg) return stage;
@@ -248,9 +248,9 @@ async function handleSender(data) {
     }
   }
 
-  // v3: expectedStages 從 dag 取得所有已宣告的 stage
-  const expectedStages = Object.keys(state.dag || {});
-  if (expectedStages.length === 0) {
+  // v3: dagStages 從 dag 取得所有已宣告的 stage
+  const dagStages = Object.keys(state.dag || {});
+  if (dagStages.length === 0) {
     // 無 DAG 結構，可能是未分類 session — 靜默退出
     process.exit(0);
   }
@@ -291,13 +291,13 @@ async function handleSender(data) {
   }
 
   const display = STAGES[currentStage];
-  const progressBar = buildProgressBar(completedStages, stageResults, expectedStages);
-  const allDone = expectedStages.length > 0 && expectedStages.every(s => completedStages.includes(s));
+  const progressBar = buildProgressBar(completedStages, stageResults, dagStages);
+  const allDone = dagStages.length > 0 && dagStages.every(s => completedStages.includes(s));
 
   let text;
   if (allDone) {
     const type = taskType || 'task';
-    const allPass = expectedStages.every(s => {
+    const allPass = dagStages.every(s => {
       const r = stageResults[s];
       return !r || r.verdict !== 'FAIL';
     });

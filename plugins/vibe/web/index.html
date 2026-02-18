@@ -727,6 +727,77 @@
       DOCS:   { agent: 'doc-updater',   color: '#cba6f7', emoji: '📝', label: '文件', todos: ['分析變更', '更新文件', '同步 README'], skills: ['doc-sync'] },
     };
 
+    // --- v3 State 適配層 ---
+    // 將 v3 DAG state 轉換為 v2 相容格式，所有 UI 邏輯不需修改
+    function adaptV3(raw) {
+      if (!raw || !raw.dag) {
+        // 無 DAG（未分類或無 pipeline）→ 最小化 fallback，保留 v2 欄位原值
+        return {
+          ...raw,
+          expectedStages: raw?.expectedStages || [],
+          stageResults: raw?.stageResults || {},
+          currentStage: raw?.currentStage || null,
+          delegationActive: raw?.delegationActive || false,
+          taskType: raw?.classification?.taskType || raw?.taskType || null,
+          pipelineId: raw?.classification?.pipelineId || raw?.pipelineId || null,
+          lastTransition: raw?.meta?.lastTransition || raw?.lastTransition || null,
+          startedAt: raw?.classification?.classifiedAt || raw?.startedAt || null,
+          completed: raw?.completed || [],
+          skippedStages: raw?.skippedStages || [],
+          retries: raw?.retries || {},
+          environment: raw?.environment || {},
+        };
+      }
+
+      const stages = raw.stages || {};
+      const dagKeys = Object.keys(raw.dag);
+
+      // stageResults：展平 verdict 物件為 { verdict, severity, duration, completedAt }
+      // 只有 completed 或 failed 且有 verdict 的 stage 才放入
+      const stageResults = {};
+      for (const [id, info] of Object.entries(stages)) {
+        if (info?.status === 'completed' || info?.status === 'failed') {
+          const v = info.verdict;
+          if (!v) continue;
+          const verdictStr = (typeof v === 'object' && v !== null) ? (v.verdict || null) : v;
+          if (!verdictStr) continue;
+          stageResults[id] = {
+            verdict: verdictStr,
+            severity: (typeof v === 'object' && v !== null) ? v.severity : undefined,
+            duration: (info.startedAt && info.completedAt)
+              ? Math.round((new Date(info.completedAt) - new Date(info.startedAt)) / 1000)
+              : undefined,
+            completedAt: info.completedAt,
+          };
+        }
+      }
+
+      // currentStage：第一個 active stage
+      const activeStage = dagKeys.find(id => stages[id]?.status === 'active') || null;
+
+      // completed：已完成 stage 對應的 agent 名稱列表（向後相容）
+      const completed = dagKeys
+        .filter(id => stages[id]?.status === 'completed')
+        .map(id => stages[id]?.agent)
+        .filter(Boolean);
+
+      return {
+        ...raw,
+        expectedStages: dagKeys,
+        stageResults,
+        currentStage: activeStage,
+        delegationActive: !!activeStage,
+        taskType: raw.classification?.taskType || null,
+        pipelineId: raw.classification?.pipelineId || null,
+        lastTransition: raw.meta?.lastTransition || null,
+        startedAt: raw.classification?.classifiedAt || null,
+        completed,
+        skippedStages: dagKeys.filter(id => stages[id]?.status === 'skipped'),
+        retries: raw.retries || {},
+        environment: raw.environment || {},
+      };
+    }
+
     // --- 輔助函式 ---
     function getCurrent(s) {
       return s?.currentStage || s?.expectedStages?.find(st => s.stageResults?.[st]?.verdict !== 'PASS') || null;
@@ -745,7 +816,9 @@
     }
     function pct(s) {
       if (!s?.expectedStages?.length) return 0;
-      return Math.round(s.expectedStages.filter(st => s.stageResults?.[st]?.verdict === 'PASS').length / s.expectedStages.length * 100);
+      const active = s.expectedStages.filter(st => !s.skippedStages?.includes(st));
+      if (!active.length) return 0;
+      return Math.round(active.filter(st => s.stageResults?.[st]?.verdict === 'PASS').length / active.length * 100);
     }
     function hasPipeline(s) { return (s?.expectedStages?.length || 0) > 0; }
     function isLive(s) { return s?.delegationActive || false; }
@@ -1371,7 +1444,7 @@
           ws.onmessage = e => {
             if (e.data === 'pong') return;
             const m = JSON.parse(e.data);
-            if (m.sessions) setSessions(m.sessions);
+            if (m.sessions) setSessions(Object.fromEntries(Object.entries(m.sessions).map(([k, v]) => [k, adaptV3(v)])));
             // Timeline 事件推送（增量更新）
             if (m.type === 'timeline' && m.sessionId && m.event) {
               setTimelineEvents(prev => {

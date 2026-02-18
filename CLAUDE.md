@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.65 | 全方位開發工作流 | 34 | 12 | 20 | 45 |
+| **vibe** | 1.0.66 | 全方位開發工作流 | 34 | 12 | 20 | 45 |
 
 ### vibe plugin 功能模組
 
@@ -79,10 +79,12 @@ plugins/vibe/
 ├── pipeline.json            # Pipeline 階段宣告 + provides
 ├── scripts/
 │   ├── hooks/               # 15 個 hook 腳本
+│   ├── tools/               # 工具腳本（ram-monitor.sh）
 │   └── lib/                 # 共用函式庫
 │       ├── registry.js      # ★ 全局 metadata（STAGES/AGENTS/EMOJI）
 │       ├── hook-logger.js   # Hook 錯誤日誌（~/.claude/hook-errors.log）
 │       ├── hook-utils.js    # safeRun() JSON stdin 安全解析
+│       ├── task-parser.js   # Transcript JSONL 解析
 │       ├── flow/            # ★ dag-state, dag-utils, pipeline-controller, skip-predicates, state-migrator, classifier, verdict, retry-policy, pipeline-resume, env-detector, counter, uiux-resolver, pipeline-discovery
 │       ├── sentinel/        # lang-map, tool-detector, guard-rules
 │       ├── dashboard/       # server-manager
@@ -170,8 +172,7 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 | **SessionStart** | session-cleanup → pipeline-init → dashboard-autostart → remote-hub:autostart |
 | **UserPromptSubmit** | prompt-classifier（haiku prompt hook）→ task-classifier → remote-hub:prompt-forward |
 | **PreToolUse(Task)** | delegation-tracker |
-| **PreToolUse(Write\|Edit\|NotebookEdit\|AskUserQuestion\|EnterPlanMode\|Bash)** | pipeline-guard |
-| **PreToolUse(*)** | suggest-compact |
+| **PreToolUse(*)** | pipeline-guard → suggest-compact |
 | **PreToolUse(AskUserQuestion)** | remote-hub:ask-intercept |
 | **PostToolUse(Write\|Edit)** | post-edit（lint → format → test-check） |
 | **PreCompact** | log-compact |

@@ -238,9 +238,9 @@ function scanSessions() {
 async function handleStatus(token, chatId) {
   const sessions = scanSessions();
 
-  // 過濾：只顯示有 pipeline（expectedStages > 0）的 session
+  // 過濾：只顯示有 DAG（v3 結構）的 session
   const activeSessions = sessions.filter(s =>
-    s.expectedStages && s.expectedStages.length > 0
+    s.dag && Object.keys(s.dag).length > 0
   );
 
   if (activeSessions.length === 0) {
@@ -249,15 +249,16 @@ async function handleStatus(token, chatId) {
 
   const lines = activeSessions.map(s => {
     const sid = s.id.slice(0, 8);
-    const completed = (s.completed || []).map(a => {
-      const short = a.includes(':') ? a.split(':')[1] : a;
-      return AGENT_TO_STAGE[short];
-    }).filter(Boolean);
-    const expected = s.expectedStages;
+    // v3: 從 stages 推導已完成的 stage 列表
+    const stagesMap = s.stages || {};
+    const doneStages = Object.keys(stagesMap).filter(id =>
+      stagesMap[id]?.status === 'completed' || stagesMap[id]?.status === 'skipped');
+    const expected = Object.keys(s.dag || {});
     const progress = expected.length > 0
-      ? Math.round((completed.length / expected.length) * 100)
+      ? Math.round((doneStages.length / expected.length) * 100)
       : 0;
-    const taskType = s.taskType || 'unknown';
+    // v3: taskType 在 classification 巢狀結構
+    const taskType = s.classification?.taskType || 'unknown';
     return `\`${sid}\` ${taskType} ${progress}%`;
   });
 
@@ -277,15 +278,29 @@ async function handleStages(token, chatId, args) {
   }
 
   const sid = target.id.slice(0, 8);
-  const completed = (target.completed || []).map(a => {
-    const short = a.includes(':') ? a.split(':')[1] : a;
-    return AGENT_TO_STAGE[short];
-  }).filter(Boolean);
-  const results = target.stageResults || {};
+  // v3: 從 stages 推導已完成的 stage ID 列表
+  const stagesMap = target.stages || {};
+  const completedStages = Object.keys(stagesMap).filter(id => stagesMap[id]?.status === 'completed');
+  // v3: 從 stages 展平 verdict（物件 → 字串）
+  const results = {};
+  for (const [id, info] of Object.entries(stagesMap)) {
+    if (info?.verdict) {
+      const rawVerdict = info.verdict;
+      const verdictStr = (typeof rawVerdict === 'object' && rawVerdict !== null)
+        ? (rawVerdict.verdict || null)
+        : rawVerdict;
+      if (verdictStr) {
+        const sev = (typeof rawVerdict === 'object') ? rawVerdict.severity : undefined;
+        results[id] = { verdict: verdictStr, severity: sev };
+      }
+    }
+  }
+  // v3: dagStages 從 dag 取得所有已宣告的 stage
+  const dagStages = Object.keys(target.dag || {});
 
-  const stageLines = (target.expectedStages || STAGE_ORDER).map(stage => {
+  const stageLines = (dagStages.length > 0 ? dagStages : STAGE_ORDER).map(stage => {
     const emoji = (STAGES[stage] && STAGES[stage].emoji) || '\u2B1C';
-    if (completed.includes(stage)) {
+    if (completedStages.includes(stage)) {
       const r = results[stage];
       const verdict = r ? (r.verdict === 'PASS' ? '\u2705' : `\u274C${r.severity ? ':' + r.severity : ''}`) : '\u2753';
       return `${emoji} ${stage} ${verdict}`;
@@ -854,7 +869,7 @@ async function main() {
   // 啟動已存在 session 的 Timeline consumer
   const sessions = scanSessions();
   for (const s of sessions) {
-    if (s.expectedStages && s.expectedStages.length > 0) {
+    if (s.dag && Object.keys(s.dag).length > 0) {
       startTimelineConsumer(creds.token, creds.chatId, s.id);
     }
   }
