@@ -433,6 +433,118 @@
       },
       "timeout": 120,
       "_note": "fix 1 stage + dashboard 事件驗證"
+    },
+    {
+      "id": "E01",
+      "category": "E",
+      "categoryLabel": "v4 機制驗證",
+      "name": "顯式 fix 單階段流程",
+      "prompt": "[pipeline:fix] 在 plugins/vibe/scripts/lib/hook-logger.js 第一行加一個空白行註解",
+      "expected": {
+        "pipelineId": "fix",
+        "phase": "COMPLETE",
+        "stageCount": 1,
+        "stages": ["DEV"],
+        "source": "explicit",
+        "v4State": {
+          "version": 4,
+          "pipelineActiveFalseOnComplete": true
+        }
+      },
+      "timeout": 90,
+      "_note": "E01: 顯式 fix 單階段 — 驗證 pipelineActive=false on COMPLETE + v4 state schema"
+    },
+    {
+      "id": "E02",
+      "category": "E",
+      "categoryLabel": "v4 機制驗證",
+      "name": "顯式 quick-dev 三階段 happy path",
+      "prompt": "[pipeline:quick-dev] 修復 plugins/vibe/scripts/lib/hook-logger.js 中若 MAX_LINES 未定義時的邊界條件（加防禦性 fallback）",
+      "expected": {
+        "pipelineId": "quick-dev",
+        "phase": "COMPLETE",
+        "stageCount": 3,
+        "stages": ["DEV", "REVIEW", "TEST"],
+        "source": "explicit",
+        "v4State": {
+          "version": 4,
+          "pipelineActiveFalseOnComplete": true,
+          "dagHasDeps": true
+        }
+      },
+      "timeout": 120,
+      "_note": "E02: quick-dev 三階段 — 驗證 DAG deps 結構 + barrier 機制（REVIEW+TEST 並行）"
+    },
+    {
+      "id": "E03",
+      "category": "E",
+      "categoryLabel": "v4 機制驗証",
+      "name": "Guard 阻擋 Main Agent Write（pipelineActive=true）",
+      "prompt": "[pipeline:standard] 新增 plugins/vibe/scripts/lib/utils/date-helpers.js 工具模組，包含 formatDate、parseDate 兩個函式",
+      "expected": {
+        "pipelineId": "standard",
+        "v4State": {
+          "version": 4,
+          "guardBlocked": true
+        },
+        "noCrash": true
+      },
+      "timeout": 90,
+      "_note": "E03: pipelineActive=true 時 Guard 阻擋 Main Agent 直接寫檔 — 驗證 timeline 含 block 事件或 pipeline 未進入 IDLE"
+    },
+    {
+      "id": "E04",
+      "category": "E",
+      "categoryLabel": "v4 機制驗證",
+      "name": "REVIEW FAIL → DEV 回退 → REVIEW 重跑",
+      "prompt": "[pipeline:quick-dev] 修復 plugins/vibe/scripts/lib/hook-logger.js 的 error 處理",
+      "projectVariant": "buggy-review",
+      "expected": {
+        "pipelineId": "quick-dev",
+        "phase": "COMPLETE",
+        "hasRetries": true,
+        "v4State": {
+          "version": 4,
+          "pipelineActiveFalseOnComplete": true,
+          "retryHistoryExists": true
+        }
+      },
+      "timeout": 120,
+      "_note": "E04: REVIEW FAIL → DEV 回退 → REVIEW 重跑 — 驗證 retryHistory 在回退場景正確累積（等同 C01 但額外驗 v4 retryHistory）"
+    },
+    {
+      "id": "E05",
+      "category": "E",
+      "categoryLabel": "v4 機制驗證",
+      "name": "/vibe:cancel 中斷 pipeline",
+      "prompt": "[pipeline:standard] 新增一個完整的快取管理模組到 plugins/vibe/scripts/lib/",
+      "expected": {
+        "cancelled": true,
+        "v4State": {
+          "version": 4,
+          "pipelineActiveFalseOnCancel": true
+        }
+      },
+      "timeout": 120,
+      "_note": "E05: cancel 後 pipelineActive=false — 驗證 v4 cancel 機制正確解除 guard"
+    },
+    {
+      "id": "E06",
+      "category": "E",
+      "categoryLabel": "v4 機制驗證",
+      "name": "Pipeline 完成後 state 清理",
+      "prompt": "[pipeline:fix] 在 plugins/vibe/scripts/lib/hook-logger.js 末尾加一行 module.exports 的 JSDoc 說明",
+      "followUp": "plugins/vibe/scripts/lib/registry.js 裡的 QUALITY_STAGES 陣列有哪些元素？",
+      "expected": {
+        "pipelineId": "fix",
+        "sequentialClean": true,
+        "v4State": {
+          "version": 4,
+          "pipelineActiveFalseOnComplete": true
+        }
+      },
+      "timeout": 120,
+      "_note": "E06: fix 完成後送研究 prompt → pipelineActive 保持 false，state 不被錯誤激活"
     }
   ]
 }

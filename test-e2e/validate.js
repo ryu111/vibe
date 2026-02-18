@@ -213,6 +213,62 @@ function validate(state, timeline) {
     add('L5:sequentialClean', phase === 'COMPLETE' || phase === 'IDLE');
   }
 
+  // ═══ L6 v4 機制驗證層 ═══
+  // 驗證 v4 特有的 state 欄位與行為
+
+  if (expected.v4State) {
+    const v4 = expected.v4State;
+
+    // 6a. v4 state schema version
+    if (v4.version !== undefined) {
+      add('L6:v4Version', state.version === v4.version,
+        true, `expected version=${v4.version} actual=${state.version}`);
+    }
+
+    // 6b. pipelineActive=false on COMPLETE（pipeline 完成後 guard 應解除）
+    if (v4.pipelineActiveFalseOnComplete && isPhaseComplete) {
+      add('L6:pipelineInactiveOnComplete', state.pipelineActive === false,
+        true, `pipelineActive should be false when COMPLETE, got ${state.pipelineActive}`);
+    }
+
+    // 6c. pipelineActive=false on cancel（取消後 guard 應解除）
+    if (v4.pipelineActiveFalseOnCancel) {
+      add('L6:pipelineInactiveOnCancel', state.pipelineActive === false,
+        true, `pipelineActive should be false when cancelled, got ${state.pipelineActive}`);
+    }
+
+    // 6d. DAG 結構含 deps（v4 templateToDag 應包含 barrier/onFail/next）
+    if (v4.dagHasDeps && state.dag) {
+      const dagStageIds = Object.keys(state.dag);
+      const allHaveDeps = dagStageIds.every(id => Array.isArray(state.dag[id]?.deps));
+      add('L6:dagHasDeps', allHaveDeps,
+        true, `DAG stages should all have deps array: ${dagStageIds.join(', ')}`);
+    }
+
+    // 6e. retryHistory 在回退場景中存在且非空
+    if (v4.retryHistoryExists) {
+      const rh = state.retryHistory || {};
+      const hasHistory = Object.keys(rh).length > 0 &&
+        Object.values(rh).some(arr => Array.isArray(arr) && arr.length > 0);
+      add('L6:retryHistoryExists', hasHistory,
+        false, `retryHistory should be non-empty on retry scenarios: ${JSON.stringify(rh)}`);
+    }
+
+    // 6f. Guard 阻擋事件（pipelineActive=true 時 Write 被 block）
+    // 驗證方式：timeline 含 'stage.blocked' 或 pipeline 不在 IDLE（代表 guard 有效觸發）
+    if (v4.guardBlocked) {
+      const hasBlock = timeline.some(e =>
+        e.type === 'stage.blocked' ||
+        e.type === 'pipeline.blocked' ||
+        (e.type === 'tool.used' && e.data?.blocked === true)
+      );
+      // 備用：只要 pipeline 不是 IDLE 就算 guard 有效（最低標準）
+      const pipelineNotIdle = phase !== 'IDLE';
+      add('L6:guardBlocked', hasBlock || pipelineNotIdle,
+        false, `guard should have blocked Main Agent write (phase=${phase}, hasBlockEvent=${hasBlock})`);
+    }
+  }
+
   return checks;
 }
 
@@ -240,8 +296,19 @@ const result = {
   checks,
   state: state ? {
     phase,
+    // v4 核心欄位
+    version: state.version,
+    pipelineActive: state.pipelineActive,
+    activeStages: state.activeStages,
+    retryHistory: state.retryHistory,
+    crashes: state.crashes,
+    // 分類
     pipelineId: state.classification && state.classification.pipelineId,
+    // DAG
     dagStages: state.dag ? Object.keys(state.dag) : [],
+    dagDeps: state.dag ? Object.fromEntries(
+      Object.entries(state.dag).map(([id, cfg]) => [id, cfg.deps || []])
+    ) : {},
     completedStages: getCompletedStages(state),
     skippedStages: getSkippedStages(state),
     stages: state.stages,

@@ -109,3 +109,29 @@ DESIGN → DEV → QA
 3. **環境感知**：後端專案不需要 DESIGN/E2E
 4. **安全保守**：不確定時加上 REVIEW + TEST
 5. **enforced = true**：除了純問答/研究外，所有 pipeline 都應該 enforced
+
+## 品質階段規則（重要）
+
+**任何包含 DEV 的 pipeline，都必須至少加上 REVIEW + TEST 品質階段。**
+
+- DEV 單獨存在（如 fix）是例外，只適用於一行修改、config 調整等明確無需品質把關的場景
+- 只要任務涉及邏輯修改、新功能、重構、bug 修復（非 config/typo），DAG 必須包含：
+  - `REVIEW`（程式碼審查）
+  - `TEST`（測試覆蓋）
+
+**錯誤範例（禁止）**：
+```json
+{ "dag": { "DEV": { "deps": [] } } }
+```
+（bug 修復只有 DEV — 缺少品質把關）
+
+**正確範例（bugfix）**：
+```json
+{
+  "dag": {
+    "DEV":    { "deps": [] },
+    "REVIEW": { "deps": ["DEV"] },
+    "TEST":   { "deps": ["DEV"] }
+  }
+}
+```

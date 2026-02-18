@@ -303,6 +303,64 @@ function emitPipelineAborted(sessionId, stage, reason) {
   } catch (_) {}
 }
 
+/**
+ * 最低品質完整性保證：如果 DAG 含 DEV 且任務不是 fix（單一 DEV），
+ * 則確保至少有 REVIEW + TEST 品質把關。
+ *
+ * 背景：pipeline-architect 偶爾只產出 `{ DEV: { deps: [] } }` 的不完整 DAG，
+ * 導致 pipeline 在 DEV 完成後直接結束，跳過品質階段。
+ * 此函式作為安全網，在接受 DAG 前強制補齊必要的品質節點。
+ *
+ * 例外：
+ * - DAG 只有 DEV（fix 模式）→ 不補（單階段 fix 是合法設計）
+ * - DAG 已有 REVIEW 或 TEST → 不重複補
+ * - DAG 無 DEV → 不補（PLAN/ARCH/DOCS 等純非實作 pipeline）
+ *
+ * @param {Object} dag - 已驗證合法的 DAG 物件
+ * @returns {Object} 修正後的 DAG（可能新增 REVIEW/TEST 節點）
+ */
+function ensureQualityStagesIfDev(dag) {
+  if (!dag) return dag;
+
+  const stageIds = Object.keys(dag);
+  const devStages = stageIds.filter(s => getBaseStage(s) === 'DEV');
+
+  // 無 DEV → 不修正
+  if (devStages.length === 0) return dag;
+
+  // 只有 DEV（fix 模式）→ 允許不補品質階段
+  if (stageIds.length === 1 && devStages.length === 1) return dag;
+
+  const hasReview = stageIds.some(s => getBaseStage(s) === 'REVIEW');
+  const hasTest = stageIds.some(s => getBaseStage(s) === 'TEST');
+
+  // 已有品質階段 → 不修正
+  if (hasReview && hasTest) return dag;
+
+  // 需要補齊：找最後一個 DEV stage（作為 REVIEW/TEST 的依賴）
+  const lastDevStage = devStages[devStages.length - 1];
+  const patched = { ...dag };
+
+  if (!hasReview) {
+    patched.REVIEW = { deps: [lastDevStage] };
+  }
+  if (!hasTest) {
+    patched.TEST = { deps: [lastDevStage] };
+  }
+
+  try {
+    const hookLogger = require('../hook-logger.js');
+    const added = [];
+    if (!hasReview) added.push('REVIEW');
+    if (!hasTest) added.push('TEST');
+    hookLogger.error('pipeline-controller', new Error(
+      `pipeline-architect 產出的 DAG 缺少品質階段，自動補齊：新增 ${added.join(' + ')} → deps=[${lastDevStage}]`
+    ));
+  } catch (_) {}
+
+  return patched;
+}
+
 /** 偵測 design 需求（ARCH 完成後） */
 function detectDesignNeed(state, stageId) {
   if (getBaseStage(stageId) !== 'ARCH' || !state.openspecEnabled) return false;
@@ -1093,16 +1151,36 @@ function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline) {
   if (dag) {
     const validation = validateDag(dag);
     if (!validation.valid) {
-      // 非法 DAG → 降級為 DEV 安全模板
-      dag = { DEV: { deps: [] } };
-      blueprint = [{ step: 1, stages: ['DEV'], parallel: false }];
-      rationale = `DAG 驗證失敗（${validation.errors.join('; ')}），降級為 DEV`;
+      // 非法 DAG → 降級為 quick-dev 安全模板（含品質把關）
+      dag = {
+        DEV:    { deps: [] },
+        REVIEW: { deps: ['DEV'] },
+        TEST:   { deps: ['DEV'] },
+      };
+      blueprint = [
+        { step: 1, stages: ['DEV'], parallel: false },
+        { step: 2, stages: ['REVIEW', 'TEST'], parallel: true },
+      ];
+      rationale = `DAG 驗證失敗（${validation.errors.join('; ')}），降級為 quick-dev`;
+    } else {
+      // DAG 合法 → 檢查最低品質完整性：有 DEV 就必須有 REVIEW + TEST
+      dag = ensureQualityStagesIfDev(dag);
+      if (!blueprint && dag) {
+        blueprint = buildBlueprint(dag);
+      }
     }
   } else {
-    // 無法解析 → 安全模板
-    dag = { DEV: { deps: [] } };
-    blueprint = [{ step: 1, stages: ['DEV'], parallel: false }];
-    rationale = 'DAG 解析失敗，降級為 DEV';
+    // 無法解析 → 安全模板（quick-dev：DEV + REVIEW + TEST）
+    dag = {
+      DEV:    { deps: [] },
+      REVIEW: { deps: ['DEV'] },
+      TEST:   { deps: ['DEV'] },
+    };
+    blueprint = [
+      { step: 1, stages: ['DEV'], parallel: false },
+      { step: 2, stages: ['REVIEW', 'TEST'], parallel: true },
+    ];
+    rationale = 'DAG 解析失敗，降級為 quick-dev';
   }
 
   // 設定 DAG
