@@ -71,6 +71,7 @@ function cleanupSession(sessionId) {
     path.join(CLAUDE_DIR, `flow-counter-${sessionId}.json`),
     path.join(CLAUDE_DIR, `timeline-${sessionId}.jsonl`),
     path.join(CLAUDE_DIR, `classified-reads-${sessionId}.json`),
+    path.join(CLAUDE_DIR, `heartbeat-${sessionId}`),
   );
 }
 

@@ -35,13 +35,14 @@ function isSessionAlive(sid) {
 }
 
 /** 取得所有 session 的 alive 狀態（掃描全部 heartbeat 檔案，不只有 pipeline-state 的） */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function getAliveMap() {
   const map = {};
   try {
     for (const f of readdirSync(CLAUDE_DIR)) {
       if (!f.startsWith('heartbeat-')) continue;
       const sid = f.slice('heartbeat-'.length);
-      if (!sid) continue;
+      if (!UUID_RE.test(sid)) continue; // 真正的 session ID 都是 UUID
       map[sid] = isSessionAlive(sid);
     }
   } catch {}
