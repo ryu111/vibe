@@ -34,12 +34,17 @@ function isSessionAlive(sid) {
   } catch { return false; }
 }
 
-/** 取得所有 session 的 alive 狀態 */
+/** 取得所有 session 的 alive 狀態（掃描全部 heartbeat 檔案，不只有 pipeline-state 的） */
 function getAliveMap() {
   const map = {};
-  for (const sid of Object.keys(sessions)) {
-    map[sid] = isSessionAlive(sid);
-  }
+  try {
+    for (const f of readdirSync(CLAUDE_DIR)) {
+      if (!f.startsWith('heartbeat-')) continue;
+      const sid = f.slice('heartbeat-'.length);
+      if (!sid) continue;
+      map[sid] = isSessionAlive(sid);
+    }
+  } catch {}
   return map;
 }
 

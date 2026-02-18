@@ -847,6 +847,7 @@
     }
     /** Session 顯示名稱：pipeline 類型 > taskType > 研究模式 */
     function sessionName(s) {
+      if (s?._heartbeatOnly) return '對話中';
       const pid = s?.pipelineId || s?.taskType;
       if (pid) return typeLabel(pid);
       return '研究模式';
@@ -1420,10 +1421,17 @@
       const confettiShown = useRef(new Set());
 
       // 合併 alive 狀態到 sessions（_alive 欄位供 sessionCategory/isLive 使用）
+      // 同時加入 heartbeat-only sessions（有 heartbeat 但無 pipeline-state 的活躍終端）
       const mergedSessions = useMemo(() => {
         const out = {};
         for (const [id, s] of Object.entries(sessions)) {
           out[id] = alive[id] ? { ...s, _alive: true } : s;
+        }
+        // Heartbeat-only sessions（活著但無 pipeline state）
+        for (const id of Object.keys(alive)) {
+          if (alive[id] && !out[id]) {
+            out[id] = { _alive: true, _heartbeatOnly: true };
+          }
         }
         return out;
       }, [sessions, alive]);
@@ -1438,9 +1446,11 @@
           else if (cat === 'done') done.push([id, s]);
           else stale.push([id, s]);
         }
-        const sortFn = sort === 'progress' ? (a, b) => pct(b[1]) - pct(a[1])
-          : sort === 'type' ? (a, b) => (a[1].pipelineId || a[1].taskType || '').localeCompare(b[1].pipelineId || b[1].taskType || '')
-          : (a, b) => new Date(b[1].lastTransition || 0) - new Date(a[1].lastTransition || 0);
+        // alive 優先排序（活著的終端永遠在最上面）
+        const aliveFirst = (a, b) => (b[1]._alive ? 1 : 0) - (a[1]._alive ? 1 : 0);
+        const sortFn = sort === 'progress' ? (a, b) => aliveFirst(a, b) || pct(b[1]) - pct(a[1])
+          : sort === 'type' ? (a, b) => aliveFirst(a, b) || (a[1].pipelineId || a[1].taskType || '').localeCompare(b[1].pipelineId || b[1].taskType || '')
+          : (a, b) => aliveFirst(a, b) || new Date(b[1].lastTransition || 0) - new Date(a[1].lastTransition || 0);
         live.sort(sortFn);
         done.sort((a, b) => new Date(b[1].lastTransition || 0) - new Date(a[1].lastTransition || 0));
         stale.sort((a, b) => new Date(b[1].lastTransition || 0) - new Date(a[1].lastTransition || 0));
@@ -1665,7 +1675,27 @@
 
           <!-- Main -->
           <div class="main">
-            ${s ? html`
+            ${s && s._heartbeatOnly ? html`
+              <h1>
+                💬 Session — ${sid(active)}
+                <div class="toolbar">
+                  <div class="conn-indicator"><span class="dot ${conn ? 'on' : 'off'}"></span><span>${conn ? '已連線' : '連線中…'}</span></div>
+                </div>
+              </h1>
+              <div style="padding:24px 0;text-align:center;color:var(--subtext0)">
+                <div style="font-size:36px;margin-bottom:12px">💬</div>
+                <div style="font-size:14px">Session 活躍中 — 尚未啟動 Pipeline</div>
+                <div style="font-size:12px;margin-top:8px;opacity:0.7">使用 <code>[pipeline:xxx]</code> 語法或自然語言描述任務來啟動工作流</div>
+              </div>
+              ${(timelineEvents[active] || []).length > 0 && html`
+                <h2 style="font-size:13px;margin:16px 0 8px;color:var(--subtext0)">Timeline</h2>
+                <div class="tl-list" style="max-height:400px;overflow-y:auto">
+                  ${(timelineEvents[active] || []).slice(-50).reverse().map(ev => html`
+                    <div class="tl-item ${ev.type}">${ev.emoji} <span class="tl-time">${ev.time}</span> ${ev.text}</div>
+                  `)}
+                </div>
+              `}
+            ` : s ? html`
               <h1>
                 🎯 Pipeline — ${sid(active)}
                 ${isComplete && html`<span style="margin-left:4px">🎉</span>`}
