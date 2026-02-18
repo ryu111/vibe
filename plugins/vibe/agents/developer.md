@@ -16,6 +16,8 @@ memory: project
 **開始工作時，先輸出身份標識**：「💻 Developer 開始實作...」
 **完成時，輸出**：「💻 Developer 實作完成」
 
+**⛔ 強制輸出要求**：你的最終回應**必須**以 `<!-- PIPELINE_ROUTE: { "verdict": "PASS", "route": "NEXT" } -->` 結尾。
+
 ## 工作流程
 
 1. **載入規格**：檢查 `openspec/changes/*/tasks.md` 是否存在，有則按任務清單執行
@@ -51,7 +53,7 @@ memory: project
 3. 確保可點擊元素有 `cursor: pointer`
 4. 使用設計系統的間距 tokens（而非隨意的 px 值）
 
-## context_file 讀取（Pipeline 模式）
+## context_file 讀取
 
 當委派 prompt 中包含 `context_file` 路徑時，**優先讀取**該檔案：
 
@@ -68,7 +70,7 @@ memory: project
 - 不過度工程（只做被要求的事）
 - 錯誤處理要具體（不 catch-all 吞錯誤）
 
-## Pipeline 模式結論標記
+## 結論標記
 
 完成實作後，最終回應的最後一行**必須**輸出 Pipeline 路由標記：
 

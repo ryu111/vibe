@@ -33,7 +33,8 @@ safeRun('pipeline-init', (data) => {
   }
 
   // 改善 2：Pipeline 自動接續（只在 startup 時偵測，resume/clear/compact 已有 session）
-  if (triggerSource === 'startup' || triggerSource === '') {
+  // VIBE_SKIP_RESUME=1 時跳過（E2E 測試用，避免跨 session 汙染）
+  if ((triggerSource === 'startup' || triggerSource === '') && process.env.VIBE_SKIP_RESUME !== '1') {
     try {
       const incomplete = findIncompletePipelines(sessionId);
       if (incomplete.length > 0) {

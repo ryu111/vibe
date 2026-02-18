@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 2.0.6 | 全方位開發工作流 | 34 | 12 | 19 | 49 |
+| **vibe** | 2.0.7 | 全方位開發工作流 | 35 | 12 | 19 | 50 |
 
 ### vibe plugin 功能模組
 
@@ -22,7 +22,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | 進化 | 知識進化、文件同步 | 2 | 1 (doc-updater) |
 | 監控 | Pipeline 即時儀表板（WebSocket）+ Timeline 查詢 | 2 | 0 |
 | 遠端 | Telegram 遠端控制 + tmux 操作 | 2 | 0 |
-| 維護 | RAM 健康檢查、孤兒進程清理 | 1 | 0 |
+| 維護 | RAM 健康檢查、孤兒進程清理、文檔審計 | 2 | 0 |
 | 診斷 | Hook 錯誤診斷 | 1 | 0 |
 
 ### 共用 registry.js（Single Source of Truth）
@@ -79,7 +79,7 @@ plugins/vibe/
 ├── pipeline.json            # Pipeline 階段宣告 + provides
 ├── scripts/
 │   ├── hooks/               # 15 個 hook 腳本
-│   ├── tools/               # 工具腳本（ram-monitor.sh）
+│   ├── tools/               # 工具腳本（ram-monitor.sh + memory-audit.js）
 │   └── lib/                 # 共用函式庫
 │       ├── registry.js      # ★ 全局 metadata（STAGES/AGENTS/EMOJI）
 │       ├── hook-logger.js   # Hook 錯誤日誌（~/.claude/hook-errors.log）
@@ -90,7 +90,7 @@ plugins/vibe/
 │       ├── dashboard/       # server-manager
 │       ├── remote/          # telegram, transcript, bot-manager
 │       └── timeline/        # schema, timeline, consumer, formatter, index
-├── skills/                  # 34 個 skill 目錄
+├── skills/                  # 35 個 skill 目錄
 ├── agents/                  # 12 個 agent 定義
 ├── server.js                # Dashboard HTTP+WebSocket server
 ├── bot.js                   # Telegram daemon

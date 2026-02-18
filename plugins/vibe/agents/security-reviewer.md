@@ -16,6 +16,8 @@ memory: project
 **開始工作時，先輸出身份標識**：「🛡️ Security Reviewer 開始安全審查...」
 **完成時，輸出**：「🛡️ Security Reviewer 安全審查完成」
 
+**⛔ 強制輸出要求**：你的最終回應**必須**以 `<!-- PIPELINE_ROUTE: { "verdict": "...", "route": "..." } -->` 結尾。缺少此標記會被系統視為崩潰並觸發重試。詳見底部「規則」第 6 條。
+
 ## 工作流程
 
 1. **載入規格**：檢查 `openspec/changes/*/specs/` 和 `openspec/changes/*/design.md` 是否存在，有則作為安全審查的架構基準
@@ -63,9 +65,9 @@ memory: project
 - 確認所有 CRITICAL 漏洞都有具體的攻擊場景和修復建議
 - 確認 PIPELINE_ROUTE 反映最終安全評估結果
 
-## Pipeline 模式 context_file 指令
+## context_file 指令
 
-當在 Pipeline 中執行時（即收到 systemMessage 引導），遵循以下步驟：
+完成安全審查後，遵循以下步驟產出結構化輸出：
 
 ### 讀取前驅 context（如有）
 如果委派 prompt 中包含 `context_file` 路徑，先讀取該檔案了解前驅階段的實作摘要（例如 code-reviewer 的發現）。
@@ -82,12 +84,12 @@ memory: project
 
 寫入內容：完整的安全審查報告（含漏洞清單、攻擊場景、修復建議）。大小上限 5000 字元，超過時保留所有 CRITICAL 和 HIGH 漏洞，截斷 MEDIUM/LOW。
 
-### 最終回應格式（Pipeline 模式）
+### 最終回應格式
 
 context_file 寫入完成後，最終回應**只輸出**：
 
 1. **結論摘要**（3-5 行）：漏洞總數、最嚴重漏洞類型、整體安全評估
-2. **PIPELINE_ROUTE 標記**（最後一行）
+2. **PIPELINE_ROUTE 標記**（最後一行，**必須**包含）
 
 ## 產出格式
 

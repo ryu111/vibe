@@ -237,6 +237,21 @@ function emitRouteFallback(sessionId, stage) {
 }
 
 /**
+ * emit ROUTE_FALLBACK 事件（content-inference 推斷）
+ */
+function emitRouteInference(sessionId, stage, inferred) {
+  try {
+    const { emit } = require('../timeline/index.js');
+    const { EVENT_TYPES } = require('../timeline/schema.js');
+    emit(EVENT_TYPES.ROUTE_FALLBACK, sessionId, {
+      stage,
+      source: 'content-inference',
+      verdict: inferred?.verdict,
+    });
+  } catch (_) {}
+}
+
+/**
  * emit RETRY_EXHAUSTED 事件（達到 maxRetries）
  */
 function emitRetryExhausted(sessionId, stage, retryCount) {
@@ -490,11 +505,23 @@ async function classify(sessionId, prompt, options = {}) {
     const stageStr = stages.join(' → ');
     const sourceLabel = result.source === 'explicit' ? `[${pipelineId}]` : pipelineId;
 
+    // 多階段 pipeline：在初始指令中列出所有步驟，防止模型在中途停止
+    const allSteps = blueprint
+      ? blueprint.map((b, i) => {
+          const stageNames = b.stages.join(' + ');
+          const skillHints = b.stages.map(s => buildDelegationHint(s, pipeline.stageMap)).join(' + ');
+          return `${i + 1}. ${stageNames}${b.parallel ? '（並行）' : ''}：${skillHints}`;
+        }).join('\n')
+      : '';
+    const multiStageWarning = stages.length > 1
+      ? `\n⚠️ 禁止中途停止。你必須按順序完成所有 ${stages.length} 個階段。\n${allSteps}\n先從第一步開始：`
+      : '';
+
     const kh = buildKnowledgeHints(state);
     return {
       output: {
         systemMessage:
-          `⛔ Pipeline ${sourceLabel}（${stageStr}）已建立。\n` +
+          `⛔ Pipeline ${sourceLabel}（${stageStr}）已建立。${multiStageWarning}\n` +
           `➡️ ${firstHint}`,
         ...(kh ? { additionalContext: kh } : {}),
       },
@@ -608,6 +635,9 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
   let routeResult = null;
   if (routeSource === 'verdict-fallback') {
     emitRouteFallback(sessionId, currentStage);
+  }
+  if (routeSource === 'content-inference') {
+    emitRouteInference(sessionId, currentStage, routeParsed);
   }
 
   // Schema Validation
@@ -997,8 +1027,9 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
       const retryHint = buildDelegationHint(currentStage, pipeline.stageMap);
       return {
         systemMessage:
-          `⚠️ ${currentStage} agent 無 PIPELINE_ROUTE 輸出（第 ${crashCount} 次）。重新委派。\n` +
-          `➡️ ${retryHint}`,
+          `⛔ ${currentStage} agent 無 PIPELINE_ROUTE 輸出（第 ${crashCount}/${MAX_CRASHES} 次）。你必須立即重新委派。\n` +
+          `⛔ 不要輸出文字，直接呼叫：${retryHint}\n` +
+          `📌 委派 prompt 結尾加上：「最終輸出必須以 <!-- PIPELINE_ROUTE: {...} --> 結尾」`,
       };
     }
 
@@ -1094,6 +1125,12 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
     ? '\n⚠️ 如有問題，必須透過 /vibe:dev 委派修復。'
     : '';
 
+  // 下一階段是品質 stage → 提醒 Main Agent 在委派 prompt 中強調 PIPELINE_ROUTE
+  const nextIsQuality = readyStages.some(s => QUALITY_STAGES.includes(getBaseStage(s)));
+  const routeReminder = nextIsQuality
+    ? '\n📌 委派 prompt 結尾加上：「最終輸出必須以 <!-- PIPELINE_ROUTE: {...} --> 結尾」'
+    : '';
+
   // Phase 2：為第一個 ready stage 生成 Node Context
   // 並行時只生成第一個（各 stage 的 Node Context 格式相同，agent 可從 context 判斷自己的 stage）
   let nodeContextStr = '';
@@ -1107,8 +1144,8 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
 
   return {
     systemMessage:
-      `✅ ${currentStage} → ${label}\n` +
-      `➡️ ${hints.join(' + ')}${stageContext}${qualityWarning}${nodeContextStr}`,
+      `✅ ${currentStage} 完成 → 立即呼叫 ${label}\n` +
+      `⛔ 你必須立即呼叫以下 Skill，不要輸出文字：${hints.join(' + ')}${stageContext}${qualityWarning}${routeReminder}${nodeContextStr}`,
   };
 }
 
@@ -1282,11 +1319,14 @@ function onSessionStop(sessionId) {
   const missing = [...failed, ...active, ...ready, ...pending];
   if (missing.length === 0) return null;
 
-  // 連續阻擋計數（使用者可見提示，不在 systemMessage 中提及 cancel）
+  // 連續阻擋計數
   const blockCount = (state.meta?.pipelineCheckBlocks || 0) + 1;
   state.meta = state.meta || {};
   state.meta.pipelineCheckBlocks = blockCount;
   ds.writeState(sessionId, state);
+
+  // 超過 5 次 → 放行（避免無限迴圈；使用者可用 /vibe:cancel）
+  if (blockCount > 5) return null;
 
   const cancelHint = blockCount >= 3
     ? `（連續 ${blockCount} 次，輸入 /vibe:cancel 可取消）`
@@ -1296,17 +1336,18 @@ function onSessionStop(sessionId) {
   const hints = missing.slice(0, 3).map(s => {
     const info = resolveAgent(s, pipeline.stageMap);
     const label = STAGES[getBaseStage(s)]?.label || s;
-    if (info?.skill) return `- ${label}：${info.skill}`;
-    if (info?.agent) return `- ${label}：委派 ${info.agent}`;
-    return `- ${label}`;
-  }).join('\n');
+    if (info?.skill) return `${info.skill}`;
+    if (info?.agent) return `委派 ${info.agent}`;
+    return s;
+  }).join('、');
 
   return {
     continue: false,
     stopReason: `Pipeline 未完成 — 缺 ${missing.length} 個階段${cancelHint}`,
     systemMessage:
-      `⛔ Pipeline 未完成！缺：${missing.join(', ')}\n${hints}\n` +
-      `必須使用 Skill/Task 委派下一階段。禁止純文字回覆。`,
+      `⛔ 禁止停止！Pipeline 缺 ${missing.join(', ')} 尚未完成。\n` +
+      `你必須立即呼叫 Skill 工具：${hints}\n` +
+      `不要輸出文字，直接呼叫工具。`,
   };
 }
 

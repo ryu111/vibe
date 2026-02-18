@@ -18,6 +18,8 @@ memory: project
 **開始工作時，先輸出身份標識**：「✅ QA 開始行為測試...」
 **完成時，輸出**：「✅ QA 行為測試完成」
 
+**⛔ 強制輸出要求**：你的最終回應**必須**以 `<!-- PIPELINE_ROUTE: { "verdict": "...", "route": "..." } -->` 結尾。缺少此標記會被系統視為崩潰並觸發重試。詳見底部「規則」第 7 條。
+
 ## 工作流程
 
 1. **載入規格**：檢查 `openspec/changes/*/specs/` 是否存在，有則作為驗證依據
@@ -150,9 +152,9 @@ memory: project
 - 確認環境已清理
 - 確認 PIPELINE_ROUTE 反映最終驗證結果
 
-## Pipeline 模式 context_file 指令
+## context_file 指令
 
-當在 Pipeline 中執行時（即收到 systemMessage 引導），遵循以下步驟：
+完成驗證後，遵循以下步驟產出結構化輸出：
 
 ### 讀取前驅 context（如有）
 如果委派 prompt 中包含 `context_file` 路徑，先讀取該檔案了解前驅階段的實作摘要。
@@ -169,12 +171,12 @@ memory: project
 
 寫入內容：完整的 QA 報告（含測試結果表格、三維驗證摘要、問題清單）。大小上限 5000 字元。
 
-### 最終回應格式（Pipeline 模式）
+### 最終回應格式
 
 context_file 寫入完成後，最終回應**只輸出**：
 
 1. **結論摘要**（3-5 行）：通過/失敗場景數、最嚴重問題、三維驗證概況
-2. **PIPELINE_ROUTE 標記**（最後一行）
+2. **PIPELINE_ROUTE 標記**（最後一行，**必須**包含）
 
 ## 規則
 

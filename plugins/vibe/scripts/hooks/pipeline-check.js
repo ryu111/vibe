@@ -12,9 +12,8 @@ const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timelin
 const ctrl = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-controller.js'));
 
 safeRun('pipeline-check', (data) => {
-  // 防迴圈
-  if (data.stop_hook_active) process.exit(0);
-
+  // 防迴圈：允許最多 3 次重試（multi-stage pipeline 在 -p 模式需要多次 re-prompt）
+  // stop_hook_active 表示已有 Stop hook 阻擋過一次，但我們用 blockCount 控制上限
   const sessionId = data.session_id || 'unknown';
 
   const result = ctrl.onSessionStop(sessionId);

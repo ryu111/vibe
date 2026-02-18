@@ -112,7 +112,179 @@ function parseRoute(transcriptPath) {
     return { parsed: converted, source: 'verdict-fallback' };
   }
 
+  // 第三層 Fallback：從 transcript 內容推斷路由
+  // 品質 stage agent 有時完成了審查/測試工作但忘記輸出 PIPELINE_ROUTE 標記，
+  // 此時 transcript 中仍包含可推斷的內容（如 "0 CRITICAL" / "20/20 通過"）
+  const inferred = inferRouteFromContent(recentLines);
+  if (inferred) {
+    return { parsed: inferred, source: 'content-inference' };
+  }
+
   return { parsed: null, source: 'none' };
+}
+
+// ────────────────── 1b. inferRouteFromContent ──────────────────
+
+/**
+ * 從 transcript 最近的 assistant messages 推斷路由。
+ *
+ * 當 PIPELINE_ROUTE 和 PIPELINE_VERDICT 都找不到時，掃描 agent 輸出文字內容，
+ * 使用確定性 regex 提取語意信號（PASS/FAIL + severity）。
+ *
+ * 信號優先序：
+ * 1. 強 FAIL 信號：明確 CRITICAL/HIGH 問題計數 > 0
+ * 2. 強 PASS 信號：明確 0 CRITICAL + 0 HIGH / "全部通過" / "PASS"
+ * 3. 弱 PASS 信號：agent 有大量輸出（做了實質工作）但無 FAIL 信號
+ * 4. 無法推斷 → null
+ *
+ * @param {string[]} recentLines - parseRoute 已切好的最近 SCAN_LAST_LINES 行
+ * @returns {Object|null} RouteResult（{ verdict, route, ... }）或 null
+ */
+function inferRouteFromContent(recentLines) {
+  if (!recentLines || recentLines.length === 0) return null;
+
+  // 收集所有 assistant text
+  const assistantTexts = [];
+  for (const line of recentLines) {
+    if (!line.trim()) continue;
+    try {
+      const entry = JSON.parse(line);
+      // assistant message
+      if (entry.role === 'assistant' || entry.type === 'assistant') {
+        const text = extractTextFromEntry(entry);
+        if (text) assistantTexts.push(text);
+      }
+    } catch (_) {
+      // 非 JSON 行，直接檢查
+      assistantTexts.push(line);
+    }
+  }
+
+  if (assistantTexts.length === 0) return null;
+
+  const combined = assistantTexts.join('\n');
+
+  // ── 強 FAIL 信號：CRITICAL/HIGH 問題計數 > 0 ──
+  // 匹配 "CRITICAL: 2" / "CRITICAL：2" / "3 個 CRITICAL" 等
+  const criticalCount = extractIssueCount(combined, 'CRITICAL');
+  const highCount = extractIssueCount(combined, 'HIGH');
+
+  if (criticalCount > 0) {
+    return {
+      verdict: 'FAIL',
+      route: 'DEV',
+      severity: 'CRITICAL',
+      hint: `推斷：${criticalCount} CRITICAL issue(s)`,
+      _inferred: true,
+    };
+  }
+
+  if (highCount > 0) {
+    return {
+      verdict: 'FAIL',
+      route: 'DEV',
+      severity: 'HIGH',
+      hint: `推斷：${highCount} HIGH issue(s)`,
+      _inferred: true,
+    };
+  }
+
+  // ── 強 PASS 信號 ──
+  const passPatterns = [
+    /0\s*(?:個\s*)?CRITICAL/i,
+    /CRITICAL\s*[:：]\s*0/i,
+    /0\s*(?:個\s*)?HIGH/i,
+    /HIGH\s*[:：]\s*0/i,
+    /全部通過/,
+    /all\s+pass/i,
+    /測試通過/,
+    /\d+\/\d+\s*(?:測試)?通過/,  // "20/20 通過" / "20/20 測試通過"
+    /整體評估\s*[:：]\s*(?:良好|通過|合格|無|沒有)/,
+    /無\s*(?:嚴重|重大)\s*問題/,
+    /(?:審查|review)\s*完成/i,
+    /tester\s*測試撰寫完成/i,
+    /code\s*reviewer\s*審查完成/i,
+  ];
+
+  for (const pat of passPatterns) {
+    if (pat.test(combined)) {
+      return {
+        verdict: 'PASS',
+        route: 'NEXT',
+        _inferred: true,
+      };
+    }
+  }
+
+  // ── 弱 PASS 信號：agent 有大量輸出但無 FAIL 信號 ──
+  // 200 字元以上的 assistant 輸出 + 無 CRITICAL/HIGH 關鍵字 → 推斷為 PASS
+  if (combined.length > 200 && !hasFAILSignal(combined)) {
+    return {
+      verdict: 'PASS',
+      route: 'NEXT',
+      _inferred: true,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * 從文字中提取指定嚴重程度的問題計數
+ *
+ * 匹配模式：
+ * - "CRITICAL: 2" / "CRITICAL：2"
+ * - "2 個 CRITICAL" / "2 CRITICAL"
+ * - "🔴 CRITICAL" 區塊後有 "#### [C-1]" 子標題（計數 C-N 標題數）
+ *
+ * @param {string} text - 掃描文字
+ * @param {string} severity - 'CRITICAL' | 'HIGH'
+ * @returns {number} 問題計數（0 = 找不到或明確為 0）
+ */
+function extractIssueCount(text, severity) {
+  // 模式 1：明確計數 "SEVERITY: N" / "SEVERITY：N"
+  const countAfter = new RegExp(`${severity}\\s*[:：]\\s*(\\d+)`, 'i');
+  const m1 = text.match(countAfter);
+  if (m1) return parseInt(m1[1], 10);
+
+  // 模式 2："N 個 SEVERITY" / "N SEVERITY"
+  const countBefore = new RegExp(`(\\d+)\\s*(?:個\\s*)?${severity}`, 'i');
+  const m2 = text.match(countBefore);
+  if (m2) return parseInt(m2[1], 10);
+
+  // 模式 3：存在 "### 🔴 CRITICAL" 區塊標題（有區塊 = 至少 1 個問題）
+  const sectionHeader = severity === 'CRITICAL'
+    ? /###\s*🔴\s*CRITICAL/
+    : /###\s*🟠\s*HIGH/;
+  if (sectionHeader.test(text)) return 1;
+
+  return 0;
+}
+
+/**
+ * 檢查文字中是否有 FAIL 語意信號（用於弱 PASS 判斷的排除條件）
+ */
+function hasFAILSignal(text) {
+  const failPatterns = [
+    /\bCRITICAL\b/i,     // 任何 CRITICAL 提及（不含 "0 CRITICAL"）
+    /\bfail/i,            // "fail" / "failed" / "failure"
+    /測試失敗/,
+    /嚴重問題/,
+    /安全漏洞/,
+  ];
+
+  for (const pat of failPatterns) {
+    if (pat.test(text)) {
+      // 排除 "0 CRITICAL" / "CRITICAL: 0" 的 false positive
+      if (/CRITICAL/i.test(pat.source)) {
+        if (/0\s*(?:個\s*)?CRITICAL/i.test(text) || /CRITICAL\s*[:：]\s*0/i.test(text)) {
+          continue; // "0 CRITICAL" 不算 FAIL
+        }
+      }
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -350,7 +522,10 @@ module.exports = {
   parseRoute,
   validateRoute,
   enforcePolicy,
+  inferRouteFromContent,
   // 內部工具（供測試用）
   convertVerdictToRoute,
   extractTextFromEntry,
+  extractIssueCount,
+  hasFAILSignal,
 };

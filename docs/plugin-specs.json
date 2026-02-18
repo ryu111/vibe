@@ -29,7 +29,8 @@
           "dashboard",
           "remote", "remote-config",
           "hook-diag",
-          "health"
+          "health",
+          "memory-audit"
         ],
         "agents": [
           "planner", "architect", "designer", "developer", "pipeline-architect",
@@ -37,7 +38,7 @@
           "doc-updater"
         ],
         "hooks": 19,
-        "scripts": 49
+        "scripts": 50
       }
     }
   }

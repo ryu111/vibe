@@ -553,7 +553,7 @@ handle_follow_up() {
 # 共用 claude 命令參數（不含 cd 和 -p）
 _claude_base_args() {
   local uuid="$1" mem_dir="$2"
-  echo "CLAUDE_MEM_DATA_DIR='$mem_dir' claude --session-id '$uuid' --model '$MODEL' --dangerously-skip-permissions --plugin-dir '$VIBE_PLUGIN' --plugin-dir '$FORGE_PLUGIN'"
+  echo "CLAUDE_MEM_DATA_DIR='$mem_dir' VIBE_SKIP_RESUME=1 claude --session-id '$uuid' --model '$MODEL' --dangerously-skip-permissions --plugin-dir '$VIBE_PLUGIN' --plugin-dir '$FORGE_PLUGIN'"
 }
 
 # tmux 模式：建立 session 並啟動 claude

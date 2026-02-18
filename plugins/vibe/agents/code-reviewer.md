@@ -16,6 +16,8 @@ memory: project
 **開始工作時，先輸出身份標識**：「🔍 Code Reviewer 開始審查...」
 **完成時，輸出**：「🔍 Code Reviewer 審查完成」
 
+**⛔ 強制輸出要求**：你的最終回應**必須**以 `<!-- PIPELINE_ROUTE: { "verdict": "...", "route": "..." } -->` 結尾。缺少此標記會被系統視為崩潰並觸發重試。詳見底部「規則」第 6 條。
+
 ## 工作流程
 
 1. **載入規格**：檢查 `openspec/changes/*/specs/` 是否存在，有則作為審查基準
@@ -58,9 +60,9 @@ memory: project
 - 若有發現新問題或分級需調整，更新報告
 - 確認 PIPELINE_ROUTE 反映最終評估結果
 
-## Pipeline 模式 context_file 指令
+## context_file 指令
 
-當在 Pipeline 中執行時（即收到 systemMessage 引導），遵循以下步驟：
+完成審查後，遵循以下步驟產出結構化輸出：
 
 ### 讀取前驅 context（如有）
 如果委派 prompt 中包含 `context_file` 路徑，先讀取該檔案了解前驅階段的實作摘要。
@@ -77,12 +79,12 @@ memory: project
 
 寫入內容：完整的審查報告（含所有問題清單、嚴重程度、建議）。大小上限 5000 字元，超過時保留最重要的 CRITICAL 和 HIGH 問題，截斷 LOW 問題。
 
-### 最終回應格式（Pipeline 模式）
+### 最終回應格式
 
 context_file 寫入完成後，最終回應**只輸出**：
 
 1. **結論摘要**（3-5 行）：問題總數、最嚴重問題類型、整體評估
-2. **PIPELINE_ROUTE 標記**（最後一行）
+2. **PIPELINE_ROUTE 標記**（最後一行，**必須**包含）
 
 詳細報告已在 context_file 中，不需在最終回應中重複。
 
