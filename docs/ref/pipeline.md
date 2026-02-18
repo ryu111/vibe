@@ -391,11 +391,14 @@ Pipeline Controller 是所有 hook 的唯一邏輯入口。5 個方法各對應�
 5. 有 ready -> 發出委派指令（支援並行 `stage1 + stage2`）
 6. 無 ready 但有 active -> 等待其他 stage 完成
 
-**pipeline-architect 完成的特殊處理**：
+**pipeline-architect 完成的特殊處理**（v2.0.6 三層修復鏈）：
 1. 從 transcript 解析 `<!-- PIPELINE_DAG_START -->` 標記
 2. validateDag() 驗證
-3. 非法 DAG -> 降級為 `{ DEV: { deps: [] } }`
-4. 設定 DAG + 跳過判斷 + 計算第一批 ready stages
+3. 驗證失敗 -> repairDag() 自動修復（null config/string deps/懸空引用/未知 stage）
+4. 修復後重新驗證 -> 仍失敗 -> 降級為 quick-dev 模板（DEV→REVIEW+TEST）
+5. 驗證通過 -> ensureQualityStagesIfDev()（有 DEV 必有 REVIEW/TEST）
+6. enrichCustomDag()（動態注入 barrier/onFail/next/maxRetries v4 metadata）
+7. 設定 DAG + 跳過判斷 + 計算第一批 ready stages
 
 ### onSessionStop(sessionId)
 
