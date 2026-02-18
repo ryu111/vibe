@@ -248,8 +248,8 @@ function runPipelineScenario({ id, pipelineId, prompt, label }) {
   test(`${id}: derivePhase = ${expectedPhase}`, () => {
     assert.strictEqual(derivePhase(sc), expectedPhase);
   });
-  // none 用 prompt-hook 分類（prompt hook 架構），其他用 explicit
-  const expectedSource = pipelineId === 'none' ? 'prompt-hook' : 'explicit';
+  // none 用 main-agent 分類（Main Agent 自主判斷），其他用 explicit
+  const expectedSource = pipelineId === 'none' ? 'main-agent' : 'explicit';
   test(`${id}: source = ${expectedSource}`, () => {
     assert.strictEqual(sc.classification.source, expectedSource);
   });

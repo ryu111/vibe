@@ -44,10 +44,8 @@ function asyncTest(name, fn) {
 const {
   classifyWithConfidence,
   extractExplicitPipeline,
-  extractHookClassification,
   mapTaskTypeToPipeline,
   buildPipelineCatalogHint,
-  buildClassifierPrompt,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'classifier.js'));
 
 // ─── Part 1a: extractExplicitPipeline (sync) ──────
@@ -118,10 +116,10 @@ asyncTest('Layer 1: [PIPELINE:SECURITY] 全大寫 → security', async () => {
   assert.strictEqual(result.confidence, 1.0);
 });
 
-asyncTest('Layer 1: [pipeline:invalid-name] → 降級到 prompt-hook', async () => {
+asyncTest('Layer 1: [pipeline:invalid-name] → 降級到 main-agent', async () => {
   const result = await classifyWithConfidence('[pipeline:invalid-name] fix typo');
-  assert.strictEqual(result.source, 'prompt-hook');
-  assert.strictEqual(result.matchedRule, 'prompt-hook');
+  assert.strictEqual(result.source, 'main-agent');
+  assert.strictEqual(result.matchedRule, 'main-agent');
 });
 
 asyncTest('Layer 1: 語法在結尾 → 正確解析', async () => {
@@ -180,105 +178,30 @@ asyncTest('Fallback: 只有空白 → none, 0, fallback, empty', async () => {
   assert.strictEqual(result.source, 'fallback');
 });
 
-asyncTest('Fallback: 一般 prompt → none/prompt-hook', async () => {
+asyncTest('Fallback: 一般 prompt → none/main-agent', async () => {
   const result = await classifyWithConfidence('建立一個完整的 REST API server');
   assert.strictEqual(result.pipeline, 'none');
   assert.strictEqual(result.confidence, 0);
-  assert.strictEqual(result.source, 'prompt-hook');
-  assert.strictEqual(result.matchedRule, 'prompt-hook');
+  assert.strictEqual(result.source, 'main-agent');
+  assert.strictEqual(result.matchedRule, 'main-agent');
 });
 
-asyncTest('Fallback: 中文 prompt → none/prompt-hook', async () => {
+asyncTest('Fallback: 中文 prompt → none/main-agent', async () => {
   const result = await classifyWithConfidence('重構認證模組');
   assert.strictEqual(result.pipeline, 'none');
-  assert.strictEqual(result.source, 'prompt-hook');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-asyncTest('Fallback: 疑問句 → none/prompt-hook', async () => {
+asyncTest('Fallback: 疑問句 → none/main-agent', async () => {
   const result = await classifyWithConfidence('什麼是 pipeline?');
   assert.strictEqual(result.pipeline, 'none');
-  assert.strictEqual(result.source, 'prompt-hook');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-// ─── Part 1d: extractHookClassification ──────────
+// ─── Part 1d: buildPipelineCatalogHint ──────────
 
-console.log('\n🧪 Part 1d: extractHookClassification（Prompt Hook 結果解析）');
+console.log('\n🧪 Part 1d: buildPipelineCatalogHint');
 console.log('═'.repeat(50));
-
-test('extractHookClassification: 正常 systemMessage → pipeline ID', () => {
-  assert.strictEqual(extractHookClassification('此需求適合 [pipeline:standard]。請使用對應 skill 開始委派。'), 'standard');
-});
-
-test('extractHookClassification: full pipeline → full', () => {
-  assert.strictEqual(extractHookClassification('此需求適合 [pipeline:full]。請使用對應 skill 開始委派。'), 'full');
-});
-
-test('extractHookClassification: fix pipeline → fix', () => {
-  assert.strictEqual(extractHookClassification('此需求適合 [pipeline:fix]。請使用對應 skill 開始委派。'), 'fix');
-});
-
-test('extractHookClassification: 無 pipeline 標記 → null', () => {
-  assert.strictEqual(extractHookClassification('這是一般回應，沒有 pipeline 標記'), null);
-});
-
-test('extractHookClassification: null → null', () => {
-  assert.strictEqual(extractHookClassification(null), null);
-});
-
-test('extractHookClassification: undefined → null', () => {
-  assert.strictEqual(extractHookClassification(undefined), null);
-});
-
-test('extractHookClassification: 空字串 → null', () => {
-  assert.strictEqual(extractHookClassification(''), null);
-});
-
-test('extractHookClassification: 不合法 ID → null', () => {
-  assert.strictEqual(extractHookClassification('[pipeline:invalid-name] test'), null);
-});
-
-test('extractHookClassification: 所有 pipeline ID 都可解析', () => {
-  const ids = ['full', 'standard', 'quick-dev', 'fix', 'test-first', 'ui-only', 'review-only', 'docs-only', 'security', 'none'];
-  for (const id of ids) {
-    assert.strictEqual(extractHookClassification(`[pipeline:${id}] test`), id, `應解析 ${id}`);
-  }
-});
-
-// ─── Part 1e: buildClassifierPrompt + buildPipelineCatalogHint ──
-
-console.log('\n🧪 Part 1e: buildClassifierPrompt + buildPipelineCatalogHint');
-console.log('═'.repeat(50));
-
-test('buildClassifierPrompt: 回傳非空字串', () => {
-  const prompt = buildClassifierPrompt();
-  assert.ok(typeof prompt === 'string');
-  assert.ok(prompt.length > 0);
-});
-
-test('buildClassifierPrompt: 包含分類原則', () => {
-  const prompt = buildClassifierPrompt();
-  assert.ok(prompt.includes('分類原則'), '應包含分類原則');
-});
-
-test('buildClassifierPrompt: 包含回覆格式', () => {
-  const prompt = buildClassifierPrompt();
-  assert.ok(prompt.includes('decision'), '應包含 decision 欄位說明');
-  assert.ok(prompt.includes('systemMessage'), '應包含 systemMessage 欄位說明');
-});
-
-test('buildClassifierPrompt: 包含所有有效 pipeline ID', () => {
-  const prompt = buildClassifierPrompt();
-  // none 是隱式的（不確定 → allow），不在 prompt 中顯式列出
-  const ids = ['full', 'standard', 'quick-dev', 'fix', 'test-first', 'ui-only', 'review-only', 'docs-only', 'security'];
-  for (const id of ids) {
-    assert.ok(prompt.includes(id), `應包含 pipeline ${id}`);
-  }
-});
-
-test('buildClassifierPrompt: 包含 JSON 回覆格式', () => {
-  const prompt = buildClassifierPrompt();
-  assert.ok(prompt.includes('[pipeline:'), '應包含 [pipeline: 語法範例');
-});
 
 test('buildPipelineCatalogHint: 回傳非空字串', () => {
   const hint = buildPipelineCatalogHint();
@@ -461,16 +384,16 @@ test('reset 清除分類（pipeline 完成後新分類重設）', () => {
   }
 });
 
-test('一般 prompt 正常分類（prompt-hook 架構 → none）', () => {
+test('一般 prompt 正常分類（Main Agent 自主判斷 → none）', () => {
   const sid = 'test-fallback-cls-' + Date.now();
   try {
     createTestState(sid);
     runTaskClassifier({ session_id: sid, prompt: '看看現在的狀態' });
     const state = readTestState(sid);
-    // 非顯式 prompt → prompt-hook → none pipeline
+    // 非顯式 prompt → main-agent → none pipeline
     assert.ok(state.classification, '應有 classification');
     assert.strictEqual(state.classification.pipelineId, 'none', '非顯式 → none');
-    assert.strictEqual(state.classification.source, 'prompt-hook', '應為 prompt-hook source');
+    assert.strictEqual(state.classification.source, 'main-agent', '應為 main-agent source');
   } finally {
     cleanupTestState(sid);
   }
@@ -491,7 +414,7 @@ test('已分類 state 不重複分類（same pipeline）', () => {
     // 注入 v3 classification
     const p = path.join(CLAUDE_TEST_DIR, `pipeline-state-${sid}.json`);
     const s = JSON.parse(fs.readFileSync(p, 'utf8'));
-    s.classification = { pipelineId: 'none', source: 'prompt-hook', confidence: 0 };
+    s.classification = { pipelineId: 'none', source: 'main-agent', confidence: 0 };
     fs.writeFileSync(p, JSON.stringify(s, null, 2));
 
     const result = runTaskClassifier({ session_id: sid, prompt: '看看專案' });

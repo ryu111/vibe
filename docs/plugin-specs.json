@@ -36,7 +36,7 @@
           "code-reviewer", "security-reviewer", "tester", "build-error-resolver", "e2e-runner", "qa",
           "doc-updater"
         ],
-        "hooks": 20,
+        "hooks": 19,
         "scripts": 45
       }
     }

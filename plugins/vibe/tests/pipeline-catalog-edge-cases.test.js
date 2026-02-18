@@ -185,16 +185,10 @@ asyncTest('只有空白字元的 prompt → 預設 none', async () => {
   assert.strictEqual(result.pipeline, 'none');
 });
 
-asyncTest('只有 emoji 的 prompt（無 API key）→ none/prompt-hook', async () => {
-  const origKey = process.env.ANTHROPIC_API_KEY;
-  delete process.env.ANTHROPIC_API_KEY;
-  try {
-    const result = await classifyWithConfidence('🚀🎉✨');
-    assert.strictEqual(result.pipeline, 'none');
-    assert.strictEqual(result.source, 'prompt-hook');
-  } finally {
-    if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
-  }
+asyncTest('只有 emoji 的 prompt → none/main-agent', async () => {
+  const result = await classifyWithConfidence('🚀🎉✨');
+  assert.strictEqual(result.pipeline, 'none');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
 test('prompt 含特殊字元不影響 [pipeline:xxx] 解析', () => {
@@ -233,22 +227,16 @@ asyncTest('同一 prompt 多次分類應回傳相同結果（顯式）', async (
   });
 });
 
-asyncTest('同一 prompt 多次分類應回傳相同結果（prompt-hook）', async () => {
-  const origKey = process.env.ANTHROPIC_API_KEY;
-  delete process.env.ANTHROPIC_API_KEY;
-  try {
-    const prompt = '建立完整的 REST API';
-    const results = [];
-    for (let i = 0; i < 5; i++) {
-      results.push(await classifyWithConfidence(prompt));
-    }
-    results.forEach(r => {
-      assert.strictEqual(r.pipeline, 'none');
-      assert.strictEqual(r.source, 'prompt-hook');
-    });
-  } finally {
-    if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
+asyncTest('同一 prompt 多次分類應回傳相同結果（main-agent）', async () => {
+  const prompt = '建立完整的 REST API';
+  const results = [];
+  for (let i = 0; i < 5; i++) {
+    results.push(await classifyWithConfidence(prompt));
   }
+  results.forEach(r => {
+    assert.strictEqual(r.pipeline, 'none');
+    assert.strictEqual(r.source, 'main-agent');
+  });
 });
 
 // ===== 9. 錯誤恢復場景 =====

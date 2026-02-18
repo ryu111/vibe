@@ -40,8 +40,8 @@ const {
   KNOWLEDGE_SKILLS,
 } = require('../registry.js');
 
-// Classifier（LLM-first — Layer 1 explicit + Layer 2 LLM）
-const { classifyWithConfidence } = require('./classifier.js');
+// Classifier（Layer 1 explicit + Layer 2 Main Agent 自主判斷）
+const { classifyWithConfidence, buildPipelineCatalogHint } = require('./classifier.js');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
@@ -243,12 +243,17 @@ async function classify(sessionId, prompt, options = {}) {
   });
   ds.writeState(sessionId, state);
 
-  // trivial/research → additionalContext
+  // 非顯式 → 注入 pipeline 提示讓 Main Agent 自主判斷
   if (stages.length === 0 || pipelineId === 'none') {
     const kh = buildKnowledgeHints(state);
-    const ctx = kh ? `[分類] ${pipelineId} — 直接回答\n${kh}` : `[分類] ${pipelineId} — 直接回答`;
+    const catalogHint = buildPipelineCatalogHint();
+    const parts = [
+      '如果這是開發/修改/優化任務，請主動使用 pipeline（呼叫對應 skill 或 /vibe:pipeline）。',
+      catalogHint,
+    ];
+    if (kh) parts.push(kh);
     return {
-      output: { additionalContext: ctx },
+      output: { additionalContext: parts.join('\n') },
     };
   }
 

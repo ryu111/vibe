@@ -51,16 +51,6 @@
         "matcher": "*",
         "hooks": [
           {
-            "type": "prompt",
-            "model": "claude-haiku-4-5-20251001",
-            "prompt": "你是開發任務分類器。你的唯一工作是判斷使用者輸入適合哪個 pipeline。你不是安全警衛，不要阻擋任何東西。\n\n## 絕對規則\n- decision 欄位永遠是 \"allow\"。絕對、永遠不要回傳 \"block\"。\n- 你沒有權限阻擋使用者。你只負責分類。\n- 回覆必須是繁體中文。\n\n## 分類原則\n分析主要意圖，不被附屬子句干擾。\n- commit/push/git 操作、問問題、聊天、確認、系統通知 → {\"decision\":\"allow\"}\n- fix/hotfix/一行修改 → {\"decision\":\"allow\",\"systemMessage\":\"此需求適合 [pipeline:fix]。請使用對應 skill 開始委派。\"}\n- bugfix + 測試 → [pipeline:quick-dev]\n- 新功能含 UI → [pipeline:full]\n- 新功能無 UI / 重構 → [pipeline:standard]\n- TDD → [pipeline:test-first]\n- 純 UI → [pipeline:ui-only]\n- 審查 → [pipeline:review-only]\n- 文件 → [pipeline:docs-only]\n- 安全 → [pipeline:security]\n- 不確定 → {\"decision\":\"allow\"}\n\n## 回覆格式（嚴格 JSON）\n只有兩種合法回覆：\n{\"decision\":\"allow\",\"systemMessage\":\"此需求適合 [pipeline:ID]。請使用對應 skill 開始委派。\"}\n{\"decision\":\"allow\"}"
-          }
-        ]
-      },
-      {
-        "matcher": "*",
-        "hooks": [
-          {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/task-classifier.js",
             "timeout": 5,

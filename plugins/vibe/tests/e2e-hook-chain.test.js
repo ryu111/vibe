@@ -852,43 +852,43 @@ console.log('══════════════════════�
 })();
 
 // ═══════════════════════════════════════════════
-// Scenario J: Prompt Hook 分類行為驗證
-// v5: 分類由 prompt hook 負責。command hook 只處理顯式 [pipeline:xxx] 和 state 管理
+// Scenario J: Main Agent 自主分類行為驗證
+// v6: 分類交由 Main Agent 自主判斷。command hook 只處理顯式 [pipeline:xxx] 和 state 管理
 // ═══════════════════════════════════════════════
 
-console.log('\n🎯 Scenario J: Prompt Hook 分類行為（非顯式 → prompt-hook → none）');
+console.log('\n🎯 Scenario J: Main Agent 分類行為（非顯式 → main-agent → none）');
 console.log('═══════════════════════════════════════════════════════');
 
 (() => {
   const sid = 'e2e-llm-first';
   try {
-    // J1-J5: 非顯式 prompt → prompt-hook → none pipeline → research taskType
-    const promptHookCases = [
-      { prompt: '做一個 poc 測試看看', note: 'poc + 看看 → prompt-hook' },
-      { prompt: 'scaffold 一個新專案', note: 'scaffold → prompt-hook' },
-      { prompt: '簡單的範例 demo', note: '簡單 demo → prompt-hook' },
-      { prompt: '建立 hello world express server', note: 'hello world → prompt-hook' },
-      { prompt: 'develop a prototype app', note: 'prototype → prompt-hook' },
+    // J1-J5: 非顯式 prompt → main-agent → none pipeline → research taskType
+    const mainAgentCases = [
+      { prompt: '做一個 poc 測試看看', note: 'poc + 看看 → main-agent' },
+      { prompt: 'scaffold 一個新專案', note: 'scaffold → main-agent' },
+      { prompt: '簡單的範例 demo', note: '簡單 demo → main-agent' },
+      { prompt: '建立 hello world express server', note: 'hello world → main-agent' },
+      { prompt: 'develop a prototype app', note: 'prototype → main-agent' },
     ];
 
-    for (let i = 0; i < promptHookCases.length; i++) {
-      const { prompt, note } = promptHookCases[i];
+    for (let i = 0; i < mainAgentCases.length; i++) {
+      const { prompt, note } = mainAgentCases[i];
       initState(sid);
       runHook('task-classifier', { session_id: sid, prompt });
 
-      test(`J${i + 1}: prompt-hook → none/research — ${note}`, () => {
+      test(`J${i + 1}: main-agent → none/research — ${note}`, () => {
         const state = readState(sid);
         assert.strictEqual(state.classification.pipelineId, 'none');
         assert.strictEqual(state.classification.taskType, 'research');
-        assert.strictEqual(state.classification.source, 'prompt-hook');
+        assert.strictEqual(state.classification.source, 'main-agent');
       });
     }
 
-    // J6-J8: 純 Research（prompt hook 處理，command hook 回傳 none）
+    // J6-J8: 純 Research（Main Agent 自主判斷，command hook 回傳 none）
     const pureResearchCases = [
-      { prompt: '查看目前的架構', note: '查看(research) → prompt-hook' },
-      { prompt: '這個 API 是什麼？', note: '是什麼(research) → prompt-hook' },
-      { prompt: 'how does this work?', note: 'how(research) → prompt-hook' },
+      { prompt: '查看目前的架構', note: '查看(research) → main-agent' },
+      { prompt: '這個 API 是什麼？', note: '是什麼(research) → main-agent' },
+      { prompt: 'how does this work?', note: 'how(research) → main-agent' },
     ];
 
     for (let i = 0; i < pureResearchCases.length; i++) {
@@ -896,17 +896,17 @@ console.log('══════════════════════�
       initState(sid);
       runHook('task-classifier', { session_id: sid, prompt });
 
-      test(`J${i + 6}: prompt-hook → none/research — ${note}`, () => {
+      test(`J${i + 6}: main-agent → none/research — ${note}`, () => {
         const state = readState(sid);
         assert.strictEqual(state.classification.pipelineId, 'none');
         assert.strictEqual(state.classification.taskType, 'research');
       });
     }
 
-    // J9-J10: Feature prompt（prompt hook 負責引導，command hook 回傳 none）
+    // J9-J10: Feature prompt（Main Agent 自主判斷，additionalContext 提供 pipeline 提示）
     const pureFeatureCases = [
-      { prompt: '建立完整的使用者認證系統', note: '建立...系統 → prompt-hook' },
-      { prompt: 'implement user authentication', note: 'implement → prompt-hook' },
+      { prompt: '建立完整的使用者認證系統', note: '建立...系統 → main-agent' },
+      { prompt: 'implement user authentication', note: 'implement → main-agent' },
     ];
 
     for (let i = 0; i < pureFeatureCases.length; i++) {
@@ -914,7 +914,7 @@ console.log('══════════════════════�
       initState(sid);
       runHook('task-classifier', { session_id: sid, prompt });
 
-      test(`J${i + 9}: prompt-hook → none/research — ${note}`, () => {
+      test(`J${i + 9}: main-agent → none/research — ${note}`, () => {
         const state = readState(sid);
         assert.strictEqual(state.classification.pipelineId, 'none');
         assert.strictEqual(state.classification.taskType, 'research');

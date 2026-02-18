@@ -152,28 +152,16 @@ asyncTest('classifyWithConfidence: Layer 1 語法在結尾', async () => {
 
 console.log('\n🧪 Part 3: Classifier Fallback 行為');
 
-asyncTest('classifyWithConfidence: 一般 prompt（無 API key）→ none/prompt-hook', async () => {
-  const origKey = process.env.ANTHROPIC_API_KEY;
-  delete process.env.ANTHROPIC_API_KEY;
-  try {
-    const result = await classifyWithConfidence('建立一個完整的 REST API server');
-    assert.strictEqual(result.pipeline, 'none');
-    assert.strictEqual(result.source, 'prompt-hook');
-  } finally {
-    if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
-  }
+asyncTest('classifyWithConfidence: 一般 prompt → none/main-agent', async () => {
+  const result = await classifyWithConfidence('建立一個完整的 REST API server');
+  assert.strictEqual(result.pipeline, 'none');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-asyncTest('classifyWithConfidence: 疑問句（無 API key）→ none/prompt-hook', async () => {
-  const origKey = process.env.ANTHROPIC_API_KEY;
-  delete process.env.ANTHROPIC_API_KEY;
-  try {
-    const result = await classifyWithConfidence('什麼是 pipeline?');
-    assert.strictEqual(result.pipeline, 'none');
-    assert.strictEqual(result.source, 'prompt-hook');
-  } finally {
-    if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
-  }
+asyncTest('classifyWithConfidence: 疑問句 → none/main-agent', async () => {
+  const result = await classifyWithConfidence('什麼是 pipeline?');
+  assert.strictEqual(result.pipeline, 'none');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
 asyncTest('classifyWithConfidence: 空字串 → none, 0, fallback, empty', async () => {
