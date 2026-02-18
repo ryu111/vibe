@@ -399,27 +399,51 @@ test('一般 prompt 正常分類（Main Agent 自主判斷 → none）', () => {
   }
 });
 
-test('已分類 state 不重複分類（same pipeline）', () => {
+test('已分類 state 不重複分類（same non-none pipeline）', () => {
   const sid = 'test-cache-hit-' + Date.now();
   try {
-    // 建立已分類為 none 的 state（無 API key 的預設結果）
+    // 建立已分類為 standard 的 state
     createTestState(sid, {
       phase: 'CLASSIFIED',
       context: {
-        pipelineId: 'none',
-        taskType: 'research',
-        expectedStages: [],
+        pipelineId: 'standard',
+        taskType: 'feature',
+        expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
       },
     });
     // 注入 v3 classification
+    const p = path.join(CLAUDE_TEST_DIR, `pipeline-state-${sid}.json`);
+    const s = JSON.parse(fs.readFileSync(p, 'utf8'));
+    s.classification = { pipelineId: 'standard', source: 'main-agent', confidence: 0.8 };
+    fs.writeFileSync(p, JSON.stringify(s, null, 2));
+
+    const result = runTaskClassifier({ session_id: sid, prompt: '繼續開發' });
+    // 同 pipeline (standard) 不重複分類 → 無輸出
+    assert.strictEqual(result.stdout, '', '同 non-none pipeline 不應重複分類');
+  } finally {
+    cleanupTestState(sid);
+  }
+});
+
+test('none pipeline 每次都注入 systemMessage', () => {
+  const sid = 'test-none-repeat-' + Date.now();
+  try {
+    createTestState(sid, {
+      phase: 'CLASSIFIED',
+      context: { pipelineId: 'none', taskType: 'research', expectedStages: [] },
+    });
     const p = path.join(CLAUDE_TEST_DIR, `pipeline-state-${sid}.json`);
     const s = JSON.parse(fs.readFileSync(p, 'utf8'));
     s.classification = { pipelineId: 'none', source: 'main-agent', confidence: 0 };
     fs.writeFileSync(p, JSON.stringify(s, null, 2));
 
     const result = runTaskClassifier({ session_id: sid, prompt: '看看專案' });
-    // 同 pipeline (none) 不重複分類 → 無輸出
-    assert.strictEqual(result.stdout, '', '同 pipeline 不應重複分類');
+    // none pipeline 不去重 → 每次注入 systemMessage
+    const output = result.stdout.trim();
+    assert.ok(output.length > 0, 'none pipeline 應每次都有輸出');
+    const parsed = JSON.parse(output);
+    assert.ok(parsed.systemMessage, 'none pipeline 應注入 systemMessage');
+    assert.ok(parsed.systemMessage.includes('Pipeline 自主分類'), 'systemMessage 應包含分類指令');
   } finally {
     cleanupTestState(sid);
   }

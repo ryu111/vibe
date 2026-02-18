@@ -24,6 +24,24 @@ const WEB_DIR = join(import.meta.dir, 'web');
 let sessions = {};
 const clients = new Set();
 const timelineConsumers = new Map(); // sessionId → consumer
+const ALIVE_THRESHOLD_MS = 120_000; // 2 分鐘內有 heartbeat = alive
+
+/** 檢查 session 是否 alive（heartbeat 檔案 mtime 在閾值內） */
+function isSessionAlive(sid) {
+  try {
+    const st = statSync(join(CLAUDE_DIR, `heartbeat-${sid}`));
+    return (Date.now() - st.mtimeMs) < ALIVE_THRESHOLD_MS;
+  } catch { return false; }
+}
+
+/** 取得所有 session 的 alive 狀態 */
+function getAliveMap() {
+  const map = {};
+  for (const sid of Object.keys(sessions)) {
+    map[sid] = isSessionAlive(sid);
+  }
+  return map;
+}
 
 /** 判斷 session 是否值得顯示在 Dashboard */
 function isDisplayWorthy(state) {
@@ -183,8 +201,17 @@ function stopTimelineConsumer(sessionId) {
 
 // --- File Watcher（防抖 80ms）---
 let timer;
+let hbTimer;
 if (existsSync(CLAUDE_DIR)) {
   watch(CLAUDE_DIR, (_, filename) => {
+    // Heartbeat 檔案 → 廣播 alive 狀態（500ms 防抖，高頻操作）
+    if (filename?.startsWith('heartbeat-')) {
+      clearTimeout(hbTimer);
+      hbTimer = setTimeout(() => {
+        broadcast({ type: 'heartbeat', alive: getAliveMap() });
+      }, 500);
+      return;
+    }
     if (!filename?.startsWith('pipeline-state-') || !filename.endsWith('.json')) return;
     clearTimeout(timer);
     timer = setTimeout(() => {
@@ -323,7 +350,7 @@ Bun.serve({
   websocket: {
     open(ws) {
       clients.add(ws);
-      ws.send(JSON.stringify({ type: 'init', sessions }));
+      ws.send(JSON.stringify({ type: 'init', sessions, alive: getAliveMap() }));
       // 新連線重播所有 session 的歷史 timeline 事件
       for (const sid of Object.keys(sessions)) {
         try {

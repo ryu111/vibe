@@ -38,6 +38,9 @@ process.stdin.on('end', () => {
     // --- 2. 清理無主的 claude-in-chrome-mcp 進程 ---
     cleanOrphanChromeMcp(sessionId, results);
 
+    // --- 3b. 清理過時 heartbeat 檔案 ---
+    cleanStaleFiles('heartbeat-*', results);
+
     // --- 4. 清理過時 state 檔案 ---
     cleanStaleFiles('timeline-*.jsonl', results);
     cleanStaleFiles('pipeline-state-*.json', results);
@@ -169,6 +172,9 @@ function cleanStaleFiles(pattern, results) {
       }
       if (pattern === 'pipeline-state-*.json') {
         return f.startsWith('pipeline-state-') && f.endsWith('.json');
+      }
+      if (pattern === 'heartbeat-*') {
+        return f.startsWith('heartbeat-');
       }
       return false;
     });

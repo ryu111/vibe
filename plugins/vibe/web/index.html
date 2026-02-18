@@ -829,13 +829,13 @@
       return Math.round(active.filter(st => s.stageResults?.[st]?.verdict === 'PASS').length / active.length * 100);
     }
     function hasPipeline(s) { return (s?.expectedStages?.length || 0) > 0; }
-    function isLive(s) { return s?.delegationActive || false; }
+    function isLive(s) { return s?._alive || s?.delegationActive || false; }
     function sid(id) { return id?.length > 8 ? id.slice(0, 8) : id || '—'; }
     /** Session 分類：live > active > done > stale */
     function sessionCategory(s) {
       if (!s) return 'stale';
       const hasStages = hasPipeline(s);
-      if (s.delegationActive) return 'live';
+      if (s._alive || s.delegationActive) return 'live';
       if (hasStages && pct(s) >= 100) return 'done';
       if (hasStages) return 'active';
       // 無 pipeline
@@ -1412,17 +1412,27 @@
       const [showConfetti, setShowConfetti] = useState(false);
       const [zoom, setZoom] = useState(100);
       const [timelineEvents, setTimelineEvents] = useState({});
+      const [alive, setAlive] = useState({}); // sessionId → boolean（heartbeat 活性）
       const [tlFilter, setTlFilter] = useState(0); // 0=全部, 10/30/60=分鐘
       const [tlTab, setTlTab] = useState('all'); // all/agent/pipeline/quality/task
       const [mainTab, setMainTab] = useState('pipeline'); // pipeline/dashboard/timeline
       const prevRef = useRef({});
       const confettiShown = useRef(new Set());
 
+      // 合併 alive 狀態到 sessions（_alive 欄位供 sessionCategory/isLive 使用）
+      const mergedSessions = useMemo(() => {
+        const out = {};
+        for (const [id, s] of Object.entries(sessions)) {
+          out[id] = alive[id] ? { ...s, _alive: true } : s;
+        }
+        return out;
+      }, [sessions, alive]);
+
       // 分組：live + active | done | stale
       const [showStale, setShowStale] = useState(false);
       const { liveSessions, doneSessions, staleSessions } = useMemo(() => {
         const live = [], done = [], stale = [];
-        for (const [id, s] of Object.entries(sessions)) {
+        for (const [id, s] of Object.entries(mergedSessions)) {
           const cat = sessionCategory(s);
           if (cat === 'live' || cat === 'active') live.push([id, s]);
           else if (cat === 'done') done.push([id, s]);
@@ -1435,10 +1445,10 @@
         done.sort((a, b) => new Date(b[1].lastTransition || 0) - new Date(a[1].lastTransition || 0));
         stale.sort((a, b) => new Date(b[1].lastTransition || 0) - new Date(a[1].lastTransition || 0));
         return { liveSessions: live, doneSessions: done, staleSessions: stale };
-      }, [sessions, sort]);
+      }, [mergedSessions, sort]);
 
       // --- 計算值（必須在 useEffect 之前）---
-      const s = active ? sessions[active] : null;
+      const s = active ? mergedSessions[active] : null;
       const progress = s ? pct(s) : 0;
       const isComplete = progress === 100 && hasPipeline(s);
       const selectSession = id => { setActive(id); setEvents([]); prevRef.current = {}; };
@@ -1479,6 +1489,7 @@
             if (e.data === 'pong') return;
             const m = JSON.parse(e.data);
             if (m.sessions) setSessions(Object.fromEntries(Object.entries(m.sessions).map(([k, v]) => [k, adaptV3(v)])));
+            if (m.alive) setAlive(prev => ({ ...prev, ...m.alive }));
             // Timeline 事件推送（增量更新）
             if (m.type === 'timeline' && m.sessionId && m.event) {
               setTimelineEvents(prev => {
@@ -1541,22 +1552,22 @@
 
       // 自動選擇 + 跟隨活躍 session
       useEffect(() => {
-        const sids = Object.keys(sessions);
+        const sids = Object.keys(mergedSessions);
         if (!sids.length) return;
-        // 找到正在工作的 session（delegationActive）
-        const liveSid = liveSessions.find(([, ss]) => ss.delegationActive)?.[0];
+        // 找到正在工作的 session（delegationActive 或 alive）
+        const liveSid = liveSessions.find(([, ss]) => ss._alive || ss.delegationActive)?.[0];
         // 如果有活躍 session 且不是當前選的 → 自動切換
         if (liveSid && liveSid !== active) { selectSession(liveSid); return; }
         // 如果當前 active 已消失 → 選最近的
-        if (!active || !sessions[active]) {
+        if (!active || !mergedSessions[active]) {
           setActive(liveSessions[0]?.[0] || doneSessions[0]?.[0] || sids[sids.length - 1]);
         }
-      }, [sessions, liveSessions]);
+      }, [mergedSessions, liveSessions]);
 
       // Timeline 追蹤
       useEffect(() => {
-        if (!active || !sessions[active]) return;
-        const curr = sessions[active], prev = prevRef.current[active], t = now();
+        if (!active || !mergedSessions[active]) return;
+        const curr = mergedSessions[active], prev = prevRef.current[active], t = now();
         if (prev) {
           for (const agent of (curr.completed || []).filter(a => !(prev.completed || []).includes(a))) {
             const e = Object.entries(SM).find(([, m]) => m.agent === agent);
@@ -1648,7 +1659,7 @@
                 `)}
               `}
 
-              ${!Object.keys(sessions).length && html`<div style="color:var(--subtext0);font-size:11px;padding:8px">無活躍 session</div>`}
+              ${!Object.keys(mergedSessions).length && html`<div style="color:var(--subtext0);font-size:11px;padding:8px">無活躍 session</div>`}
             </div>
           </div>
 

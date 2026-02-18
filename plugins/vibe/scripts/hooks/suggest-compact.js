@@ -74,6 +74,9 @@ process.stdin.on('end', () => {
     const toolName = data.tool_name || '';
     const toolInput = data.tool_input || {};
 
+    // Heartbeat（活性偵測 — Dashboard sidebar 用）
+    try { fs.writeFileSync(path.join(CLAUDE_DIR, `heartbeat-${sessionId}`), ''); } catch (_) {}
+
     // 讀取 pipeline state（只讀一次，後續複用）
     const cachedState = dsReadState(sessionId);
 

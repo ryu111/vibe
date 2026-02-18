@@ -17,11 +17,31 @@ const path = require('path');
 const hookLogger = require('../lib/hook-logger.js');
 
 try {
-  const ROOT = process.cwd();
-  const refreshScript = path.join(ROOT, 'dashboard', 'scripts', 'refresh.js');
+  const fs = require('fs');
+  // 嘗試多個路徑：CWD（專案根目錄）→ 從 plugin 推導專案根目錄
+  const candidates = [
+    process.cwd(),
+    path.resolve(__dirname, '..', '..', '..', '..'),
+  ];
+
+  let refreshScript = null;
+  let root = null;
+  for (const dir of candidates) {
+    const candidate = path.join(dir, 'dashboard', 'scripts', 'refresh.js');
+    if (fs.existsSync(candidate)) {
+      refreshScript = candidate;
+      root = dir;
+      break;
+    }
+  }
+
+  if (!refreshScript) {
+    // 非 vibe 開發環境，靜默跳過
+    process.exit(0);
+  }
 
   execFileSync('node', [refreshScript], {
-    cwd: ROOT,
+    cwd: root,
     stdio: 'pipe',
     timeout: 30000,
   });

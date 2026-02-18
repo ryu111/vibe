@@ -214,9 +214,9 @@ async function classify(sessionId, prompt, options = {}) {
     ds.writeState(sessionId, state);
   }
 
-  // 已分類 + 同一 pipeline → 不重複
+  // 已分類 + 同一 pipeline → 不重複（none 除外：每次都需注入 systemMessage）
   const existingPipelineId = ds.getPipelineId(state);
-  if (existingPipelineId === pipelineId && existingPipelineId) {
+  if (existingPipelineId === pipelineId && existingPipelineId && pipelineId !== 'none') {
     return { output: null }; // 不輸出
   }
 

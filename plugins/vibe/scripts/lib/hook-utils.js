@@ -34,6 +34,12 @@ function safeRun(hookName, handler) {
       return;
     }
 
+    // null / undefined / 非 object → 視為無效輸入
+    if (!data || typeof data !== 'object') {
+      process.exit(0);
+      return;
+    }
+
     try {
       await handler(data);
     } catch (err) {
