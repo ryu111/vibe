@@ -66,10 +66,12 @@ function scanSessions() {
   const out = {};
   for (const f of readdirSync(CLAUDE_DIR)) {
     if (!f.startsWith('pipeline-state-') || !f.endsWith('.json')) continue;
+    const sid = f.slice(15, -5);
+    if (!UUID_RE.test(sid)) continue; // 過濾測試產生的非 UUID session
     try {
       const state = JSON.parse(readFileSync(join(CLAUDE_DIR, f), 'utf8'));
       if (isDisplayWorthy(state)) {
-        out[f.slice(15, -5)] = state;
+        out[sid] = state;
       }
     } catch { /* 忽略損壞檔案 */ }
   }
@@ -83,6 +85,8 @@ function autoCleanup() {
   let changed = false;
   for (const f of readdirSync(CLAUDE_DIR)) {
     if (!f.startsWith('pipeline-state-') || !f.endsWith('.json')) continue;
+    const sid = f.slice(15, -5);
+    if (!UUID_RE.test(sid)) continue; // 過濾測試產生的非 UUID session
     const fp = join(CLAUDE_DIR, f);
     try {
       const state = JSON.parse(readFileSync(fp, 'utf8'));
@@ -90,7 +94,6 @@ function autoCleanup() {
       if (!isDisplayWorthy(state)) {
         const mtime = statSync(fp).mtimeMs;
         if (now - mtime > 30 * 60 * 1000) {
-          const sid = f.slice(15, -5);
           unlinkSync(fp);
           delete sessions[sid];
           stopTimelineConsumer(sid);
@@ -219,9 +222,10 @@ if (existsSync(CLAUDE_DIR)) {
       return;
     }
     if (!filename?.startsWith('pipeline-state-') || !filename.endsWith('.json')) return;
+    const sid = filename.slice(15, -5);
+    if (!UUID_RE.test(sid)) return; // 過濾測試產生的非 UUID session
     clearTimeout(timer);
     timer = setTimeout(() => {
-      const sid = filename.slice(15, -5);
       const fp = join(CLAUDE_DIR, filename);
       try {
         if (existsSync(fp)) {
