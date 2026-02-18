@@ -23,7 +23,7 @@ const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const HOOKS_DIR = path.join(PLUGIN_ROOT, 'scripts', 'hooks');
 
 // v3 state 工具
-const { createV3State, writeV3State, cleanTestStateFiles } = require('./test-helpers');
+const { createV3State, writeV3State, cleanTestStateFiles, cleanSessionState } = require('./test-helpers');
 const { derivePhase } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'flow', 'dag-state.js'));
 
 let passed = 0;
@@ -67,11 +67,10 @@ function readState(sessionId) {
 }
 
 /**
- * 清理 state file
+ * 清理 session 相關的所有 state 檔案（委派到共用 cleanSessionState）
  */
 function cleanState(sessionId) {
-  const p = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
-  try { fs.unlinkSync(p); } catch (_) {}
+  cleanSessionState(sessionId);
 }
 
 /**

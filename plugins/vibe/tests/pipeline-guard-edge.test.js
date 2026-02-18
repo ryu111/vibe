@@ -52,11 +52,9 @@ function writeRawState(sessionId, content) {
   return p;
 }
 
+const { cleanSessionState } = require('./test-helpers');
 function cleanState(sessionId) {
-  const p = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
-  try {
-    fs.unlinkSync(p);
-  } catch (_) {}
+  cleanSessionState(sessionId);
 }
 
 function runHook(hookPath, stdinData) {

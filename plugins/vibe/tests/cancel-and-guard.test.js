@@ -41,11 +41,9 @@ function test(name, fn) {
  * 清理 state file
  * @param {string} sessionId
  */
+const { cleanSessionState } = require('./test-helpers');
 function cleanState(sessionId) {
-  const p = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
-  try {
-    fs.unlinkSync(p);
-  } catch (_) {}
+  cleanSessionState(sessionId);
 }
 
 /**

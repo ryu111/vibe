@@ -19,6 +19,7 @@ function cleanTestStateFiles() {
   const patterns = [
     { prefix: 'pipeline-state-test-', suffix: '.json' },
     { prefix: 'pipeline-state-e2e-', suffix: '.json' },
+    { prefix: 'pipeline-state-catalog-', suffix: '.json' },
     { prefix: 'timeline-test-', suffix: '.jsonl' },
     { prefix: 'timeline-e2e-', suffix: '.jsonl' },
     { prefix: 'timeline-tg-test-', suffix: '.jsonl' },
@@ -30,6 +31,16 @@ function cleanTestStateFiles() {
     { prefix: 'classified-reads-e2e-', suffix: '.json' },
     { prefix: 'flow-counter-test-', suffix: '.json' },
     { prefix: 'flow-counter-e2e-', suffix: '.json' },
+    // v4 新增：barrier / reflection / context 檔案
+    { prefix: 'barrier-state-test-', suffix: '.json' },
+    { prefix: 'barrier-state-e2e-', suffix: '.json' },
+    { prefix: 'barrier-state-catalog-', suffix: '.json' },
+    { prefix: 'reflection-memory-test-', suffix: '.md' },
+    { prefix: 'reflection-memory-e2e-', suffix: '.md' },
+    { prefix: 'reflection-memory-catalog-', suffix: '.md' },
+    { prefix: 'pipeline-context-test-', suffix: '.md' },
+    { prefix: 'pipeline-context-e2e-', suffix: '.md' },
+    { prefix: 'pipeline-context-catalog-', suffix: '.md' },
   ];
 
   let count = 0;
@@ -138,4 +149,31 @@ function writeV3State(sessionId, opts = {}) {
   return p;
 }
 
-module.exports = { cleanTestStateFiles, createV3State, writeV3State, CLAUDE_DIR };
+/**
+ * 清理單一 session 的所有相關 state 檔案（含 v4 barrier/reflection/context）
+ * 替代各測試檔案自行實作的 cleanState(sid)
+ * @param {string} sessionId
+ */
+function cleanSessionState(sessionId) {
+  const fixed = [
+    `pipeline-state-${sessionId}.json`,
+    `barrier-state-${sessionId}.json`,
+    `timeline-${sessionId}.jsonl`,
+    `classified-reads-${sessionId}.json`,
+    `flow-counter-${sessionId}.json`,
+  ];
+  for (const f of fixed) {
+    try { fs.unlinkSync(path.join(CLAUDE_DIR, f)); } catch (_) {}
+  }
+  // reflection-memory-{sid}-{STAGE}.md 和 pipeline-context-{sid}-{STAGE}.md
+  try {
+    const files = fs.readdirSync(CLAUDE_DIR);
+    for (const f of files) {
+      if ((f.startsWith(`reflection-memory-${sessionId}-`) || f.startsWith(`pipeline-context-${sessionId}-`)) && f.endsWith('.md')) {
+        try { fs.unlinkSync(path.join(CLAUDE_DIR, f)); } catch (_) {}
+      }
+    }
+  } catch (_) {}
+}
+
+module.exports = { cleanTestStateFiles, createV3State, writeV3State, cleanSessionState, CLAUDE_DIR };

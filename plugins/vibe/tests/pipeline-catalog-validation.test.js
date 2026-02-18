@@ -101,8 +101,9 @@ function readState(sid) {
   } catch (_) { return null; }
 }
 
+const { cleanSessionState } = require('./test-helpers');
 function cleanState(sid) {
-  try { fs.unlinkSync(path.join(CLAUDE_DIR, `pipeline-state-${sid}.json`)); } catch (_) {}
+  cleanSessionState(sid);
 }
 
 function runHook(hookName, stdinData) {
