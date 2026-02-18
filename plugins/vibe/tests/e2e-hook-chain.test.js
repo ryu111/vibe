@@ -167,10 +167,10 @@ console.log('═'.repeat(55));
       assert.strictEqual(state.classification.taskType, 'quickfix');
     });
 
-    test('A2: DAG 已建立（enforced）', () => {
+    test('A2: DAG 已建立（pipelineActive）', () => {
       const state = readState(sid);
       assert.ok(state.dag, 'DAG 應存在');
-      assert.strictEqual(state.enforced, true);
+      assert.strictEqual(state.pipelineActive, true);
       const phase = derivePhase(state);
       assert.ok(['CLASSIFIED', 'DELEGATING', 'RETRYING'].includes(phase));
     });
@@ -223,10 +223,10 @@ console.log('═'.repeat(55));
       assert.strictEqual(state.classification.taskType, 'feature');
     });
 
-    test('B2: DAG 已建立（enforced）', () => {
+    test('B2: DAG 已建立（pipelineActive）', () => {
       const state = readState(sid);
       assert.ok(state.dag, 'DAG 應存在');
-      assert.strictEqual(state.enforced, true);
+      assert.strictEqual(state.pipelineActive, true);
       const phase = derivePhase(state);
       assert.ok(['CLASSIFIED', 'DELEGATING', 'RETRYING'].includes(phase));
     });
@@ -381,9 +381,10 @@ console.log('═'.repeat(55));
       assert.strictEqual(gateBlock.exitCode, 2);
     });
 
-    // Step 3: 模擬 /vibe:cancel（cancelled=true）
+    // Step 3: 模擬 /vibe:cancel（v4: pipelineActive=false）
     const state = readState(sid);
-    state.meta.cancelled = true;
+    state.pipelineActive = false;  // v4 cancel 核心：關閉 guard
+    state.meta.cancelled = true;   // v3 相容欄位（保留）
     fs.writeFileSync(
       path.join(CLAUDE_DIR, `pipeline-state-${sid}.json`),
       JSON.stringify(state, null, 2)
@@ -1027,11 +1028,11 @@ console.log('══════════════════════�
       );
     });
 
-    test('K6: architect 完成後，phase=CLASSIFIED（enforced）', () => {
+    test('K6: architect 完成後，phase=CLASSIFIED（pipelineActive）', () => {
       const state = readState(sid);
       const phase = derivePhase(state);
       assert.strictEqual(phase, 'CLASSIFIED');
-      assert.strictEqual(state.enforced, true);
+      assert.strictEqual(state.pipelineActive, true);
     });
 
     test('K7: DAG 結構正確（standard pipeline 階段）', () => {
@@ -1435,7 +1436,7 @@ console.log('══════════════════════�
     test('O4: 新鮮 pipeline + 降級 → 保持原 pipeline', () => {
       const state = readState(sid);
       assert.strictEqual(state.classification.pipelineId, 'standard', '應保持 standard');
-      assert.strictEqual(state.enforced, true, '應保持 enforced');
+      assert.strictEqual(state.pipelineActive, true, '應保持 pipelineActive');
     });
 
     test('O5: 原 stages 完成記錄保留', () => {

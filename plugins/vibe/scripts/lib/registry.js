@@ -108,8 +108,11 @@ const QUALITY_STAGES = ['REVIEW', 'TEST', 'QA', 'E2E'];
 // 實作階段 — 進入這些階段時自動 enforce pipeline
 const IMPL_STAGES = ['DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'];
 
-// Verdict 正規表達式
+// Verdict 正規表達式（v3 fallback 用）
 const VERDICT_REGEX = /<!-- PIPELINE_VERDICT:\s*(PASS|FAIL(?::(?:CRITICAL|HIGH|MEDIUM|LOW))?)\s*-->/;
+
+// Route 正規表達式（v4 PIPELINE_ROUTE 協議）
+const PIPELINE_ROUTE_REGEX = /<!-- PIPELINE_ROUTE:\s*([\s\S]*?)\s*-->/;
 
 // 智慧回退上限
 const MAX_RETRIES = parseInt(process.env.CLAUDE_PIPELINE_MAX_RETRIES || '3', 10);
@@ -177,7 +180,7 @@ module.exports = {
   PIPELINES: REFERENCE_PIPELINES,  // 向後相容別名
   PIPELINE_PRIORITY, TASKTYPE_TO_PIPELINE, PIPELINE_TO_TASKTYPE,
   // Pipeline 行為
-  QUALITY_STAGES, IMPL_STAGES, VERDICT_REGEX, MAX_RETRIES,
+  QUALITY_STAGES, IMPL_STAGES, VERDICT_REGEX, PIPELINE_ROUTE_REGEX, MAX_RETRIES,
   // 階段上下文
   STAGE_CONTEXT, POST_STAGE_HINTS, OPENSPEC_CONTEXT,
   // 知識 Skills

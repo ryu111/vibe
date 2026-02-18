@@ -814,10 +814,12 @@ for (const scenario of SCENARIOS) {
     session_id: sid, tool_name: 'Bash',
     tool_input: { command: 'echo "code" > /tmp/output.js' },
   });
-  test('X3: DELEGATING Bash write → exit 0', () => {
-    assert.strictEqual(bashWriteDeleg.exitCode, 0);
+  test('X3: DELEGATING Bash write .js → exit 2（v4: 寫檔攔截優先於 DELEGATING）', () => {
+    // v4 設計：Bash 寫程式碼檔案的攔截（步驟 2.5）優先於 DELEGATING 放行（步驟 4）
+    // sub-agent 使用 Write 工具寫檔，Main Agent 不應用 Bash 繞道
+    assert.strictEqual(bashWriteDeleg.exitCode, 2);
   });
-  console.log(`    └─ exitCode=${bashWriteDeleg.exitCode}, allowed ✓`);
+  console.log(`    └─ exitCode=${bashWriteDeleg.exitCode}, blocked by bash-write-bypass ✓`);
 
   // 3g: DELEGATING 時 EnterPlanMode 仍阻擋
   log('STEP', 'DELEGATING 時 EnterPlanMode 仍阻擋');
@@ -877,10 +879,10 @@ for (const scenario of SCENARIOS) {
   test('X4: cancel 後 derivePhase = IDLE', () => {
     assert.strictEqual(derivePhase(s), 'IDLE');
   });
-  test('X4: cancel 後 cancelled = true', () => {
-    assert.strictEqual(s.meta.cancelled, true);
+  test('X4: cancel 後 pipelineActive = false', () => {
+    assert.strictEqual(s.pipelineActive, false);
   });
-  console.log(`    └─ phase=${derivePhase(s)}, cancelled=${s.meta.cancelled}`);
+  console.log(`    └─ phase=${derivePhase(s)}, pipelineActive=${s.pipelineActive}`);
 
   // Guard 放行
   log('STEP', 'Cancel 後 Guard 放行');
@@ -1657,9 +1659,11 @@ for (const scenario of SCENARIOS) {
   test('X10: systemMessage 含完成或強制繼續提示', () => {
     assert(failResult.json && failResult.json.systemMessage,
       'systemMessage 缺失');
-    // v3: 無 DEV + 無 ready stages → buildCompleteOutput（Pipeline 完成）
+    // v4: enforcePolicy 規則 3 已將 DEV→NEXT（無 DEV in DAG），
+    //     onStageComplete 走分支 C → buildCompleteOutput（'Pipeline [xxx] 完成'）
+    //     或分支 A 無 DEV 路徑（'無 DEV 可回退，強制繼續'）
     assert(
-      failResult.json.systemMessage.includes('Pipeline 完成') ||
+      failResult.json.systemMessage.includes('完成') ||
       failResult.json.systemMessage.includes('無 DEV') ||
       failResult.json.systemMessage.includes('強制繼續'),
       `systemMessage 不含預期內容: ${failResult.json.systemMessage.slice(0, 100)}`);

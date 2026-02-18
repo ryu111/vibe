@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /**
- * dag-state.js — Pipeline v3 宣告式狀態管理
+ * dag-state.js — Pipeline v4 宣告式狀態管理
  *
- * 取代 state-machine.js 的 FSM 模式。
- * Phase 從 stages 狀態自動推導（derivePhase），不需要手動管理轉換矩陣。
+ * 核心概念：
+ * - pipelineActive: true  → pipeline 執行中（guard 啟動）
+ * - pipelineActive: false → pipeline 閒置/完成/已取消（guard 關閉）
  *
  * 設計原則：
  * 1. 宣告式 — stages 記錄各 stage 狀態，phase 是衍生值
  * 2. DAG 驅動 — getReadyStages() 從 DAG + stages 計算下一批可執行的 stages
- * 3. 集中 I/O — 統一讀寫 state file
+ * 3. 集中 I/O — 統一讀寫 state file（使用 atomicWrite 確保原子性）
  * 4. 純函式查詢 — 所有查詢都不修改 state
  *
  * @module flow/dag-state
@@ -18,6 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { atomicWrite } = require('./atomic-write.js');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
@@ -42,14 +44,14 @@ const STAGE_STATUS = {
 // ────────────────── 初始化 ──────────────────
 
 /**
- * 建立初始 state（v3 結構）
+ * 建立初始 state（v4 結構）
  * @param {string} sessionId
  * @param {Object} options - { environment, openspecEnabled, pipelineRules }
  * @returns {Object}
  */
 function createInitialState(sessionId, options = {}) {
   return {
-    version: 3,
+    version: 4,
     sessionId,
 
     // 分類結果
@@ -62,8 +64,13 @@ function createInitialState(sessionId, options = {}) {
 
     // DAG（pipeline-architect 產出）
     dag: null,
-    enforced: false,
     blueprint: null,
+
+    // v4 核心：pipeline 執行狀態（取代複雜的 5 phase 推導）
+    pipelineActive: false,
+
+    // 並行追蹤：目前 active 的 stages
+    activeStages: [],
 
     // 各 stage 狀態
     stages: {},
@@ -72,9 +79,14 @@ function createInitialState(sessionId, options = {}) {
     retries: {},
     pendingRetry: null,
 
+    // v4 重試歷史（每個 stage 的每輪重試記錄）
+    retryHistory: {},
+
+    // v4 crash 計數器（Phase 4 barrier 用）
+    crashes: {},
+
     meta: {
       initialized: true,
-      cancelled: false,
       lastTransition: new Date().toISOString(),
       reclassifications: [],
       pipelineRules: options.pipelineRules || [],
@@ -86,27 +98,51 @@ function createInitialState(sessionId, options = {}) {
 
 /**
  * 從 state 推導當前 phase（純函式）
+ *
+ * v4：使用 pipelineActive 布林值 + activeStages 陣列判斷。
+ *
+ * 暫態說明（H-3）：
+ * 當 pipelineActive=true 且所有 stages 均已完成（allDone=true）時，
+ * 此函式回傳 COMPLETE，但 pipelineActive 仍維持 true（因為純函式不修改 state）。
+ * 這是正常的暫態——pipeline-controller 的 onStageComplete 在最後一個 stage 完成後
+ * 會立即設定 pipelineActive=false 並寫回磁碟，Guard 下一次讀到的 state 就是已解除的狀態。
+ * Guard（guard-rules.evaluate）使用 isActive()（即 pipelineActive 布林值）而非 derivePhase，
+ * 因此在這個暫態期間 guard 可能仍會阻擋寫入操作——這是預期行為，不是 bug。
+ *
  * @param {Object} state
  * @returns {string} PHASES 值
  */
 function derivePhase(state) {
   if (!state) return PHASES.IDLE;
-  if (state.meta?.cancelled) return PHASES.IDLE;
-  if (!state.dag) {
-    // 安全網：有分類但無 DAG（極端情況）→ CLASSIFIED（讓 guard 生效）
-    const pid = state.classification?.pipelineId;
-    if (pid && pid !== 'none') return PHASES.CLASSIFIED;
+
+  // v4：pipelineActive=false → IDLE（或 COMPLETE，根據是否有已完成 stages 判斷）
+  if (!state.pipelineActive) {
+    // 若有完成的 stages → COMPLETE，否則 IDLE
+    if (state.dag) {
+      const stageIds = Object.keys(state.dag);
+      const stages = state.stages || {};
+      if (stageIds.length > 0) {
+        const allDone = stageIds.every(id => {
+          const s = stages[id]?.status;
+          return s === STAGE_STATUS.COMPLETED || s === STAGE_STATUS.SKIPPED;
+        });
+        if (allDone) return PHASES.COMPLETE;
+      }
+    }
     return PHASES.IDLE;
   }
 
+  // pipelineActive=true → 根據 stages 狀態推導
+  // 無 DAG（如 test-first 重複 stage，等待 pipeline-architect 建立）→ CLASSIFIED
+  if (!state.dag) return PHASES.CLASSIFIED;
+
   const stages = state.stages || {};
   const stageIds = Object.keys(state.dag);
-  if (stageIds.length === 0) return PHASES.IDLE;
+  if (stageIds.length === 0) return PHASES.CLASSIFIED;
 
-  // pendingRetry → RETRYING（防護非陣列型別）
-  if (Array.isArray(state.pendingRetry?.stages) && state.pendingRetry.stages.length > 0) {
-    return PHASES.RETRYING;
-  }
+  // activeStages.length > 0 → DELEGATING
+  const activeStagesArr = state.activeStages || [];
+  if (activeStagesArr.length > 0) return PHASES.DELEGATING;
 
   // 全部完成/跳過 → COMPLETE
   const allDone = stageIds.every(id => {
@@ -115,11 +151,17 @@ function derivePhase(state) {
   });
   if (allDone) return PHASES.COMPLETE;
 
-  // 有 active → DELEGATING
-  const hasActive = stageIds.some(id => stages[id]?.status === STAGE_STATUS.ACTIVE);
-  if (hasActive) return PHASES.DELEGATING;
+  // 有 failed + retries → RETRYING
+  const hasFailed = stageIds.some(id => stages[id]?.status === STAGE_STATUS.FAILED);
+  const hasRetries = Object.keys(state.retries || {}).length > 0;
+  if (hasFailed && hasRetries) return PHASES.RETRYING;
 
-  // 有 DAG 但沒 active → CLASSIFIED
+  // pendingRetry → RETRYING
+  if (Array.isArray(state.pendingRetry?.stages) && state.pendingRetry.stages.length > 0) {
+    return PHASES.RETRYING;
+  }
+
+  // 其餘 → CLASSIFIED
   return PHASES.CLASSIFIED;
 }
 
@@ -183,22 +225,45 @@ function getSkippedStages(state) {
     .map(([id]) => id);
 }
 
-// ────────────────── 向後相容衍生查詢 ──────────────────
+// ────────────────── v4 核心查詢 ──────────────────
+
+/**
+ * v4 核心：pipeline 是否活躍（guard 是否應該啟動）
+ *
+ * 取代 v3 複雜的 isEnforced() + derivePhase() 組合。
+ * 只需一個布林值判斷是否需要 guard。
+ *
+ * @param {Object|null} state
+ * @returns {boolean}
+ */
+function isActive(state) {
+  return state?.pipelineActive === true;
+}
+
+// ────────────────── 衍生查詢 ──────────────────
 
 function getPhase(state) { return derivePhase(state); }
 function isDelegating(state) { return derivePhase(state) === PHASES.DELEGATING; }
+
+/**
+ * 判斷 pipeline 是否在強制模式（供 state-migrator v3→v4 遷移使用）
+ * @deprecated 使用 isActive() 取代
+ */
 function isEnforced(state) {
   if (!state) return false;
   const phase = derivePhase(state);
   if (![PHASES.CLASSIFIED, PHASES.DELEGATING, PHASES.RETRYING].includes(phase)) return false;
-  if (state.enforced) return true;
   // 安全網：有分類的非 trivial pipeline = enforced（即使 setDag 尚未執行）
   const pid = state?.classification?.pipelineId;
   return !!pid && pid !== 'none';
 }
 function isComplete(state) { return derivePhase(state) === PHASES.COMPLETE; }
 function isInitialized(state) { return !!state?.meta?.initialized; }
-function isCancelled(state) { return !!state?.meta?.cancelled; }
+
+/**
+ * @deprecated 使用 !isActive() 取代
+ */
+function isCancelled(state) { return !state?.pipelineActive && !!state?.dag; }
 function getPipelineId(state) { return state?.classification?.pipelineId || null; }
 function getTaskType(state) { return state?.classification?.taskType || null; }
 function getEnvironment(state) { return state?.environment || {}; }
@@ -216,7 +281,11 @@ function _touch(state) {
   return { ...state, meta: { ...(state.meta || {}), lastTransition: new Date().toISOString() } };
 }
 
-/** 設定分類結果（升級時追蹤 reclassifications） */
+/** 設定分類結果（升級時追蹤 reclassifications）
+ *
+ * v4：若分類為非 trivial pipeline（非 none），立即設 pipelineActive=true，
+ * 確保 guard 在 DAG 建立前即啟動（v3 safety net 等價行為）。
+ */
 function classify(state, classification) {
   const reclassifications = [...(state.meta?.reclassifications || [])];
   if (state.classification?.pipelineId) {
@@ -226,20 +295,65 @@ function classify(state, classification) {
       at: new Date().toISOString(),
     });
   }
+
+  // v4：非 none + 非 trivial pipeline → pipelineActive=true（DAG 尚未建立時也 guard）
+  const pipelineId = classification.pipelineId;
+  const shouldActivate = pipelineId && pipelineId !== 'none';
+
   return _touch({
     ...state,
     classification: { ...classification, classifiedAt: new Date().toISOString() },
-    meta: { ...(state.meta || {}), cancelled: false, reclassifications },
+    pipelineActive: shouldActivate ? true : (state.pipelineActive || false),
+    meta: { ...(state.meta || {}), reclassifications },
   });
 }
 
-/** 設定 DAG + 初始化 stages */
-function setDag(state, dag, blueprint, enforced) {
+/** 設定 DAG + 初始化 stages
+ *
+ * v4：同步設定 pipelineActive = true，標記 pipeline 進入執行狀態。
+ */
+function setDag(state, dag, blueprint, _enforced) {
   const stages = {};
   for (const stageId of Object.keys(dag)) {
-    stages[stageId] = { status: STAGE_STATUS.PENDING, agent: null, verdict: null };
+    stages[stageId] = {
+      status: STAGE_STATUS.PENDING,
+      agent: null,
+      verdict: null,
+      contextFile: null,  // Phase 2：context file 路徑（stage 完成時寫入）
+    };
   }
-  return _touch({ ...state, dag, blueprint: blueprint || null, enforced: enforced !== false, stages });
+  return _touch({
+    ...state,
+    dag,
+    blueprint: blueprint || null,
+    pipelineActive: true,  // v4 核心：DAG 建立即啟動
+    stages,
+  });
+}
+
+/**
+ * 設定 stage 的 contextFile 路徑（Phase 2）
+ *
+ * 當 stage 完成並產出 context file 時呼叫，
+ * 供下一個 stage 的 Node Context 透傳使用。
+ *
+ * @param {Object} state - pipeline state
+ * @param {string} stageId - stage ID
+ * @param {string|null} contextFilePath - context file 路徑（null 表示無產出）
+ * @returns {Object} 更新後的 state
+ */
+function setStageContextFile(state, stageId, contextFilePath) {
+  if (!state?.stages?.[stageId]) return state;
+  return _touch({
+    ...state,
+    stages: {
+      ...state.stages,
+      [stageId]: {
+        ...(state.stages[stageId] || {}),
+        contextFile: contextFilePath || null,
+      },
+    },
+  });
 }
 
 /** 標記 active */
@@ -335,9 +449,15 @@ function resetStageToPending(state, stageId) {
   });
 }
 
-/** 取消 pipeline */
+/** 取消 pipeline
+ *
+ * v4：設定 pipelineActive = false（guard 放行）。
+ */
 function cancelPipeline(state) {
-  return _touch({ ...state, meta: { ...state.meta, cancelled: true } });
+  return _touch({
+    ...state,
+    pipelineActive: false,  // v4 核心：取消即停止 guard
+  });
 }
 
 /** 重設 state（新任務） */
@@ -366,8 +486,8 @@ function readState(sessionId) {
 }
 
 function writeState(sessionId, state) {
-  if (!fs.existsSync(CLAUDE_DIR)) fs.mkdirSync(CLAUDE_DIR, { recursive: true });
-  fs.writeFileSync(getStatePath(sessionId), JSON.stringify(state, null, 2));
+  // v4（任務 3.6）：改用 atomicWrite 確保原子寫入（write .tmp → rename）
+  atomicWrite(getStatePath(sessionId), state);
 }
 
 function deleteState(sessionId) {
@@ -385,6 +505,7 @@ module.exports = {
   createInitialState,
   classify,
   setDag,
+  setStageContextFile,
   markStageActive,
   markStageCompleted,
   markStageSkipped,
@@ -404,13 +525,16 @@ module.exports = {
   getCompletedStages,
   getSkippedStages,
 
-  // Backward-compatible queries
+  // v4 核心查詢
+  isActive,
+
+  // 衍生查詢
   getPhase,
   isDelegating,
-  isEnforced,
+  isEnforced,  // @deprecated 使用 isActive() 取代
   isComplete,
   isInitialized,
-  isCancelled,
+  isCancelled,  // @deprecated 使用 !isActive() 取代
   getPipelineId,
   getTaskType,
   getEnvironment,

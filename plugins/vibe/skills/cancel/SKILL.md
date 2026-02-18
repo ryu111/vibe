@@ -31,10 +31,11 @@ allowed-tools: Read, Write
 
 **Task-guard 解除**：將 `task-guard-state` 的 `cancelled` 設為 `true`
 
-**Pipeline 解除**：修改 `pipeline-state`（v3 結構）：
-- `meta.cancelled` → `true`（derivePhase 會回傳 IDLE，停止 pipeline-guard 阻擋）
-- `dag` → `null`（移除 DAG）
+**Pipeline 解除**：修改 `pipeline-state`（v4 結構）：
+- `pipelineActive` → `false`（guard 立即放行，v4 核心）
+- `meta.cancelled` → `true`（v3 向後相容保留）
 - `enforced` → `false`
+- `activeStages` → `[]`（清空委派追蹤）
 - 清理 `~/.claude/vibe-patch-*.patch` 殘留快照（遍歷刪除）
 
 ### 4. 取消原因回饋（Correction Loop）

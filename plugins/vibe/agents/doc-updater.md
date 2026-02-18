@@ -87,6 +87,18 @@ git diff HEAD~5 --name-only
 3. 將完成的 change 目錄移動到 `openspec/changes/archive/YYYY-MM-DD-{name}/`
 4. 在回報中列出歸檔的 change 名稱和合併的 spec 數量
 
+## context_file 讀取（Pipeline 模式）
+
+當委派 prompt 中包含 `context_file` 路徑時，先讀取該檔案了解前驅階段的產出摘要（例如測試報告或審查結論），作為文件更新的參考依據。
+
+## Pipeline 模式結論標記
+
+完成文件更新後，最終回應的最後一行**必須**輸出 Pipeline 路由標記：
+
+```
+<!-- PIPELINE_ROUTE: { "verdict": "PASS", "route": "NEXT" } -->
+```
+
 ## 限制
 
 - 不修改程式碼，只修改文件

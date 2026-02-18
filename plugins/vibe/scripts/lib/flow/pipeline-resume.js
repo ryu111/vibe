@@ -14,6 +14,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { derivePhase, PHASES } = require('./dag-state.js');
+const { ensureV4 } = require('./state-migrator.js');
+const { atomicWrite } = require('./atomic-write.js');
 
 const DEFAULT_CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const DEFAULT_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 小時
@@ -106,8 +108,10 @@ function findIncompletePipelines(currentSessionId, options = {}) {
       continue;
     }
 
-    // 只處理 v3 state
-    if (state.version !== 3) continue;
+    // 支援 v3/v4 state（自動遷移到 v4）
+    const migratedState = ensureV4(state);
+    if (!migratedState) continue;
+    state = migratedState;
 
     // 推導 phase
     const phase = derivePhase(state);
@@ -178,9 +182,9 @@ function resumePipeline(oldSessionId, newSessionId, options = {}) {
   state.meta.resumedFrom = oldSessionId;
   state.meta.resumedAt = new Date().toISOString();
 
-  // 寫入新 state
+  // 寫入新 state（M-3 修正：改用 atomicWrite 確保寫入安全）
   try {
-    fs.writeFileSync(newStatePath, JSON.stringify(state, null, 2));
+    atomicWrite(newStatePath, state);
   } catch (err) {
     return { success: false, error: `寫入新 state 失敗：${err.message}` };
   }
@@ -194,6 +198,18 @@ function resumePipeline(oldSessionId, newSessionId, options = {}) {
     }
   } catch (_) {
     // timeline 複製失敗不影響主要功能，忽略
+  }
+
+  // 3. 複製 barrier-state（v4 Phase 4：並行同步狀態）
+  const oldBarrierPath = path.join(claudeDir, `barrier-state-${oldSessionId}.json`);
+  const newBarrierPath = path.join(claudeDir, `barrier-state-${newSessionId}.json`);
+  try {
+    if (fs.existsSync(oldBarrierPath)) {
+      // 讀取 barrier state 並更新 sessionId 相關資訊（barrier 本身不含 sessionId，但路徑需要更新）
+      fs.copyFileSync(oldBarrierPath, newBarrierPath);
+    }
+  } catch (_) {
+    // barrier 複製失敗不影響主要功能，忽略
   }
 
   return { success: true };

@@ -27,6 +27,15 @@ const EMOJI_MAP = {
   'stage.retry':        '🔄',
   'pipeline.complete':  '🎉',
   'pipeline.incomplete':'⚠️',
+  'route.fallback':     '↩️',
+  'retry.exhausted':    '🛑',
+  // v4 Phase 4：Barrier 並行事件
+  'barrier.waiting':    '⏳',
+  'barrier.resolved':   '🔀',
+  // v4 Phase 4：異常事件
+  'agent.crash':        '💥',
+  'pipeline.aborted':   '⛔',
+  'pipeline.cancelled': '🚫',
   'tool.used':          '🔧',
   'tool.blocked':       '🚫',
   'tool.guarded':       '🛡️',
@@ -39,6 +48,8 @@ const EMOJI_MAP = {
   'say.completed':      '📥',
   'compact.suggested':  '📦',
   'compact.executed':   '📦',
+  // Safety 安全事件
+  'safety.transcript-leak': '🔐',
 };
 
 // 噪音事件類型（compact 模式下可聚合或隱藏）
@@ -135,6 +146,31 @@ function formatEventText(event) {
       return `Pipeline 完成! [${(d.completedStages || []).join('→')}]`;
     case 'pipeline.incomplete':
       return 'Pipeline 未完成';
+    case 'route.fallback':
+      return `路由 fallback：${d.stage || '?'} 使用 v3 PIPELINE_VERDICT 解析（未找到 PIPELINE_ROUTE）`;
+    case 'retry.exhausted':
+      return `${d.stage || '?'} 達到回退上限（${d.retryCount || '?'} 輪），強制前進`;
+    case 'barrier.waiting': {
+      const group = d.barrierGroup || '?';
+      const done = d.completedCount || 0;
+      const total = d.totalCount || '?';
+      const waiting = (d.waitingStages || []).join(', ');
+      return `Barrier ${group}：${done}/${total} 完成，等待 ${waiting || '其他節點'}`;
+    }
+    case 'barrier.resolved': {
+      const group = d.barrierGroup || '?';
+      const verdict = d.verdict || 'PASS';
+      const next = d.next || 'END';
+      return `Barrier ${group} 解鎖：${verdict} → ${next}`;
+    }
+    case 'agent.crash':
+      return `${d.stage || '?'} agent crash（第 ${d.crashCount || 1} 次），${d.willRetry ? '重新委派' : 'ABORT'}`;
+    case 'pipeline.aborted':
+      return `Pipeline 異常終止（${d.reason || 'route=ABORT'}）`;
+    case 'pipeline.cancelled':
+      return `Pipeline 已取消${d.reason ? `（${d.reason}）` : ''}`;
+    case 'safety.transcript-leak':
+      return `Transcript 洩漏警告：${d.detail || d.source || '未知來源'}`;
     case 'tool.used':
       return formatToolDetail(d);
     case 'tool.blocked':

@@ -114,7 +114,7 @@ function broadcast(msg) {
 
 /** 事件類型→分類映射（前端 Tab 篩選用） */
 function eventCat(type) {
-  if (type.startsWith('stage.') || type.startsWith('pipeline.')) return 'pipeline';
+  if (type.startsWith('stage.') || type.startsWith('pipeline.') || type.startsWith('barrier.') || type === 'agent.crash') return 'pipeline';
   if (type.startsWith('quality.') || type === 'tool.blocked' || type === 'tool.guarded') return 'quality';
   if (type === 'tool.used' || type === 'delegation.start') return 'agent';
   if (type === 'session.start' || type === 'task.classified' || type === 'prompt.received' || type === 'task.incomplete') return 'pipeline';
@@ -164,6 +164,12 @@ function formatEvent(event, sessionId) {
   } else if (event.type === 'quality.lint') {
     type = d.pass ? 'pass' : 'fail';
   } else if (event.type === 'tool.blocked' || event.type === 'stage.retry') {
+    type = 'fail';
+  } else if (event.type === 'barrier.resolved') {
+    type = d.verdict === 'FAIL' ? 'fail' : 'pass';
+  } else if (event.type === 'barrier.waiting') {
+    type = 'active';
+  } else if (event.type === 'agent.crash' || event.type === 'pipeline.aborted') {
     type = 'fail';
   }
 
@@ -220,6 +226,21 @@ if (existsSync(CLAUDE_DIR)) {
       hbTimer = setTimeout(() => {
         broadcast({ type: 'heartbeat', alive: getAliveMap() });
       }, 500);
+      return;
+    }
+    // barrier-state 檔案變化 → 廣播 barrier 更新
+    if (filename?.startsWith('barrier-state-') && filename.endsWith('.json')) {
+      const sid = filename.slice('barrier-state-'.length, -5);
+      if (UUID_RE.test(sid)) {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          const fp = join(CLAUDE_DIR, filename);
+          try {
+            const barrierState = existsSync(fp) ? JSON.parse(readFileSync(fp, 'utf8')) : null;
+            broadcast({ type: 'barrier', sessionId: sid, barrierState });
+          } catch { /* 忽略 */ }
+        }, 80);
+      }
       return;
     }
     if (!filename?.startsWith('pipeline-state-') || !filename.endsWith('.json')) return;

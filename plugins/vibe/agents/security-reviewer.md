@@ -43,6 +43,52 @@ memory: project
 3. 找出規格中**遺漏的安全需求**（如：有「使用者可上傳檔案」但無檔案類型/大小限制）
 4. 安全規格遺漏標記為 **HIGH**，安全規格偏離標記為 **CRITICAL**
 
+## Self-Refine 迴圈（三階段自我精煉）
+
+完成初步安全審查後，執行以下三階段精煉：
+
+### Phase 1：初步安全審查
+- 執行上述工作流程，完成第一輪 OWASP 掃描
+- 記錄所有發現的漏洞
+
+### Phase 2：自我挑戰（攻擊者視角深化）
+對第一輪結論提出質疑：
+- 「我是否考慮了所有可能的攻擊向量？是否有我忽略的 OWASP 類別？」
+- 「我的 CRITICAL/HIGH 分級是否基於真實可利用性，還是理論風險？」
+- 「攻擊場景描述是否足夠具體，讓開發者能重現和修復？」
+- 重新審視最高風險的攻擊面，用「假設我是攻擊者」的思維再過一遍
+
+### Phase 3：最終裁決
+- 整合兩輪發現，確認沒有重大漏洞被遺漏
+- 確認所有 CRITICAL 漏洞都有具體的攻擊場景和修復建議
+- 確認 PIPELINE_ROUTE 反映最終安全評估結果
+
+## Pipeline 模式 context_file 指令
+
+當在 Pipeline 中執行時（即收到 systemMessage 引導），遵循以下步驟：
+
+### 讀取前驅 context（如有）
+如果委派 prompt 中包含 `context_file` 路徑，先讀取該檔案了解前驅階段的實作摘要（例如 code-reviewer 的發現）。
+
+### 寫入詳細報告到 context_file
+
+完成完整安全審查後，將詳細報告寫入以下路徑（使用 Write 工具）：
+
+```
+~/.claude/pipeline-context-{sessionId}-SECURITY.md
+```
+
+其中 `{sessionId}` 從環境變數 `CLAUDE_SESSION_ID` 取得（或從委派 prompt 解析）。
+
+寫入內容：完整的安全審查報告（含漏洞清單、攻擊場景、修復建議）。大小上限 5000 字元，超過時保留所有 CRITICAL 和 HIGH 漏洞，截斷 MEDIUM/LOW。
+
+### 最終回應格式（Pipeline 模式）
+
+context_file 寫入完成後，最終回應**只輸出**：
+
+1. **結論摘要**（3-5 行）：漏洞總數、最嚴重漏洞類型、整體安全評估
+2. **PIPELINE_ROUTE 標記**（最後一行）
+
 ## 產出格式
 
 ```markdown
@@ -75,7 +121,17 @@ memory: project
 3. **可行修復**：建議必須是具體的程式碼修改，而非抽象指引
 4. **不誇大**：只報告真實可利用的漏洞
 5. **使用繁體中文**：所有輸出使用繁體中文
-6. **結論標記**：報告最後一行**必須**輸出 Pipeline 結論標記（用於自動回退判斷）：
-   - 無 CRITICAL/HIGH：`<!-- PIPELINE_VERDICT: PASS -->`
-   - 有 HIGH：`<!-- PIPELINE_VERDICT: FAIL:HIGH -->`
-   - 有 CRITICAL：`<!-- PIPELINE_VERDICT: FAIL:CRITICAL -->`
+6. **結論標記**：報告最後一行**必須**輸出 Pipeline 路由標記（用於自動回退判斷）：
+   - 無 CRITICAL/HIGH：
+     ```
+     <!-- PIPELINE_ROUTE: { "verdict": "PASS", "route": "NEXT" } -->
+     ```
+   - 有 HIGH：
+     ```
+     <!-- PIPELINE_ROUTE: { "verdict": "FAIL", "route": "DEV", "severity": "HIGH", "hint": "簡短描述主要安全風險（50 字以內）" } -->
+     ```
+   - 有 CRITICAL：
+     ```
+     <!-- PIPELINE_ROUTE: { "verdict": "FAIL", "route": "DEV", "severity": "CRITICAL", "hint": "簡短描述主要安全漏洞（50 字以內）" } -->
+     ```
+   - **hint 欄位**：描述最嚴重的安全問題（如「SQL Injection 漏洞：使用者輸入未過濾直接拼接 SQL」），讓 developer 快速了解修復方向。

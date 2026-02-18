@@ -51,9 +51,33 @@ memory: project
 3. 確保可點擊元素有 `cursor: pointer`
 4. 使用設計系統的間距 tokens（而非隨意的 px 值）
 
+## context_file 讀取（Pipeline 模式）
+
+當委派 prompt 中包含 `context_file` 路徑時，**優先讀取**該檔案：
+
+1. 使用 Read 工具讀取 `context_file` 指定的路徑（如 `~/.claude/pipeline-context-{sessionId}-REVIEW.md`）
+2. 了解上一個品質審查階段的詳細發現（問題清單、嚴重程度、具體行號）
+3. 根據 context_file 的內容有針對性地修復問題
+
+**回退時特別重要**：若 systemMessage 指示這是 REVIEW/TEST/QA FAIL 回退，context_file 包含詳細的問題清單，是修復的主要依據。不需要重新審查，直接按 context_file 修復。
+
 ## 程式碼品質
 
 - 不引入安全漏洞（OWASP Top 10）
 - 不硬編碼魔術字串
 - 不過度工程（只做被要求的事）
 - 錯誤處理要具體（不 catch-all 吞錯誤）
+
+## Pipeline 模式結論標記
+
+完成實作後，最終回應的最後一行**必須**輸出 Pipeline 路由標記：
+
+```
+<!-- PIPELINE_ROUTE: { "verdict": "PASS", "route": "NEXT" } -->
+```
+
+如果有可選的 context_file（記錄實作摘要供後續審查參考）：
+
+```
+<!-- PIPELINE_ROUTE: { "verdict": "PASS", "route": "NEXT", "context_file": "~/.claude/pipeline-context-{sessionId}-DEV.md" } -->
+```

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * pipeline-controller.js — Pipeline v3 統一 API
+ * pipeline-controller.js — Pipeline v4 統一 API
  *
  * 所有 hook 的唯一邏輯入口。每個方法對應一個 hook 事件。
  * Hook 腳本只需：解析 stdin → 呼叫 controller → 輸出結果。
@@ -13,6 +13,10 @@
  * - onSessionStop(sessionId) — 閉環檢查
  *
  * @module flow/pipeline-controller
+ *
+ * @note 技術債務：onStageComplete() 在同一次呼叫中可能多次 writeState（例如：
+ *   barrier 合併 + 前進到下一階段）。未來可考慮 batch write 模式（先累積所有
+ *   狀態變更，最後一次性寫入），以減少 I/O 次數並降低 race condition 風險。
  */
 'use strict';
 
@@ -23,11 +27,13 @@ const { execSync } = require('child_process');
 
 // Core modules
 const ds = require('./dag-state.js');
-const { getBaseStage, resolveAgent, validateDag, linearToDag, buildBlueprint } = require('./dag-utils.js');
+const { getBaseStage, resolveAgent, validateDag, linearToDag, templateToDag, buildBlueprint } = require('./dag-utils.js');
 const { shouldSkip } = require('./skip-predicates.js');
-const { ensureV3 } = require('./state-migrator.js');
-const { parseVerdict } = require('./verdict.js');
-const { shouldRetryStage } = require('./retry-policy.js');
+const { ensureV4 } = require('./state-migrator.js');
+const { shouldStop } = require('./retry-policy.js');
+const { parseRoute, validateRoute, enforcePolicy } = require('./route-parser.js');
+const { writeReflection, cleanReflectionForStage } = require('./reflection.js');
+const { buildNodeContext, formatNodeContext } = require('./node-context.js');
 const { discoverPipeline } = require('./pipeline-discovery.js');
 
 // Registry
@@ -43,6 +49,9 @@ const {
 // Classifier（Layer 1 explicit + Layer 2 Main Agent 自主判斷）
 const { classifyWithConfidence, buildPipelineCatalogHint } = require('./classifier.js');
 
+// v4 Phase 4：Barrier 並行同步
+const { createBarrierGroup, updateBarrier, mergeBarrierResults, mergeContextFiles, readBarrier, checkTimeout, deleteBarrier } = require('./barrier.js');
+
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
 // 級聯跳過迴圈上限（pipeline 最多 9 階段，20 足夠任何 DAG）
@@ -55,11 +64,41 @@ function extractShortAgent(agentType) {
   return agentType.includes(':') ? agentType.split(':')[1] : agentType;
 }
 
-/** 讀取 state（自動遷移 v2→v3） */
+/** 讀取 state（自動遷移 v2/v3 → v4，遷移後持久化） */
 function loadState(sessionId) {
   const raw = ds.readState(sessionId);
   if (!raw) return null;
-  return ensureV3(raw);
+  const state = ensureV4(raw);
+  // 遷移後持久化：確保磁碟上的 state 是 v4 格式
+  // （classify 的 early-return 路徑不會寫回，導致下游讀到 v3 格式）
+  if (state && raw.version !== 4) {
+    ds.writeState(sessionId, state);
+  }
+  return state;
+}
+
+/**
+ * 檢查 transcript 是否有 assistant 訊息（表示 agent 確實執行過）
+ * CRASH 判斷必須先確認 agent 有實際輸出，才能視為「輸出缺失」
+ * @param {string} transcriptPath
+ * @returns {boolean}
+ */
+function transcriptHasAssistantMessage(transcriptPath) {
+  if (!transcriptPath || !fs.existsSync(transcriptPath)) return false;
+  try {
+    const content = fs.readFileSync(transcriptPath, 'utf8');
+    const lines = content.trim().split('\n');
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const entry = JSON.parse(line);
+        if (entry.role === 'assistant' || entry.type === 'assistant') return true;
+      } catch (_) {}
+    }
+    return false;
+  } catch (_) {
+    return false;
+  }
 }
 
 /** git checkpoint */
@@ -162,6 +201,107 @@ function buildKnowledgeHints(state) {
     : '';
 }
 
+/**
+ * 組裝 context_file 提示（FAIL 回退時告知 DEV 詳細報告在哪）
+ */
+function buildContextFileHint(sessionId, stage) {
+  const base = getBaseStage(stage);
+  return `📄 context_file: ~/.claude/pipeline-context-${sessionId}-${base}.md`;
+}
+
+/**
+ * 更新 state.retryHistory[stage]（追加本輪記錄）
+ */
+function addRetryHistory(state, stage, routeResult, retryCount) {
+  const retryHistory = { ...(state.retryHistory || {}) };
+  const stageHistory = [...(retryHistory[stage] || [])];
+  stageHistory.push({
+    verdict: routeResult?.verdict || 'FAIL',
+    severity: routeResult?.severity || 'MEDIUM',
+    round: retryCount + 1,
+  });
+  retryHistory[stage] = stageHistory;
+  return { ...state, retryHistory };
+}
+
+/**
+ * emit ROUTE_FALLBACK 事件（parseRoute 回退到 v3 VERDICT 解析）
+ */
+function emitRouteFallback(sessionId, stage) {
+  try {
+    const { emit } = require('../timeline/index.js');
+    const { EVENT_TYPES } = require('../timeline/schema.js');
+    emit(EVENT_TYPES.ROUTE_FALLBACK, sessionId, { stage, source: 'verdict-fallback' });
+  } catch (_) {}
+}
+
+/**
+ * emit RETRY_EXHAUSTED 事件（達到 maxRetries）
+ */
+function emitRetryExhausted(sessionId, stage, retryCount) {
+  try {
+    const { emit } = require('../timeline/index.js');
+    const { EVENT_TYPES } = require('../timeline/schema.js');
+    emit(EVENT_TYPES.RETRY_EXHAUSTED, sessionId, { stage, retryCount });
+  } catch (_) {}
+}
+
+/**
+ * emit BARRIER_WAITING 事件
+ */
+function emitBarrierWaiting(sessionId, group, completedCount, totalCount, completedStages, siblings) {
+  try {
+    const { emit } = require('../timeline/index.js');
+    const { EVENT_TYPES } = require('../timeline/schema.js');
+    const waitingStages = (siblings || []).filter(s => !completedStages.includes(s));
+    emit(EVENT_TYPES.BARRIER_WAITING, sessionId, {
+      barrierGroup: group,
+      completedCount,
+      totalCount,
+      completedStages,
+      waitingStages,
+    });
+  } catch (_) {}
+}
+
+/**
+ * emit BARRIER_RESOLVED 事件
+ */
+function emitBarrierResolved(sessionId, group, verdict, next, mergedResult) {
+  try {
+    const { emit } = require('../timeline/index.js');
+    const { EVENT_TYPES } = require('../timeline/schema.js');
+    emit(EVENT_TYPES.BARRIER_RESOLVED, sessionId, {
+      barrierGroup: group,
+      verdict,
+      next: next || null,
+      severity: mergedResult?.severity || null,
+    });
+  } catch (_) {}
+}
+
+/**
+ * emit AGENT_CRASH 事件
+ */
+function emitAgentCrash(sessionId, stage, crashCount, willRetry) {
+  try {
+    const { emit } = require('../timeline/index.js');
+    const { EVENT_TYPES } = require('../timeline/schema.js');
+    emit(EVENT_TYPES.AGENT_CRASH, sessionId, { stage, crashCount, willRetry });
+  } catch (_) {}
+}
+
+/**
+ * emit PIPELINE_ABORTED 事件
+ */
+function emitPipelineAborted(sessionId, stage, reason) {
+  try {
+    const { emit } = require('../timeline/index.js');
+    const { EVENT_TYPES } = require('../timeline/schema.js');
+    emit(EVENT_TYPES.PIPELINE_ABORTED, sessionId, { stage, reason: reason || 'route=ABORT' });
+  } catch (_) {}
+}
+
 /** 偵測 design 需求（ARCH 完成後） */
 function detectDesignNeed(state, stageId) {
   if (getBaseStage(stageId) !== 'ARCH' || !state.openspecEnabled) return false;
@@ -204,8 +344,14 @@ async function classify(sessionId, prompt, options = {}) {
     ds.writeState(sessionId, state);
   }
 
-  // 已取消 → 只有顯式 [pipeline:xxx] 才能重新啟動
-  if (state && ds.isCancelled(state)) {
+  // 已取消（v4: pipelineActive=false + 有舊的非 trivial 分類 + DAG 殘留）→
+  // 只有顯式 [pipeline:xxx] 才能重新啟動
+  // 注意：none pipeline 的 pipelineActive=false 是正常狀態（非取消），不應抑制
+  const existingPid = state?.classification?.pipelineId;
+  const isCancelledState = !ds.isActive(state) &&
+    !!existingPid && existingPid !== 'none' &&
+    !!(state?.dag);  // v4：有 DAG 殘留 = 已取消
+  if (state && isCancelledState) {
     if (result.source !== 'explicit') {
       return { output: null }; // 非顯式分類被抑制
     }
@@ -265,7 +411,8 @@ async function classify(sessionId, prompt, options = {}) {
   // pipeline-architect 只用於未知模板、自訂 DAG、或重複 stage（如 test-first [TEST,DEV,TEST]）
   const hasUniqueStages = new Set(stages).size === stages.length;
   if (PIPELINES[pipelineId] && stages.length > 0 && hasUniqueStages) {
-    const dag = linearToDag(stages);
+    // v4 Phase 4：已知模板改用 templateToDag（含 barrier/onFail/next）
+    const dag = templateToDag(pipelineId, stages);
     const blueprint = buildBlueprint(dag);
     state = ds.setDag(state, dag, blueprint, PIPELINES[pipelineId]?.enforced);
 
@@ -353,6 +500,14 @@ function onDelegate(sessionId, agentType, toolInput) {
     if (state.meta?.pipelineCheckBlocks) {
       state.meta.pipelineCheckBlocks = 0;
     }
+
+    // v4（任務 3.4）：push stage 到 activeStages，供 guard 判斷「委派中」狀態
+    const activeStages = [...(state.activeStages || [])];
+    if (!activeStages.includes(stage)) {
+      activeStages.push(stage);
+    }
+    state = { ...state, activeStages };
+
     ds.writeState(sessionId, state);
   }
 
@@ -387,22 +542,76 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
     state = { ...state, needsDesign: true };
   }
 
-  // 解析 verdict
-  const verdict = parseVerdict(transcriptPath);
+  // ── v4：解析 PIPELINE_ROUTE（fallback 到 v3 PIPELINE_VERDICT）──
+  const { parsed: routeParsed, source: routeSource } = parseRoute(transcriptPath);
 
-  // 回退決策
+  // Timeline emit：記錄 fallback 事件
+  let routeResult = null;
+  if (routeSource === 'verdict-fallback') {
+    emitRouteFallback(sessionId, currentStage);
+  }
+
+  // Schema Validation
+  const { route: validatedRoute, warnings: routeWarnings } = validateRoute(routeParsed);
+  if (routeWarnings.length > 0) {
+    const hookLogger = require('../hook-logger.js');
+    hookLogger.error('route-parser', new Error(`route warnings: ${routeWarnings.join('; ')}`));
+  }
+
+  // Phase 2：從 PIPELINE_ROUTE.context_file 存入 state.stages[currentStage].contextFile
+  if (validatedRoute?.context_file) {
+    state = ds.setStageContextFile(state, currentStage, validatedRoute.context_file);
+  }
+
+  // 取得重試歷史
   const retries = ds.getRetries(state);
   const retryCount = retries[currentStage] || 0;
-  const { shouldRetry } = shouldRetryStage(currentStage, verdict, retryCount);
+  const retryHistory = state.retryHistory?.[currentStage] || [];
+
+  // Policy Enforcement
+  const { route: enforcedRoute, enforced: policyEnforced, reason: policyReason } = enforcePolicy(validatedRoute, state, currentStage);
+  routeResult = enforcedRoute;
+
+  if (policyReason) {
+    const hookLogger = require('../hook-logger.js');
+    hookLogger.error('route-parser', new Error(`policy enforced: ${policyReason}`));
+  }
+
+  // 對於達上限的 emit RETRY_EXHAUSTED
+  if (routeResult?._retryExhausted) {
+    emitRetryExhausted(sessionId, currentStage, retryCount);
+  }
+
+  // shouldStop 決策（使用 routeResult 的 verdict）
+  const verdictForStop = validatedRoute
+    ? { verdict: validatedRoute.verdict, severity: validatedRoute.severity }
+    : null;
+  const stopResult = shouldStop(currentStage, verdictForStop, retryCount, retryHistory);
+
+  // 判斷是否需要回退：
+  // - route 明確指向 DEV，且 shouldStop 說繼續 → 回退
+  // - FAIL 且 shouldStop 說停止 → 強制前進（上限/停滯）
+  const shouldRouteTodev = routeResult?.route === 'DEV' && !stopResult.stop;
+  const isQualityFail = routeResult?.verdict === 'FAIL' && QUALITY_STAGES.includes(getBaseStage(currentStage));
 
   // ── 分支 A: 回退 ──
-  if (shouldRetry) {
+  if (shouldRouteTodev || (isQualityFail && !stopResult.stop && !validatedRoute)) {
+    // FAIL 時寫入反思記憶
+    writeReflection(sessionId, currentStage, routeResult, retryCount);
+
+    // 更新 retryHistory
+    state = addRetryHistory(state, currentStage, routeResult, retryCount);
+
     // 檢查 DAG 中是否有 DEV
     const hasDev = state.dag && Object.keys(state.dag).some(s => getBaseStage(s) === 'DEV');
 
     if (!hasDev) {
       // 無 DEV → 強制繼續
-      state = ds.markStageCompleted(state, currentStage, verdict);
+      state = ds.markStageCompleted(state, currentStage, routeResult);
+      // v4（任務 3.4）：從 activeStages 移除已完成的 stage
+      if (state.activeStages) {
+        state = { ...state, activeStages: state.activeStages.filter(s => s !== currentStage) };
+      }
       ds.writeState(sessionId, state);
       autoCheckpoint(currentStage);
 
@@ -419,25 +628,48 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
     }
 
     // 有 DEV → 回退
-    state = ds.markStageFailed(state, currentStage, verdict);
+    state = ds.markStageFailed(state, currentStage, routeResult);
     state = ds.setPendingRetry(state, {
-      stages: [{ id: currentStage, severity: verdict?.severity, round: retryCount + 1 }],
+      stages: [{ id: currentStage, severity: routeResult?.severity, round: retryCount + 1 }],
     });
+    // v4（任務 3.4）：從 activeStages 移除失敗的 stage（等待 DEV 修復）
+    if (state.activeStages) {
+      state = { ...state, activeStages: state.activeStages.filter(s => s !== currentStage) };
+    }
+    // M-4 修正：回退時清除 barrier state（跨 barrier 回退需重跑 barrier group）
+    deleteBarrier(sessionId);
     ds.writeState(sessionId, state);
 
     const devHint = buildDelegationHint('DEV', pipeline.stageMap);
+    // systemMessage 只含路由指令，不含品質報告內容
+    // 詳細報告已寫入 context_file（~/.claude/pipeline-context-{sid}-{stage}.md）
+    const contextHint = buildContextFileHint(sessionId, currentStage);
+
+    // Phase 2：生成 DEV Node Context（含 retryContext）
+    const devStageId = Object.keys(state.dag || {}).find(s => getBaseStage(s) === 'DEV') || 'DEV';
+    let devNodeContextStr = '';
+    try {
+      const devNodeCtx = buildNodeContext(state.dag, state, devStageId, sessionId);
+      devNodeContextStr = '\n' + formatNodeContext(devNodeCtx);
+    } catch (_) {}
+
     return {
       systemMessage:
-        `🔄 ${currentStage} FAIL:${verdict?.severity}（${retryCount + 1}/${MAX_RETRIES}）\n` +
-        `⚠️ 禁止直接修改程式碼。必須透過 /vibe:dev 委派 developer agent 修復。\n` +
-        `➡️ ${devHint}`,
+        `🔄 ${currentStage} FAIL（${retryCount + 1}/${MAX_RETRIES}）\n` +
+        `➡️ ${devHint}` +
+        (contextHint ? `\n${contextHint}` : '') +
+        devNodeContextStr,
     };
   }
 
   // ── 分支 B: 回退重驗（DEV 完成後重跑失敗的 stage）──
   const pendingRetry = ds.getPendingRetry(state);
   if (pendingRetry?.stages?.length > 0 && getBaseStage(currentStage) === 'DEV') {
-    state = ds.markStageCompleted(state, currentStage, verdict);
+    state = ds.markStageCompleted(state, currentStage, routeResult);
+    // v4（任務 3.4）：從 activeStages 移除已完成的 DEV stage
+    if (state.activeStages) {
+      state = { ...state, activeStages: state.activeStages.filter(s => s !== currentStage) };
+    }
 
     // 重設所有 failed stages 為 pending
     for (const retry of pendingRetry.stages) {
@@ -449,13 +681,290 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
 
     const retryTargets = pendingRetry.stages.map(r => r.id);
     const hints = retryTargets.map(s => buildDelegationHint(s, pipeline.stageMap)).join(' + ');
+
+    // Phase 2：為每個重跑 stage 生成 Node Context
+    let retryNodeContextStr = '';
+    if (retryTargets.length > 0 && state.dag) {
+      try {
+        const firstRetryStage = retryTargets[0];
+        const retryNodeCtx = buildNodeContext(state.dag, state, firstRetryStage, sessionId);
+        retryNodeContextStr = '\n' + formatNodeContext(retryNodeCtx);
+      } catch (_) {}
+    }
+
     return {
-      systemMessage: `🔄 DEV 修復完成 → 重跑 ${retryTargets.join(' + ')}\n➡️ ${hints}`,
+      systemMessage: `🔄 DEV 修復完成 → 重跑 ${retryTargets.join(' + ')}\n➡️ ${hints}${retryNodeContextStr}`,
+    };
+  }
+
+  // ── 分支 ABORT: pipeline 異常終止 ──
+  if (routeResult?.route === 'ABORT') {
+    emitPipelineAborted(sessionId, currentStage, routeResult?.hint || 'route=ABORT');
+    state = ds.markStageCompleted(state, currentStage, routeResult);
+    if (state.activeStages) {
+      state = { ...state, activeStages: state.activeStages.filter(s => s !== currentStage) };
+    }
+    state = { ...state, pipelineActive: false, activeStages: [] };
+    ds.writeState(sessionId, state);
+    return {
+      systemMessage: `⛔ Pipeline 異常終止！${routeResult?.hint ? '\n原因：' + routeResult.hint : ''}\n自動模式已解除。`,
+    };
+  }
+
+  // ── 分支 BARRIER: 並行節點同步 ──
+  if (routeResult?.route === 'BARRIER') {
+    const barrierGroup = routeResult.barrierGroup || 'default';
+    const dagNode = state.dag?.[currentStage] || {};
+    const barrierConfig = dagNode.barrier || {};
+    const total = barrierConfig.total || 2;
+    const next = barrierConfig.next || null;
+    const siblings = barrierConfig.siblings || [currentStage];
+
+    // 確保 barrier group 存在
+    createBarrierGroup(sessionId, barrierGroup, total, next, siblings);
+
+    // 更新 barrier state（加入此 stage 的結果）
+    const { allComplete, mergedResult } = updateBarrier(sessionId, barrierGroup, currentStage, routeResult);
+
+    // 更新 stage 狀態
+    if (routeResult.verdict === 'FAIL') {
+      state = ds.markStageFailed(state, currentStage, routeResult);
+    } else {
+      state = ds.markStageCompleted(state, currentStage, routeResult);
+    }
+    if (state.activeStages) {
+      state = { ...state, activeStages: state.activeStages.filter(s => s !== currentStage) };
+    }
+
+    // M-1 修正：若尚未收齊，檢查是否超時；超時則強制填入缺席 stages 為 FAIL
+    let resolvedMergedResult = mergedResult;
+    let timeoutWarning = '';
+    if (!allComplete) {
+      const barrierState = readBarrier(sessionId);
+      const isTimedOut = barrierState ? checkTimeout(barrierState, barrierGroup) : false;
+
+      if (isTimedOut) {
+        // 超時 → 將未完成的 siblings 標記為 FAIL，強制解鎖 barrier
+        const timedOutStages = (barrierState?.groups?.[barrierGroup]?.siblings || siblings)
+          .filter(s => !barrierState?.groups?.[barrierGroup]?.completed?.includes(s));
+        for (const ts of timedOutStages) {
+          updateBarrier(sessionId, barrierGroup, ts, {
+            verdict: 'FAIL',
+            route: 'BARRIER',
+            severity: 'HIGH',
+            hint: `Barrier 超時 — agent 未回應（${barrierGroup}）`,
+          });
+        }
+        // 強制完成 barrier（幂等 — currentStage 已被加入，此次觸發合併）
+        const forceResult = updateBarrier(sessionId, barrierGroup, currentStage, routeResult);
+        if (forceResult.allComplete && forceResult.mergedResult) {
+          resolvedMergedResult = forceResult.mergedResult;
+          timeoutWarning = `⚠️ Barrier ${barrierGroup} 超時（${timedOutStages.join(', ')} 未回應），已強制標記為 FAIL。\n`;
+        } else {
+          // 仍未解鎖（不應發生），返回警告
+          ds.writeState(sessionId, state);
+          return {
+            systemMessage: `⚠️ Barrier ${barrierGroup} 超時且強制解鎖失敗，請手動檢查。`,
+          };
+        }
+      } else {
+        // 未超時 → 等待其他 stage
+        ds.writeState(sessionId, state);
+        // M-2 修正：從 barrier state 讀取實際的 completed 資訊
+        const barrierStateNow = readBarrier(sessionId);
+        const groupData = barrierStateNow?.groups?.[barrierGroup];
+        const completedCount = groupData?.completed?.length || 1;
+        const completedStages = groupData?.completed || [currentStage];
+        emitBarrierWaiting(sessionId, barrierGroup, completedCount, total, completedStages, siblings);
+        // 不發出 systemMessage（Main Agent 不需要動作）
+        return { systemMessage: '' };
+      }
+    }
+
+    // 全到齊（正常完成或超時強制解鎖）→ 合併結果，繼續路由
+    emitBarrierResolved(sessionId, barrierGroup, resolvedMergedResult?.verdict || 'PASS', next, resolvedMergedResult);
+
+    if (resolvedMergedResult?.verdict === 'FAIL') {
+      // FAIL → 走回退邏輯（複用分支 A 的邏輯）
+      writeReflection(sessionId, currentStage, resolvedMergedResult, retryCount);
+      state = addRetryHistory(state, currentStage, resolvedMergedResult, retryCount);
+
+      // 合併 context files（如果有多個 FAIL 的報告）
+      let mergedContextFile = resolvedMergedResult.context_file || null;
+      if (!mergedContextFile && resolvedMergedResult.context_files?.length > 0) {
+        const fakeFailResults = resolvedMergedResult.context_files.map(f => ({ context_file: f }));
+        mergedContextFile = mergeContextFiles(fakeFailResults, sessionId);
+      }
+
+      const hasDev = state.dag && Object.keys(state.dag).some(s => getBaseStage(s) === 'DEV');
+      if (!hasDev) {
+        // 無 DEV → 強制繼續
+        const ready = ds.getReadyStages(state);
+        if (ready.length > 0) {
+          ds.writeState(sessionId, state);
+          const hints = ready.map(s => buildDelegationHint(s, pipeline.stageMap)).join(' + ');
+          return { systemMessage: `${timeoutWarning}⚠️ Barrier ${barrierGroup} FAIL 但無 DEV 可回退，強制繼續。\n➡️ ${hints}` };
+        }
+        state = { ...state, pipelineActive: false, activeStages: [] };
+        ds.writeState(sessionId, state);
+        const completeMsg = buildCompleteOutput(state, currentStage, pipeline);
+        return {
+          systemMessage: `${timeoutWarning}⚠️ Barrier ${barrierGroup} FAIL 但無 DEV 可回退。\n` + completeMsg.systemMessage,
+        };
+      }
+
+      // 有 DEV → 回退
+      // H-4 修正：使用 resolvedMergedResult._failedStages 設定 pendingRetry，
+      //          並對所有 FAIL stages 呼叫 markStageFailed（而非只標記 currentStage）。
+      const failedStages = resolvedMergedResult._failedStages || [currentStage];
+
+      // 對所有非 currentStage 的失敗 stage 也標記為 failed
+      for (const fStage of failedStages) {
+        if (fStage !== currentStage && state.stages?.[fStage]) {
+          state = ds.markStageFailed(state, fStage, resolvedMergedResult);
+        }
+      }
+
+      state = ds.setPendingRetry(state, {
+        stages: failedStages.map(id => ({
+          id,
+          severity: resolvedMergedResult.severity,
+          round: retryCount + 1,
+        })),
+      });
+      // H-1 修正：回退到 DEV 時清除 barrier state，
+      // 確保 DEV 修復後重跑品質階段時 barrier 計數器是全新狀態
+      deleteBarrier(sessionId);
+      ds.writeState(sessionId, state);
+
+      const devHint = buildDelegationHint('DEV', pipeline.stageMap);
+      const contextHint = mergedContextFile
+        ? `📄 context_file: ${mergedContextFile}`
+        : buildContextFileHint(sessionId, currentStage);
+
+      return {
+        systemMessage:
+          `${timeoutWarning}🔄 Barrier ${barrierGroup} FAIL（${retryCount + 1}/${MAX_RETRIES}）\n` +
+          `➡️ ${devHint}` +
+          (contextHint ? `\n${contextHint}` : ''),
+      };
+    }
+
+    // PASS → 前進到 barrier.next
+    ds.writeState(sessionId, state);
+    autoCheckpoint(currentStage);
+
+    if (!next) {
+      // barrier.next 為空 → COMPLETE
+      if (ds.isComplete(state)) {
+        state = { ...state, pipelineActive: false, activeStages: [] };
+        ds.writeState(sessionId, state);
+        cleanupPatches();
+        return buildCompleteOutput(state, currentStage, pipeline);
+      }
+    }
+
+    // 前進到 next stage
+    const nextHint = next ? buildDelegationHint(next, pipeline.stageMap) : null;
+    if (nextHint) {
+      const nextNodeCtx = (() => {
+        try {
+          const ctx = buildNodeContext(state.dag, state, next, sessionId);
+          return '\n' + formatNodeContext(ctx);
+        } catch (_) { return ''; }
+      })();
+      return {
+        systemMessage: `✅ Barrier ${barrierGroup} 完成（全部 PASS）\n➡️ ${nextHint}${nextNodeCtx}`,
+      };
+    }
+
+    return { systemMessage: `✅ Barrier ${barrierGroup} 完成。` };
+  }
+
+  // ── 分支 CRASH 處理：品質 stage 無 PIPELINE_ROUTE 輸出（crash）──
+  // 條件：
+  // 1. QUALITY stage（只有品質 agent 需要強制輸出 PIPELINE_ROUTE）
+  // 2. transcript 確實存在且有 assistant 訊息（agent 有實際執行，但無路由輸出）
+  //    - transcript 不存在 → 視為正常完成（測試/legacy 場景，進分支 C）
+  //    - transcript 只有 user 訊息 → 非真實 crash（同上）
+  //    - transcript 有 assistant 訊息但無路由 → 真正的 crash
+  // 3. 未解析到任何路由（validatedRoute=null 且 source='none'，非 fallback）
+  // IMPL stages（PLAN/ARCH/DEV/DOCS）無 PIPELINE_ROUTE 時一律視為 PASS 正常前進
+  //
+  // M-6 補充：對極早期崩潰（agent 幾乎無輸出）的偵測
+  // transcriptHasAssistantMessage=false 時不觸發 CRASH（進分支 C 視為正常 PASS）
+  // 但仍需記錄 warning，方便診斷非預期完成
+  const isQualityStage = QUALITY_STAGES.includes(getBaseStage(currentStage));
+  const hasAssistantMsg = transcriptHasAssistantMessage(transcriptPath);
+  if (isQualityStage && !validatedRoute && routeSource === 'none' && !hasAssistantMsg) {
+    // 極早期崩潰（無 assistant 訊息）：記錄 warning，繼續進分支 C
+    try {
+      const hookLogger = require('../hook-logger.js');
+      hookLogger.error('pipeline-controller', new Error(
+        `${currentStage} quality stage 無 PIPELINE_ROUTE 且 transcript 無 assistant 訊息，` +
+        `視為正常完成（極早期崩潰或測試場景）。transcriptPath: ${transcriptPath || 'N/A'}`
+      ));
+      const { emit } = require('../timeline/index.js');
+      const { EVENT_TYPES } = require('../timeline/schema.js');
+      emit(EVENT_TYPES.AGENT_CRASH, sessionId, {
+        stage: currentStage,
+        crashCount: 0,
+        willRetry: false,
+        note: 'early-crash: no assistant message, treating as PASS',
+      });
+    } catch (_) {}
+  }
+
+  const isQualityCrash = !validatedRoute && routeSource === 'none' &&
+    isQualityStage && hasAssistantMsg;
+  if (isQualityCrash) {
+    const crashes = { ...(state.crashes || {}) };
+    crashes[currentStage] = (crashes[currentStage] || 0) + 1;
+    state = { ...state, crashes };
+    const crashCount = crashes[currentStage];
+    const MAX_CRASHES = 3;
+    const willRetry = crashCount < MAX_CRASHES;
+
+    emitAgentCrash(sessionId, currentStage, crashCount, willRetry);
+
+    if (willRetry) {
+      // 重設 stage 為 pending，重新委派
+      state = ds.resetStageToPending(state, currentStage);
+      if (state.activeStages) {
+        state = { ...state, activeStages: state.activeStages.filter(s => s !== currentStage) };
+      }
+      ds.writeState(sessionId, state);
+
+      const retryHint = buildDelegationHint(currentStage, pipeline.stageMap);
+      return {
+        systemMessage:
+          `⚠️ ${currentStage} agent 無 PIPELINE_ROUTE 輸出（第 ${crashCount} 次）。重新委派。\n` +
+          `➡️ ${retryHint}`,
+      };
+    }
+
+    // 達到 crash 上限 → ABORT
+    emitPipelineAborted(sessionId, currentStage, `${currentStage} crash ${crashCount} 次`);
+    state = ds.markStageCompleted(state, currentStage, null);
+    if (state.activeStages) {
+      state = { ...state, activeStages: state.activeStages.filter(s => s !== currentStage) };
+    }
+    state = { ...state, pipelineActive: false, activeStages: [] };
+    ds.writeState(sessionId, state);
+    return {
+      systemMessage: `⛔ ${currentStage} crash 達 ${crashCount} 次上限，Pipeline 異常終止。自動模式已解除。`,
     };
   }
 
   // ── 分支 C: 正常前進 ──
-  state = ds.markStageCompleted(state, currentStage, verdict);
+  // PASS 後清理反思記憶
+  cleanReflectionForStage(sessionId, currentStage);
+  state = ds.markStageCompleted(state, currentStage, routeResult);
+
+  // Phase 2（soft 引入）：從 activeStages 移除已完成的 stage
+  if (state.activeStages) {
+    state = { ...state, activeStages: state.activeStages.filter(s => s !== currentStage) };
+  }
 
   // 級聯跳過：反覆檢查 ready stages 是否需要 skip，直到穩定
   let readyStages = ds.getReadyStages(state);
@@ -484,8 +993,23 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
 
   // 檢查是否完成
   if (ds.isComplete(state)) {
+    // v4（任務 3.4）：最後一個 stage 完成 → pipelineActive = false（guard 解除）
+    state = { ...state, pipelineActive: false, activeStages: [] };
+    ds.writeState(sessionId, state);
     cleanupPatches();
-    return buildCompleteOutput(state, currentStage, pipeline);
+    // 若當前 stage 為 FAIL 但因 enforcePolicy（如無 DEV in DAG）強制前進至完成，
+    // 在完成訊息前加入 FAIL 警告（v3 相容：測試期望含 FAIL 資訊）
+    const completionMsg = buildCompleteOutput(state, currentStage, pipeline);
+    const isFailStage = verdictForStop && verdictForStop.verdict === 'FAIL';
+    if (isFailStage) {
+      const failSuffix = policyEnforced && policyReason
+        ? `（${policyReason}）`
+        : '（FAIL 但強制繼續）';
+      return {
+        systemMessage: `⚠️ ${currentStage} FAIL${failSuffix}\n` + completionMsg.systemMessage,
+      };
+    }
+    return completionMsg;
   }
 
   if (readyStages.length === 0) {
@@ -506,16 +1030,26 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
     ? `${readyStages.join(' + ')}（並行）`
     : readyStages[0];
 
-  // 品質階段完成後：強制禁止 Main Agent 自行修復
+  // 品質階段完成後：精簡提示（Phase 0：不重複報告內容，context_file 已有詳細資訊）
   const qualityWarning = QUALITY_STAGES.includes(getBaseStage(currentStage))
-    ? '\n⚠️ 如上述報告含問題，所有修復**必須**透過 /vibe:dev 委派 developer agent。' +
-      '禁止使用 Write/Edit/Bash 直接修改程式碼 — pipeline-guard 會阻擋。'
+    ? '\n⚠️ 如有問題，必須透過 /vibe:dev 委派修復。'
     : '';
+
+  // Phase 2：為第一個 ready stage 生成 Node Context
+  // 並行時只生成第一個（各 stage 的 Node Context 格式相同，agent 可從 context 判斷自己的 stage）
+  let nodeContextStr = '';
+  if (readyStages.length > 0 && state.dag) {
+    try {
+      const firstStage = readyStages[0];
+      const nodeCtx = buildNodeContext(state.dag, state, firstStage, sessionId);
+      nodeContextStr = '\n' + formatNodeContext(nodeCtx);
+    } catch (_) {}
+  }
 
   return {
     systemMessage:
       `✅ ${currentStage} → ${label}\n` +
-      `➡️ ${hints.join(' + ')}${stageContext}${qualityWarning}`,
+      `➡️ ${hints.join(' + ')}${stageContext}${qualityWarning}${nodeContextStr}`,
   };
 }
 
@@ -622,6 +1156,8 @@ function buildCompleteOutput(state, completedStage, pipeline) {
 /**
  * 閉環檢查（Stop hook）
  *
+ * v4 簡化：從 pipelineActive 判斷是否需要阻擋，不再使用 enforced + derivePhase。
+ *
  * @returns {{ continue: boolean, stopReason?: string, systemMessage?: string } | null}
  */
 function onSessionStop(sessionId) {
@@ -629,13 +1165,8 @@ function onSessionStop(sessionId) {
   if (!state) return null;
   if (!state.dag) return null;
 
-  const phase = ds.derivePhase(state);
-
-  // COMPLETE / IDLE → 放行
-  if (phase === ds.PHASES.COMPLETE || phase === ds.PHASES.IDLE) return null;
-
-  // enforced + 有遺漏 → 阻擋
-  if (!state.enforced) return null;
+  // v4：pipelineActive=false → 放行（包含 IDLE、COMPLETE、已取消）
+  if (!ds.isActive(state)) return null;
 
   const ready = ds.getReadyStages(state);
   const active = ds.getActiveStages(state);

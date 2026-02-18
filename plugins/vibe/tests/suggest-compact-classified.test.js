@@ -93,12 +93,14 @@ function classifiedCountExists(sessionId) {
 }
 
 /**
- * 建立 CLASSIFIED phase 的 v3 state（有 dag + classification，無 active stage）
+ * 建立 CLASSIFIED phase 的 v4 state（有 dag + classification，無 active stage）
  */
 function makeClassifiedState(sessionId, { pipelineId = 'standard' } = {}) {
   return {
-    version: 3,
+    version: 4,
     sessionId,
+    pipelineActive: true,
+    activeStages: [],
     classification: { pipelineId, taskType: 'feature', source: 'regex' },
     dag: {
       DEV: { deps: [] },
@@ -110,12 +112,12 @@ function makeClassifiedState(sessionId, { pipelineId = 'standard' } = {}) {
       REVIEW: { status: 'pending', agent: null, verdict: null },
       TEST: { status: 'pending', agent: null, verdict: null },
     },
-    enforced: true,
     retries: {},
+    retryHistory: {},
+    crashes: {},
     pendingRetry: null,
     meta: {
       initialized: true,
-      cancelled: false,
       lastTransition: new Date().toISOString(),
       reclassifications: [],
     },
@@ -123,12 +125,14 @@ function makeClassifiedState(sessionId, { pipelineId = 'standard' } = {}) {
 }
 
 /**
- * 建立 DELEGATING phase 的 v3 state（有 active stage）
+ * 建立 DELEGATING phase 的 v4 state（有 active stage）
  */
 function makeDelegatingState(sessionId, { pipelineId = 'standard' } = {}) {
   return {
-    version: 3,
+    version: 4,
     sessionId,
+    pipelineActive: true,
+    activeStages: ['DEV'],
     classification: { pipelineId, taskType: 'feature', source: 'regex' },
     dag: {
       DEV: { deps: [] },
@@ -138,12 +142,12 @@ function makeDelegatingState(sessionId, { pipelineId = 'standard' } = {}) {
       DEV: { status: 'active', agent: 'vibe:developer', verdict: null },
       REVIEW: { status: 'pending', agent: null, verdict: null },
     },
-    enforced: true,
     retries: {},
+    retryHistory: {},
+    crashes: {},
     pendingRetry: null,
     meta: {
       initialized: true,
-      cancelled: false,
       lastTransition: new Date().toISOString(),
       reclassifications: [],
     },
