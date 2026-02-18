@@ -332,11 +332,192 @@ function findNearestImplStage(stages, currentIdx) {
   return null;
 }
 
+/**
+ * 修復 pipeline-architect 產出的 DAG 格式偏差
+ *
+ * 可修復項目：
+ * - config 為 null/undefined → { deps: [] }
+ * - deps 為 string → [string]
+ * - deps 缺失 → []
+ * - 懸空 dep 引用（指向不存在的 stage）→ 移除
+ * - 未知 stage 名稱（不在 STAGES 註冊表中）→ 移除
+ *
+ * 不可修復（回傳 null）：
+ * - DAG 不是物件
+ * - 修復後 DAG 為空
+ * - 修復後仍有環
+ *
+ * @param {Object} dag - 原始 DAG
+ * @returns {{ dag: Object, fixes: string[] } | null}
+ */
+function repairDag(dag) {
+  if (!dag || typeof dag !== 'object') return null;
+
+  const fixes = [];
+  const repaired = {};
+
+  // Phase 1: 逐節點修復格式
+  for (const [node, config] of Object.entries(dag)) {
+    const base = getBaseStage(node);
+
+    // 移除未知 stage
+    if (!STAGES[base]) {
+      fixes.push(`移除未知 stage: ${node}`);
+      continue;
+    }
+
+    // 修復 config
+    if (!config || typeof config !== 'object') {
+      repaired[node] = { deps: [] };
+      fixes.push(`${node}: config 為空，補 { deps: [] }`);
+      continue;
+    }
+
+    // 修復 deps
+    let deps = config.deps;
+    if (deps === undefined || deps === null) {
+      deps = [];
+      fixes.push(`${node}: deps 缺失，補 []`);
+    } else if (typeof deps === 'string') {
+      deps = [deps];
+      fixes.push(`${node}: deps 為 string "${deps[0]}"，轉為陣列`);
+    } else if (!Array.isArray(deps)) {
+      deps = [];
+      fixes.push(`${node}: deps 格式無效，重設為 []`);
+    }
+
+    repaired[node] = { ...config, deps };
+  }
+
+  // 空 DAG 不可修復
+  if (Object.keys(repaired).length === 0) return null;
+
+  // Phase 2: 移除懸空 dep 引用
+  for (const [node, config] of Object.entries(repaired)) {
+    const validDeps = config.deps.filter(d => {
+      if (repaired[d]) return true;
+      fixes.push(`${node}: 移除懸空依賴 ${d}`);
+      return false;
+    });
+    repaired[node] = { ...config, deps: validDeps };
+  }
+
+  // Phase 3: 環偵測（修復後仍有環 → 不可修復）
+  try {
+    topologicalSort(repaired);
+  } catch (_) {
+    return null;
+  }
+
+  return { dag: repaired, fixes };
+}
+
+/**
+ * 為 custom DAG 加入 v4 增強 metadata（barrier/onFail/next/maxRetries）
+ *
+ * 針對 pipeline-architect 產出的原始 DAG（只有 deps），自動：
+ * 1. 偵測並行品質 stages（共享同一前驅 deps）→ 加 barrier
+ * 2. 品質 stages 加 onFail（指向最近的上游 IMPL stage）
+ * 3. 品質 stages 加 maxRetries
+ * 4. 線性 stages 加 next
+ *
+ * @param {Object} dag - 已驗證的 DAG
+ * @returns {Object} 增強 DAG
+ */
+function enrichCustomDag(dag) {
+  if (!dag) return dag;
+
+  const enriched = {};
+  for (const [k, v] of Object.entries(dag)) {
+    enriched[k] = { ...v };
+  }
+
+  const sorted = topologicalSort(enriched);
+
+  // 偵測 barrier groups：共享同一 deps 的 QUALITY stages
+  const depKey = (deps) => [...deps].sort().join(',');
+  const groups = {};
+  for (const node of sorted) {
+    const base = getBaseStage(node);
+    if (!QUALITY_STAGES.includes(base)) continue;
+    const key = depKey(enriched[node].deps);
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(node);
+  }
+
+  // 為 barrier groups 加入 barrier metadata
+  const barrierStages = new Set();
+  for (const [, members] of Object.entries(groups)) {
+    if (members.length < 2) continue;
+    // 找 barrier 的 next：所有依賴此 group 任一成員的 stage
+    const memberSet = new Set(members);
+    let barrierNext = null;
+    for (const node of sorted) {
+      if (memberSet.has(node)) continue;
+      const deps = enriched[node].deps;
+      if (deps.some(d => memberSet.has(d))) {
+        barrierNext = node;
+        break;
+      }
+    }
+
+    const groupName = `barrier-${members.join('-').toLowerCase()}`;
+    for (const member of members) {
+      enriched[member].barrier = {
+        group: groupName,
+        total: members.length,
+        next: barrierNext,
+        siblings: members,
+      };
+      barrierStages.add(member);
+    }
+  }
+
+  // 為每個 stage 加入 onFail / maxRetries / next
+  for (let i = 0; i < sorted.length; i++) {
+    const node = sorted[i];
+    const base = getBaseStage(node);
+    const isQuality = QUALITY_STAGES.includes(base);
+
+    // onFail + maxRetries（只有品質 stages）
+    if (isQuality) {
+      // 找最近的上游 IMPL stage（沿拓撲逆序）
+      const deps = enriched[node].deps;
+      let onFail = null;
+      for (let j = i - 1; j >= 0; j--) {
+        const candidate = sorted[j];
+        if (IMPL_STAGE_NAMES.has(getBaseStage(candidate))) {
+          onFail = candidate;
+          break;
+        }
+      }
+      if (onFail) {
+        enriched[node].onFail = onFail;
+        enriched[node].maxRetries = MAX_RETRIES;
+      }
+    }
+
+    // next（線性後繼，barrier stages 跳過）
+    if (!barrierStages.has(node)) {
+      for (let j = i + 1; j < sorted.length; j++) {
+        if (!barrierStages.has(sorted[j])) {
+          enriched[node].next = sorted[j];
+          break;
+        }
+      }
+    }
+  }
+
+  return enriched;
+}
+
 module.exports = {
   getBaseStage,
   resolveAgent,
   topologicalSort,
   validateDag,
+  repairDag,
+  enrichCustomDag,
   linearToDag,
   templateToDag,
   buildBlueprint,

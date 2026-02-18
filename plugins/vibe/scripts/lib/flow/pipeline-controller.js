@@ -27,7 +27,7 @@ const { execSync } = require('child_process');
 
 // Core modules
 const ds = require('./dag-state.js');
-const { getBaseStage, resolveAgent, validateDag, linearToDag, templateToDag, buildBlueprint } = require('./dag-utils.js');
+const { getBaseStage, resolveAgent, validateDag, repairDag, enrichCustomDag, linearToDag, templateToDag, buildBlueprint } = require('./dag-utils.js');
 const { shouldSkip } = require('./skip-predicates.js');
 const { ensureV4 } = require('./state-migrator.js');
 const { shouldStop } = require('./retry-policy.js');
@@ -1147,11 +1147,32 @@ function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline) {
     } catch (_) {}
   }
 
-  // DAG 驗證
+  // DAG 驗證 + 修復鏈
   if (dag) {
-    const validation = validateDag(dag);
+    let validation = validateDag(dag);
+
+    // Phase 1: 驗證失敗 → 嘗試修復
     if (!validation.valid) {
-      // 非法 DAG → 降級為 quick-dev 安全模板（含品質把關）
+      const repair = repairDag(dag);
+      if (repair) {
+        // 修復成功 → 重新驗證
+        const revalidation = validateDag(repair.dag);
+        if (revalidation.valid) {
+          dag = repair.dag;
+          validation = revalidation;
+          rationale += (rationale ? ' | ' : '') + `DAG 自動修復：${repair.fixes.join('; ')}`;
+          try {
+            const hookLogger = require('../hook-logger.js');
+            hookLogger.error('pipeline-controller', new Error(
+              `pipeline-architect DAG 自動修復成功：${repair.fixes.join('; ')}`
+            ));
+          } catch (_) {}
+        }
+      }
+    }
+
+    if (!validation.valid) {
+      // 修復也失敗 → 降級為 quick-dev 安全模板（含品質把關）
       dag = {
         DEV:    { deps: [] },
         REVIEW: { deps: ['DEV'] },
@@ -1163,8 +1184,9 @@ function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline) {
       ];
       rationale = `DAG 驗證失敗（${validation.errors.join('; ')}），降級為 quick-dev`;
     } else {
-      // DAG 合法 → 檢查最低品質完整性：有 DEV 就必須有 REVIEW + TEST
+      // Phase 2: DAG 合法 → 品質保障 + v4 metadata 注入
       dag = ensureQualityStagesIfDev(dag);
+      dag = enrichCustomDag(dag);
       if (!blueprint && dag) {
         blueprint = buildBlueprint(dag);
       }
