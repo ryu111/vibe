@@ -47,6 +47,7 @@ function section(name) {
 /**
  * 複製自 web/index.html adaptV3 函式
  * 將 v3 DAG state 轉換為 v2 相容格式
+ * （含 M-4 修正：isPipelineComplete + cancelled 欄位）
  */
 function adaptV3(raw) {
   if (!raw || !raw.dag) {
@@ -64,6 +65,8 @@ function adaptV3(raw) {
       skippedStages: raw?.skippedStages || [],
       retries: raw?.retries || {},
       environment: raw?.environment || {},
+      isPipelineComplete: false,
+      cancelled: false,
     };
   }
 
@@ -95,9 +98,24 @@ function adaptV3(raw) {
     .map(id => stages[id]?.agent)
     .filter(Boolean);
 
+  const skippedStages = dagKeys.filter(id => stages[id]?.status === 'skipped');
+
+  // M-4：Pipeline 完成旗標（所有 stage 都是 completed/skipped/failed）
+  const isPipelineComplete = dagKeys.length > 0 && dagKeys.every(id => {
+    const st = stages[id]?.status;
+    return st === 'completed' || st === 'skipped' || st === 'failed';
+  });
+
+  // M-4：偵測 cancelled 狀態
+  // cancelled = pipelineActive=false，但有分類且尚未全部完成，且無活躍委派
+  const hasActiveClassification = !!(raw.classification?.pipelineId || raw.classification?.taskType);
+  const cancelled = !raw.pipelineActive && !isPipelineComplete && hasActiveClassification && !activeStage;
+
   return {
     ...raw,
     expectedStages: dagKeys,
+    isPipelineComplete,
+    cancelled,
     stageResults,
     currentStage: activeStage,
     delegationActive: !!activeStage,
@@ -106,7 +124,7 @@ function adaptV3(raw) {
     lastTransition: raw.meta?.lastTransition || null,
     startedAt: raw.classification?.classifiedAt || null,
     completed,
-    skippedStages: dagKeys.filter(id => stages[id]?.status === 'skipped'),
+    skippedStages,
     retries: raw.retries || {},
     environment: raw.environment || {},
   };
@@ -1064,6 +1082,153 @@ test('應該 environment 預設為空物件當 raw.environment 未定義', () =>
   };
   const result = adaptV3(raw);
   assert.deepStrictEqual(result.environment, {});
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Section 14：adaptV3 — M-4 cancelled + isPipelineComplete 偵測
+// ═══════════════════════════════════════════════════════════════
+
+section('adaptV3 M-4：cancelled + isPipelineComplete 偵測');
+
+test('應該回傳 isPipelineComplete=true 當所有 stages 完成', () => {
+  const raw = makeV3State({
+    stageOverrides: {
+      PLAN: makeStage('completed', { verdict: 'PASS' }),
+      DEV: makeStage('completed', { verdict: 'PASS' }),
+      REVIEW: makeStage('completed', { verdict: 'PASS' }),
+      TEST: makeStage('completed', { verdict: 'PASS' }),
+    },
+  });
+  const result = adaptV3(raw);
+  assert.strictEqual(result.isPipelineComplete, true);
+});
+
+test('應該回傳 isPipelineComplete=false 當有 pending stage', () => {
+  const raw = makeV3State({
+    stageOverrides: {
+      PLAN: makeStage('completed', { verdict: 'PASS' }),
+      DEV: makeStage('pending'),
+      REVIEW: makeStage('pending'),
+      TEST: makeStage('pending'),
+    },
+  });
+  const result = adaptV3(raw);
+  assert.strictEqual(result.isPipelineComplete, false);
+});
+
+test('應該回傳 isPipelineComplete=true 當有 skipped 和 failed stage', () => {
+  const raw = makeV3State({
+    stageOverrides: {
+      PLAN: makeStage('completed', { verdict: 'PASS' }),
+      DEV: makeStage('skipped'),
+      REVIEW: makeStage('failed', { verdict: 'FAIL' }),
+      TEST: makeStage('completed', { verdict: 'PASS' }),
+    },
+  });
+  const result = adaptV3(raw);
+  assert.strictEqual(result.isPipelineComplete, true);
+});
+
+test('應該回傳 isPipelineComplete=false 當 dag 為空', () => {
+  const raw = {
+    version: 3,
+    dag: {},
+    stages: {},
+    classification: { pipelineId: 'standard', taskType: 'feature' },
+    meta: {},
+  };
+  const result = adaptV3(raw);
+  assert.strictEqual(result.isPipelineComplete, false);
+});
+
+test('應該回傳 cancelled=true 當 pipelineActive=false 且有分類且未完成且無 active', () => {
+  const raw = makeV3State({
+    stageOverrides: {
+      PLAN: makeStage('completed', { verdict: 'PASS' }),
+      DEV: makeStage('pending'),
+      REVIEW: makeStage('pending'),
+      TEST: makeStage('pending'),
+    },
+    classification: { pipelineId: 'standard', taskType: 'feature' },
+  });
+  raw.pipelineActive = false; // 已取消
+  const result = adaptV3(raw);
+  assert.strictEqual(result.cancelled, true, '應偵測到 cancelled 狀態');
+});
+
+test('應該回傳 cancelled=false 當 pipelineActive=true（正常執行中）', () => {
+  const raw = makeV3State({
+    stageOverrides: {
+      PLAN: makeStage('completed', { verdict: 'PASS' }),
+      DEV: makeStage('active'),
+      REVIEW: makeStage('pending'),
+      TEST: makeStage('pending'),
+    },
+    classification: { pipelineId: 'standard', taskType: 'feature' },
+  });
+  raw.pipelineActive = true;
+  const result = adaptV3(raw);
+  assert.strictEqual(result.cancelled, false, '正常執行中不應是 cancelled');
+});
+
+test('應該回傳 cancelled=false 當無 classification（未分類）', () => {
+  const raw = makeV3State({
+    classification: null,
+    stageOverrides: {
+      PLAN: makeStage('pending'),
+      DEV: makeStage('pending'),
+      REVIEW: makeStage('pending'),
+      TEST: makeStage('pending'),
+    },
+  });
+  raw.pipelineActive = false;
+  const result = adaptV3(raw);
+  // hasActiveClassification = false → cancelled = false
+  assert.strictEqual(result.cancelled, false, '未分類不應是 cancelled');
+});
+
+test('應該回傳 cancelled=false 當 isPipelineComplete=true（已完成不是取消）', () => {
+  const raw = makeV3State({
+    stageOverrides: {
+      PLAN: makeStage('completed', { verdict: 'PASS' }),
+      DEV: makeStage('completed', { verdict: 'PASS' }),
+      REVIEW: makeStage('completed', { verdict: 'PASS' }),
+      TEST: makeStage('completed', { verdict: 'PASS' }),
+    },
+    classification: { pipelineId: 'standard', taskType: 'feature' },
+  });
+  raw.pipelineActive = false; // pipeline 完成後 pipelineActive 也是 false
+  const result = adaptV3(raw);
+  assert.strictEqual(result.cancelled, false, '已完成的 pipeline 不是 cancelled');
+  assert.strictEqual(result.isPipelineComplete, true);
+});
+
+test('應該回傳 cancelled=false 當有 active stage（仍在執行）', () => {
+  const raw = makeV3State({
+    stageOverrides: {
+      PLAN: makeStage('completed', { verdict: 'PASS' }),
+      DEV: makeStage('active'),
+      REVIEW: makeStage('pending'),
+      TEST: makeStage('pending'),
+    },
+    classification: { pipelineId: 'standard', taskType: 'feature' },
+  });
+  raw.pipelineActive = false; // 即使 pipelineActive=false，有 active stage 不是 cancelled
+  const result = adaptV3(raw);
+  assert.strictEqual(result.cancelled, false, '有 active stage 不是 cancelled');
+});
+
+test('adaptV3 無 DAG fallback：cancelled 應為 false', () => {
+  const raw = {
+    version: 3,
+    dag: null,
+    stages: {},
+    classification: { pipelineId: 'standard' },
+    pipelineActive: false,
+  };
+  const result = adaptV3(raw);
+  assert.strictEqual(result.cancelled, false, '無 DAG fallback 的 cancelled 應為 false');
+  assert.strictEqual(result.isPipelineComplete, false, '無 DAG fallback 的 isPipelineComplete 應為 false');
 });
 
 // ═══════════════════════════════════════════════════════════════

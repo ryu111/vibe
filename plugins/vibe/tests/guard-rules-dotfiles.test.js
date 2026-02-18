@@ -20,9 +20,11 @@ const {
   NON_CODE_DOTFILES,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
 
-// v3.0.0 DAG: evaluate() 使用 dag-state 衍生查詢，需要 v3 結構的 enforced state
+// v4 state: evaluate() 使用 isActive(state) = state?.pipelineActive === true
 const ENFORCED_STATE = {
-  version: 3,
+  version: 4,
+  pipelineActive: true,
+  activeStages: [],
   classification: { taskType: 'feature', pipelineId: 'standard', source: 'test' },
   dag: {
     DEV: { deps: [] },
@@ -34,8 +36,9 @@ const ENFORCED_STATE = {
     REVIEW: { status: 'pending', agent: null, verdict: null },
     TEST: { status: 'pending', agent: null, verdict: null },
   },
-  enforced: true,
   retries: {},
+  retryHistory: {},
+  crashes: {},
   pendingRetry: null,
   meta: { initialized: true },
 };

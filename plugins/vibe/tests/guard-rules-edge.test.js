@@ -20,9 +20,11 @@ const {
   NON_CODE_EXTS,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
 
-// v3.0.0 DAG: evaluate() 使用 dag-state 衍生查詢，需要 v3 結構的 enforced state
+// v4 state: evaluate() 使用 isActive(state) = state?.pipelineActive === true
 const ENFORCED_STATE = {
-  version: 3,
+  version: 4,
+  pipelineActive: true,
+  activeStages: [],
   classification: { taskType: 'feature', pipelineId: 'standard', source: 'test' },
   dag: {
     DEV: { deps: [] },
@@ -34,16 +36,18 @@ const ENFORCED_STATE = {
     REVIEW: { status: 'pending', agent: null, verdict: null },
     TEST: { status: 'pending', agent: null, verdict: null },
   },
-  enforced: true,
   retries: {},
+  retryHistory: {},
+  crashes: {},
   pendingRetry: null,
   meta: { initialized: true },
 };
 
-// DELEGATING 狀態（有 active stage）
+// DELEGATING 狀態（有 active stage + activeStages 更新）
 function makeDelegatingState(currentStage = 'DEV') {
   const s = JSON.parse(JSON.stringify(ENFORCED_STATE));
   if (s.stages[currentStage]) s.stages[currentStage].status = 'active';
+  s.activeStages = [currentStage];
   return s;
 }
 
@@ -344,10 +348,11 @@ test('Write 程式碼檔案 — phase=DELEGATING → 放行', () => {
   assert.strictEqual(result.decision, 'allow');
 });
 
-test('Write 程式碼檔案 — cancelled=true → 放行', () => {
+test('Write 程式碼檔案 — pipelineActive=false（取消）→ 放行', () => {
+  // v4: 取消透過 pipelineActive=false 實現（取代 v3 的 meta.cancelled）
   const state = {
     ...ENFORCED_STATE,
-    meta: { ...ENFORCED_STATE.meta, cancelled: true },
+    pipelineActive: false,
   };
   const result = evaluate('Write', { file_path: 'app.js' }, state);
   assert.strictEqual(result.decision, 'allow');

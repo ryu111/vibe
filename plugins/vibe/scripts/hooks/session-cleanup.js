@@ -23,6 +23,8 @@ const STALE_DAYS = 3;
 const STALE_MS = STALE_DAYS * 24 * 60 * 60 * 1000;
 // COMPLETE 或超過 48h 的 pipeline state 提前清理（支援 pipeline-resume 功能）
 const PIPELINE_STALE_MS = 48 * 60 * 60 * 1000;
+// 超過 1 小時的暫存檔（*.tmp.*）視為廢棄
+const TMP_STALE_MS = 60 * 60 * 1000;
 
 let input = '';
 process.stdin.on('data', d => input += d);
@@ -44,11 +46,20 @@ process.stdin.on('end', () => {
     // --- 4. 清理過時 state 檔案 ---
     cleanStaleFiles('timeline-*.jsonl', results);
     cleanStaleFiles('pipeline-state-*.json', results);
+    // pipeline-context 檔案（品質階段的詳細報告）
+    cleanStaleFiles('pipeline-context-*.md', results);
+    // reflection-memory 檔案（v4 回退歷史記錄）
+    cleanStaleFiles('reflection-memory-*.md', results);
+    // barrier-state 檔案（v4 Phase 4 並行同步）
+    cleanStaleFiles('barrier-state-*.json', results);
     // 提前清理：COMPLETE pipeline 或超過 48h 的 pipeline state
     cleanCompletedPipelineStates(sessionId, results);
 
     // --- 5. 清理 MCP log ---
     cleanMcpLogs(results);
+
+    // --- 6. 清理過時暫存檔（*.tmp.*，超過 1 小時）---
+    cleanStaleTmpFiles(results);
 
     // 輸出摘要（只在有清理動作時報告）
     if (results.orphansKilled > 0 || results.filesRemoved > 0) {
@@ -176,6 +187,15 @@ function cleanStaleFiles(pattern, results) {
       if (pattern === 'heartbeat-*') {
         return f.startsWith('heartbeat-');
       }
+      if (pattern === 'pipeline-context-*.md') {
+        return f.startsWith('pipeline-context-') && f.endsWith('.md');
+      }
+      if (pattern === 'reflection-memory-*.md') {
+        return f.startsWith('reflection-memory-') && f.endsWith('.md');
+      }
+      if (pattern === 'barrier-state-*.json') {
+        return f.startsWith('barrier-state-') && f.endsWith('.json');
+      }
       return false;
     });
 
@@ -225,9 +245,31 @@ function cleanCompletedPipelineStates(currentSessionId, results) {
           continue;
         }
 
-        // 讀取 state 檢查是否 COMPLETE
+        // 讀取 state 檢查是否 COMPLETE（支援 v3 和 v4）
         const state = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-        if (state.version === 3 && derivePhase(state) === PHASES.COMPLETE) {
+        if ((state.version === 3 || state.version === 4) && derivePhase(state) === PHASES.COMPLETE) {
+          fs.unlinkSync(filePath);
+          results.filesRemoved++;
+        }
+      } catch (_) {}
+    }
+  } catch (_) {}
+}
+
+/**
+ * 清理過時暫存檔（~/.claude/*.tmp.*，超過 1 小時）
+ * 這些檔案通常由 atomic-write 或測試腳本產生，正常執行後應自動刪除。
+ * 若殘留超過 1 小時，視為廢棄暫存檔。
+ */
+function cleanStaleTmpFiles(results) {
+  try {
+    const files = fs.readdirSync(CLAUDE_DIR).filter(f => f.includes('.tmp.'));
+    const now = Date.now();
+    for (const file of files) {
+      const filePath = path.join(CLAUDE_DIR, file);
+      try {
+        const stat = fs.statSync(filePath);
+        if (now - stat.mtimeMs > TMP_STALE_MS) {
           fs.unlinkSync(filePath);
           results.filesRemoved++;
         }

@@ -5,7 +5,7 @@ description: >-
   確認真實行為符合預期。涵蓋 smoke test、API 驗證、
   服務健康檢查。不寫測試碼 — 直接執行真實操作並報告結果。
   不做瀏覽器 UI 測試（那是 e2e-runner 的職責）。
-tools: Read, Bash, Grep, Glob, WebFetch
+tools: Read, Write, Bash, Grep, Glob, WebFetch
 model: sonnet
 color: yellow
 maxTurns: 30
@@ -130,6 +130,52 @@ memory: project
 
 設計合規問題歸類為 WARNING（不觸發 FAIL），除非對比度低於 3:1（歸類為 CRITICAL）。
 
+## Self-Refine 迴圈（三階段自我精煉）
+
+完成初步驗證後，執行以下三階段精煉：
+
+### Phase 1：初步行為測試
+- 執行上述工作流程，完成第一輪真實操作驗證
+- 記錄所有通過和失敗的場景
+
+### Phase 2：自我挑戰
+對第一輪結論提出質疑：
+- 「我是否遺漏了任何 spec 中的場景？」
+- 「失敗的場景是否確實是 bug，而不是測試設置問題？」
+- 「三維驗證的每個維度都有充分的證據嗎？」
+- 重新驗證最關鍵的 2-3 個場景
+
+### Phase 3：最終裁決
+- 整合兩輪驗證結果
+- 確認環境已清理
+- 確認 PIPELINE_ROUTE 反映最終驗證結果
+
+## Pipeline 模式 context_file 指令
+
+當在 Pipeline 中執行時（即收到 systemMessage 引導），遵循以下步驟：
+
+### 讀取前驅 context（如有）
+如果委派 prompt 中包含 `context_file` 路徑，先讀取該檔案了解前驅階段的實作摘要。
+
+### 寫入詳細報告到 context_file
+
+完成驗證後，將詳細報告寫入以下路徑（使用 Write 工具）：
+
+```
+~/.claude/pipeline-context-{sessionId}-QA.md
+```
+
+其中 `{sessionId}` 從環境變數 `CLAUDE_SESSION_ID` 取得（或從委派 prompt 解析）。
+
+寫入內容：完整的 QA 報告（含測試結果表格、三維驗證摘要、問題清單）。大小上限 5000 字元。
+
+### 最終回應格式（Pipeline 模式）
+
+context_file 寫入完成後，最終回應**只輸出**：
+
+1. **結論摘要**（3-5 行）：通過/失敗場景數、最嚴重問題、三維驗證概況
+2. **PIPELINE_ROUTE 標記**（最後一行）
+
 ## 規則
 
 1. **不寫測試碼**：直接執行真實操作。撰寫測試碼是 tester 的職責
@@ -138,6 +184,28 @@ memory: project
 4. **必須清理**：測試結束後停止所有啟動的服務
 5. **健康檢查先行**：服務啟動後必須確認可用才開始測試
 6. **使用繁體中文**：所有輸出使用繁體中文
-7. **結論標記**：報告最後一行**必須**輸出 Pipeline 結論標記（用於自動回退判斷）：
-   - 全部場景通過：`<!-- PIPELINE_VERDICT: PASS -->`
-   - 有場景失敗：`<!-- PIPELINE_VERDICT: FAIL:HIGH -->`
+7. **結論標記**：報告最後一行**必須**輸出 Pipeline 路由標記（用於自動回退判斷）：
+
+   **重要：先確認 Node Context 中的 `node.barrier` 欄位是否非 null。**
+   - 若 `node.barrier` 非 null（表示此 stage 在 Barrier 並行組中），使用 **`route: "BARRIER"`** 而非 `NEXT`，讓系統等待其他並行 stage 完成後統一決策。
+   - 若 `node.barrier` 為 null（非並行場景），使用 `route: "NEXT"` 或 `route: "DEV"`。
+
+   路由範例：
+   - 全部場景通過（非並行）：
+     ```
+     <!-- PIPELINE_ROUTE: { "verdict": "PASS", "route": "NEXT" } -->
+     ```
+   - 全部場景通過（**並行 Barrier 場景**）：
+     ```
+     <!-- PIPELINE_ROUTE: { "verdict": "PASS", "route": "BARRIER", "barrierGroup": "post-dev" } -->
+     ```
+   - 有場景失敗（非並行）：
+     ```
+     <!-- PIPELINE_ROUTE: { "verdict": "FAIL", "route": "DEV", "severity": "HIGH", "hint": "簡短描述失敗場景（50 字以內）" } -->
+     ```
+   - 有場景失敗（**並行 Barrier 場景**）：
+     ```
+     <!-- PIPELINE_ROUTE: { "verdict": "FAIL", "route": "BARRIER", "barrierGroup": "post-dev", "severity": "HIGH", "hint": "簡短描述失敗場景（50 字以內）" } -->
+     ```
+   - **hint 欄位**：描述最主要的失敗場景（如「POST /api/login 回傳 401，認證邏輯有誤」），讓 developer 快速定位問題。
+   - **barrierGroup 欄位**：從 Node Context 的 `node.barrier.group` 取得。

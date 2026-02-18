@@ -84,7 +84,7 @@ function runHook(hookPath, stdinData) {
 /** v3 CLASSIFIED enforced state（有 DAG、全 pending、enforced） */
 function makeEnforcedState() {
   return {
-    version: 3,
+    version: 4,
     classification: { taskType: 'feature', pipelineId: 'standard', source: 'test' },
     dag: {
       DEV: { deps: [] },
@@ -96,18 +96,22 @@ function makeEnforcedState() {
       REVIEW: { status: 'pending', agent: null, verdict: null },
       TEST: { status: 'pending', agent: null, verdict: null },
     },
-    enforced: true,
+    pipelineActive: true,
+    activeStages: [],
     retries: {},
     pendingRetry: null,
+    retryHistory: {},
+    crashes: {},
     meta: { initialized: true },
   };
 }
 
-/** v3 DELEGATING state（有 active stage） */
+/** v4 DELEGATING state（有 active stage） */
 function makeDelegatingState() {
   const s = makeEnforcedState();
   s.stages.DEV.status = 'active';
   s.stages.DEV.agent = 'developer';
+  s.activeStages = ['DEV'];
   return s;
 }
 
@@ -220,15 +224,20 @@ test('State file meta.initialized=null → 放行', () => {
   }
 });
 
-test('State file classification.taskType=null + enforced DAG → 阻擋（v3: enforcement 不依賴 taskType）', () => {
+test('State file pipelineActive=true + classification.taskType=null → 阻擋（v4: pipelineActive 為唯一依據）', () => {
   const sessionId = 'test-null-task-1';
   try {
     writeState(sessionId, {
-      version: 3,
-      classification: { taskType: null },
+      version: 4,
+      classification: { taskType: null, pipelineId: 'fix' },
       dag: { DEV: { deps: [] } },
       stages: { DEV: { status: 'pending' } },
-      enforced: true,
+      pipelineActive: true,
+      activeStages: [],
+      retries: {},
+      pendingRetry: null,
+      retryHistory: {},
+      crashes: {},
       meta: { initialized: true },
     });
 
@@ -244,15 +253,20 @@ test('State file classification.taskType=null + enforced DAG → 阻擋（v3: en
   }
 });
 
-test('State file classification.taskType="" + enforced DAG → 阻擋（v3: enforcement 不依賴 taskType）', () => {
+test('State file pipelineActive=true + classification.taskType="" → 阻擋（v4: pipelineActive 為唯一依據）', () => {
   const sessionId = 'test-empty-task-1';
   try {
     writeState(sessionId, {
-      version: 3,
-      classification: { taskType: '' },
+      version: 4,
+      classification: { taskType: '', pipelineId: 'fix' },
       dag: { DEV: { deps: [] } },
       stages: { DEV: { status: 'pending' } },
-      enforced: true,
+      pipelineActive: true,
+      activeStages: [],
+      retries: {},
+      pendingRetry: null,
+      retryHistory: {},
+      crashes: {},
       meta: { initialized: true },
     });
 
@@ -341,11 +355,11 @@ test('IDLE（無 DAG）→ 放行（isEnforced=false）', () => {
   }
 });
 
-test('meta.initialized=false + CLASSIFIED → 放行（initialized 優先）', () => {
+test('pipelineActive=false + CLASSIFIED → 放行（v4: pipelineActive 為唯一依據）', () => {
   const sessionId = 'test-multi-3';
   try {
     const state = makeEnforcedState();
-    state.meta.initialized = false;
+    state.pipelineActive = false;  // v4: 不活躍即放行
     writeState(sessionId, state);
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {
@@ -360,7 +374,7 @@ test('meta.initialized=false + CLASSIFIED → 放行（initialized 優先）', (
   }
 });
 
-test('classification=null + enforced DAG → 阻擋（v3: enforcement 不依賴 classification）', () => {
+test('classification=null + pipelineActive=true → 阻擋（v4: pipelineActive 為唯一依據）', () => {
   const sessionId = 'test-multi-4';
   try {
     const state = makeEnforcedState();
@@ -439,11 +453,11 @@ test('NotebookEdit — DELEGATING + .ipynb → 放行', () => {
   }
 });
 
-test('NotebookEdit — meta.cancelled=true + .ipynb → 放行', () => {
+test('NotebookEdit — pipelineActive=false + .ipynb → 放行（v4: 已取消）', () => {
   const sessionId = 'test-nb-4';
   try {
     const state = makeEnforcedState();
-    state.meta.cancelled = true;
+    state.pipelineActive = false;  // v4: cancel 設 pipelineActive=false
     writeState(sessionId, state);
 
     const result = runHook(PIPELINE_GUARD_SCRIPT, {

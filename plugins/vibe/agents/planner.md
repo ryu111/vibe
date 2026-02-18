@@ -99,6 +99,18 @@ created: YYYY-MM-DD
 {如何在出問題時回滾到安全狀態}
 ```
 
+## context_file 讀取（Pipeline 模式）
+
+當委派 prompt 中包含 `context_file` 路徑時，先讀取該檔案了解前驅階段的產出摘要。
+
+## Pipeline 模式結論標記
+
+完成規劃後，最終回應的最後一行**必須**輸出 Pipeline 路由標記：
+
+```
+<!-- PIPELINE_ROUTE: { "verdict": "PASS", "route": "NEXT" } -->
+```
+
 ## 規則
 
 1. **不寫程式碼**：你的職責是規劃，不是實作

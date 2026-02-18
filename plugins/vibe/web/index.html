@@ -795,10 +795,16 @@
         return st === 'completed' || st === 'skipped' || st === 'failed';
       });
 
+      // M-4 修正：偵測 cancelled 狀態
+      // cancelled = pipelineActive=false，但有分類且尚未全部完成，且無活躍委派
+      const hasActiveClassification = !!(raw.classification?.pipelineId || raw.classification?.taskType);
+      const cancelled = !raw.pipelineActive && !isPipelineComplete && hasActiveClassification && !activeStage;
+
       return {
         ...raw,
         expectedStages: dagKeys,
         isPipelineComplete,
+        cancelled,
         stageResults,
         currentStage: activeStage,
         delegationActive: !!activeStage,
@@ -1427,6 +1433,7 @@
       const [zoom, setZoom] = useState(100);
       const [timelineEvents, setTimelineEvents] = useState({});
       const [alive, setAlive] = useState({}); // sessionId → boolean（heartbeat 活性）
+      const [barrierStates, setBarrierStates] = useState({}); // sessionId → barrier state
       const [tlFilter, setTlFilter] = useState(0); // 0=全部, 10/30/60=分鐘
       const [tlTab, setTlTab] = useState('all'); // all/agent/pipeline/quality/task
       const [mainTab, setMainTab] = useState('dashboard'); // dashboard/pipeline/timeline
@@ -1472,6 +1479,7 @@
 
       // --- 計算值（必須在 useEffect 之前）---
       const s = active ? mergedSessions[active] : null;
+      const activeBarrier = active ? barrierStates[active] : null;
       const progress = s ? pct(s) : 0;
       const isComplete = progress === 100 && hasPipeline(s);
       const selectSession = id => { setActive(id); setEvents([]); prevRef.current = {}; };
@@ -1519,6 +1527,10 @@
                 const list = prev[m.sessionId] || [];
                 return { ...prev, [m.sessionId]: [m.event, ...list].slice(0, 200) };
               });
+            }
+            // Barrier 狀態更新
+            if (m.type === 'barrier' && m.sessionId) {
+              setBarrierStates(prev => ({ ...prev, [m.sessionId]: m.barrierState }));
             }
           };
         }
@@ -1712,6 +1724,7 @@
               <h1>
                 🎯 Pipeline — ${sid(active)}
                 ${isComplete && html`<span style="margin-left:4px">🎉</span>`}
+                ${s.cancelled && html`<span class="task-badge" style="background:rgba(243,139,168,0.15);color:var(--red);margin-left:4px">已取消</span>`}
                 <div class="toolbar">
                   <button class="tool-btn ${theme === 'pixel' ? 'active' : ''}" onClick=${() => setTheme(t => t === 'default' ? 'pixel' : 'default')} title="像素風 (P)">🎮 像素</button>
                   <button class="tool-btn ${focusCards ? 'active' : ''}" onClick=${() => setFocusCards(!focusCards)} title="卡片聚焦 (C)">🃏 聚焦</button>
@@ -1806,6 +1819,20 @@
               <!-- Tab: Pipeline -->
               ${mainTab === 'pipeline' && html`
               ${theme === 'pixel' ? html`<${OfficeView} s=${s} tick=${tick} />` : html`
+                ${activeBarrier && Object.keys(activeBarrier.groups || {}).length > 0 && html`
+                  <div style="margin-bottom:10px;padding:8px 12px;background:var(--surface0);border-radius:8px;border:1px solid var(--surface1)">
+                    <div style="font-size:10px;color:var(--subtext0);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Barrier 並行進度</div>
+                    ${Object.entries(activeBarrier.groups || {}).map(([group, g]) => html`
+                      <div key=${group} style="display:flex;align-items:center;gap:10px;font-size:11px;margin-bottom:4px">
+                        <span style="color:var(--blue);min-width:80px">${group}</span>
+                        <span style="color:${g.resolved ? (Object.values(g.results || {}).some(r => r.verdict === 'FAIL') ? 'var(--red)' : 'var(--green)') : 'var(--yellow)'}">${g.completed.length}/${g.total}</span>
+                        <span style="color:var(--subtext0)">${g.siblings.map(st => g.completed.includes(st) ? (g.results[st]?.verdict === 'FAIL' ? '❌' : '✅') : '⏳').join(' ')} ${g.siblings.join(' + ')}</span>
+                        ${g.resolved && html`<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:${Object.values(g.results || {}).some(r => r.verdict === 'FAIL') ? 'var(--red)' : 'var(--green)'};color:var(--bg)">${g.next ? `→ ${g.next}` : '完成'}</span>`}
+                        ${!g.resolved && html`<span style="font-size:9px;color:var(--yellow);animation:blink 1s infinite">等待中...</span>`}
+                      </div>
+                    `)}
+                  </div>
+                `}
                 <div class="snake">
                   ${ROW1.map(stage => html`<${AgentCard} stage=${stage} s=${s} tick=${tick} />`)}
                   <div class="snake-turn ${getStatus('REVIEW', s) === 'active' ? 'flowing' : getStatus('REVIEW', s) === 'pass' ? 'done' : ''}">↓</div>

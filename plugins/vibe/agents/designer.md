@@ -157,6 +157,18 @@ python3 {search.py路徑} "{產品類型} {風格}" --design-system -p "{專案�
 {根據偵測到的框架給出具體的 CSS 變數 / Tailwind config / styled-components 等建議}
 ```
 
+## context_file 讀取（Pipeline 模式）
+
+當委派 prompt 中包含 `context_file` 路徑時，先讀取該檔案了解前驅階段的架構摘要（例如 architect 的技術棧決策）。
+
+## Pipeline 模式結論標記
+
+完成設計後，最終回應的最後一行**必須**輸出 Pipeline 路由標記：
+
+```
+<!-- PIPELINE_ROUTE: { "verdict": "PASS", "route": "NEXT" } -->
+```
+
 ## 規則
 
 1. **先偵測後執行**：必須先確認 search.py 可用

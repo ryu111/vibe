@@ -269,6 +269,66 @@ test('timeline 不存在時不報錯', () => {
   assert.strictEqual(result.success, true); // 不因為 timeline 不存在而失敗
 });
 
+test('barrier-state 存在時複製（M-3 atomicWrite 修正驗證）', () => {
+  cleanup();
+  const state = makeV3State('old-session', { phase: 'CLASSIFIED' });
+  writeState('old-session', state);
+
+  // 建立 barrier-state
+  const oldBarrierPath = path.join(tmpDir, 'barrier-state-old-session.json');
+  const barrierData = {
+    groups: {
+      'post-dev': {
+        total: 2,
+        completed: ['REVIEW'],
+        results: { REVIEW: { verdict: 'PASS', route: 'BARRIER' } },
+        next: 'QA',
+        siblings: ['REVIEW', 'TEST'],
+        resolved: false,
+        createdAt: new Date().toISOString(),
+      },
+    },
+  };
+  fs.writeFileSync(oldBarrierPath, JSON.stringify(barrierData, null, 2));
+
+  resumePipeline('old-session', 'new-session', { claudeDir: tmpDir });
+
+  // 確認 barrier-state 已複製
+  const newBarrierPath = path.join(tmpDir, 'barrier-state-new-session.json');
+  assert.ok(fs.existsSync(newBarrierPath), 'barrier-state 應被複製到新 session');
+  const copiedBarrier = JSON.parse(fs.readFileSync(newBarrierPath, 'utf8'));
+  assert.ok(copiedBarrier.groups['post-dev'], '複製的 barrier 應有 post-dev group');
+  assert.ok(copiedBarrier.groups['post-dev'].completed.includes('REVIEW'), 'barrier 進度應被保留');
+});
+
+test('barrier-state 不存在時不報錯', () => {
+  cleanup();
+  const state = makeV3State('old-session', { phase: 'CLASSIFIED' });
+  writeState('old-session', state);
+
+  // 不建立 barrier-state
+  const result = resumePipeline('old-session', 'new-session', { claudeDir: tmpDir });
+  assert.strictEqual(result.success, true, '不因為 barrier-state 不存在而失敗');
+  // 確認新 session 也沒有 barrier-state（不應建立空白的）
+  const newBarrierPath = path.join(tmpDir, 'barrier-state-new-session.json');
+  assert.strictEqual(fs.existsSync(newBarrierPath), false, '無 barrier-state 時不應建立空白的');
+});
+
+test('resumePipeline 使用 atomicWrite 確保原子寫入', () => {
+  cleanup();
+  const state = makeV3State('old-session', { phase: 'DELEGATING' });
+  writeState('old-session', state);
+
+  const result = resumePipeline('old-session', 'new-session', { claudeDir: tmpDir });
+  assert.strictEqual(result.success, true);
+
+  // atomicWrite 寫入後不應有 .tmp 殘留
+  const newStatePath = path.join(tmpDir, 'pipeline-state-new-session.json');
+  assert.ok(fs.existsSync(newStatePath), '新 state 應存在');
+  const tmpPath = newStatePath + '.tmp';
+  assert.strictEqual(fs.existsSync(tmpPath), false, 'atomicWrite 完成後不應有 .tmp 暫存檔');
+});
+
 // ─── formatRelativeTime 測試 ─────────────────────────────
 
 console.log('\n=== formatRelativeTime ===');

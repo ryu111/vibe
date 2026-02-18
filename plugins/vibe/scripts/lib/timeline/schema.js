@@ -6,7 +6,7 @@
  * envelope 建構函式和驗證邏輯。
  *
  * @module timeline/schema
- * @exports {Object} EVENT_TYPES - 23 種事件類型常數
+ * @exports {Object} EVENT_TYPES - 31 種事件類型常數
  * @exports {Object} CATEGORIES - 事件分類群組
  * @exports {function} createEnvelope - 建構統一 envelope
  * @exports {function} validate - 驗證事件格式
@@ -14,7 +14,7 @@
 'use strict';
 const crypto = require('crypto');
 
-// ── 23 種事件類型（6 大類） ─────────────────────────────
+// ── 31 種事件類型（7 大類） ─────────────────────────────
 
 const EVENT_TYPES = {
   // Session 生命週期
@@ -32,6 +32,16 @@ const EVENT_TYPES = {
   STAGE_RETRY:         'stage.retry',
   PIPELINE_COMPLETE:   'pipeline.complete',
   PIPELINE_INCOMPLETE: 'pipeline.incomplete',
+  // v4 Phase 1：路由協議相關事件
+  ROUTE_FALLBACK:      'route.fallback',   // parseRoute 回退到 v3 VERDICT 解析
+  RETRY_EXHAUSTED:     'retry.exhausted',  // 達到 maxRetries 上限
+  // v4 Phase 4：Barrier 並行事件
+  BARRIER_WAITING:     'barrier.waiting',  // barrier 部分完成，等待其他節點
+  BARRIER_RESOLVED:    'barrier.resolved', // barrier 全部完成，已合併
+  // v4 Phase 4：異常事件
+  AGENT_CRASH:         'agent.crash',      // agent crash（無 PIPELINE_ROUTE 輸出）
+  PIPELINE_ABORTED:    'pipeline.aborted', // route=ABORT，pipeline 異常終止
+  PIPELINE_CANCELLED:  'pipeline.cancelled', // 使用者取消 pipeline
 
   // Agent 行為追蹤
   TOOL_USED:           'tool.used',
@@ -51,6 +61,9 @@ const EVENT_TYPES = {
   SAY_COMPLETED:       'say.completed',
   COMPACT_SUGGESTED:   'compact.suggested',
   COMPACT_EXECUTED:    'compact.executed',
+
+  // Safety 安全事件
+  TRANSCRIPT_LEAK_WARNING: 'safety.transcript-leak', // transcript 洩漏警告
 };
 
 // ── 分類群組（供 consumer 過濾用） ─────────────────────
@@ -59,9 +72,10 @@ const CATEGORIES = {
   session:  ['session.start'],
   task:     ['task.classified', 'prompt.received', 'delegation.start', 'task.incomplete'],
   agent:    ['tool.used', 'delegation.start'],
-  pipeline: ['stage.start', 'stage.complete', 'stage.retry', 'pipeline.complete', 'pipeline.incomplete'],
+  pipeline: ['stage.start', 'stage.complete', 'stage.retry', 'pipeline.complete', 'pipeline.incomplete', 'route.fallback', 'retry.exhausted', 'barrier.waiting', 'barrier.resolved', 'agent.crash', 'pipeline.aborted', 'pipeline.cancelled'],
   quality:  ['tool.blocked', 'tool.guarded', 'quality.lint', 'quality.format', 'quality.test-needed'],
   remote:   ['ask.question', 'ask.answered', 'turn.summary', 'say.sent', 'say.completed', 'compact.suggested', 'compact.executed'],
+  safety:   ['agent.crash', 'pipeline.aborted', 'safety.transcript-leak'],
 };
 
 // 合法事件類型集合（快速查找用）

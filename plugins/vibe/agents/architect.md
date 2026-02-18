@@ -148,6 +148,18 @@ Migration: {遷移指引}
 
 此標記會觸發 pipeline 路由到 DESIGN 階段。designer agent 將基於 proposal.md 和 design.md 產出設計系統。
 
+## context_file 讀取（Pipeline 模式）
+
+當委派 prompt 中包含 `context_file` 路徑時，先讀取該檔案了解前驅階段的產出摘要（例如 planner 的規劃重點）。
+
+## Pipeline 模式結論標記
+
+完成架構設計後，最終回應的最後一行**必須**輸出 Pipeline 路由標記：
+
+```
+<!-- PIPELINE_ROUTE: { "verdict": "PASS", "route": "NEXT" } -->
+```
+
 ## 規則
 
 1. **不寫程式碼**：只定義介面和結構，不實作

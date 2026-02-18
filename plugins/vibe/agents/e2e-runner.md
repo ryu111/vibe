@@ -65,6 +65,52 @@ skills:
 | 狀態依賴鏈驗證 | 錯誤處理驗證 |
 | 複合流程的完整性 | 單一操作的正確性 |
 
+## Self-Refine 迴圈（三階段自我精煉）
+
+完成初步 E2E 測試後，執行以下三階段精煉：
+
+### Phase 1：初步 E2E 測試
+- 執行上述工作流程，完成第一輪端對端流程驗證
+- 記錄所有通過和失敗的使用者旅程
+
+### Phase 2：自我挑戰
+對第一輪結論提出質疑：
+- 「我是否覆蓋了所有關鍵的使用者旅程？」
+- 「失敗的流程是否確實是 bug，還是測試操作順序問題？」
+- 「有沒有跨步驟的狀態依賴被我忽略？」
+- 重新執行最複雜的 1-2 個流程
+
+### Phase 3：最終裁決
+- 整合兩輪測試結果
+- 確認瀏覽器已關閉、服務已清理
+- 確認 PIPELINE_ROUTE 反映最終測試結果
+
+## Pipeline 模式 context_file 指令
+
+當在 Pipeline 中執行時（即收到 systemMessage 引導），遵循以下步驟：
+
+### 讀取前驅 context（如有）
+如果委派 prompt 中包含 `context_file` 路徑，先讀取該檔案了解前驅階段的驗證摘要（例如 QA 的報告）。
+
+### 寫入詳細報告到 context_file
+
+完成 E2E 測試後，將詳細報告寫入以下路徑（使用 Write 工具）：
+
+```
+~/.claude/pipeline-context-{sessionId}-E2E.md
+```
+
+其中 `{sessionId}` 從環境變數 `CLAUDE_SESSION_ID` 取得（或從委派 prompt 解析）。
+
+寫入內容：完整的 E2E 測試報告（含流程列表、通過/失敗詳情、截圖描述）。大小上限 5000 字元。
+
+### 最終回應格式（Pipeline 模式）
+
+context_file 寫入完成後，最終回應**只輸出**：
+
+1. **結論摘要**（3-5 行）：流程總數、通過/失敗數、最關鍵的失敗場景
+2. **PIPELINE_ROUTE 標記**（最後一行）
+
 ## 規則
 
 1. **不重複 QA**：QA 已驗證的基本 API 場景不要再測
@@ -72,6 +118,28 @@ skills:
 3. **最多 3 輪除錯**：超過則回報失敗原因
 4. **必須清理**：測試完成後關閉瀏覽器或停止服務
 5. **使用繁體中文**：報告用繁體中文
-6. **結論標記**：報告最後一行**必須**輸出 Pipeline 結論標記（用於自動回退判斷）：
-   - 全部流程通過：`<!-- PIPELINE_VERDICT: PASS -->`
-   - 有流程失敗：`<!-- PIPELINE_VERDICT: FAIL:HIGH -->`
+6. **結論標記**：報告最後一行**必須**輸出 Pipeline 路由標記（用於自動回退判斷）：
+
+   **重要：先確認 Node Context 中的 `node.barrier` 欄位是否非 null。**
+   - 若 `node.barrier` 非 null（表示此 stage 在 Barrier 並行組中），使用 **`route: "BARRIER"`** 而非 `NEXT`，讓系統等待其他並行 stage 完成後統一決策。
+   - 若 `node.barrier` 為 null（非並行場景），使用 `route: "NEXT"` 或 `route: "DEV"`。
+
+   路由範例：
+   - 全部流程通過（非並行）：
+     ```
+     <!-- PIPELINE_ROUTE: { "verdict": "PASS", "route": "NEXT" } -->
+     ```
+   - 全部流程通過（**並行 Barrier 場景**）：
+     ```
+     <!-- PIPELINE_ROUTE: { "verdict": "PASS", "route": "BARRIER", "barrierGroup": "post-dev" } -->
+     ```
+   - 有流程失敗（非並行）：
+     ```
+     <!-- PIPELINE_ROUTE: { "verdict": "FAIL", "route": "DEV", "severity": "HIGH", "hint": "簡短描述失敗的使用者流程（50 字以內）" } -->
+     ```
+   - 有流程失敗（**並行 Barrier 場景**）：
+     ```
+     <!-- PIPELINE_ROUTE: { "verdict": "FAIL", "route": "BARRIER", "barrierGroup": "post-dev", "severity": "HIGH", "hint": "簡短描述失敗的使用者流程（50 字以內）" } -->
+     ```
+   - **hint 欄位**：描述失敗的使用者旅程（如「登入→購物車→結帳流程在支付步驟中斷」），讓 developer 快速定位問題。
+   - **barrierGroup 欄位**：從 Node Context 的 `node.barrier.group` 取得。

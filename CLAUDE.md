@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 1.0.71 | 全方位開發工作流 | 34 | 12 | 19 | 45 |
+| **vibe** | 2.0.1 | 全方位開發工作流 | 34 | 12 | 19 | 49 |
 
 ### vibe plugin 功能模組
 
@@ -85,7 +85,7 @@ plugins/vibe/
 │       ├── hook-logger.js   # Hook 錯誤日誌（~/.claude/hook-errors.log）
 │       ├── hook-utils.js    # safeRun() JSON stdin 安全解析
 │       ├── task-parser.js   # Transcript JSONL 解析
-│       ├── flow/            # ★ dag-state, dag-utils, pipeline-controller, skip-predicates, state-migrator, classifier, verdict, retry-policy, pipeline-resume, env-detector, counter, uiux-resolver, pipeline-discovery
+│       ├── flow/            # ★ dag-state, dag-utils, pipeline-controller, route-parser, barrier, node-context, reflection, atomic-write, skip-predicates, state-migrator, classifier, retry-policy, pipeline-resume, env-detector, counter, uiux-resolver, pipeline-discovery
 │       ├── sentinel/        # lang-map, tool-detector, guard-rules
 │       ├── dashboard/       # server-manager
 │       ├── remote/          # telegram, transcript, bot-manager
@@ -100,16 +100,25 @@ plugins/vibe/
 
 ## Pipeline 委派架構
 
-### Pipeline v3 — 動態 DAG 架構
+### Pipeline v4 — 分散式節點架構
 
-v3 核心改變：靜態 FSM → 宣告式 DAG 狀態 + pipeline-controller 統一 API。所有 hook 精簡為 controller 薄代理。
+v4 核心改變：集中式 DAG 控制 → 分散式節點自治。Main Agent 降級為訊息匯流排（Message Relay），Sub-agent 自主判斷路由。
+
+**五大機制**：
+- **context_file 物理隔離**：Sub-agent 報告寫入 `~/.claude/pipeline-context-{sid}-{stage}.md`，Main Agent 只看到路徑（不看內容）
+- **PIPELINE_ROUTE 協議**：Sub-agent 輸出 `<!-- PIPELINE_ROUTE: { "verdict":"...", "route":"...", ... } -->`，stage-transition 解析 JSON 路由
+- **Node Context 動態注入**：每個 stage 的 systemMessage 注入 prev/next/onFail/maxRetry/retryContext，agent 自主判斷
+- **Barrier 並行**：REVIEW+TEST 等品質階段可並行執行，barrier 計數器 + Worst-Case-Wins 合併
+- **Reflexion Memory**：`reflection-memory-{sid}-{stage}.md` — 跨迭代學習的 episodic memory
 
 **三個角色分工**：
 - **Pipeline Agent**（pipeline-architect, haiku/plan）：分析 prompt + 環境 → 產出 DAG + 執行藍圖
 - **Pipeline Skill**（`/vibe:pipeline`）：提供 stage 定義、DAG 結構規範、範例模板
 - **Hook Stack**（5 核心）：防護 + 追蹤 + 引導 + 閉環
 
-**v3 State Schema**：`dag`（DAG 結構）+ `stages`（各 stage 狀態）+ `classification`（分類結果）+ `pendingRetry`/`retries`。Phase 由 `derivePhase(state)` 即時推導，不儲存。
+**v4 State Schema**：`dag`（含 barrier/onFail/next）+ `stages`（含 contextFile）+ `classification` + `pipelineActive`（布林值守衛）+ `activeStages`（並行追蹤）+ `retryHistory`（收斂分析）+ `retries` + `crashes`。Phase 由 `derivePhase(state)` 即時推導。
+
+**v4 Guard 簡化**：從 v3 的 5 phase 判斷簡化為 `pipelineActive` 布林值 — `true` = 阻擋 Main Agent 寫入，`false` = 放行。`activeStages.length > 0` 判斷子 agent 放行。
 
 ### Pipeline Catalog（10 種參考模板）
 
@@ -132,7 +141,7 @@ v3 核心改變：靜態 FSM → 宣告式 DAG 狀態 + pipeline-controller 統�
 - **Main Agent 自主分類**：task-classifier 注入 `systemMessage` 分類指令，Main Agent 根據完整對話 context 選擇 pipeline 並呼叫 `/vibe:pipeline`
 - **顯式指定**：在 prompt 中使用 `[pipeline:xxx]` 語法（如 `[pipeline:tdd] 實作 XXX 功能`）
 
-**強制性**（enforced）：
+**強制性**（pipelineActive）：
 - ✅ 強制：pipeline-guard 硬阻擋 Main Agent 直接操作，必須透過 delegation（所有有階段的 pipeline）
 - ❌ 非強制：僅 `none` pipeline（問答/研究），Main Agent 可直接操作
 
@@ -156,11 +165,11 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 | E2E | e2e-runner | sonnet/green | `/vibe:e2e` |
 | DOCS | doc-updater | haiku/purple | `/vibe:doc-sync` |
 
-**防禦機制**（v3：所有 hook 為 pipeline-controller 薄代理）：
+**防禦機制**（v4：所有 hook 為 pipeline-controller 薄代理）：
 - `task-classifier`（UserPromptSubmit）→ `ctrl.classify()` — 顯式 [pipeline:xxx] 建 DAG + 非顯式注入 systemMessage 分類指令
-- `pipeline-guard`（PreToolUse *）→ `ctrl.canProceed()` — derivePhase 決策 + 唯讀白名單
-- `delegation-tracker`（PreToolUse Task）→ `ctrl.onDelegate()` — stage active 標記
-- `stage-transition`（SubagentStop）→ `ctrl.onStageComplete()` — DAG 排程 + 回退/前進/完成
+- `pipeline-guard`（PreToolUse *）→ `ctrl.canProceed()` — pipelineActive 判斷 + 唯讀白名單
+- `delegation-tracker`（PreToolUse Task）→ `ctrl.onDelegate()` — activeStages 追蹤
+- `stage-transition`（SubagentStop）→ `ctrl.onStageComplete()` — PIPELINE_ROUTE 解析 + Barrier + 回退/前進/完成
 - `pipeline-check`（Stop）→ `ctrl.onSessionStop()` — 遺漏偵測 + 閉環阻擋
 
 ## Hooks 事件全景
@@ -191,7 +200,9 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 ## State 與命名慣例
 
 - **Session 隔離 state**：`~/.claude/{name}-{sessionId}.json`（避免多視窗衝突）
-  - 例：`pipeline-state-{sessionId}.json`、`compact-counter-{sessionId}.json`
+  - 例：`pipeline-state-{sessionId}.json`、`barrier-state-{sessionId}.json`、`compact-counter-{sessionId}.json`
+- **context_file**：`~/.claude/pipeline-context-{sessionId}-{stage}.md`（Sub-agent 品質報告，Main Agent 不可見）
+- **Reflexion Memory**：`~/.claude/reflection-memory-{sessionId}-{stage}.md`（跨迭代反思記憶）
 - **全域共享 daemon**：`~/.claude/dashboard-server.pid`、`~/.claude/remote-bot.pid`
 - **Hook 錯誤日誌**：`~/.claude/hook-errors.log`（自動截斷 500 行，`/hook-diag` 查看）
 - **認證檔案**：`~/.claude/remote.env`（`KEY=VALUE` 格式，環境變數優先）

@@ -1,10 +1,10 @@
 /**
- * state-migrator.test.js — v2→v3 State 遷移單元測試
+ * state-migrator.test.js — State 遷移單元測試（v2→v3 + v3→v4）
  */
 'use strict';
 const assert = require('assert');
-const { detectVersion, migrateV2toV3, ensureV3 } = require('../scripts/lib/flow/state-migrator.js');
-const { STAGE_STATUS } = require('../scripts/lib/flow/dag-state.js');
+const { detectVersion, migrateV2toV3, ensureV3, migrateV3toV4, ensureV4 } = require('../scripts/lib/flow/state-migrator.js');
+const { STAGE_STATUS, PHASES } = require('../scripts/lib/flow/dag-state.js');
 
 let passed = 0;
 let failed = 0;
@@ -174,7 +174,6 @@ test('migrateV2toV3: 無 pipelineId + expectedStages 回退', () => {
   assert.ok(v3.dag.DEV, 'DEV 應存在');
   assert.ok(v3.dag.TEST, 'TEST 應存在');
   assert.strictEqual(v3.classification, null, '無 pipelineId → classification 為 null');
-  assert.strictEqual(v3.enforced, false, '無 pipelineId → 不 enforced');
 });
 
 test('migrateV2toV3: 環境和 openspec 欄位保留', () => {
@@ -229,6 +228,191 @@ test('ensureV3: v2 → 自動遷移', () => {
 
 test('ensureV3: 未知格式 → null', () => {
   assert.strictEqual(ensureV3({ random: true }), null);
+});
+
+// ──── detectVersion v4 ────
+
+test('detectVersion: v4 state → 4', () => {
+  assert.strictEqual(detectVersion({ version: 4, pipelineActive: false }), 4);
+});
+
+// ──── migrateV3toV4 ────
+
+test('migrateV3toV4: null → null', () => {
+  assert.strictEqual(migrateV3toV4(null), null);
+});
+
+test('migrateV3toV4: 未初始化（meta.initialized 缺失）→ pipelineActive=false', () => {
+  const v3 = {
+    version: 3,
+    classification: { pipelineId: 'standard', taskType: 'feature' },
+    dag: { DEV: { deps: [] } },
+    stages: { DEV: { status: 'pending' } },
+    enforced: true,
+    meta: {}, // 缺 initialized
+    retries: {},
+  };
+  const v4 = migrateV3toV4(v3);
+  assert.strictEqual(v4.version, 4);
+  assert.strictEqual(v4.pipelineActive, false, 'uninitialized → pipelineActive=false');
+});
+
+test('migrateV3toV4: meta.initialized=false → pipelineActive=false', () => {
+  const v3 = {
+    version: 3,
+    classification: { pipelineId: 'standard', taskType: 'feature' },
+    dag: { DEV: { deps: [] } },
+    stages: { DEV: { status: 'pending' } },
+    enforced: true,
+    meta: { initialized: false, cancelled: false },
+    retries: {},
+  };
+  const v4 = migrateV3toV4(v3);
+  assert.strictEqual(v4.pipelineActive, false);
+});
+
+test('migrateV3toV4: 正常 CLASSIFIED enforced pipeline → pipelineActive=true', () => {
+  const v3 = {
+    version: 3,
+    classification: { pipelineId: 'standard', taskType: 'feature' },
+    dag: { DEV: { deps: [] }, REVIEW: { deps: ['DEV'] } },
+    stages: {
+      DEV: { status: 'pending' },
+      REVIEW: { status: 'pending' },
+    },
+    enforced: true,
+    meta: { initialized: true, cancelled: false },
+    retries: {},
+  };
+  const v4 = migrateV3toV4(v3);
+  assert.strictEqual(v4.version, 4);
+  assert.strictEqual(v4.pipelineActive, true, 'CLASSIFIED enforced → pipelineActive=true');
+  assert.deepStrictEqual(v4.activeStages, [], 'no active stages');
+  assert.deepStrictEqual(v4.retryHistory, {}, 'empty retryHistory');
+  assert.deepStrictEqual(v4.crashes, {}, 'empty crashes');
+});
+
+test('migrateV3toV4: DELEGATING（有 active stage）→ pipelineActive=true + activeStages 推導', () => {
+  const v3 = {
+    version: 3,
+    classification: { pipelineId: 'standard', taskType: 'feature' },
+    dag: { DEV: { deps: [] }, REVIEW: { deps: ['DEV'] } },
+    stages: {
+      DEV: { status: 'active' },
+      REVIEW: { status: 'pending' },
+    },
+    enforced: true,
+    meta: { initialized: true, cancelled: false },
+    retries: {},
+  };
+  const v4 = migrateV3toV4(v3);
+  assert.strictEqual(v4.pipelineActive, true);
+  assert.deepStrictEqual(v4.activeStages, ['DEV'], 'active stage 應被推導到 activeStages');
+});
+
+test('migrateV3toV4: COMPLETE（全部 completed）→ pipelineActive=false', () => {
+  const v3 = {
+    version: 3,
+    classification: { pipelineId: 'fix', taskType: 'bugfix' },
+    dag: { DEV: { deps: [] } },
+    stages: { DEV: { status: 'completed' } },
+    enforced: true,
+    meta: { initialized: true, cancelled: false },
+    retries: {},
+  };
+  const v4 = migrateV3toV4(v3);
+  assert.strictEqual(v4.pipelineActive, false, 'COMPLETE → pipelineActive=false');
+});
+
+test('migrateV3toV4: CANCELLED（meta.cancelled=true）→ pipelineActive=false', () => {
+  const v3 = {
+    version: 3,
+    classification: { pipelineId: 'standard', taskType: 'feature' },
+    dag: { DEV: { deps: [] } },
+    stages: { DEV: { status: 'pending' } },
+    enforced: true,
+    meta: { initialized: true, cancelled: true },
+    retries: {},
+  };
+  const v4 = migrateV3toV4(v3);
+  assert.strictEqual(v4.pipelineActive, false, 'cancelled → pipelineActive=false');
+});
+
+test('migrateV3toV4: non-enforced（enforced=false）→ pipelineActive=false', () => {
+  const v3 = {
+    version: 3,
+    classification: { pipelineId: null, taskType: 'bugfix' },
+    dag: { PLAN: { deps: [] }, DEV: { deps: ['PLAN'] } },
+    stages: { PLAN: { status: 'completed' }, DEV: { status: 'pending' } },
+    enforced: false,
+    meta: { initialized: true, cancelled: false },
+    retries: {},
+  };
+  const v4 = migrateV3toV4(v3);
+  assert.strictEqual(v4.pipelineActive, false, 'non-enforced → pipelineActive=false');
+});
+
+test('migrateV3toV4: retries 推導空 retryHistory', () => {
+  const v3 = {
+    version: 3,
+    classification: { pipelineId: 'quick-dev', taskType: 'quickfix' },
+    dag: { DEV: { deps: [] }, REVIEW: { deps: ['DEV'] } },
+    stages: {
+      DEV: { status: 'completed' },
+      REVIEW: { status: 'failed' },
+    },
+    enforced: true,
+    meta: { initialized: true, cancelled: false },
+    retries: { REVIEW: 2 },
+  };
+  const v4 = migrateV3toV4(v3);
+  assert.ok('REVIEW' in v4.retryHistory, 'retries 中的 stage 應出現在 retryHistory');
+  assert.deepStrictEqual(v4.retryHistory.REVIEW, [], 'retryHistory 初始為空陣列');
+});
+
+// ──── ensureV4 ────
+
+test('ensureV4: null → null', () => {
+  assert.strictEqual(ensureV4(null), null);
+});
+
+test('ensureV4: v4 state → 原樣返回', () => {
+  const v4 = { version: 4, pipelineActive: true, activeStages: [] };
+  assert.strictEqual(ensureV4(v4), v4, '應返回同一物件（無拷貝）');
+});
+
+test('ensureV4: v3 state → 自動遷移到 v4', () => {
+  const v3 = {
+    version: 3,
+    classification: { pipelineId: 'fix', taskType: 'bugfix' },
+    dag: { DEV: { deps: [] } },
+    stages: { DEV: { status: 'pending' } },
+    enforced: true,
+    meta: { initialized: true, cancelled: false },
+    retries: {},
+  };
+  const result = ensureV4(v3);
+  assert.strictEqual(result.version, 4);
+  assert.strictEqual(typeof result.pipelineActive, 'boolean');
+  assert.ok(Array.isArray(result.activeStages));
+});
+
+test('ensureV4: v2 state → 自動遷移到 v4（跨兩版）', () => {
+  const v2 = {
+    sessionId: 'test-v2-to-v4',
+    phase: 'CLASSIFIED',
+    context: { pipelineId: 'fix', taskType: 'bugfix' },
+    progress: { completedAgents: [], skippedStages: [] },
+    meta: { initialized: true, cancelled: false },
+  };
+  const result = ensureV4(v2);
+  assert.strictEqual(result.version, 4, 'v2 → v4 跨版遷移');
+  assert.strictEqual(typeof result.pipelineActive, 'boolean');
+  assert.strictEqual(result.classification.pipelineId, 'fix');
+});
+
+test('ensureV4: 未知格式 → null', () => {
+  assert.strictEqual(ensureV4({ random: true }), null);
 });
 
 // ──── 結果 ────

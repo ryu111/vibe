@@ -23,9 +23,9 @@ const {
   WRITE_PATTERNS,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
 
-// v3.0.0 DAG: evaluate() 使用 dag-state 衍生查詢，需要 v3 結構的 enforced state
+// v4 state：pipelineActive=true，pipeline 執行中
 const ENFORCED_STATE = {
-  version: 3,
+  version: 4,
   classification: { taskType: 'feature', pipelineId: 'standard', source: 'test' },
   dag: {
     DEV: { deps: [] },
@@ -37,9 +37,12 @@ const ENFORCED_STATE = {
     REVIEW: { status: 'pending', agent: null, verdict: null },
     TEST: { status: 'pending', agent: null, verdict: null },
   },
-  enforced: true,
+  pipelineActive: true,
+  activeStages: [],
   retries: {},
   pendingRetry: null,
+  retryHistory: {},
+  crashes: {},
   meta: { initialized: true },
 };
 
@@ -47,12 +50,13 @@ const ENFORCED_STATE = {
 function makeDelegatingState(currentStage = 'DEV') {
   const s = JSON.parse(JSON.stringify(ENFORCED_STATE));
   if (s.stages[currentStage]) s.stages[currentStage].status = 'active';
+  s.activeStages = [currentStage];
   return s;
 }
 
 // PLAN + DELEGATING（用於 AskUserQuestion PLAN 放行測試）
 const PLAN_DELEGATING_STATE = {
-  version: 3,
+  version: 4,
   classification: { taskType: 'feature', pipelineId: 'standard', source: 'test' },
   dag: {
     PLAN: { deps: [] },
@@ -64,9 +68,12 @@ const PLAN_DELEGATING_STATE = {
     ARCH: { status: 'pending', agent: null, verdict: null },
     DEV: { status: 'pending', agent: null, verdict: null },
   },
-  enforced: true,
+  pipelineActive: true,
+  activeStages: ['PLAN'],
   retries: {},
   pendingRetry: null,
+  retryHistory: {},
+  crashes: {},
   meta: { initialized: true },
 };
 
@@ -461,11 +468,12 @@ test('Bash 安全指令 — DELEGATING → allow', () => {
   assert.strictEqual(r.decision, 'allow');
 });
 
-test('Bash 寫入程式碼 — CLASSIFIED → must-delegate（優先於 bash-write-bypass）', () => {
+test('Bash 寫入程式碼 — CLASSIFIED → bash-write-bypass（步驟 2.5 攔截）', () => {
   const r = evaluate('Bash', { command: "echo 'x' > src/app.js" }, ENFORCED_STATE);
   assert.strictEqual(r.decision, 'block');
-  // must-delegate 在 bash-write-bypass 之前觸發
-  assert.strictEqual(r.reason, 'must-delegate');
+  // 步驟 2.5：pipelineActive=true 時 detectBashWriteTarget 在 must-delegate 之前觸發
+  assert.strictEqual(r.reason, 'bash-write-bypass');
+  assert.ok(r.message.includes('src/app.js'));
 });
 
 test('Bash 寫入非程式碼 — CLASSIFIED → must-delegate 阻擋', () => {
@@ -475,10 +483,12 @@ test('Bash 寫入非程式碼 — CLASSIFIED → must-delegate 阻擋', () => {
   assert.strictEqual(r.reason, 'must-delegate');
 });
 
-test('Bash 寫入 — 委派中（DELEGATING）→ allow', () => {
+test('Bash 寫入程式碼 — 委派中（DELEGATING）→ bash-write-bypass（步驟 2.5 攔截）', () => {
   const delegatingState = makeDelegatingState();
   const r = evaluate('Bash', { command: "echo 'x' > src/app.js" }, delegatingState);
-  assert.strictEqual(r.decision, 'allow');
+  assert.strictEqual(r.decision, 'block');
+  // 步驟 2.5 在步驟 4（activeStages 放行）之前：pipelineActive 時一律攔截 Bash 寫入
+  assert.strictEqual(r.reason, 'bash-write-bypass');
 });
 
 test('Bash 寫入 — 無 taskType → allow（未分類）', () => {
@@ -492,6 +502,194 @@ test('Bash danger — 委派中也阻擋（無條件）', () => {
   const r = evaluate('Bash', { command: 'chmod 777 /' }, delegatingState);
   assert.strictEqual(r.decision, 'block');
   assert.strictEqual(r.reason, 'danger-pattern');
+});
+
+test('Bash 寫入非程式碼 — 委派中（DELEGATING）→ allow（步驟 2.5 不攔截非程式碼）', () => {
+  const delegatingState = makeDelegatingState();
+  const r = evaluate('Bash', { command: 'echo "log" > notes.md' }, delegatingState);
+  assert.strictEqual(r.decision, 'allow');
+});
+
+test('Bash 寫入程式碼 — pipelineActive=false → allow（步驟 2.5 不觸發）', () => {
+  const inactiveState = { ...ENFORCED_STATE, pipelineActive: false };
+  const r = evaluate('Bash', { command: "echo 'x' > src/app.js" }, inactiveState);
+  assert.strictEqual(r.decision, 'allow');
+});
+
+// ═══════════════════════════════════════════════
+console.log('\n🆕 v4 pipelineActive 邏輯測試');
+console.log('═'.repeat(55));
+// ═══════════════════════════════════════════════
+
+// v4 state 工廠
+function makeV4State(overrides = {}) {
+  return {
+    version: 4,
+    classification: { pipelineId: 'standard', taskType: 'feature' },
+    dag: {
+      DEV: { deps: [] },
+      REVIEW: { deps: ['DEV'] },
+    },
+    stages: {
+      DEV: { status: 'pending' },
+      REVIEW: { status: 'pending' },
+    },
+    pipelineActive: true,
+    activeStages: [],
+    retryHistory: {},
+    crashes: {},
+    enforced: true,
+    retries: {},
+    pendingRetry: null,
+    meta: { initialized: true, cancelled: false },
+    ...overrides,
+  };
+}
+
+test('v4：pipelineActive=false → allow（核心放行）', () => {
+  const state = makeV4State({ pipelineActive: false });
+  assert.strictEqual(evaluate('Write', { file_path: 'src/app.js' }, state).decision, 'allow');
+  assert.strictEqual(evaluate('Edit', { file_path: 'src/app.ts' }, state).decision, 'allow');
+  assert.strictEqual(evaluate('Bash', { command: 'npm test' }, state).decision, 'allow');
+});
+
+test('v4：pipelineActive=true + activeStages=[] → block（Relay 模式）', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const r = evaluate('Write', { file_path: 'src/app.js' }, state);
+  assert.strictEqual(r.decision, 'block');
+  assert.strictEqual(r.reason, 'must-delegate');
+  assert.ok(r.message.includes('Relay'), 'Relay 模式訊息');
+});
+
+test('v4：pipelineActive=true + activeStages=[DEV] → allow（委派中）', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: ['DEV'] });
+  assert.strictEqual(evaluate('Write', { file_path: 'src/app.js' }, state).decision, 'allow');
+  assert.strictEqual(evaluate('Edit', { file_path: 'src/app.ts' }, state).decision, 'allow');
+  assert.strictEqual(evaluate('Bash', { command: 'npm test' }, state).decision, 'allow');
+});
+
+test('v4：pipelineActive=true + Task → allow（委派工具放行）', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  assert.strictEqual(evaluate('Task', { subagent_type: 'vibe:developer' }, state).decision, 'allow');
+  assert.strictEqual(evaluate('Skill', { name: '/vibe:review' }, state).decision, 'allow');
+});
+
+test('v4：pipelineActive=true + 唯讀工具 → allow', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  assert.strictEqual(evaluate('Read', { file_path: 'src/app.js' }, state).decision, 'allow');
+  assert.strictEqual(evaluate('Grep', { pattern: 'TODO' }, state).decision, 'allow');
+  assert.strictEqual(evaluate('Glob', { pattern: '**/*.js' }, state).decision, 'allow');
+  assert.strictEqual(evaluate('WebSearch', { query: 'test' }, state).decision, 'allow');
+});
+
+test('v4：EnterPlanMode → block（無論 pipelineActive）', () => {
+  assert.strictEqual(evaluate('EnterPlanMode', {}, makeV4State({ pipelineActive: false })).decision, 'block');
+  assert.strictEqual(evaluate('EnterPlanMode', {}, makeV4State({ pipelineActive: true })).decision, 'block');
+  assert.strictEqual(evaluate('EnterPlanMode', {}, null).decision, 'block');
+});
+
+test('v4：Bash 危險指令 → block（無論 pipelineActive）', () => {
+  const safe = makeV4State({ pipelineActive: false });
+  assert.strictEqual(evaluate('Bash', { command: 'rm -rf / ' }, safe).decision, 'block');
+  assert.strictEqual(evaluate('Bash', { command: 'DROP TABLE x' }, safe).decision, 'block');
+});
+
+test('v4：AskUserQuestion + pipelineActive=true + activeStages=[] → block', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const r = evaluate('AskUserQuestion', {}, state);
+  assert.strictEqual(r.decision, 'block');
+  assert.strictEqual(r.reason, 'must-delegate');
+});
+
+test('v4：AskUserQuestion + activeStages=[PLAN]（PLAN 委派中）→ allow', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: ['PLAN'] });
+  assert.strictEqual(evaluate('AskUserQuestion', {}, state).decision, 'allow');
+});
+
+test('v4：state=null → allow', () => {
+  assert.strictEqual(evaluate('Write', { file_path: 'src/app.js' }, null).decision, 'allow');
+  assert.strictEqual(evaluate('Edit', { file_path: 'src/app.ts' }, null).decision, 'allow');
+});
+
+test('v4：pipelineActive 未定義（無欄位）→ 放行（hook 層面已透過 ensureV4 遷移）', () => {
+  // v4 guard-rules 直接評估 v3 state（無 pipelineActive）→ isActive()=false → allow
+  // 注意：真實場景中 pipeline-guard hook 的 loadState() 已透過 ensureV4 遷移，
+  // 所以 evaluate() 永遠收到 v4 state，此測試只驗證 v4 API 的邊界行為。
+  const v3state = {
+    version: 3,
+    classification: { pipelineId: 'standard', taskType: 'feature' },
+    dag: { DEV: { deps: [] } },
+    stages: { DEV: { status: 'pending' } },
+    enforced: true,
+    retries: {},
+    pendingRetry: null,
+    meta: { initialized: true, cancelled: false },
+  };
+  // v4 guard-rules：pipelineActive 未定義 → isActive()=false → allow
+  const r = evaluate('Write', { file_path: 'src/app.js' }, v3state);
+  assert.strictEqual(r.decision, 'allow');
+});
+
+// ═══════════════════════════════════════════════
+console.log('\n🔗 目標 2：detectBashWriteTarget 整合 evaluate() 測試');
+console.log('═'.repeat(55));
+// ═══════════════════════════════════════════════
+
+// 目標 2.1：pipelineActive=true + Bash + 寫入 .js 檔 → bash-write-bypass 攔截
+test('目標 2.1：pipelineActive=true + Bash 寫入 .js → bash-write-bypass', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const r = evaluate('Bash', { command: "echo 'const x = 1;' > src/main.js" }, state);
+  assert.strictEqual(r.decision, 'block', '應被攔截');
+  assert.strictEqual(r.reason, 'bash-write-bypass', '攔截原因應為 bash-write-bypass');
+  assert.ok(r.message.includes('src/main.js'), '訊息應包含目標檔案路徑');
+});
+
+// 目標 2.2：pipelineActive=true + Bash + 寫入 .md 檔 → must-delegate（非程式碼放行步驟 2.5，但仍被 must-delegate 攔截）
+test('目標 2.2：pipelineActive=true + Bash 寫入 .md → must-delegate（非程式碼不觸發 bash-write-bypass）', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const r = evaluate('Bash', { command: 'echo "# Doc" > docs/README.md' }, state);
+  assert.strictEqual(r.decision, 'block', '應被阻擋');
+  // 非程式碼 → 步驟 2.5 不觸發 → 繼續到步驟 7 must-delegate
+  assert.strictEqual(r.reason, 'must-delegate', '.md 不觸發 bash-write-bypass，但仍被 must-delegate 阻擋');
+});
+
+// 目標 2.3：pipelineActive=false + Bash + 寫入 .js 檔 → 放行（步驟 3 核心放行）
+test('目標 2.3：pipelineActive=false + Bash 寫入 .js → allow（步驟 3 放行）', () => {
+  const state = makeV4State({ pipelineActive: false });
+  const r = evaluate('Bash', { command: "echo 'export default fn;' > src/fn.js" }, state);
+  assert.strictEqual(r.decision, 'allow', 'pipelineActive=false 時應放行');
+});
+
+// 目標 2.4：pipelineActive=true + Bash + 一般指令 ls → must-delegate 阻擋（非寫入 → 步驟 2.5 不觸發）
+test('目標 2.4：pipelineActive=true + Bash ls → must-delegate（一般指令不觸發 bash-write-bypass）', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const r = evaluate('Bash', { command: 'ls -la' }, state);
+  assert.strictEqual(r.decision, 'block', 'ls 應被 must-delegate 阻擋');
+  assert.strictEqual(r.reason, 'must-delegate', '一般指令不觸發 bash-write-bypass');
+});
+
+// 額外邊界案例：pipelineActive=true + activeStages 有值 + Bash 寫入 .ts 檔 → bash-write-bypass（步驟 2.5 優先於步驟 4）
+test('步驟 2.5 在步驟 4（activeStages 放行）之前：委派中也攔截 Bash 寫 .ts', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: ['REVIEW'] });
+  const r = evaluate('Bash', { command: 'cat template.ts > src/component.ts' }, state);
+  assert.strictEqual(r.decision, 'block', '即使委派中，Bash 寫入 .ts 也應被攔截');
+  assert.strictEqual(r.reason, 'bash-write-bypass');
+});
+
+// 邊界：pipelineActive=true + Bash + printf >> 寫入 .py → bash-write-bypass
+test('pipelineActive=true + printf >> .py → bash-write-bypass', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const r = evaluate('Bash', { command: 'printf "def fn():\\n    pass\\n" >> src/utils.py' }, state);
+  assert.strictEqual(r.decision, 'block');
+  assert.strictEqual(r.reason, 'bash-write-bypass');
+});
+
+// 邊界：pipelineActive=true + Bash + tee 寫入 .go → bash-write-bypass
+test('pipelineActive=true + tee .go → bash-write-bypass', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const r = evaluate('Bash', { command: 'go generate | tee pkg/gen.go' }, state);
+  assert.strictEqual(r.decision, 'block');
+  assert.strictEqual(r.reason, 'bash-write-bypass');
 });
 
 // ═══════════════════════════════════════════════

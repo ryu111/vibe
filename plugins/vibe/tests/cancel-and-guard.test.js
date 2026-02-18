@@ -543,6 +543,112 @@ test('阻擋 — EnterPlanMode（無條件阻擋，即使無 pipeline）', () =>
 });
 
 // ═══════════════════════════════════════════════
+console.log('\n🧪 Part 3: v4 Cancel 操作驗證');
+// ═══════════════════════════════════════════════
+
+test('v4 cancel：pipelineActive=false 後 guard 放行', () => {
+  const sessionId = 'test-v4-cancel-1';
+  try {
+    // 建立 v4 state：pipelineActive=true
+    const statePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
+    fs.writeFileSync(statePath, JSON.stringify({
+      version: 4,
+      sessionId,
+      classification: { pipelineId: 'standard', taskType: 'feature', source: 'test' },
+      dag: { DEV: { deps: [] }, REVIEW: { deps: ['DEV'] } },
+      stages: { DEV: { status: 'pending' }, REVIEW: { status: 'pending' } },
+      pipelineActive: true,   // 活躍中
+      activeStages: [],
+      retryHistory: {},
+      crashes: {},
+      enforced: true,
+      retries: {},
+      pendingRetry: null,
+      meta: { initialized: true, cancelled: false },
+    }, null, 2));
+
+    // 驗證：guard 阻擋（pipelineActive=true）
+    const beforeCancel = runHook(PIPELINE_GUARD_SCRIPT, {
+      session_id: sessionId, tool_name: 'Write', tool_input: { file_path: 'src/app.js' },
+    });
+    assert.strictEqual(beforeCancel.exitCode, 2, 'cancel 前應阻擋');
+
+    // 模擬 cancel 操作：pipelineActive=false
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    state.pipelineActive = false;
+    state.activeStages = [];
+    state.meta.cancelled = true;
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+
+    // 驗證：guard 放行（pipelineActive=false）
+    const afterCancel = runHook(PIPELINE_GUARD_SCRIPT, {
+      session_id: sessionId, tool_name: 'Write', tool_input: { file_path: 'src/app.js' },
+    });
+    assert.strictEqual(afterCancel.exitCode, 0, 'cancel 後應放行（pipelineActive=false）');
+  } finally {
+    cleanState(sessionId);
+  }
+});
+
+test('v4 cancel：activeStages 清空後 guard 放行', () => {
+  const sessionId = 'test-v4-cancel-2';
+  try {
+    // v4 state：有 activeStages（DELEGATING）
+    const statePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
+    fs.writeFileSync(statePath, JSON.stringify({
+      version: 4,
+      sessionId,
+      classification: { pipelineId: 'fix', taskType: 'bugfix', source: 'test' },
+      dag: { DEV: { deps: [] } },
+      stages: { DEV: { status: 'active' } },
+      pipelineActive: true,
+      activeStages: ['DEV'],  // 委派中
+      retryHistory: {},
+      crashes: {},
+      enforced: true,
+      retries: {},
+      pendingRetry: null,
+      meta: { initialized: true, cancelled: false },
+    }, null, 2));
+
+    // 驗證：DELEGATING 放行（activeStages=[DEV]）
+    const duringDelegate = runHook(PIPELINE_GUARD_SCRIPT, {
+      session_id: sessionId, tool_name: 'Write', tool_input: { file_path: 'src/impl.js' },
+    });
+    assert.strictEqual(duringDelegate.exitCode, 0, 'DELEGATING 應放行（sub-agent 操作）');
+  } finally {
+    cleanState(sessionId);
+  }
+});
+
+test('v4 cancel：pipelineActive 欄位存在 vs 不存在（向後相容）', () => {
+  const sessionId = 'test-v4-compat-1';
+  try {
+    // v3 state：有 enforced 但無 pipelineActive
+    const statePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
+    fs.writeFileSync(statePath, JSON.stringify({
+      version: 3,
+      sessionId,
+      classification: { pipelineId: 'fix', taskType: 'bugfix', source: 'test' },
+      dag: { DEV: { deps: [] } },
+      stages: { DEV: { status: 'pending' } },
+      enforced: true,
+      retries: {},
+      pendingRetry: null,
+      meta: { initialized: true, cancelled: false },
+    }, null, 2));
+
+    // v3 fallback：isEnforced=true + CLASSIFIED → 阻擋
+    const result = runHook(PIPELINE_GUARD_SCRIPT, {
+      session_id: sessionId, tool_name: 'Write', tool_input: { file_path: 'src/app.js' },
+    });
+    assert.strictEqual(result.exitCode, 2, 'v3 fallback 應阻擋');
+  } finally {
+    cleanState(sessionId);
+  }
+});
+
+// ═══════════════════════════════════════════════
 // 結果總結
 // ═══════════════════════════════════════════════
 
