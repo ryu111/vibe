@@ -9,6 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { atomicWrite } = require('./atomic-write.js');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const THRESHOLD = 60;
@@ -58,11 +59,7 @@ function increment(sessionId) {
     }
   }
 
-  // 確保目錄存在
-  if (!fs.existsSync(CLAUDE_DIR)) {
-    fs.mkdirSync(CLAUDE_DIR, { recursive: true });
-  }
-  fs.writeFileSync(getStatePath(sessionId), JSON.stringify(state));
+  atomicWrite(getStatePath(sessionId), state);
 
   return { count: state.count, shouldRemind, message };
 }
@@ -74,10 +71,7 @@ function increment(sessionId) {
 function reset(sessionId) {
   const filePath = getStatePath(sessionId);
   const state = { count: 0, lastRemind: 0 };
-  if (!fs.existsSync(CLAUDE_DIR)) {
-    fs.mkdirSync(CLAUDE_DIR, { recursive: true });
-  }
-  fs.writeFileSync(filePath, JSON.stringify(state));
+  atomicWrite(filePath, state);
 }
 
 module.exports = { read, increment, reset, THRESHOLD, REMIND_INTERVAL };

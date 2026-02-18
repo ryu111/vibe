@@ -658,6 +658,14 @@
     .ac-stats { display: flex; gap: 10px; font-size: 9px; color: var(--subtext0); margin-top: auto; padding-top: 6px; border-top: 1px solid rgba(69,71,90,0.2); }
     .ac-stats span { display: flex; align-items: center; gap: 3px; }
     .ac-stats .stat-icon { font-size: 10px; }
+    .ac-retry-history { margin-top: 4px; font-size: 9px; color: var(--subtext0); }
+    .ac-retry-history summary { cursor: pointer; color: var(--orange); font-weight: 600; }
+    .ac-retry-history summary:hover { color: var(--yellow); }
+    .rh-round { padding: 2px 0 2px 8px; border-left: 2px solid rgba(69,71,90,0.3); margin: 2px 0; }
+    .rh-round.pass { border-left-color: var(--green); }
+    .rh-round.fail { border-left-color: var(--red); color: var(--red); }
+    .rh-sev { opacity: 0.6; font-size: 8px; }
+    .ac-crash { font-size: 9px; color: var(--red); margin-top: 2px; }
 
     /* 卡片入場動畫 */
     .snake .ac { animation: cardEnter 0.5s ease-out backwards; }
@@ -1019,6 +1027,22 @@
               ${tools && html`<span><span class="stat-icon">🔧</span>${tools} calls</span>`}
             </div>
           `}
+          ${(() => {
+            const rh = s.retryHistory?.[stage] || [];
+            const cr = s.crashes?.[stage] || 0;
+            if (!rh.length && !cr) return null;
+            return html`
+              ${rh.length > 0 && html`
+                <details class="ac-retry-history">
+                  <summary>↻ ${rh.length} round${rh.length > 1 ? 's' : ''}</summary>
+                  ${rh.map(h => html`
+                    <div class="rh-round ${h.verdict?.toLowerCase()}">R${h.round}: ${h.verdict} <span class="rh-sev">${h.severity}</span></div>
+                  `)}
+                </details>
+              `}
+              ${cr > 0 && html`<div class="ac-crash">💥 ${cr} crash${cr > 1 ? 'es' : ''}</div>`}
+            `;
+          })()}
         </div>
       `;
     }
@@ -1066,6 +1090,10 @@
           ${r?.toolCalls && html`<div class="ws-tip-row"><span class="ws-tip-label">Tools</span><span class="ws-tip-value">${r.toolCalls} calls</span></div>`}
           ${r?.skillsUsed?.length > 0 && html`<div class="ws-tip-row"><span class="ws-tip-label">Skills</span><span class="ws-tip-value">${r.skillsUsed.join(', ')}</span></div>`}
           ${retries > 0 && html`<div class="ws-tip-row"><span class="ws-tip-label">Retries</span><span class="ws-tip-value" style="color:var(--orange)">${retries}</span></div>`}
+          ${(s.retryHistory?.[stage] || []).map(h => html`
+            <div class="ws-tip-row"><span class="ws-tip-label">R${h.round}</span><span class="ws-tip-value" style="color:${h.verdict === 'PASS' ? 'var(--green)' : 'var(--red)'}">${h.verdict} ${h.severity || ''}</span></div>
+          `)}
+          ${(s.crashes?.[stage] || 0) > 0 && html`<div class="ws-tip-row"><span class="ws-tip-label">Crashes</span><span class="ws-tip-value" style="color:var(--red)">${s.crashes[stage]}</span></div>`}
           ${status === 'active' && html`<div class="ws-tip-row"><span class="ws-tip-label">Status</span><span class="ws-tip-value" style="color:var(--blue)">Working…</span></div>`}
         </div>
       `;

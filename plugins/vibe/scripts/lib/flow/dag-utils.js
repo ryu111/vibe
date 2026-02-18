@@ -12,28 +12,7 @@
  */
 'use strict';
 
-const { STAGES, REFERENCE_PIPELINES, MAX_RETRIES, QUALITY_STAGES } = require('../registry.js');
-
-// ────────────────── 模板規則常量 ──────────────────
-
-// 需要 barrier 的 pipeline 模板設定
-// key: pipelineId, value: barrier group 設定陣列
-const BARRIER_CONFIG = {
-  // full pipeline：DEV 後的 REVIEW + TEST 共享 barrier（post-dev group），QA 是 next
-  // QA + E2E 共享 barrier（post-qa group），DOCS 是 next
-  'full': [
-    { stages: ['REVIEW', 'TEST'], group: 'post-dev', next: 'QA' },
-    { stages: ['QA', 'E2E'], group: 'post-qa', next: 'DOCS' },
-  ],
-  // standard pipeline：REVIEW + TEST 共享 barrier（若兩者都存在）
-  'standard': [
-    { stages: ['REVIEW', 'TEST'], group: 'post-plan', next: 'DOCS' },
-  ],
-  // quick-dev pipeline：REVIEW + TEST 共享 barrier
-  'quick-dev': [
-    { stages: ['REVIEW', 'TEST'], group: 'post-dev', next: null },
-  ],
-};
+const { STAGES, REFERENCE_PIPELINES, MAX_RETRIES, QUALITY_STAGES, BARRIER_CONFIG } = require('../registry.js');
 
 // IMPL stages（不設 onFail）
 const IMPL_STAGE_NAMES = new Set(['PLAN', 'ARCH', 'DESIGN', 'DEV', 'DOCS']);

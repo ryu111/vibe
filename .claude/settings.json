@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node dashboard/scripts/refresh.js",
+            "command": "ROOT=$(git rev-parse --show-toplevel) && node \"$ROOT/dashboard/scripts/refresh.js\"",
             "timeout": 15,
             "statusMessage": "更新 Dashboard..."
           }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/claude-md-check.js",
+            "command": "ROOT=$(git rev-parse --show-toplevel) && node \"$ROOT/.claude/hooks/claude-md-check.js\"",
             "timeout": 5,
             "statusMessage": "檢查 CLAUDE.md 同步..."
           }

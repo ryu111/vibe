@@ -88,10 +88,11 @@ function transcriptHasAssistantMessage(transcriptPath) {
   try {
     const content = fs.readFileSync(transcriptPath, 'utf8');
     const lines = content.trim().split('\n');
-    for (const line of lines) {
-      if (!line.trim()) continue;
+    // 逆序掃描：assistant 訊息通常在末段，大型 transcript 不需全文遍歷
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i].trim()) continue;
       try {
-        const entry = JSON.parse(line);
+        const entry = JSON.parse(lines[i]);
         if (entry.role === 'assistant' || entry.type === 'assistant') return true;
       } catch (_) {}
     }

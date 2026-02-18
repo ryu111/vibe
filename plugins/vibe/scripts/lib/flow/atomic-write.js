@@ -42,8 +42,15 @@ function atomicWrite(filePath, data) {
     fs.writeFileSync(tmpPath, content, 'utf8');
     fs.renameSync(tmpPath, filePath);
   } catch (err) {
-    // 清理暫存檔
-    try { fs.unlinkSync(tmpPath); } catch (_) {}
+    // 清理暫存檔（失敗時記錄 warning，避免 .tmp 永久遺留）
+    try {
+      fs.unlinkSync(tmpPath);
+    } catch (cleanupErr) {
+      // 清理也失敗 — session-cleanup 會在下次啟動時掃描 .tmp.* 殘留（v1.0.50 L-4）
+      if (typeof process !== 'undefined' && process.stderr) {
+        process.stderr.write(`[atomic-write] tmp cleanup failed: ${tmpPath} — ${cleanupErr.code}\n`);
+      }
+    }
     throw err;
   }
 }

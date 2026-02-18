@@ -168,6 +168,22 @@ const KNOWLEDGE_SKILLS = {
   common: ['/vibe:coding-standards', '/vibe:testing-patterns'],
 };
 
+// ────────────────── Barrier 並行配置 ──────────────────
+// 需要 barrier 同步的 pipeline 模板設定（SoT）
+// key: pipelineId, value: barrier group 設定陣列
+const BARRIER_CONFIG = {
+  'full': [
+    { stages: ['REVIEW', 'TEST'], group: 'post-dev', next: 'QA' },
+    { stages: ['QA', 'E2E'], group: 'post-qa', next: 'DOCS' },
+  ],
+  'standard': [
+    { stages: ['REVIEW', 'TEST'], group: 'post-plan', next: 'DOCS' },
+  ],
+  'quick-dev': [
+    { stages: ['REVIEW', 'TEST'], group: 'post-dev', next: null },
+  ],
+};
+
 // ────────────────── Exports ──────────────────
 
 module.exports = {
@@ -181,6 +197,8 @@ module.exports = {
   PIPELINE_PRIORITY, TASKTYPE_TO_PIPELINE, PIPELINE_TO_TASKTYPE,
   // Pipeline 行為
   QUALITY_STAGES, IMPL_STAGES, VERDICT_REGEX, PIPELINE_ROUTE_REGEX, MAX_RETRIES,
+  // Barrier 並行
+  BARRIER_CONFIG,
   // 階段上下文
   STAGE_CONTEXT, POST_STAGE_HINTS, OPENSPEC_CONTEXT,
   // 知識 Skills
