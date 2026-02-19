@@ -14,7 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 
 const {
   getCredentials, sendMessage, editMessageText,
@@ -111,18 +111,17 @@ function detectPane() {
  * @param {string} text — 要注入的文字
  */
 function sendKeys(pane, text) {
-  // 先送文字（-l = literal mode，避免特殊字元被解析為 key name）
-  const escaped = text.replace(/"/g, '\\"').replace(/\$/g, '\\$');
-  execSync(`tmux send-keys -t ${pane} -l "${escaped}"`, { timeout: 5000 });
+  // 使用 execFileSync 避免 shell 注入（不經過 shell 解析）
+  execFileSync('tmux', ['send-keys', '-t', pane, '-l', text], { timeout: 5000 });
   // 再單獨送 Enter
-  execSync(`tmux send-keys -t ${pane} Enter`, { timeout: 5000 });
+  execFileSync('tmux', ['send-keys', '-t', pane, 'Enter'], { timeout: 5000 });
 }
 
 /**
  * 送出 tmux 按鍵，分步送出避免 TUI 掉鍵
  */
 function sendKey(pane, key) {
-  execSync(`tmux send-keys -t ${pane} ${key}`, { timeout: 2000 });
+  execFileSync('tmux', ['send-keys', '-t', pane, key], { timeout: 2000 });
 }
 
 function sleep(ms) {
@@ -770,7 +769,8 @@ async function handleCallbackQuery(token, chatId, callbackQuery) {
  */
 function cleanupOrphanProcesses() {
   try {
-    const pids = execSync('pgrep -f "bot\\.js"', {
+    const botPath = __filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pids = execSync(`pgrep -f "${botPath}"`, {
       encoding: 'utf8',
       timeout: 3000,
     }).trim().split('\n').filter(Boolean);

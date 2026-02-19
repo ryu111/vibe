@@ -36,6 +36,8 @@ const EMOJI_MAP = {
   'agent.crash':        '💥',
   'pipeline.aborted':   '⛔',
   'pipeline.cancelled': '🚫',
+  'barrier.crash-guard': '🛑',
+  'stage.crash-recovery': '🔄',
   'tool.used':          '🔧',
   'tool.blocked':       '🚫',
   'tool.guarded':       '🛡️',
@@ -169,6 +171,10 @@ function formatEventText(event) {
       return `Pipeline 異常終止（${d.reason || 'route=ABORT'}）`;
     case 'pipeline.cancelled':
       return `Pipeline 已取消${d.reason ? `（${d.reason}）` : ''}`;
+    case 'barrier.crash-guard':
+      return `Barrier 防護：${d.stage || '?'} sibling crashed，阻擋下游 ${d.blocked || '?'}`;
+    case 'stage.crash-recovery':
+      return `Crash 回收：${d.stage || '?'} → ${d.verdict || 'FAIL'}${d.source ? ` (${d.source})` : ''}`;
     case 'safety.transcript-leak':
       return `Transcript 洩漏警告：${d.detail || d.source || '未知來源'}`;
     case 'tool.used':

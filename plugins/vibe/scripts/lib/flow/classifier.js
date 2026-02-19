@@ -83,8 +83,10 @@ const HEURISTIC_RULES = [
                  !/(?:重構|refactor|新增.*模組|新增.*功能)/i.test(p) },
 
   // fix: 修復/修正 bug（1 階段 — 多階段 quick-dev 交由 Layer 2）
+  // 排除系統通知、背景任務完成等非使用者意圖的 prompt
   { id: 'bugfix', pipeline: 'fix',
-    test: (p) => /(?:修復|修正|fix|bug|邊界[條情]|防禦性|補[完上加].*測試|加[上入].*處理)/i.test(p) },
+    test: (p) => /(?:修復|修正|fix|bug|邊界[條情]|防禦性|補[完上加].*測試|加[上入].*處理)/i.test(p) &&
+                 !/(completed|已完成|status|背景|background|通知|notification)/i.test(p) },
 
   // 新增/建立/重構 → 不在 heuristic 層分類（需要完整 context 判斷 pipeline 規模）
   // 交由 Layer 2 Main Agent 根據對話 context 自主選擇 standard/quick-dev/fix

@@ -29,13 +29,19 @@ const MEMORY_LINE_LIMIT = 200;
 
 // ─── 輔助函式：遞迴計算 .js 檔案數 ────────────────────────────────────
 
-function countJsFiles(dir) {
+function countJsFiles(dir, visited = new Set()) {
   let count = 0;
   if (!fs.existsSync(dir)) return count;
+  // symlink loop 防護：用 realpath 偵測循環
+  try {
+    const real = fs.realpathSync(dir);
+    if (visited.has(real)) return count;
+    visited.add(real);
+  } catch (_) { return count; }
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const e of entries) {
     if (e.isDirectory()) {
-      count += countJsFiles(path.join(dir, e.name));
+      count += countJsFiles(path.join(dir, e.name), visited);
     } else if (e.name.endsWith('.js')) {
       count++;
     }
@@ -593,11 +599,18 @@ function checkAgentMemoryLines(projectRoot) {
 function gatherMemoryFiles(projectRoot) {
   const files = [];
 
-  // 專案記憶檔
+  // 專案記憶檔（動態掃描目錄下所有 .md 檔案）
   const encodedPath = projectRoot.replace(/\//g, '-');
   const projectMemoryDir = path.join(os.homedir(), '.claude', 'projects', encodedPath, 'memory');
-  for (const name of ['MEMORY.md', 'debugging.md', 'design-principles.md', 'research-findings.md']) {
-    files.push(path.join(projectMemoryDir, name));
+  try {
+    const entries = fs.readdirSync(projectMemoryDir);
+    for (const name of entries) {
+      if (name.endsWith('.md')) {
+        files.push(path.join(projectMemoryDir, name));
+      }
+    }
+  } catch (_) {
+    // 目錄不存在時靜默略過
   }
 
   // Agent 記憶檔

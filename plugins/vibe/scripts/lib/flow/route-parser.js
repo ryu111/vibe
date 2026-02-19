@@ -267,10 +267,17 @@ function extractIssueCount(text, severity) {
 function hasFAILSignal(text) {
   const failPatterns = [
     /\bCRITICAL\b/i,     // 任何 CRITICAL 提及（不含 "0 CRITICAL"）
-    /\bfail/i,            // "fail" / "failed" / "failure"
+    /\bfail(?:ed|ure|s|ing)?\b/i, // "fail" / "failed" / "failure"（排除 onFail 等駝峰式）
     /測試失敗/,
     /嚴重問題/,
     /安全漏洞/,
+  ];
+
+  // 排除 false-positive 的上下文模式（欄位名、設定值）
+  const falsePositives = [
+    /\bonFail\b/,         // DAG 設定欄位名
+    /\bfailover\b/i,      // 常見架構術語
+    /\bfailsafe\b/i,      // 常見設計模式
   ];
 
   for (const pat of failPatterns) {
@@ -278,8 +285,14 @@ function hasFAILSignal(text) {
       // 排除 "0 CRITICAL" / "CRITICAL: 0" 的 false positive
       if (/CRITICAL/i.test(pat.source)) {
         if (/0\s*(?:個\s*)?CRITICAL/i.test(text) || /CRITICAL\s*[:：]\s*0/i.test(text)) {
-          continue; // "0 CRITICAL" 不算 FAIL
+          continue;
         }
+      }
+      // 排除 /fail/ 模式的 false positive（onFail、failover 等）
+      if (/fail/i.test(pat.source)) {
+        // 確認不是只因為 false-positive 模式才匹配
+        const cleaned = text.replace(/\bonFail\b/g, '').replace(/\bfailover\b/gi, '').replace(/\bfailsafe\b/gi, '');
+        if (!pat.test(cleaned)) continue;
       }
       return true;
     }

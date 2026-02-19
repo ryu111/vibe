@@ -948,18 +948,28 @@ test('C4: 掃描範圍涵蓋多個記憶檔（死引用在不同記憶檔中）'
   }
 });
 
-test('C4: 掃描總記憶檔數包含 4 個專案記憶檔 + agent 記憶檔', () => {
+test('C4: 掃描總記憶檔數包含專案記憶檔 + agent 記憶檔', () => {
   const { tmpDir, cleanup } = makeTmpProject();
   try {
+    // 建立專案記憶檔（gatherMemoryFiles 動態掃描 memory/ 目錄）
+    const encodedPath = tmpDir.replace(/\//g, '-');
+    const memDir = path.join(os.homedir(), '.claude', 'projects', encodedPath, 'memory');
+    fs.mkdirSync(memDir, { recursive: true });
+    for (const name of ['MEMORY.md', 'debugging.md', 'design-principles.md', 'research-findings.md']) {
+      fs.writeFileSync(path.join(memDir, name), '正常記憶，無路徑引用。');
+    }
+
     // 建立 agent memory（無引用）
     const agentDir = path.join(tmpDir, '.claude', 'agent-memory', 'vibe-developer');
     fs.mkdirSync(agentDir, { recursive: true });
     fs.writeFileSync(path.join(agentDir, 'MEMORY.md'), '正常記憶，無路徑引用。');
 
     const result = scanDeadReferences(tmpDir);
-    // 4 個專案記憶檔（MEMORY.md/debugging.md/design-principles.md/research-findings.md）
-    // + 1 個 agent 記憶檔 = 5 個
+    // 4 個專案記憶檔 + 1 個 agent 記憶檔 = 5 個
     assert.ok(result.message.includes('5'), `應掃描 5 個記憶檔，訊息：${result.message}`);
+
+    // 清理測試用記憶目錄
+    fs.rmSync(memDir, { recursive: true, force: true });
   } finally {
     cleanup();
   }

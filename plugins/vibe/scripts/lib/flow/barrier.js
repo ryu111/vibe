@@ -206,8 +206,8 @@ function mergeBarrierResults(groupData) {
 
   const worstSeverity = fails[0].severity || 'HIGH';
 
-  // 合併 context_files（所有 FAIL 的報告）
-  const contextFiles = fails.map(f => f.context_file).filter(Boolean);
+  // 合併 context_files（所有結果的報告，含 PASS 和 FAIL）
+  const contextFiles = results.map(r => r.context_file).filter(Boolean);
 
   // 合併 hints
   const hints = fails.map(f => f.hint).filter(Boolean).join('; ');

@@ -71,9 +71,8 @@ function buildDelegateHint(state) {
   return hints.join(' 或 ');
 }
 
-// dotfiles
+// dotfiles（.env 系列用前綴匹配覆蓋所有變體，其餘精確匹配）
 const NON_CODE_DOTFILES = new Set([
-  '.env', '.env.local', '.env.example', '.env.development', '.env.production',
   '.gitignore', '.dockerignore', '.editorconfig',
   '.eslintrc', '.prettierrc', '.browserslistrc',
 ]);
@@ -82,8 +81,9 @@ const NON_CODE_DOTFILES = new Set([
  * 判斷檔案是否為非程式碼檔案
  */
 function isNonCodeFile(filePath) {
-  if (!filePath) return false;
+  if (!filePath || typeof filePath !== 'string') return false;
   const baseName = path.basename(filePath);
+  if (baseName.startsWith('.env')) return true;  // 涵蓋所有 .env 變體
   if (NON_CODE_DOTFILES.has(baseName)) return true;
   const ext = path.extname(filePath).toLowerCase();
   return NON_CODE_EXTS.has(ext);
@@ -97,6 +97,8 @@ const DANGER_PATTERNS = [
   { pattern: /\bDROP\s+(TABLE|DATABASE)\b/i, desc: 'DROP TABLE/DATABASE' },
   { pattern: /\bgit\s+push\s+--force\s+(main|master)\b/, desc: 'git push --force main/master' },
   { pattern: /\bgit\s+push\s+-f\s+(main|master)\b/, desc: 'git push -f main/master' },
+  { pattern: /\bgit\s+push\s+--force\s+origin\s+(main|master)\b/, desc: 'git push --force origin main/master' },
+  { pattern: /\bgit\s+push\s+-f\s+origin\s+(main|master)\b/, desc: 'git push -f origin main/master' },
   { pattern: /\bchmod\s+777\b/, desc: 'chmod 777' },
   { pattern: />\s*\/dev\/sd[a-z]/, desc: '寫入裝置檔案' },
   { pattern: /\bmkfs\b/, desc: 'mkfs 格式化磁碟' },
@@ -127,6 +129,8 @@ const WRITE_PATTERNS = [
   /\b(?:echo|cat|printf)\b.*?>{1,2}\s*(\S+)/,
   /\|\s*tee\s+(?:-a\s+)?(\S+)/,
   /\bsed\s+(?:-[^i]*)?-i['"=]?\s*(?:'[^']*'|"[^"]*"|\S+)\s+(\S+)/,
+  /\bcp\s+(?:-\w+\s+)*\S+\s+(\S+)/,           // cp source target
+  /\bmv\s+(?:-\w+\s+)*\S+\s+(\S+)/,           // mv source target
 ];
 
 /**
@@ -223,7 +227,7 @@ function evaluate(toolName, toolInput, state) {
   // 但 guard 本身阻擋所有寫入工具 — 形成死鎖。
   // 允許 Write/Edit 目標為 ~/.claude/ 下的 pipeline state 檔案。
   if (toolName === 'Write' || toolName === 'Edit') {
-    const filePath = toolInput?.file_path || '';
+    const filePath = typeof toolInput?.file_path === 'string' ? toolInput.file_path : '';
     const baseName = path.basename(filePath);
     if (baseName.startsWith('pipeline-state-') && baseName.endsWith('.json')) {
       const dirName = path.dirname(filePath);

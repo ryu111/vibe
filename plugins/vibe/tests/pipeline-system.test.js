@@ -465,20 +465,9 @@ test('缺漏 ARCH 和 DEV 階段（混合格式）', () => {
     );
 
     const output = JSON.parse(result);
-    // v1.0.53: pipeline-check 使用 command hook 正確格式（continue: false）
-    assert.strictEqual(output.continue, false, '應有 continue: false');
-
-    // ARCH 有 skill，應該顯示 skill 名稱
-    assert.ok(
-      output.systemMessage.includes('/vibe:architect'),
-      'systemMessage 應包含 /vibe:architect skill'
-    );
-
-    // DEV 有 skill /vibe:dev，應該顯示 Skill 委派格式
-    assert.ok(
-      output.systemMessage.includes('/vibe:dev'),
-      'systemMessage 應包含 /vibe:dev skill'
-    );
+    // v4: pipeline-check 使用 decision:"block" + reason 格式
+    assert.strictEqual(output.decision, 'block', '應有 decision: block');
+    assert.ok(output.reason, '應有 reason 說明遺漏階段');
   } finally {
     cleanup(statePath);
   }

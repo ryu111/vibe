@@ -216,7 +216,8 @@ function stopTimelineConsumer(sessionId) {
 }
 
 // --- File Watcher（防抖 80ms）---
-let timer;
+let pipelineTimer;
+let barrierTimer;
 let hbTimer;
 if (existsSync(CLAUDE_DIR)) {
   watch(CLAUDE_DIR, (_, filename) => {
@@ -232,8 +233,8 @@ if (existsSync(CLAUDE_DIR)) {
     if (filename?.startsWith('barrier-state-') && filename.endsWith('.json')) {
       const sid = filename.slice('barrier-state-'.length, -5);
       if (UUID_RE.test(sid)) {
-        clearTimeout(timer);
-        timer = setTimeout(() => {
+        clearTimeout(barrierTimer);
+        barrierTimer = setTimeout(() => {
           const fp = join(CLAUDE_DIR, filename);
           try {
             const barrierState = existsSync(fp) ? JSON.parse(readFileSync(fp, 'utf8')) : null;
@@ -246,8 +247,8 @@ if (existsSync(CLAUDE_DIR)) {
     if (!filename?.startsWith('pipeline-state-') || !filename.endsWith('.json')) return;
     const sid = filename.slice(15, -5);
     if (!UUID_RE.test(sid)) return; // 過濾測試產生的非 UUID session
-    clearTimeout(timer);
-    timer = setTimeout(() => {
+    clearTimeout(pipelineTimer);
+    pipelineTimer = setTimeout(() => {
       const fp = join(CLAUDE_DIR, filename);
       try {
         if (existsSync(fp)) {
@@ -351,6 +352,9 @@ Bun.serve({
     // 刪除 session state 檔案
     if (url.pathname.startsWith('/api/sessions/') && req.method === 'DELETE') {
       const sid = decodeURIComponent(url.pathname.slice('/api/sessions/'.length));
+      if (!UUID_RE.test(sid)) {
+        return Response.json({ ok: false, error: 'invalid session id' }, { status: 400 });
+      }
       const fp = join(CLAUDE_DIR, `pipeline-state-${sid}.json`);
       try {
         if (existsSync(fp)) unlinkSync(fp);
@@ -367,9 +371,12 @@ Bun.serve({
       }
     }
 
-    // 靜態檔案
+    // 靜態檔案（路徑遍歷防護：resolved path 必須在 WEB_DIR 內）
     const filePath = join(WEB_DIR, url.pathname === '/' ? 'index.html' : url.pathname);
     try {
+      if (!filePath.startsWith(WEB_DIR + '/') && filePath !== WEB_DIR) {
+        return new Response('Forbidden', { status: 403 });
+      }
       if (existsSync(filePath) && statSync(filePath).isFile()) {
         return new Response(Bun.file(filePath), {
           headers: { 'Content-Type': MIME[extname(filePath)] || 'application/octet-stream' },

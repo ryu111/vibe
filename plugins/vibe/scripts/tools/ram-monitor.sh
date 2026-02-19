@@ -255,9 +255,9 @@ show_status() {
 
   # State 檔案統計
   local timeline_count
-  timeline_count=$(ls ~/.claude/timeline-*.jsonl 2>/dev/null | wc -l | tr -d ' ')
+  timeline_count=$(ls ~/.claude/timeline-*.jsonl 2>/dev/null | wc -l | tr -d ' ' || echo 0)
   local state_count
-  state_count=$(ls ~/.claude/pipeline-state-*.json 2>/dev/null | wc -l | tr -d ' ')
+  state_count=$(ls ~/.claude/pipeline-state-*.json 2>/dev/null | wc -l | tr -d ' ' || echo 0)
   echo -e "  State 檔案: ${timeline_count} timeline + ${state_count} pipeline-state"
 
   if [ "$total_mb" -ge "$CRIT_THRESHOLD_MB" ]; then

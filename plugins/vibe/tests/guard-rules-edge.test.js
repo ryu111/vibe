@@ -79,12 +79,12 @@ test('undefined 輸入 → false', () => {
   assert.strictEqual(isNonCodeFile(undefined), false);
 });
 
-test('數字輸入 → 拋出錯誤（path.extname 不接受非字串）', () => {
-  assert.throws(() => isNonCodeFile(123), /path.*string/);
+test('數字輸入 → false（型別防護）', () => {
+  assert.strictEqual(isNonCodeFile(123), false);
 });
 
-test('物件輸入 → 拋出錯誤（path.extname 不接受非字串）', () => {
-  assert.throws(() => isNonCodeFile({}), /path.*string/);
+test('物件輸入 → false（型別防護）', () => {
+  assert.strictEqual(isNonCodeFile({}), false);
 });
 
 test('只有點沒有副檔名 (.gitignore) → true', () => {

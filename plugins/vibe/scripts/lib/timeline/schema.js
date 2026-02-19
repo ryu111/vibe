@@ -14,7 +14,7 @@
 'use strict';
 const crypto = require('crypto');
 
-// ── 31 種事件類型（7 大類） ─────────────────────────────
+// ── 33 種事件類型（7 大類） ─────────────────────────────
 
 const EVENT_TYPES = {
   // Session 生命週期
@@ -74,10 +74,11 @@ const CATEGORIES = {
   session:  ['session.start'],
   task:     ['task.classified', 'prompt.received', 'delegation.start', 'task.incomplete'],
   agent:    ['tool.used', 'delegation.start'],
-  pipeline: ['stage.start', 'stage.complete', 'stage.retry', 'pipeline.complete', 'pipeline.incomplete', 'route.fallback', 'retry.exhausted', 'barrier.waiting', 'barrier.resolved', 'agent.crash', 'pipeline.aborted', 'pipeline.cancelled'],
+  // 注意：部分事件有意跨分類（如 delegation.start 同屬 task+agent，agent.crash 同屬 pipeline+safety）
+  pipeline: ['stage.start', 'stage.complete', 'stage.retry', 'pipeline.complete', 'pipeline.incomplete', 'route.fallback', 'retry.exhausted', 'barrier.waiting', 'barrier.resolved', 'agent.crash', 'pipeline.aborted', 'pipeline.cancelled', 'barrier.crash-guard', 'stage.crash-recovery'],
   quality:  ['tool.blocked', 'tool.guarded', 'quality.lint', 'quality.format', 'quality.test-needed'],
   remote:   ['ask.question', 'ask.answered', 'turn.summary', 'say.sent', 'say.completed', 'compact.suggested', 'compact.executed'],
-  safety:   ['agent.crash', 'pipeline.aborted', 'safety.transcript-leak'],
+  safety:   ['agent.crash', 'pipeline.aborted', 'safety.transcript-leak', 'barrier.crash-guard', 'stage.crash-recovery'],
 };
 
 // 合法事件類型集合（快速查找用）

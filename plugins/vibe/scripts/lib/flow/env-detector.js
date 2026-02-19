@@ -112,7 +112,7 @@ function detect(cwd) {
     ];
     for (const fw of frameworks) {
       if (allDeps[fw.key]) {
-        result.framework = { name: fw.name, version: allDeps[fw.key].replace(/[\^~]/, '') };
+        result.framework = { name: fw.name, version: allDeps[fw.key].replace(/[\^~]/g, '') };
         break;
       }
     }
@@ -151,7 +151,7 @@ function detect(cwd) {
         if (toml.includes('ruff')) result.tools.linter = result.tools.linter || 'ruff';
         if (toml.includes('black')) result.tools.formatter = result.tools.formatter || 'black';
         if (toml.includes('pytest')) result.tools.test = result.tools.test || 'pytest';
-        if (toml.includes('mypy')) result.tools.bundler = 'mypy'; // 類型檢查作為 bundler 替代
+        if (toml.includes('mypy')) result.tools.typeChecker = 'mypy';
       } catch (_) {}
     }
   }

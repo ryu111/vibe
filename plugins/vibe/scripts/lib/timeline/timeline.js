@@ -69,10 +69,17 @@ function emit(type, sessionId, data) {
 
 /**
  * 超過 MAX_EVENTS 時保留後半部
+ * 先用檔案大小粗估（避免每次 emit 都全檔讀取），超過閾值才精確截斷
  * @param {string} filePath
  */
+const AVG_LINE_BYTES = 200;
+const MAX_FILE_SIZE = MAX_EVENTS * AVG_LINE_BYTES;
+
 function truncateIfNeeded(filePath) {
   try {
+    const stat = fs.statSync(filePath);
+    if (stat.size <= MAX_FILE_SIZE) return;
+    // 超過估算大小才讀取全檔精確截斷
     const content = fs.readFileSync(filePath, 'utf8');
     const lines = content.split('\n').filter(Boolean);
     if (lines.length > MAX_EVENTS) {
@@ -118,7 +125,7 @@ function query(sessionId, opts) {
         events = events.filter(e => e.timestamp > opts.since);
       }
       if (opts.offset) {
-        events = events.splice(opts.offset);
+        events = events.slice(opts.offset);
       }
       if (opts.limit) {
         events = events.slice(0, opts.limit);
@@ -190,6 +197,10 @@ function watch(sessionId, callback, opts) {
       if (!fs.existsSync(filePath)) return;
 
       const stat = fs.statSync(filePath);
+      // 偵測檔案縮小（truncation 後），重設 offset 從頭讀取
+      if (stat.size < offset) {
+        offset = 0;
+      }
       if (stat.size <= offset) return;
 
       // 讀取新增部分

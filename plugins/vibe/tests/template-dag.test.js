@@ -167,7 +167,7 @@ test('full pipeline：非 barrier stage 有正確 next（線性後繼）', () =>
 
 // ────────────────── standard pipeline 測試 ──────────────────
 // standard: PLAN → ARCH → DEV → REVIEW → TEST → DOCS
-// REVIEW + TEST 應形成 barrier（post-plan group），next = DOCS
+// REVIEW + TEST 應形成 barrier（post-dev group），next = DOCS
 
 test('standard pipeline：DAG 包含 6 個 stages', () => {
   const dag = templateToDag('standard');
@@ -175,18 +175,18 @@ test('standard pipeline：DAG 包含 6 個 stages', () => {
   assert.strictEqual(Object.keys(dag).length, stages.length);
 });
 
-test('standard pipeline：REVIEW 有 barrier（post-plan group, next=DOCS）', () => {
+test('standard pipeline：REVIEW 有 barrier（post-dev group, next=DOCS）', () => {
   const dag = templateToDag('standard');
   assert.ok(dag.REVIEW.barrier);
-  assert.strictEqual(dag.REVIEW.barrier.group, 'post-plan');
+  assert.strictEqual(dag.REVIEW.barrier.group, 'post-dev');
   assert.strictEqual(dag.REVIEW.barrier.next, 'DOCS');
   assert.strictEqual(dag.REVIEW.barrier.total, 2);
 });
 
-test('standard pipeline：TEST 有 barrier（post-plan group, next=DOCS）', () => {
+test('standard pipeline：TEST 有 barrier（post-dev group, next=DOCS）', () => {
   const dag = templateToDag('standard');
   assert.ok(dag.TEST.barrier);
-  assert.strictEqual(dag.TEST.barrier.group, 'post-plan');
+  assert.strictEqual(dag.TEST.barrier.group, 'post-dev');
   assert.strictEqual(dag.TEST.barrier.next, 'DOCS');
 });
 

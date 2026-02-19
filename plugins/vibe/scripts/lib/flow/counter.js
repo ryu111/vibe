@@ -74,4 +74,12 @@ function reset(sessionId) {
   atomicWrite(filePath, state);
 }
 
-module.exports = { read, increment, reset, THRESHOLD, REMIND_INTERVAL };
+/**
+ * 刪除 counter state file（session 清理用）
+ * @param {string} sessionId
+ */
+function cleanup(sessionId) {
+  try { fs.unlinkSync(getStatePath(sessionId)); } catch (_) {}
+}
+
+module.exports = { read, increment, reset, cleanup, THRESHOLD, REMIND_INTERVAL };

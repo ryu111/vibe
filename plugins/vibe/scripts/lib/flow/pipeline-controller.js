@@ -52,6 +52,10 @@ const { classifyWithConfidence, buildPipelineCatalogHint } = require('./classifi
 // v4 Phase 4：Barrier 並行同步
 const { createBarrierGroup, updateBarrier, mergeBarrierResults, mergeContextFiles, readBarrier, checkTimeout, deleteBarrier } = require('./barrier.js');
 
+// Timeline（hoisted — 避免 20+ 處 inline require）
+const { emit: tlEmit } = require('../timeline/index.js');
+const { EVENT_TYPES } = require('../timeline/schema.js');
+
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
 // 級聯跳過迴圈上限（pipeline 最多 9 階段，20 足夠任何 DAG）
@@ -264,9 +268,7 @@ function addRetryHistory(state, stage, routeResult, retryCount) {
  */
 function emitBarrierCrashGuard(sessionId, stage, blockedDownstream, pendingCrashedSiblings) {
   try {
-    const { emit } = require('../timeline/index.js');
-    const { EVENT_TYPES } = require('../timeline/schema.js');
-    emit(EVENT_TYPES.BARRIER_CRASH_GUARD, sessionId, { stage, blockedDownstream, pendingCrashedSiblings });
+    tlEmit(EVENT_TYPES.BARRIER_CRASH_GUARD, sessionId, { stage, blockedDownstream, pendingCrashedSiblings });
   } catch (_) {}
 }
 
@@ -275,9 +277,7 @@ function emitBarrierCrashGuard(sessionId, stage, blockedDownstream, pendingCrash
  */
 function emitStageCrashRecovery(sessionId, stage, verdict, blockCount, source) {
   try {
-    const { emit } = require('../timeline/index.js');
-    const { EVENT_TYPES } = require('../timeline/schema.js');
-    emit(EVENT_TYPES.STAGE_CRASH_RECOVERY, sessionId, { stage, verdict, blockCount, source });
+    tlEmit(EVENT_TYPES.STAGE_CRASH_RECOVERY, sessionId, { stage, verdict, blockCount, source });
   } catch (_) {}
 }
 
@@ -286,9 +286,7 @@ function emitStageCrashRecovery(sessionId, stage, verdict, blockCount, source) {
  */
 function emitRouteFallback(sessionId, stage) {
   try {
-    const { emit } = require('../timeline/index.js');
-    const { EVENT_TYPES } = require('../timeline/schema.js');
-    emit(EVENT_TYPES.ROUTE_FALLBACK, sessionId, { stage, source: 'verdict-fallback' });
+    tlEmit(EVENT_TYPES.ROUTE_FALLBACK, sessionId, { stage, source: 'verdict-fallback' });
   } catch (_) {}
 }
 
@@ -297,9 +295,7 @@ function emitRouteFallback(sessionId, stage) {
  */
 function emitRouteInference(sessionId, stage, inferred) {
   try {
-    const { emit } = require('../timeline/index.js');
-    const { EVENT_TYPES } = require('../timeline/schema.js');
-    emit(EVENT_TYPES.ROUTE_FALLBACK, sessionId, {
+    tlEmit(EVENT_TYPES.ROUTE_FALLBACK, sessionId, {
       stage,
       source: 'content-inference',
       verdict: inferred?.verdict,
@@ -312,9 +308,7 @@ function emitRouteInference(sessionId, stage, inferred) {
  */
 function emitRetryExhausted(sessionId, stage, retryCount) {
   try {
-    const { emit } = require('../timeline/index.js');
-    const { EVENT_TYPES } = require('../timeline/schema.js');
-    emit(EVENT_TYPES.RETRY_EXHAUSTED, sessionId, { stage, retryCount });
+    tlEmit(EVENT_TYPES.RETRY_EXHAUSTED, sessionId, { stage, retryCount });
   } catch (_) {}
 }
 
@@ -323,10 +317,8 @@ function emitRetryExhausted(sessionId, stage, retryCount) {
  */
 function emitBarrierWaiting(sessionId, group, completedCount, totalCount, completedStages, siblings) {
   try {
-    const { emit } = require('../timeline/index.js');
-    const { EVENT_TYPES } = require('../timeline/schema.js');
     const waitingStages = (siblings || []).filter(s => !completedStages.includes(s));
-    emit(EVENT_TYPES.BARRIER_WAITING, sessionId, {
+    tlEmit(EVENT_TYPES.BARRIER_WAITING, sessionId, {
       barrierGroup: group,
       completedCount,
       totalCount,
@@ -341,9 +333,7 @@ function emitBarrierWaiting(sessionId, group, completedCount, totalCount, comple
  */
 function emitBarrierResolved(sessionId, group, verdict, next, mergedResult) {
   try {
-    const { emit } = require('../timeline/index.js');
-    const { EVENT_TYPES } = require('../timeline/schema.js');
-    emit(EVENT_TYPES.BARRIER_RESOLVED, sessionId, {
+    tlEmit(EVENT_TYPES.BARRIER_RESOLVED, sessionId, {
       barrierGroup: group,
       verdict,
       next: next || null,
@@ -357,9 +347,7 @@ function emitBarrierResolved(sessionId, group, verdict, next, mergedResult) {
  */
 function emitAgentCrash(sessionId, stage, crashCount, willRetry) {
   try {
-    const { emit } = require('../timeline/index.js');
-    const { EVENT_TYPES } = require('../timeline/schema.js');
-    emit(EVENT_TYPES.AGENT_CRASH, sessionId, { stage, crashCount, willRetry });
+    tlEmit(EVENT_TYPES.AGENT_CRASH, sessionId, { stage, crashCount, willRetry });
   } catch (_) {}
 }
 
@@ -368,9 +356,7 @@ function emitAgentCrash(sessionId, stage, crashCount, willRetry) {
  */
 function emitPipelineAborted(sessionId, stage, reason) {
   try {
-    const { emit } = require('../timeline/index.js');
-    const { EVENT_TYPES } = require('../timeline/schema.js');
-    emit(EVENT_TYPES.PIPELINE_ABORTED, sessionId, { stage, reason: reason || 'route=ABORT' });
+    tlEmit(EVENT_TYPES.PIPELINE_ABORTED, sessionId, { stage, reason: reason || 'route=ABORT' });
   } catch (_) {}
 }
 
@@ -1073,9 +1059,7 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
         `${currentStage} quality stage 無 PIPELINE_ROUTE 且 transcript 無 assistant 訊息，` +
         `視為正常完成（極早期崩潰或測試場景）。transcriptPath: ${transcriptPath || 'N/A'}`
       ));
-      const { emit } = require('../timeline/index.js');
-      const { EVENT_TYPES } = require('../timeline/schema.js');
-      emit(EVENT_TYPES.AGENT_CRASH, sessionId, {
+      tlEmit(EVENT_TYPES.AGENT_CRASH, sessionId, {
         stage: currentStage,
         crashCount: 0,
         willRetry: false,
@@ -1439,7 +1423,7 @@ function onSessionStop(sessionId) {
           try {
             const content = fs.readFileSync(ctxPath, 'utf8');
             if (content.trim().length > 0) {
-              inferredVerdict = inferRouteFromContent(content, stageId);
+              inferredVerdict = inferRouteFromContent([content], stageId);
             }
           } catch (_) { /* ignore read errors */ }
         }

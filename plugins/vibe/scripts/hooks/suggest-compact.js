@@ -14,6 +14,7 @@ const { increment } = require(path.join(__dirname, '..', 'lib', 'flow', 'counter
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 const { readState: dsReadState, derivePhase, getReadyStages } = require(path.join(__dirname, '..', 'lib', 'flow', 'dag-state.js'));
+const { atomicWrite } = require(path.join(__dirname, '..', 'lib', 'flow', 'atomic-write.js'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
@@ -118,7 +119,7 @@ process.stdin.on('end', () => {
           let count = 0;
           try { count = JSON.parse(fs.readFileSync(countFile, 'utf8')).count || 0; } catch (_) {}
           count++;
-          fs.writeFileSync(countFile, JSON.stringify({ count }));
+          atomicWrite(countFile, { count });
 
           // 間隔提醒（閾值首次 + 之後每 5 次）
           const THRESHOLD = 3;

@@ -306,8 +306,8 @@ console.log('\n💣 evaluateBashDanger() — 危險指令偵測');
 console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
-test('DANGER_PATTERNS 匯出 8 個模式', () => {
-  assert.strictEqual(DANGER_PATTERNS.length, 8);
+test('DANGER_PATTERNS 匯出 10 個模式', () => {
+  assert.strictEqual(DANGER_PATTERNS.length, 10);
 });
 
 test('rm -rf / → block', () => {
@@ -384,8 +384,8 @@ console.log('\n📝 detectBashWriteTarget() — 寫檔繞過偵測');
 console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
-test('WRITE_PATTERNS 匯出 3 個模式', () => {
-  assert.strictEqual(WRITE_PATTERNS.length, 3);
+test('WRITE_PATTERNS 匯出 5 個模式', () => {
+  assert.strictEqual(WRITE_PATTERNS.length, 5);
 });
 
 test('echo > src/app.js → block（程式碼檔案）', () => {

@@ -105,13 +105,11 @@ const PIPELINE_TO_TASKTYPE = {
 // 品質階段 — 會輸出 verdict，失敗時可觸發回退
 const QUALITY_STAGES = ['REVIEW', 'TEST', 'QA', 'E2E'];
 
-// 實作階段 — 進入這些階段時自動 enforce pipeline
-const IMPL_STAGES = ['DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'];
-
 // Verdict 正規表達式（v3 fallback 用）
 const VERDICT_REGEX = /<!-- PIPELINE_VERDICT:\s*(PASS|FAIL(?::(?:CRITICAL|HIGH|MEDIUM|LOW))?)\s*-->/;
 
 // Route 正規表達式（v4 PIPELINE_ROUTE 協議）
+// 注意：JSON payload 中不可含 '-->'，route-parser.js validateRoute() 會自動 sanitize
 const PIPELINE_ROUTE_REGEX = /<!-- PIPELINE_ROUTE:\s*([\s\S]*?)\s*-->/;
 
 // 智慧回退上限
@@ -177,7 +175,7 @@ const BARRIER_CONFIG = {
     { stages: ['QA', 'E2E'], group: 'post-qa', next: 'DOCS' },
   ],
   'standard': [
-    { stages: ['REVIEW', 'TEST'], group: 'post-plan', next: 'DOCS' },
+    { stages: ['REVIEW', 'TEST'], group: 'post-dev', next: 'DOCS' },
   ],
   'quick-dev': [
     { stages: ['REVIEW', 'TEST'], group: 'post-dev', next: null },
@@ -196,7 +194,7 @@ module.exports = {
   PIPELINES: REFERENCE_PIPELINES,  // 向後相容別名
   PIPELINE_PRIORITY, TASKTYPE_TO_PIPELINE, PIPELINE_TO_TASKTYPE,
   // Pipeline 行為
-  QUALITY_STAGES, IMPL_STAGES, VERDICT_REGEX, PIPELINE_ROUTE_REGEX, MAX_RETRIES,
+  QUALITY_STAGES, VERDICT_REGEX, PIPELINE_ROUTE_REGEX, MAX_RETRIES,
   // Barrier 並行
   BARRIER_CONFIG,
   // 階段上下文

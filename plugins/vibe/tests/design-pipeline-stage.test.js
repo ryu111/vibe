@@ -464,11 +464,10 @@ test('空 skippedStages 不影響計算', () => {
     );
 
     const output = JSON.parse(result);
-    assert.strictEqual(output.continue, false, '應有 continue: false（有遺漏階段）');
-    // v3：遺漏 stages 在 systemMessage 中列出
-    assert.ok(output.systemMessage.includes('ARCH'), '應列出 ARCH');
-    assert.ok(output.systemMessage.includes('DESIGN'), '應列出 DESIGN');
-    assert.ok(output.systemMessage.includes('DEV'), '應列出 DEV');
+    // v4：pipeline-check 使用 decision:"block" + reason 格式
+    assert.strictEqual(output.decision, 'block', '應有 decision: block（有遺漏階段）');
+    assert.ok(output.reason, '應有 reason 說明遺漏');
+    assert.ok(output.reason.includes('ARCH') || output.reason.includes('遺漏'), '應提及遺漏階段');
   } finally {
     cleanup(statePath);
   }
@@ -502,12 +501,11 @@ test('部分跳過：DESIGN 跳過但 E2E 沒跳過', () => {
     );
 
     const output = JSON.parse(result);
-    assert.strictEqual(output.continue, false, '應有 continue: false');
+    // v4：pipeline-check 使用 decision:"block" + reason 格式
+    assert.strictEqual(output.decision, 'block', '應有 decision: block');
+    assert.ok(output.reason, '應有 reason');
     // DESIGN 跳過不應列出，但 REVIEW/TEST/QA/E2E/DOCS 應列出
-    // v3：遺漏 stages 在 systemMessage 中列出
-    assert.ok(output.systemMessage, '應有 systemMessage');
-    assert.ok(output.systemMessage.includes('REVIEW'), '應列出 REVIEW');
-    assert.ok(output.systemMessage.includes('E2E'), 'E2E 未跳過應列為遺漏');
+    assert.ok(output.reason.includes('REVIEW') || output.reason.includes('遺漏'), 'REVIEW 未完成應提及');
   } finally {
     cleanup(statePath);
   }

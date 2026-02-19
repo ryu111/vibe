@@ -6,9 +6,10 @@
  * 被 auto-lint.js 和 auto-format.js 共用。
  */
 'use strict';
-const { execSync } = require("child_process");
+const { execFileSync } = require("child_process");
 
 // 快取已偵測的結果（同一 process 內）
+// 生命週期：hook 是獨立 process，快取僅在單次 hook 執行中有效
 const _cache = {};
 
 /**
@@ -20,7 +21,7 @@ function isInstalled(cmd) {
   const bin = cmd.split(" ")[0];
   if (_cache[bin] !== undefined) return _cache[bin];
   try {
-    execSync(`which ${bin}`, { stdio: "pipe" });
+    execFileSync('which', [bin], { stdio: "pipe" });
     _cache[bin] = true;
   } catch {
     _cache[bin] = false;

@@ -42,10 +42,17 @@ function error(hookName, err) {
 }
 
 /**
- * 超過 MAX_LINES 時，保留後半部
+ * 超過估算大小時，保留後半部
+ * 用檔案大小估算行數（避免每次 error() 都讀取全檔）
  */
+const AVG_LINE_BYTES = 120;
+const MAX_SIZE = MAX_LINES * AVG_LINE_BYTES;
+
 function truncateIfNeeded() {
   try {
+    const stat = fs.statSync(LOG_PATH);
+    if (stat.size <= MAX_SIZE) return;
+    // 超過估算大小才讀取全檔截斷
     const content = fs.readFileSync(LOG_PATH, 'utf8');
     const lines = content.split('\n').filter(Boolean);
     if (lines.length > MAX_LINES) {
@@ -95,8 +102,8 @@ function stats() {
   const byHook = {};
 
   for (const line of lines) {
-    // 格式：[2026-02-14T...] hookName: error message
-    const match = line.match(/^\[([^\]]+)\]\s+([^:]+):\s+(.+)$/);
+    // 格式：[2026-02-14T...] hookName: error message（hookName 可能含冒號如 remote-hub:sender）
+    const match = line.match(/^\[([^\]]+)\]\s+(.+?):\s+(.+)$/);
     if (!match) continue;
 
     const [, time, hook, msg] = match;

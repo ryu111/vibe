@@ -313,24 +313,16 @@ test('NON_CODE_DOTFILES 為 Set 類型', () => {
   assert.ok(NON_CODE_DOTFILES instanceof Set);
 });
 
-test('NON_CODE_DOTFILES 包含 .env', () => {
-  assert.ok(NON_CODE_DOTFILES.has('.env'));
-});
-
-test('NON_CODE_DOTFILES 包含 .env.local', () => {
-  assert.ok(NON_CODE_DOTFILES.has('.env.local'));
-});
-
-test('NON_CODE_DOTFILES 包含 .env.example', () => {
-  assert.ok(NON_CODE_DOTFILES.has('.env.example'));
-});
-
-test('NON_CODE_DOTFILES 包含 .env.development', () => {
-  assert.ok(NON_CODE_DOTFILES.has('.env.development'));
-});
-
-test('NON_CODE_DOTFILES 包含 .env.production', () => {
-  assert.ok(NON_CODE_DOTFILES.has('.env.production'));
+// .env 系列現在由 isNonCodeFile 前綴匹配處理（不在 NON_CODE_DOTFILES Set 中）
+test('.env 系列由前綴匹配覆蓋', () => {
+  assert.ok(isNonCodeFile('.env'));
+  assert.ok(isNonCodeFile('.env.local'));
+  assert.ok(isNonCodeFile('.env.example'));
+  assert.ok(isNonCodeFile('.env.development'));
+  assert.ok(isNonCodeFile('.env.production'));
+  assert.ok(isNonCodeFile('.env.test'));
+  assert.ok(isNonCodeFile('.env.staging'));
+  assert.ok(isNonCodeFile('.env.test.local'));
 });
 
 test('NON_CODE_DOTFILES 包含 .gitignore', () => {
@@ -365,10 +357,9 @@ test('NON_CODE_DOTFILES 不包含 .npmrc', () => {
   assert.strictEqual(NON_CODE_DOTFILES.has('.npmrc'), false);
 });
 
-test('NON_CODE_DOTFILES 大小檢查（預期 11 個項目）', () => {
-  // .env, .env.local, .env.example, .env.development, .env.production,
+test('NON_CODE_DOTFILES 大小檢查（預期 6 個項目，.env 系列用前綴匹配）', () => {
   // .gitignore, .dockerignore, .editorconfig, .eslintrc, .prettierrc, .browserslistrc
-  assert.strictEqual(NON_CODE_DOTFILES.size, 11);
+  assert.strictEqual(NON_CODE_DOTFILES.size, 6);
 });
 
 // ═══════════════════════════════════════════════
@@ -388,14 +379,12 @@ console.log('\n📋 isNonCodeFile() — 複合 Dotfiles（多個點）');
 console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
-test('.env.test.local（basename 精確匹配失敗）→ false', () => {
-  // NON_CODE_DOTFILES 中沒有 '.env.test.local'
-  assert.strictEqual(isNonCodeFile('.env.test.local'), false);
+test('.env.test.local（前綴匹配成功）→ true', () => {
+  assert.strictEqual(isNonCodeFile('.env.test.local'), true);
 });
 
-test('.env.staging（basename 精確匹配失敗）→ false', () => {
-  // NON_CODE_DOTFILES 中沒有 '.env.staging'
-  assert.strictEqual(isNonCodeFile('.env.staging'), false);
+test('.env.staging（前綴匹配成功）→ true', () => {
+  assert.strictEqual(isNonCodeFile('.env.staging'), true);
 });
 
 test('.eslintrc.json（basename 精確匹配失敗）→ true（因副檔名 .json）', () => {
