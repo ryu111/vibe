@@ -374,6 +374,21 @@ poll_state() {
         # 等一下讓最後的 hook 完成檔案寫入
         sleep 3
         set_status "$scenario_id" "⏳ claude 已退出，驗證中..."
+        # 進程退出後，檢查 state 檔案判斷真實狀態
+        if [ -f "$state_file" ]; then
+          local exit_phase
+          exit_phase=$(node -e "
+            try {
+              const s = JSON.parse(require('fs').readFileSync('$state_file','utf8'));
+              const { derivePhase } = require('$VIBE_PLUGIN/scripts/lib/flow/dag-state.js');
+              console.log(derivePhase(s));
+            } catch(e) { console.log('UNKNOWN'); }
+          " 2>/dev/null)
+          if [ "$exit_phase" = "COMPLETE" ]; then
+            echo "COMPLETE"
+            return 0
+          fi
+        fi
         echo "PROCESS_EXIT"
         return 0
       fi
@@ -631,7 +646,9 @@ send_followup_print() {
     unset CLAUDECODE  # 避免 nested session 檢測
     # 關閉繼承的 pipe FD，避免 $() 命令替換阻塞
     exec > /dev/null 2>&1
-    eval "$(_claude_base_args "$uuid" "$mem_dir") --resume -p $(printf '%q' "$follow_up")" > "$log_file" 2>&1
+    # --resume <session-id> -p：恢復特定 session 並送新 prompt
+    # 注意：不能用 --session-id + --resume（ECC 要求搭配 --fork-session）
+    CLAUDE_MEM_DATA_DIR="$mem_dir" VIBE_SKIP_RESUME=1 claude --model "$MODEL" --dangerously-skip-permissions --plugin-dir "$VIBE_PLUGIN" --plugin-dir "$FORGE_PLUGIN" --resume "$uuid" -p "$(printf '%s' "$follow_up")" > "$log_file" 2>&1
   ) &
   local bg_pid=$!
   echo "$bg_pid" > "/tmp/vibe-e2e-pid-${id}"

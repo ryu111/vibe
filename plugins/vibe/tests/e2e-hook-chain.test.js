@@ -1488,7 +1488,9 @@ console.log('══════════════════════�
       assert.notStrictEqual(state.classification?.pipelineId, 'standard', '應重設');
     });
 
-    // O7: 已完成的 pipeline + 降級 → 正常流程（isComplete 先觸發 RESET）
+    // O7: 已完成且已過冷卻期的 pipeline + 降級 → 正常流程（isComplete 先觸發 RESET）
+    // 注意：COMPLETE→reset 有 30 秒冷卻期（防止 stop hook feedback 覆寫），
+    // 模擬「使用者在 pipeline 完成後才送新任務」的真實場景
     writeV3State(sid, {
       pipelineId: 'fix',
       taskType: 'quickfix',
@@ -1496,6 +1498,13 @@ console.log('══════════════════════�
       stages: ['DEV'],
       completed: ['DEV'],
     });
+    // 將 lastTransition 設為 1 分鐘前（超過 30 秒冷卻期）
+    {
+      const s = readState(sid);
+      s.meta = s.meta || {};
+      s.meta.lastTransition = new Date(Date.now() - 60000).toISOString();
+      fs.writeFileSync(path.join(CLAUDE_DIR, `pipeline-state-${sid}.json`), JSON.stringify(s, null, 2));
+    }
 
     runHook('task-classifier', {
       session_id: sid,

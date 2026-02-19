@@ -246,8 +246,14 @@ function cleanCompletedPipelineStates(currentSessionId, results) {
         }
 
         // 讀取 state 檢查是否 COMPLETE（支援 v3 和 v4）
+        // 加 5 分鐘寬限期：防止並行 session 互相刪除剛完成的 state
+        // （E2E 測試中多個 claude subprocess 同時運行，
+        //   先完成的 state 會被後啟動的 SessionStart 清理掉）
+        const COMPLETE_GRACE_MS = 5 * 60 * 1000;
         const state = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-        if ((state.version === 3 || state.version === 4) && derivePhase(state) === PHASES.COMPLETE) {
+        if ((state.version === 3 || state.version === 4) &&
+            derivePhase(state) === PHASES.COMPLETE &&
+            ageMs > COMPLETE_GRACE_MS) {
           fs.unlinkSync(filePath);
           results.filesRemoved++;
         }

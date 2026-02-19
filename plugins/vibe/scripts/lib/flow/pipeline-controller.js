@@ -462,9 +462,25 @@ async function classify(sessionId, prompt, options = {}) {
 
   let state = loadState(sessionId);
 
-  // COMPLETE → reset
+  // COMPLETE → 允許新 pipeline
   if (state && ds.isComplete(state)) {
-    state = ds.reset(state);
+    // 非顯式分類 + 30 秒冷卻期：忽略 stop hook feedback
+    // stop hook 的 decision:"block" 回饋會成為新 prompt，此時 pipeline 可能剛完成
+    // （crash recovery / barrier 合併等延遲完成）。若立即 reset，
+    // stop hook 的 reason 文字會被 classifier 當作新任務分類成 none，覆寫真正的 state。
+    if (result.source !== 'explicit') {
+      const lastTransition = state.meta?.lastTransition;
+      const elapsedMs = lastTransition ? Date.now() - new Date(lastTransition).getTime() : Infinity;
+      if (elapsedMs < 30000) {
+        return { output: null };
+      }
+      // 非顯式新任務：完全重設（不保留舊分類，避免降級檢查誤擋）
+      state = ds.reset(state);
+    } else {
+      // 顯式 [pipeline:xxx]：保留前一個 classification 供 reclassification 追蹤
+      // （如 fix→quick-dev 升級，需要記錄 from→to）
+      state = ds.resetKeepingClassification(state);
+    }
     ds.writeState(sessionId, state);
   }
 

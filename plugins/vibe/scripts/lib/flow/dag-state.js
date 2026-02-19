@@ -469,6 +469,25 @@ function reset(state) {
   });
 }
 
+/**
+ * 重設 state 但保留前一個分類（供 reclassification 追蹤）
+ *
+ * COMPLETE → 新 pipeline 時使用。reset() 會清空 classification，
+ * 導致 ds.classify() 無法記錄 from→to 的升級歷史。
+ * 此函式保留舊的 classification + reclassifications，
+ * 讓後續 classify() 能正確追蹤 pipeline 變更。
+ */
+function resetKeepingClassification(state) {
+  const fresh = createInitialState(state.sessionId, {
+    environment: state.environment,
+    openspecEnabled: state.openspecEnabled,
+    pipelineRules: state.meta?.pipelineRules || [],
+  });
+  fresh.classification = state.classification;
+  fresh.meta.reclassifications = state.meta?.reclassifications || [];
+  return fresh;
+}
+
 // ────────────────── I/O ──────────────────
 
 function getStatePath(sessionId) {
@@ -515,6 +534,7 @@ module.exports = {
   resetStageToPending,
   cancel: cancelPipeline,
   reset,
+  resetKeepingClassification,
 
   // Phase derivation
   derivePhase,
