@@ -46,7 +46,7 @@ const {
 const { classifyWithConfidence, buildPipelineCatalogHint } = require('./classifier.js');
 
 // v4 Phase 4：Barrier 並行同步
-const { createBarrierGroup, updateBarrier, mergeBarrierResults, mergeContextFiles, readBarrier, checkTimeout, deleteBarrier } = require('./barrier.js');
+const { createBarrierGroup, updateBarrier, mergeBarrierResults, mergeContextFiles, readBarrier, checkTimeout, deleteBarrier, sweepTimedOutGroups } = require('./barrier.js');
 
 // Timeline（hoisted — 避免 20+ 處 inline require）
 const { emit: tlEmit } = require('../timeline/index.js');
@@ -486,6 +486,35 @@ async function classify(sessionId, prompt, options = {}) {
 
   let state = loadState(sessionId);
 
+  // Barrier 超時巡檢（每次 UserPromptSubmit 時檢查，靜默失敗不影響分類邏輯）
+  // 條件：pipeline active + 非 cancelled → 才有 barrier group 需要巡檢
+  const barrierWarnings = [];
+  if (state && ds.isActive(state) && !state?.meta?.cancelled) {
+    try {
+      const sweepResult = sweepTimedOutGroups(sessionId);
+      if (sweepResult.timedOut.length > 0) {
+        for (const { group, timedOutStages } of sweepResult.timedOut) {
+          // 更新 pipeline state：將超時 stage 標記為失敗
+          for (const stageId of timedOutStages) {
+            if (state.stages?.[stageId]) {
+              state = ds.markStageFailed(state, stageId);
+            }
+          }
+          barrierWarnings.push(
+            `[Barrier 超時] group=${group} — ${timedOutStages.join(', ')} 未在時限內完成，已強制 FAIL。` +
+            `下一次委派時將觸發路由決策。`
+          );
+          // 發射 BARRIER_RESOLVED Timeline 事件
+          emitBarrierResolved(sessionId, group, 'FAIL', null, { severity: 'HIGH' });
+        }
+        // 超時 stages 已更新，寫回 state
+        ds.writeState(sessionId, state);
+      }
+    } catch (_) {
+      // 巡檢失敗靜默，不影響分類邏輯
+    }
+  }
+
   // ACTIVE → 忽略非顯式分類（防止 stop hook feedback 覆寫進行中的 pipeline）
   // stop hook decision:"block" 的 reason 成為新 prompt → classifier 重分類 → 幽靈 pipeline
   // 例外：過時 pipeline（>10 分鐘無操作）允許重分類（使用者可能在開始新任務）
@@ -584,6 +613,7 @@ async function classify(sessionId, prompt, options = {}) {
     const catalogHint = buildPipelineCatalogHint();
     const refParts = [catalogHint];
     if (kh) refParts.push(kh);
+    if (barrierWarnings.length > 0) refParts.push(barrierWarnings.join('\n'));
     return {
       output: {
         systemMessage:
@@ -636,23 +666,29 @@ async function classify(sessionId, prompt, options = {}) {
       : '';
 
     const kh = buildKnowledgeHints(state);
+    const contextParts = [];
+    if (kh) contextParts.push(kh);
+    if (barrierWarnings.length > 0) contextParts.push(barrierWarnings.join('\n'));
     return {
       output: {
         systemMessage:
           `⛔ Pipeline ${sourceLabel}（${stageStr}）已建立。${multiStageWarning}\n` +
           `➡️ ${firstHint}`,
-        ...(kh ? { additionalContext: kh } : {}),
+        ...(contextParts.length > 0 ? { additionalContext: contextParts.join('\n') } : {}),
       },
     };
   }
 
   // 未知模板 → 指示呼叫 /vibe:pipeline skill（讓 Agent 動態生成 DAG）
   const kh = buildKnowledgeHints(state);
+  const contextParts = [];
+  if (kh) contextParts.push(kh);
+  if (barrierWarnings.length > 0) contextParts.push(barrierWarnings.join('\n'));
   return {
     output: {
       systemMessage:
         `⛔ 任務需要自訂 Pipeline。呼叫 /vibe:pipeline skill 啟動 pipeline-architect 分析需求並產出執行計劃。`,
-      ...(kh ? { additionalContext: kh } : {}),
+      ...(contextParts.length > 0 ? { additionalContext: contextParts.join('\n') } : {}),
     },
   };
 }

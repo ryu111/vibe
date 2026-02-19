@@ -25,6 +25,9 @@ const STALE_MS = STALE_DAYS * 24 * 60 * 60 * 1000;
 const PIPELINE_STALE_MS = 48 * 60 * 60 * 1000;
 // 超過 1 小時的暫存檔（*.tmp.*）視為廢棄
 const TMP_STALE_MS = 60 * 60 * 1000;
+// RAM 水位閾值（與 ram-monitor.sh 的 WARN_THRESHOLD_MB / CRIT_THRESHOLD_MB 保持一致）
+const RAM_WARN_MB = 4096;   // 4GB 警告
+const RAM_CRIT_MB = 8192;   // 8GB 嚴重
 
 let input = '';
 process.stdin.on('data', d => input += d);
@@ -61,8 +64,11 @@ process.stdin.on('end', () => {
     // --- 6. 清理過時暫存檔（*.tmp.*，超過 1 小時）---
     cleanStaleTmpFiles(results);
 
-    // 輸出摘要（只在有清理動作時報告）
-    if (results.orphansKilled > 0 || results.filesRemoved > 0) {
+    // --- 7. RAM 水位偵測（清理後執行，獨立判斷）---
+    const ramResult = checkRamWatermark();
+
+    // 輸出摘要（有清理動作 或 RAM 警告 時報告）
+    if (results.orphansKilled > 0 || results.filesRemoved > 0 || ramResult.warning) {
       const parts = [];
       if (results.orphansKilled > 0) {
         parts.push(`清理 ${results.orphansKilled} 個孤兒進程（~${results.mbFreed}MB）`);
@@ -70,8 +76,15 @@ process.stdin.on('end', () => {
       if (results.filesRemoved > 0) {
         parts.push(`移除 ${results.filesRemoved} 個過時檔案`);
       }
+      const contextParts = [];
+      if (parts.length > 0) {
+        contextParts.push(`[清理] ${parts.join('，')}`);
+      }
+      if (ramResult.warning) {
+        contextParts.push(ramResult.warning);
+      }
       console.log(JSON.stringify({
-        additionalContext: `[清理] ${parts.join('，')}`
+        additionalContext: contextParts.join('\n')
       }));
     }
   } catch (err) {
@@ -282,6 +295,79 @@ function cleanStaleTmpFiles(results) {
       } catch (_) {}
     }
   } catch (_) {}
+}
+
+/**
+ * 偵測 Claude 生態圈 RAM 水位
+ *
+ * 使用單一 ps 呼叫取得所有進程的 RSS，用 JS 逐行匹配 Claude 生態圈進程模式，
+ * 累加 RSS（KB → MB）並與閾值比較。
+ *
+ * 匹配模式（與 ram-monitor.sh 對齊）：
+ * - claude CLI 進程（排除 chrome-mcp）
+ * - claude-in-chrome-mcp
+ * - chroma-mcp 相關進程
+ * - uv tool uvx chroma 進程
+ * - worker-service.cjs / mcp-server.cjs（MCP worker）
+ * - vibe/server.js / vibe/bot.js（Dashboard + Telegram daemon）
+ *
+ * @returns {{ totalMb: number, warning: string|null }}
+ */
+function checkRamWatermark() {
+  try {
+    const output = execSync(
+      'ps -eo rss,command 2>/dev/null',
+      { encoding: 'utf8', timeout: 3000 }
+    );
+    let totalKb = 0;
+    for (const line of output.split('\n')) {
+      if (!line.trim()) continue;
+      const spaceIdx = line.trimStart().indexOf(' ');
+      if (spaceIdx === -1) continue;
+      const trimmed = line.trimStart();
+      const rss = parseInt(trimmed.slice(0, spaceIdx));
+      if (isNaN(rss) || rss <= 0) continue;
+      const cmd = trimmed.slice(spaceIdx + 1).trim();
+
+      // 匹配 Claude 生態圈進程
+      const isClaude =
+        /(^|\/)claude( |$)/.test(cmd) && !/chrome-mcp/.test(cmd);
+      const isChromeMcp = /claude-in-chrome-mcp/.test(cmd);
+      const isChromaMcp = /chroma-mcp/.test(cmd);
+      const isUvChroma = /uv tool uvx.*chroma/.test(cmd);
+      const isWorkerService = /worker-service\.cjs/.test(cmd);
+      const isMcpServer = /mcp-server\.cjs/.test(cmd);
+      const isVibeServer = /vibe\/server\.js/.test(cmd);
+      const isVibeBot = /vibe\/bot\.js/.test(cmd);
+
+      if (isClaude || isChromeMcp || isChromaMcp || isUvChroma ||
+          isWorkerService || isMcpServer || isVibeServer || isVibeBot) {
+        totalKb += rss;
+      }
+    }
+
+    const totalMb = Math.round(totalKb / 1024);
+
+    if (totalMb >= RAM_CRIT_MB) {
+      return {
+        totalMb,
+        warning: `[RAM 嚴重] Claude 生態圈記憶體使用 ${totalMb}MB（>= ${RAM_CRIT_MB}MB）。` +
+          `建議執行 /vibe:health 診斷並重啟 Claude。`,
+      };
+    }
+    if (totalMb >= RAM_WARN_MB) {
+      return {
+        totalMb,
+        warning: `[RAM 警告] Claude 生態圈記憶體使用 ${totalMb}MB（>= ${RAM_WARN_MB}MB）。` +
+          `建議執行 /vibe:health 檢查孤兒進程。`,
+      };
+    }
+
+    return { totalMb, warning: null };
+  } catch (_) {
+    // ps 失敗不影響 session 啟動
+    return { totalMb: 0, warning: null };
+  }
 }
 
 /**

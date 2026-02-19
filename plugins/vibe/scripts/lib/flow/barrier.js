@@ -290,6 +290,66 @@ function checkTimeout(barrierState, group, timeoutMs = DEFAULT_TIMEOUT_MS) {
   return (Date.now() - createdAt) > timeoutMs;
 }
 
+// ────────────────── Timeout 巡檢 ──────────────────
+
+/**
+ * 巡檢所有 barrier groups 的超時狀態，對超時 group 強制填入缺席 stages 為 FAIL。
+ *
+ * 職責邊界：只做「偵測 + 強制解鎖 + 合併結果」。
+ * 不做路由決策（回退 DEV / 前進 NEXT 由 pipeline-controller 處理）。
+ *
+ * 幂等性：對已 resolved 的 group 直接跳過；連續呼叫兩次結果不變。
+ *
+ * @param {string} sessionId
+ * @returns {{ timedOut: Array<{ group: string, mergedResult: Object, timedOutStages: string[] }> }}
+ */
+function sweepTimedOutGroups(sessionId) {
+  const barrierState = readBarrier(sessionId);
+  if (!barrierState?.groups) return { timedOut: [] };
+
+  const timedOut = [];
+
+  for (const [group, groupData] of Object.entries(barrierState.groups)) {
+    // 已解鎖的 group 略過（幂等）
+    if (groupData.resolved) continue;
+    // 未超時的 group 略過
+    if (!checkTimeout(barrierState, group)) continue;
+
+    // 找出缺席 stages（siblings 中尚未回報結果的）
+    const absent = (groupData.siblings || [])
+      .filter(s => !groupData.completed.includes(s));
+    if (absent.length === 0) continue;
+
+    // 對缺席 stages 填入 FAIL（模擬 agent 超時未回應）
+    for (const s of absent) {
+      updateBarrier(sessionId, group, s, {
+        verdict: 'FAIL',
+        route: 'BARRIER',
+        severity: 'HIGH',
+        hint: `Barrier 超時 — agent 未回應（group: ${group}，stage: ${s}）`,
+      });
+    }
+
+    // 觸發合併：使用已完成 stage 的結果（或缺席 stage）再次呼叫，讓 updateBarrier 完成合併
+    // 因為 absent stage 剛填入，此時 completed.length 已等於 total，合併會自動觸發
+    // 讀取最新的 barrier state（updateBarrier 已寫入磁碟）
+    const updatedState = readBarrier(sessionId);
+    const updatedGroup = updatedState?.groups?.[group];
+    let mergedResult = null;
+    if (updatedGroup?.resolved) {
+      // 重建 mergedResult（updateBarrier 已合併，需從 groupData 重算）
+      mergedResult = mergeBarrierResults(updatedGroup);
+    } else {
+      // 若 updateBarrier 未觸發合併（如 total 計算有偏差），強制合併
+      mergedResult = mergeBarrierResults(updatedGroup || groupData);
+    }
+
+    timedOut.push({ group, mergedResult, timedOutStages: absent });
+  }
+
+  return { timedOut };
+}
+
 // ────────────────── 重建工具 ──────────────────
 
 /**
@@ -359,6 +419,9 @@ module.exports = {
 
   // 超時偵測
   checkTimeout,
+
+  // Timeout 巡檢
+  sweepTimedOutGroups,
 
   // 重建工具
   rebuildBarrierFromState,

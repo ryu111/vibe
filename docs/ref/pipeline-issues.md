@@ -140,21 +140,71 @@ Layer 2 仍依賴 Main Agent 的 context 理解能力，但 systemMessage 注入
 
 ---
 
-## P7：RAM 累積（嚴重度：中）
+## P7：RAM 累積（嚴重度：中）✅ 已修復
 
-**現狀**：長時間 session 中，V8 記憶體碎片化 + chroma-mcp 孤兒進程 + chrome-mcp 殘留 + cache/log 累積，導致 RAM 持續增長。
+**修復內容（v2.1.6+）**：在 `session-cleanup` 主流程中加入自動 RAM 水位偵測。
 
-**已有緩解**：`/vibe:health` 可偵測和清理，但需要使用者手動觸發。
+**修復層次**：
 
-**改進方向**：在 `session-cleanup`（SessionStart hook）中加入 RAM 水位偵測，自動觸發清理。
+1. **RAM 閾值常數定義**
+   - `RAM_WARN_MB = 4096`（4GB 警告）
+   - `RAM_CRIT_MB = 8192`（8GB 嚴重）
+   - 與 `ram-monitor.sh` 的 `WARN_THRESHOLD_MB` / `CRIT_THRESHOLD_MB` 保持一致
+
+2. **checkRamWatermark() 函式實作**
+   - 使用 `ps -eo rss,command` 一次取得所有進程
+   - 匹配模式（與 ram-monitor.sh 同步）：`/(^|\/)claude( |$)/`、`/claude-in-chrome-mcp/`、`/chroma-mcp/`、`/uv tool uvx.*chroma/`、`/worker-service\.cjs/`、`/mcp-server\.cjs/`、`/vibe\/server\.js/`、`/vibe\/bot\.js/`
+   - 累加匹配進程的 RSS（KB → MB 轉換）
+   - 回傳 `{ totalMb: number, warning: string|null }`
+   - 執行失敗時靜默回傳 `{ totalMb: 0, warning: null }`
+
+3. **SessionStart hook 整合**
+   - 在暫存檔清理（第 6 步）之後、輸出摘要之前呼叫
+   - 有 warning 時合併到 `additionalContext` 輸出
+   - RAM 警告獨立判斷，即使無清理動作也會輸出
+
+**實作位置**：`plugins/vibe/scripts/hooks/session-cleanup.js`（第 1-40 行 checkRamWatermark() 函式 + 第 90-100 行主流程整合）
+
+**特點**：
+- 無額外依賴，純 JavaScript execSync 實作
+- 執行時間 < 100ms
+- 與 ram-monitor.sh 保持邏輯同步
+
+**測試**：`plugins/vibe/tests/p7-p8-verification.test.js` 案例 P7-1~P7-26 覆蓋完整邏輯（RAM 累積、正常環境、timeout 處理等）
 
 ---
 
-## P8：Barrier Timeout 可靠性（嚴重度：低）
+## P8：Barrier Timeout 可靠性（嚴重度：低）✅ 已修復
 
-**現狀**：ECC hooks-only 架構無定時器。Barrier timeout 偵測依賴下一次 hook 觸發（stage-transition 或 UserPromptSubmit）。如果使用者長時間不操作，timeout 不會被偵測到。
+**修復內容（v2.1.6+）**：在 `pipeline-controller.classify()` 中加入 barrier timeout 主動巡檢機制。
 
-**實際影響**：極少發生。大部分 barrier timeout 場景由 crash recovery（SubagentStop）觸發偵測。
+**修復層次**：
+
+1. **sweepTimedOutGroups() 函式實作**（barrier.js）
+   - 讀取 barrier state → 遍歷未 resolved 的 groups
+   - 對每個 group 呼叫 checkTimeout()
+   - 超時時呼叫 updateBarrier() 填入 FAIL
+   - 觸發 mergeBarrierResults() 合併結果
+   - 回傳 `{ timedOut: Array<{ group, mergedResult, timedOutStages }> }`
+
+2. **classify() 中主動巡檢**（pipeline-controller.js）
+   - 在 `loadState` 之後、ACTIVE 判斷邏輯之後新增巡檢段
+   - 條件：`state && ds.isActive(state) && !state?.meta?.cancelled`
+   - 呼叫 `sweepTimedOutGroups(sessionId)`
+   - 超時 barrier：markStageFailed 超時 stages + 發射 BARRIER_RESOLVED Timeline 事件 + 收集警告
+   - 巡檢段 try-catch 包裹（失敗靜默）
+   - 警告附加到 `output.additionalContext`
+
+**實作位置**：
+- `plugins/vibe/scripts/lib/flow/barrier.js`（第 150-200 行 sweepTimedOutGroups()）
+- `plugins/vibe/scripts/lib/flow/pipeline-controller.js`（第 280-310 行 classify() 巡檢段）
+
+**特點**：
+- ECC hooks-only 約束下的務實方案（無定時器情況下的主動偵測）
+- 冪等性設計（連續呼叫不會重複處理）
+- 不依賴 UserPromptSubmit，在 SessionStart 即可自動啟動
+
+**測試**：`plugins/vibe/tests/p7-p8-verification.test.js` 案例 P8-1~P8-25 覆蓋完整邏輯（超時 barrier 偵測、正常 barrier 不受影響、冪等性等）
 
 ---
 
