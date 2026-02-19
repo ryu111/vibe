@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 2.1.2 | 全方位開發工作流 | 36 | 12 | 19 | 50 |
+| **vibe** | 2.1.3 | 全方位開發工作流 | 37 | 12 | 19 | 50 |
 
 ### vibe plugin 功能模組
 
@@ -17,7 +17,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 |------|------|:------:|:------:|
 | Pipeline | Pipeline 工作流管理 | 2 | 1 (pipeline-architect) |
 | 規劃設計 | 規劃、架構設計、UI/UX 設計、開發實作 | 4 | 4 (planner/architect/designer/developer) |
-| 品質 | lint、format、review、security、TDD、E2E、QA、coverage、verify | 9 | 6 (code-reviewer/security-reviewer/tester/build-error-resolver/e2e-runner/qa) |
+| 品質 | lint、format、review、security、TDD、E2E、QA、coverage、verify、build-fix | 10 | 6 (code-reviewer/security-reviewer/tester/build-error-resolver/e2e-runner/qa) |
 | 知識 | 語言/框架模式庫 + 重構（純知識） | 9 | 0 |
 | 進化 | 知識進化、文件同步 | 2 | 1 (doc-updater) |
 | 監控 | Pipeline 儀表板、Timeline、Context 狀態、Hook 診斷 | 4 | 0 |
@@ -89,7 +89,7 @@ plugins/vibe/
 │       ├── dashboard/       # server-manager
 │       ├── remote/          # telegram, transcript, bot-manager
 │       └── timeline/        # schema, timeline, consumer, formatter, index
-├── skills/                  # 36 個 skill 目錄
+├── skills/                  # 37 個 skill 目錄
 ├── agents/                  # 12 個 agent 定義
 ├── server.js                # Dashboard HTTP+WebSocket server
 ├── bot.js                   # Telegram daemon

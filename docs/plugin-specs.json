@@ -22,7 +22,7 @@
       "expected": {
         "skills": [
           "scope", "architect", "design", "dev", "checkpoint", "context-status", "env-detect", "cancel", "pipeline", "timeline",
-          "review", "lint", "format", "security", "tdd", "e2e", "qa", "coverage", "verify",
+          "review", "lint", "format", "security", "tdd", "e2e", "qa", "coverage", "verify", "build-fix",
           "coding-standards", "frontend-patterns", "backend-patterns", "db-patterns",
           "typescript-patterns", "python-patterns", "go-patterns", "testing-patterns", "refactor",
           "evolve", "doc-sync",

@@ -24,10 +24,11 @@ const SKILL_MODULE_MAP = {
   pipeline: 'Pipeline', cancel: 'Pipeline',
   // Planning（4）
   scope: 'Planning', architect: 'Planning', design: 'Planning', dev: 'Planning',
-  // Sentinel（9）
+  // Sentinel（10）
   review: 'Sentinel', lint: 'Sentinel', format: 'Sentinel',
   security: 'Sentinel', tdd: 'Sentinel', e2e: 'Sentinel',
   qa: 'Sentinel', coverage: 'Sentinel', verify: 'Sentinel',
+  'build-fix': 'Sentinel',
   // Patterns（9）
   'coding-standards': 'Patterns', 'frontend-patterns': 'Patterns',
   'backend-patterns': 'Patterns', 'db-patterns': 'Patterns',
