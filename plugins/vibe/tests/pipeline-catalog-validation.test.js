@@ -67,23 +67,32 @@ function log(tag, msg) {
 // ═══════════════════════════════════════════════════════════════
 
 function initState(sid, overrides = {}) {
+  // v4 格式：enforced 轉換為 pipelineActive
+  const pipelineActive = overrides.pipelineActive !== undefined
+    ? overrides.pipelineActive
+    : (overrides.enforced || false);
   const state = {
-    version: 3,
+    version: 4,
+    sessionId: sid,
     classification: overrides.classification || null,
     environment: overrides.environment || {},
-    dag: overrides.dag || null,
-    stages: overrides.stages || {},
-    enforced: overrides.enforced !== undefined ? overrides.enforced : false,
-    blueprint: overrides.blueprint || null,
-    retries: overrides.retries || {},
-    pendingRetry: overrides.pendingRetry || null,
     openspecEnabled: overrides.openspecEnabled || false,
     needsDesign: overrides.needsDesign || false,
+    dag: overrides.dag || null,
+    blueprint: overrides.blueprint || null,
+    pipelineActive,
+    activeStages: overrides.activeStages || [],
+    stages: overrides.stages || {},
+    retries: overrides.retries || {},
+    pendingRetry: overrides.pendingRetry || null,
+    retryHistory: overrides.retryHistory || {},
+    crashes: overrides.crashes || {},
     meta: {
       initialized: true,
       cancelled: false,
       lastTransition: new Date().toISOString(),
       reclassifications: [],
+      pipelineRules: [],
       ...(overrides.meta || {}),
     },
   };
@@ -241,7 +250,7 @@ function runPipelineScenario({ id, pipelineId, prompt, label }) {
       assert.ok(Object.keys(sc.dag).length > 0, `dag 應有 stage`);
     }
   });
-  // v3 safety net: 有分類的非 trivial pipeline → CLASSIFIED（即使 DAG 為 null）
+  // v4: 有分類的非 trivial pipeline → CLASSIFIED
   const expectedPhase = stages.length > 0 ? 'CLASSIFIED' : 'IDLE';
   test(`${id}: derivePhase = ${expectedPhase}`, () => {
     assert.strictEqual(derivePhase(sc), expectedPhase);
@@ -265,7 +274,7 @@ function runPipelineScenario({ id, pipelineId, prompt, label }) {
 
   // ─── Step 3: Guard 阻擋 ────────────────────────
   log('STEP', '2. pipeline-guard 驗證');
-  // v3 safety net: 非 trivial pipeline 都會被 guard 阻擋（含重複 stage）
+  // v4: 非 trivial pipeline（pipelineActive=true）都會被 guard 阻擋
   const actuallyEnforced = stages.length > 0;
   if (actuallyEnforced) {
     const gr = runHook('pipeline-guard', {
@@ -720,7 +729,7 @@ for (const scenario of SCENARIOS) {
   cleanState(sid);
   cleanTimeline(sid);
 
-  // 建立 CLASSIFIED state（模擬已分類、pipeline enforced）— v3 格式
+  // 建立 CLASSIFIED state（模擬已分類、pipeline active）
   initState(sid, {
     classification: { pipelineId: 'standard', taskType: 'feature', source: 'test' },
     dag: {
@@ -739,7 +748,7 @@ for (const scenario of SCENARIOS) {
       TEST: { status: 'pending', agent: null, verdict: null },
       DOCS: { status: 'pending', agent: null, verdict: null },
     },
-    enforced: true,
+    pipelineActive: true,
   });
 
   // 3a: EnterPlanMode 阻擋
@@ -815,7 +824,7 @@ for (const scenario of SCENARIOS) {
       TEST: { status: 'pending', agent: null, verdict: null },
       DOCS: { status: 'pending', agent: null, verdict: null },
     },
-    enforced: true,
+    pipelineActive: true,
   });
   const bashWriteDeleg = runHook('pipeline-guard', {
     session_id: sid, tool_name: 'Bash',
@@ -856,7 +865,7 @@ for (const scenario of SCENARIOS) {
   cleanTimeline(sid);
   initState(sid);
 
-  // 分類為 standard（enforced）
+  // 分類為 standard（pipelineActive）
   runHook('task-classifier', {
     session_id: sid, prompt: '建立新功能 [pipeline:standard]',
   });
@@ -932,7 +941,7 @@ for (const scenario of SCENARIOS) {
       REVIEW: { status: 'pending', agent: null, verdict: null },
       TEST: { status: 'pending', agent: null, verdict: null },
     },
-    enforced: true,
+    pipelineActive: true,
   });
 
   // pipeline-check 應偵測到 REVIEW 和 TEST 未完成
@@ -1301,7 +1310,7 @@ for (const scenario of SCENARIOS) {
       TEST: { status: 'pending', agent: null, verdict: null },
       DOCS: { status: 'pending', agent: null, verdict: null },
     },
-    enforced: true,
+    pipelineActive: true,
   });
 
   // ─── DEV: PASS ───
