@@ -112,6 +112,48 @@ function resolveSuffixedStage(state, baseStage) {
 }
 
 /**
+ * 讀取 transcript 最後一條 assistant 訊息的字元長度。
+ *
+ * 設計原則：
+ * - 逆序掃描 JSONL（最後 20 行），找最後一條 assistant 訊息
+ * - 計算其 content 的文字長度（字串 + 物件都支援）
+ * - 效能上限：品質 stage transcript 通常 < 1MB，掃描 20 行 < 1ms
+ *
+ * @param {string} transcriptPath - JSONL 格式的 transcript 路徑
+ * @returns {number} 最後 assistant 回應的字元長度（讀取失敗或無 assistant 訊息時回 0）
+ */
+function getLastAssistantResponseLength(transcriptPath) {
+  if (!transcriptPath || !fs.existsSync(transcriptPath)) return 0;
+  try {
+    const content = fs.readFileSync(transcriptPath, 'utf8');
+    const lines = content.trim().split('\n');
+    // 逆序掃描最後 20 行（避免全文遍歷）
+    const scanLines = lines.slice(-20);
+    for (let i = scanLines.length - 1; i >= 0; i--) {
+      if (!scanLines[i].trim()) continue;
+      try {
+        const entry = JSON.parse(scanLines[i]);
+        if (entry.role !== 'assistant' && entry.type !== 'assistant') continue;
+        // 計算 content 長度
+        const msgContent = entry.message?.content || entry.content || '';
+        if (typeof msgContent === 'string') return msgContent.length;
+        if (Array.isArray(msgContent)) {
+          // 陣列型 content：累加所有 text block
+          return msgContent.reduce((acc, block) => {
+            const txt = block?.text || block?.content || '';
+            return acc + (typeof txt === 'string' ? txt.length : 0);
+          }, 0);
+        }
+        return String(msgContent).length;
+      } catch (_) {}
+    }
+    return 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+/**
  * 檢查 transcript 是否有 assistant 訊息（表示 agent 確實執行過）
  * CRASH 判斷必須先確認 agent 有實際輸出，才能視為「輸出缺失」
  * @param {string} transcriptPath
@@ -578,13 +620,16 @@ async function classify(sessionId, prompt, options = {}) {
     const stageStr = stages.join(' → ');
     const sourceLabel = result.source === 'explicit' ? `[${pipelineId}]` : pipelineId;
 
-    // 多階段 pipeline：在初始指令中列出所有步驟，防止模型在中途停止
+    // 多階段 pipeline：在初始指令中列出前 3 步（避免 token 浪費），防止模型在中途停止
+    const MAX_STEPS_DISPLAY = 3;
+    const totalSteps = blueprint ? blueprint.length : 0;
     const allSteps = blueprint
-      ? blueprint.map((b, i) => {
+      ? blueprint.slice(0, MAX_STEPS_DISPLAY).map((b, i) => {
           const stageNames = b.stages.join(' + ');
           const skillHints = b.stages.map(s => buildDelegationHint(s, pipeline.stageMap)).join(' + ');
           return `${i + 1}. ${stageNames}${b.parallel ? '（並行）' : ''}：${skillHints}`;
-        }).join('\n')
+        }).join('\n') +
+        (totalSteps > MAX_STEPS_DISPLAY ? `\n... 共 ${totalSteps} 步` : '')
       : '';
     const multiStageWarning = stages.length > 1
       ? `\n⚠️ 禁止中途停止。你必須按順序完成所有 ${stages.length} 個階段。\n${allSteps}\n先從第一步開始：`
@@ -1125,6 +1170,24 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
   // Phase 2（soft 引入）：從 activeStages 移除已完成的 stage
   if (state.activeStages) {
     state = { ...state, activeStages: state.activeStages.filter(s => s !== currentStage) };
+  }
+
+  // Token 效率：品質 stage 完成時偵測 transcript 回應長度
+  // > 500 chars → emit TRANSCRIPT_LEAK_WARNING，累加 leakAccumulated
+  if (isQualityStage && transcriptPath) {
+    const responseLen = getLastAssistantResponseLength(transcriptPath);
+    const LEAK_THRESHOLD = 500;
+    if (responseLen > LEAK_THRESHOLD) {
+      try {
+        tlEmit(EVENT_TYPES.TRANSCRIPT_LEAK_WARNING, sessionId, {
+          stage: currentStage,
+          responseLength: responseLen,
+          threshold: LEAK_THRESHOLD,
+        });
+      } catch (_) {}
+      const prevLeak = state.leakAccumulated || 0;
+      state = { ...state, leakAccumulated: prevLeak + responseLen };
+    }
   }
 
   // 級聯跳過：反覆檢查 ready stages 是否需要 skip，直到穩定

@@ -249,12 +249,38 @@ test('buildPipelineCatalogHint: 包含 [pipeline:xxx] 語法', () => {
   assert.ok(hint.includes('[pipeline:'), '應包含 [pipeline: 語法');
 });
 
-test('buildPipelineCatalogHint: 包含所有非 none 的 pipeline', () => {
+test('buildPipelineCatalogHint: 無參數時包含最常用的 5 個 pipeline', () => {
   const hint = buildPipelineCatalogHint();
-  const expected = ['full', 'standard', 'quick-dev', 'fix', 'test-first', 'ui-only', 'review-only', 'docs-only', 'security'];
-  for (const id of expected) {
+  // 無參數時回傳最常用的 5 個（PRIORITY_ORDER 前 5 個：quick-dev, standard, fix, full, test-first）
+  const top5 = ['quick-dev', 'standard', 'fix', 'full', 'test-first'];
+  for (const id of top5) {
     assert.ok(hint.includes(`[pipeline:${id}]`), `應包含 [pipeline:${id}]`);
   }
+  // 並且不超過 5 個（counting [pipeline:xxx] 出現次數）
+  const matches = (hint.match(/\[pipeline:[a-z-]+\]/g) || []).length;
+  assert.ok(matches <= 5, `不應超過 5 個 pipeline，實際: ${matches}`);
+  // 應包含 fallback 提示
+  assert.ok(hint.includes('/vibe:pipeline'), '應包含完整清單提示');
+});
+
+test('buildPipelineCatalogHint: 有 pipelineId 時回傳相鄰 pipeline 並排除自身', () => {
+  const hint = buildPipelineCatalogHint('quick-dev');
+  // quick-dev 在 PRIORITY_ORDER index=0，相鄰窗口後排除自身
+  assert.ok(!hint.includes('[pipeline:quick-dev]'), '不應包含 quick-dev 自身');
+  // 應包含相鄰的 pipeline（standard 在 index=1）
+  assert.ok(hint.includes('[pipeline:standard]'), '應包含相鄰的 standard');
+  // 不超過 5 個
+  const matches = (hint.match(/\[pipeline:[a-z-]+\]/g) || []).length;
+  assert.ok(matches <= 5, `不應超過 5 個 pipeline，實際: ${matches}`);
+});
+
+test('buildPipelineCatalogHint: 有中間 pipelineId 時排除自身', () => {
+  // standard 在 PRIORITY_ORDER index=1，相鄰窗口為 [quick-dev, standard, fix, full]
+  // 排除自身 standard 後應為 [quick-dev, fix, full]
+  const hint = buildPipelineCatalogHint('standard');
+  assert.ok(!hint.includes('[pipeline:standard]'), '不應包含 standard 自身');
+  assert.ok(hint.includes('[pipeline:quick-dev]'), '應包含相鄰的 quick-dev');
+  assert.ok(hint.includes('[pipeline:fix]'), '應包含相鄰的 fix');
 });
 
 test('buildPipelineCatalogHint: 不包含 none', () => {

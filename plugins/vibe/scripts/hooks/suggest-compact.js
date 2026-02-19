@@ -108,6 +108,20 @@ process.stdin.on('end', () => {
       systemMessages.push(result.message);
     }
 
+    // 2b. Transcript 洩漏感知 compact 建議
+    // 品質 stage（REVIEW/TEST/QA/E2E）回應過長時，leakAccumulated 會累加
+    // 超過 3000 chars（約 3+ 次洩漏）→ 建議 compact 以減少 context 消耗
+    const LEAK_COMPACT_THRESHOLD = 3000;
+    try {
+      const leakAccumulated = cachedState?.leakAccumulated || 0;
+      if (leakAccumulated >= LEAK_COMPACT_THRESHOLD) {
+        systemMessages.push(
+          `⚠️ 品質 Agent 回應過長（累積 ${leakAccumulated} 字元），context window 消耗較多。` +
+          '建議執行 /compact 整理 context，提升後續執行效率。'
+        );
+      }
+    } catch (_) {}
+
     // 3. CLASSIFIED 階段 delegation 提醒（獨立計數檔案，不寫 pipeline state）
     try {
       if (cachedState) {

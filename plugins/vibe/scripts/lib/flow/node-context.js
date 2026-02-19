@@ -205,15 +205,68 @@ function buildEnvSnapshot(state) {
 /**
  * 將 Node Context 格式化為 systemMessage 嵌入格式。
  *
- * 格式：
- * <!-- NODE_CONTEXT: {JSON} -->
+ * 採用 key-value 簡寫格式（取代 JSON），減少 token 消耗：
+ *   stage=X | prev=Y,Z | next=W | onFail=V:r/m | barrier=G | env=lang/fw | ctx_files=N | retry=S:r/m
+ *
+ * Agent 無需解析 JSON，只需語意理解，key-value 格式同樣可讀且更緊湊。
  *
  * @param {Object} nodeContext - buildNodeContext 的回傳值
  * @returns {string} 嵌入格式字串
  */
 function formatNodeContext(nodeContext) {
-  const json = JSON.stringify(nodeContext);
-  return `<!-- NODE_CONTEXT: ${json} -->`;
+  if (!nodeContext) return '<!-- NODE_CONTEXT: stage=unknown -->';
+
+  const node = nodeContext.node || {};
+  const parts = [];
+
+  // stage
+  parts.push(`stage=${node.stage || 'unknown'}`);
+
+  // prev（逗號分隔，空時省略）
+  if (node.prev && node.prev.length > 0) {
+    parts.push(`prev=${node.prev.join(',')}`);
+  }
+
+  // next（逗號分隔，空時省略）
+  if (node.next && node.next.length > 0) {
+    parts.push(`next=${node.next.join(',')}`);
+  }
+
+  // onFail（格式：target:round/max，null 時省略）
+  if (node.onFail) {
+    const of = node.onFail;
+    parts.push(`onFail=${of.target}:${of.currentRound || 1}/${of.maxRetries || 3}`);
+  }
+
+  // barrier（格式：group，null 時省略）
+  if (node.barrier) {
+    const bg = node.barrier.group || node.barrier;
+    parts.push(`barrier=${typeof bg === 'string' ? bg : JSON.stringify(bg)}`);
+  }
+
+  // env（格式：language/framework，空時省略）
+  const env = nodeContext.env || {};
+  const envParts = [];
+  if (env.language) envParts.push(env.language);
+  if (env.framework) envParts.push(env.framework);
+  if (envParts.length > 0) parts.push(`env=${envParts.join('/')}`);
+
+  // ctx_files（只記錄數量，完整路徑太長）
+  const ctxFiles = nodeContext.context_files || [];
+  if (ctxFiles.length > 0) parts.push(`ctx_files=${ctxFiles.length}`);
+
+  // retry（格式：failedStage:round/max，null 時省略）
+  const retry = nodeContext.retryContext;
+  if (retry) {
+    const maxR = node.onFail?.maxRetries || 3;
+    parts.push(`retry=${retry.failedStage}:${retry.round || 1}/${maxR}`);
+    // hint（截斷到 60 字元）
+    if (retry.hint) {
+      parts.push(`hint=${retry.hint.slice(0, 60)}`);
+    }
+  }
+
+  return `<!-- NODE_CONTEXT: ${parts.join(' | ')} -->`;
 }
 
 // ────────────────── Exports ──────────────────

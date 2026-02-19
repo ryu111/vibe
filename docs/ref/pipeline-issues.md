@@ -87,13 +87,19 @@
 
 ---
 
-## P6：Context Window 壓縮（嚴重度：高）
+## P6：Context Window 壓縮（嚴重度：高）⚠️ 部分修復
 
 **現狀**：MCP 工具過多時（如 chrome-mcp + claude-mem + 其他），ECC 的 context window 從 200k 壓縮到約 70k tokens。Pipeline 的 systemMessage 注入（Node Context + 委派指令）進一步消耗可用 context。
 
 **影響**：Sub-agent 可用 context 不足 → agent 品質下降 → 更多 crash/fallback。
 
-**緩解**：Node Context 三層截斷策略（reflectionContent → 清空 → 只保留 hint），但根因是 MCP 工具定義佔用了過多 context。
+**已有緩解（v2.0.14+）**：
+- `buildPipelineCatalogHint()` 動態裁剪 — 無參數時列 5 個最常用 pipeline 而非全部 10 個，節省 ~56%（600 chars → 265 chars）
+- `formatNodeContext()` 改用 key-value 簡寫格式，去除 JSON 語法開銷，節省 ~70%（300-500 chars → 100 chars）
+- `classify()` 中 `allSteps` 限制前 3 步 + 省略提示，減少長 pipeline 的步驟清單
+- `suggest-compact` 整合洩漏偵測，當累積 leak >= 3000 字元時主動建議 compact
+
+**根本限制**：MCP 工具定義佔用的 context 是平台層面問題，Pipeline 無法控制。上述優化專注於可控的注入量減少。
 
 ---
 
@@ -115,13 +121,19 @@
 
 ---
 
-## P9：Transcript 洩漏無法完全防止（嚴重度：中）
+## P9：Transcript 洩漏無法完全防止（嚴重度：中）⚠️ 部分修復
 
 **現狀**：Agent `.md` 規範了回應格式，但 LLM 不完全受控。品質 agent 偶爾仍會在最終回應中包含完整報告，導致 Main Agent 看到問題細節。
 
 **務實態度**：guard 確保即使洩漏，Main Agent 也無法自行修復（所有寫入被阻擋）。洩漏的實際影響是 **token 浪費**（Main Agent context 被無用資訊佔用），而非 **行為越權**。
 
-**改進方向**：在 `stage-transition` 中截斷 Sub-agent 回應（只保留 PIPELINE_ROUTE 後面的部分），但需確認 ECC 是否支援修改 transcript。
+**已有緩解（v2.0.14+）**：
+- 4 個品質 agent（code-reviewer/tester/qa/e2e-runner）的 `.md` 加入 ⛔ **200 字元約束**，明確限制最終回應只輸出一句話結論 + PIPELINE_ROUTE
+- `pipeline-controller.js` 新增 `getLastAssistantResponseLength()` 偵測 transcript 洩漏（> 500 chars 時 emit TRANSCRIPT_LEAK_WARNING 到 Timeline）
+- `dag-state.js` 新增 `leakAccumulated` 欄位，追蹤洩漏累積量
+- `suggest-compact.js` 整合洩漏感知（累積 >= 3000 字元時主動建議 compact）
+
+**根本限制**：ECC SubagentStop hook 無法修改 `tool_result` 中的 agent 回應，洩漏攔截必須在源頭（agent .md 約束）。本方案結合「強約束」+「事後偵測」+「主動 compact」三層防禦。
 
 ---
 

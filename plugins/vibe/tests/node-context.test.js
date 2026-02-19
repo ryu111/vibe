@@ -449,7 +449,7 @@ test('buildEnvSnapshot: 只有語言無框架', () => {
 
 console.log('\n--- 8. formatNodeContext ---');
 
-test('formatNodeContext: 格式正確', () => {
+test('formatNodeContext: 格式正確（key-value 簡寫格式）', () => {
   const ctx = {
     node: { stage: 'REVIEW', prev: ['DEV'], next: ['TEST'], onFail: null, barrier: null },
     context_files: [],
@@ -462,14 +462,15 @@ test('formatNodeContext: 格式正確', () => {
   assert.ok(formatted.startsWith('<!-- NODE_CONTEXT: '), '應以 NODE_CONTEXT 開頭');
   assert.ok(formatted.endsWith(' -->'), '應以 --> 結尾');
 
-  // 反向解析
-  const match = formatted.match(/<!-- NODE_CONTEXT: ([\s\S]*?) -->/);
-  assert.ok(match, '應可解析出 JSON');
-  const parsed = JSON.parse(match[1]);
-  assert.strictEqual(parsed.node.stage, 'REVIEW', 'stage 正確');
+  // key-value 格式驗證（非 JSON）
+  assert.ok(formatted.includes('stage=REVIEW'), 'stage 正確');
+  assert.ok(formatted.includes('prev=DEV'), 'prev 正確');
+  assert.ok(formatted.includes('next=TEST'), 'next 正確');
+  // onFail=null 時不應出現 onFail 欄位（省略）
+  assert.ok(!formatted.includes('onFail=null'), 'null onFail 應省略');
 });
 
-test('formatNodeContext: JSON 可完整嵌入 systemMessage', () => {
+test('formatNodeContext: key-value 可完整嵌入 systemMessage', () => {
   const ctx = buildNodeContext(
     makeLinearDag(['DEV', 'REVIEW', 'TEST']),
     makeState(makeLinearDag(['DEV', 'REVIEW', 'TEST'])),
@@ -479,7 +480,7 @@ test('formatNodeContext: JSON 可完整嵌入 systemMessage', () => {
 
   const systemMsg = `🔄 REVIEW FAIL（1/3）\n➡️ 執行 /vibe:dev\n${formatNodeContext(ctx)}`;
   assert.ok(systemMsg.includes('NODE_CONTEXT'), 'systemMessage 含 NODE_CONTEXT');
-  assert.ok(systemMsg.includes('"stage":"REVIEW"'), 'stage 正確嵌入');
+  assert.ok(systemMsg.includes('stage=REVIEW'), 'stage 正確嵌入');
 });
 
 // ============================================================

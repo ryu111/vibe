@@ -168,17 +168,50 @@ async function classifyWithConfidence(prompt) {
   return { pipeline: 'none', confidence: 0, source: 'main-agent', matchedRule: 'main-agent' };
 }
 
+// 顯示優先級較高的 pipeline（數字越高越常用），用於無 pipelineId 時的 fallback 選單
+const PRIORITY_ORDER = ['quick-dev', 'standard', 'fix', 'full', 'test-first', 'docs-only', 'ui-only', 'review-only', 'security'];
+
+// 相鄰窗口大小（currentPipelineId 上下各取幾個相關）
+const CATALOG_WINDOW = 2;
+
 /**
  * 產生 Pipeline 目錄提示（供 systemMessage + additionalContext 注入 Main Agent）
+ *
+ * 裁剪規則：
+ * - 有 currentPipelineId：取當前 pipeline 同類 + 相鄰優先級的最多 5 個
+ * - 無 currentPipelineId（none 分支）：列最常用的 5 個 + fallback 提示
+ *
+ * @param {string|null} currentPipelineId - 當前已分類的 pipeline ID（可選）
  * @returns {string}
  */
-function buildPipelineCatalogHint() {
-  const catalog = Object.entries(PIPELINES)
-    .filter(([id]) => id !== 'none')
-    .map(([id, p]) => `  [pipeline:${id}] — ${p.label}：${p.description}`)
+function buildPipelineCatalogHint(currentPipelineId) {
+  const allIds = PRIORITY_ORDER.filter(id => PIPELINES[id]);
+
+  let selectedIds;
+  if (currentPipelineId && PIPELINES[currentPipelineId] && currentPipelineId !== 'none') {
+    // 有 pipelineId：以當前為中心，取上下 CATALOG_WINDOW 個相鄰 pipeline
+    const idx = allIds.indexOf(currentPipelineId);
+    if (idx >= 0) {
+      const start = Math.max(0, idx - CATALOG_WINDOW);
+      const end = Math.min(allIds.length, idx + CATALOG_WINDOW + 1);
+      // 排除自身，只顯示相鄰的其他 pipeline
+      selectedIds = allIds.slice(start, end).filter(id => id !== currentPipelineId);
+    } else {
+      // 不在 PRIORITY_ORDER 中（如自訂 pipeline）→ 退回最常用 5 個
+      selectedIds = allIds.slice(0, 5);
+    }
+    // 最多 5 個
+    if (selectedIds.length > 5) selectedIds = selectedIds.slice(0, 5);
+  } else {
+    // 無 pipelineId → 最常用的 5 個
+    selectedIds = allIds.slice(0, 5);
+  }
+
+  const catalog = selectedIds
+    .map(id => `  [pipeline:${id}] — ${PIPELINES[id].label}：${PIPELINES[id].description}`)
     .join('\n');
 
-  return '\n可用 pipeline：\n' + catalog;
+  return '\n可用 pipeline：\n' + catalog + '\n（完整清單見 /vibe:pipeline）';
 }
 
 // ═══════════════════════════════════════════════

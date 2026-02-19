@@ -85,6 +85,10 @@ function createInitialState(sessionId, options = {}) {
     // v4 crash 計數器（Phase 4 barrier 用）
     crashes: {},
 
+    // Token 效率追蹤：累積品質 stage transcript 洩漏字元數
+    // 超過閾值時 suggest-compact 會建議 compact
+    leakAccumulated: 0,
+
     meta: {
       initialized: true,
       lastTransition: new Date().toISOString(),

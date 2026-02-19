@@ -91,8 +91,8 @@ test('H01: buildNodeContext 正確提取 prev/next/onFail', () => {
   assert.strictEqual(ctx.node.onFail.currentRound, 1, '初次應為第 1 輪');
 });
 
-// H01b: formatNodeContext 格式正確
-test('H01b: formatNodeContext 產生 <!-- NODE_CONTEXT: {...} --> 格式', () => {
+// H01b: formatNodeContext 格式正確（key-value 簡寫格式）
+test('H01b: formatNodeContext 產生 <!-- NODE_CONTEXT: stage=X | ... --> 格式', () => {
   const dag = { DEV: { deps: [] } };
   const state = {
     version: 4, dag,
@@ -105,11 +105,8 @@ test('H01b: formatNodeContext 產生 <!-- NODE_CONTEXT: {...} --> 格式', () =>
   assert.ok(formatted.startsWith('<!-- NODE_CONTEXT:'), `應以 <!-- NODE_CONTEXT: 開頭`);
   assert.ok(formatted.endsWith('-->'), `應以 --> 結尾`);
 
-  // 驗證 JSON 可解析
-  const jsonMatch = formatted.match(/<!-- NODE_CONTEXT: (.+) -->/s);
-  assert.ok(jsonMatch, '應能提取 JSON');
-  const parsed = JSON.parse(jsonMatch[1]);
-  assert.strictEqual(parsed.node.stage, 'DEV');
+  // 驗證 key-value 格式（非 JSON）
+  assert.ok(formatted.includes('stage=DEV'), 'stage 欄位應正確');
 });
 
 // H01c: Node Context 大小限制
