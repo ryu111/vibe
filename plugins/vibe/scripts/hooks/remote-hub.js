@@ -225,16 +225,13 @@ async function handleSender(data) {
   try { state = JSON.parse(fs.readFileSync(statePath, 'utf8')); }
   catch (_) { process.exit(0); }
 
-  // v3 DAG state 結構
   const meta = state.meta || {};
   const stagesMap = state.stages || {};
   const classification = state.classification || {};
 
   const completedStages = extractCompletedStages(state);
 
-  // v3: stageResults 從 stages 映射推導（每個 stage 有 verdict 欄位）
-  // verdict 可能是物件 { verdict: 'PASS'|'FAIL', severity: ... }（由 verdict.js parseVerdict 產出）
-  // 展平為字串格式，確保 buildProgressBar 等地方的字串比較正確
+  // stageResults 從 stages 映射推導（verdict 可能是物件，展平為字串格式）
   const stageResults = {};
   for (const [stageId, stageInfo] of Object.entries(stagesMap)) {
     if (stageInfo?.verdict) {
@@ -248,7 +245,6 @@ async function handleSender(data) {
     }
   }
 
-  // v3: dagStages 從 dag 取得所有已宣告的 stage
   const dagStages = Object.keys(state.dag || {});
   if (dagStages.length === 0) {
     // 無 DAG 結構，可能是未分類 session — 靜默退出
@@ -263,7 +259,6 @@ async function handleSender(data) {
   const stageDuration = lastTransitionMs ? formatDuration(Date.now() - lastTransitionMs) : null;
 
   const stageInfo = stagesMap[currentStage];
-  // v3 verdict 可能是物件 { verdict: 'PASS'|'FAIL', severity: ... }，展平為字串
   const rawVerdict = stageInfo?.verdict;
   const verdictStr = (typeof rawVerdict === 'object' && rawVerdict !== null)
     ? (rawVerdict.verdict || null)
@@ -272,7 +267,6 @@ async function handleSender(data) {
     ? (verdictStr === 'PASS' ? '\u2705' : '\u274C')
     : '\u2753';
 
-  // v3: retries 是 { stageId: count } 物件
   const retriesObj = state.retries || {};
   const retryCount = retriesObj[currentStage] || 0;
   const retryStr = (verdictStr && verdictStr !== 'PASS' && retryCount > 0)

@@ -64,7 +64,7 @@ Pipeline v3 採用三元架構：
      │ retry-policy  │    │ state-migrator   │
      │ .js           │    │ .js              │
      │               │    │                  │
-     │shouldRetryStage│   │ ensureV3()       │
+     │shouldRetryStage│   │ ensureV4()       │
      └───────────────┘    └──────────────────┘
 
  ── Hook Stack（每個 hook 精簡為 controller 代理）──
@@ -691,50 +691,36 @@ v2 的 systemMessage 包含完整的 pipeline 規則禁止列表（約 2200 toke
 
 ---
 
-## 8. v2 -> v3 遷移
+## 8. State 遷移
 
 > 檔案路徑：`plugins/vibe/scripts/lib/flow/state-migrator.js`
 
+### 支援的遷移路徑
+
+- **v3 → v4**：`migrateV3toV4()` 自動補齊 `pipelineActive`、`activeStages`、`retryHistory`、`crashes` 欄位
+- **v2（已移除）**：v2.0.12 起不再支援 v2 格式，`ensureV4()` 對 v2 或未知格式回傳 `null`
+
 ### 自動遷移機制
 
-`pipeline-controller.js` 的 `loadState()` 在每次讀取 state 時呼叫 `ensureV3()`，自動偵測版本並遷移。使用者無需任何手動操作。
+`pipeline-controller.js` 的 `loadState()` 在每次讀取 state 時呼叫 `ensureV4()`，自動偵測版本並遷移。遷移後的 v4 state 會持久化回磁碟，後續讀取不再觸發遷移。
 
 ### 版本偵測
 
 ```javascript
 detectVersion(state)
-// version: 3             -> 3（已是 v3）
-// phase + context 存在   -> 2（v2 FSM 格式）
-// 其餘                   -> 0（無法辨識）
+// version: 4             -> 4（已是 v4）
+// version: 3             -> 3（v3，會自動遷移至 v4）
+// 其餘                   -> 0（無法辨識，ensureV4 回傳 null）
 ```
 
-### 欄位映射表
+### v3 → v4 新增欄位
 
-| v2 欄位 | v3 欄位 | 轉換邏輯 |
-|--------|--------|---------|
-| `context.pipelineId` | `classification.pipelineId` | 直接映射 |
-| `context.taskType` | `classification.taskType` | 直接映射 |
-| `context.environment` | `environment` | 提升到頂層 |
-| `context.openspecEnabled` | `openspecEnabled` | 提升到頂層 |
-| `context.needsDesign` | `needsDesign` | 提升到頂層 |
-| `context.expectedStages` | `dag`（linearToDag 建立） | 線性 stages 轉 DAG |
-| `progress.completedAgents` | `stages[x].status = completed` | 透過 AGENT_TO_STAGE 映射推導 |
-| `progress.skippedStages` | `stages[x].status = skipped` | 直接映射 |
-| `progress.currentStage` + `phase=DELEGATING` | `stages[x].status = active` | 當前活躍 stage |
-| `progress.pendingRetry.stage` | `pendingRetry.stages[0].id` | 單值 -> 陣列 |
-| `progress.retries` | `retries` | 直接映射 |
-| `meta.cancelled` | `meta.cancelled` | 直接映射 |
-| `meta.reclassifications` | `meta.reclassifications` | 直接映射 |
-| `meta.lastTransition` | `meta.lastTransition` | 直接映射 |
-| --（不存在） | `meta.migratedFrom = 'v2'` | 遷移標記 |
-| --（不存在） | `meta.migratedAt` | 遷移時間 |
-
-### 遷移保證
-
-- **無損**：所有已完成的進度（completed agents、skipped stages）保留
-- **自動**：`loadState()` 每次讀取時透明遷移
-- **向後相容**：v3 API（`derivePhase`、`isEnforced` 等）在遷移後的 state 上正常運作
-- **blueprint 為 null**：v2 沒有 blueprint 概念，遷移後為 null（不影響排程，getReadyStages 只依賴 DAG）
+| v4 新增欄位 | 推導來源 | 說明 |
+|------------|---------|------|
+| `pipelineActive` | 從 classification + cancelled + dag 推導 | 布林守衛：`true` = guard 阻擋 Main Agent |
+| `activeStages` | 從 stages 中 status=active 收集 | 並行追蹤：哪些 stage 正在執行 |
+| `retryHistory` | 從 retries 推導空陣列 | 收斂分析：每次重試的 verdict + severity |
+| `crashes` | 初始化為 `{}` | crash 計數器：每個 stage 的 crash 次數 |
 
 ---
 

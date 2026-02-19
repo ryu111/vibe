@@ -105,11 +105,10 @@ test('J02c: transcript 路徑為空字串 → parseRoute source=none', () => {
   assert.strictEqual(parsed, null);
 });
 
-// J03: v2→v4 遷移鏈
-test('J03: v2 state → ensureV4 兩步遷移（v2→v3→v4）', () => {
-  // 建立 v2 格式 state
+// J03: v2 格式已不支援（v2→v3 遷移路徑已移除）
+test('J03: v2 state → ensureV4 回傳 null（v2 不再支援）', () => {
+  // 建立 v2 格式 state（phase + context.pipelineId 特徵）
   const v2State = {
-    // v2 特徵：有 phase + context.pipelineId
     phase: 'DELEGATING',
     context: {
       pipelineId: 'quick-dev',
@@ -130,24 +129,13 @@ test('J03: v2 state → ensureV4 兩步遷移（v2→v3→v4）', () => {
     },
   };
 
-  // 驗證版本偵測
+  // v2 格式偵測返回 0（不支援）
   const version = detectVersion(v2State);
-  assert.strictEqual(version, 2, `v2 state 應被偵測為版本 2，實際：${version}`);
+  assert.strictEqual(version, 0, `v2 state 應被偵測為版本 0（不支援），實際：${version}`);
 
-  // 執行遷移
+  // ensureV4 對 v2 回傳 null
   const v4State = ensureV4(v2State);
-  assert.ok(v4State, 'v4 state 應存在');
-  assert.strictEqual(v4State.version, 4, `遷移後應為版本 4，實際：${v4State.version}`);
-
-  // 驗證 v4 新增欄位存在
-  assert.ok('pipelineActive' in v4State, 'v4 應有 pipelineActive 欄位');
-  assert.ok('activeStages' in v4State, 'v4 應有 activeStages 欄位');
-  assert.ok('retryHistory' in v4State, 'v4 應有 retryHistory 欄位');
-  assert.ok('crashes' in v4State, 'v4 應有 crashes 欄位');
-
-  // 驗證分類資訊保留
-  assert.strictEqual(v4State.classification?.pipelineId, 'quick-dev',
-    `pipelineId 應保留，實際：${v4State.classification?.pipelineId}`);
+  assert.strictEqual(v4State, null, 'v2 state 應無法遷移，ensureV4 應回傳 null');
 });
 
 // J03b: v3→v4 遷移（只需一步）

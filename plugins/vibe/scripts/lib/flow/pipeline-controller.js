@@ -68,7 +68,7 @@ function extractShortAgent(agentType) {
   return agentType.includes(':') ? agentType.split(':')[1] : agentType;
 }
 
-/** 讀取 state（自動遷移 v2/v3 → v4，遷移後持久化） */
+/** 讀取 state（自動遷移 v3 → v4，v2 或未知格式回傳 null；遷移後持久化） */
 function loadState(sessionId) {
   const raw = ds.readState(sessionId);
   if (!raw) return null;
@@ -1168,7 +1168,7 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
     ds.writeState(sessionId, state);
     cleanupPatches();
     // 若當前 stage 為 FAIL 但因 enforcePolicy（如無 DEV in DAG）強制前進至完成，
-    // 在完成訊息前加入 FAIL 警告（v3 相容：測試期望含 FAIL 資訊）
+    // 在完成訊息前加入 FAIL 警告
     const completionMsg = buildCompleteOutput(state, currentStage, pipeline);
     const isFailStage = verdictForStop && verdictForStop.verdict === 'FAIL';
     if (isFailStage) {

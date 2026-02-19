@@ -38,6 +38,11 @@ function test(name, fn) {
 
 // ─── 輔助 ─────────────────────────────
 
+/**
+ * 寫入 state 到 state file（直接接受 state 物件）
+ * 注意：傳入的 state 物件應為 v4 格式，pipeline-system.test.js 中的舊 v2 格式
+ * 由各測試自行轉換為 v4 格式。
+ */
 function createTempState(sessionId, state) {
   const statePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
   fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
@@ -152,29 +157,14 @@ console.log('\n🧪 Part 2: stage-transition namespaced 輸出');
 
 test('前進場景：PLAN → ARCH（有 skill 的階段）', () => {
   const sessionId = 'test-ns-1';
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'standard',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DEV'],
-      environment: {},
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: null,
-      stageIndex: 0,
-      completedAgents: [],
-      stageResults: {},
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const { writeV3State } = require('./test-helpers');
+  const statePath = writeV3State(sessionId, {
+    stages: ['PLAN', 'ARCH', 'DEV'],
+    completed: [],
+    pipelineId: 'standard',
+    taskType: 'feature',
+    environment: {},
+    enforced: true,
   });
 
   try {
@@ -211,29 +201,14 @@ test('前進場景：PLAN → ARCH（有 skill 的階段）', () => {
 
 test('前進場景：ARCH → DEV（Skill 委派）', () => {
   const sessionId = 'test-ns-1b';
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'standard',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DEV'],
-      environment: {},
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: null,
-      stageIndex: 0,
-      completedAgents: ['vibe:planner'],
-      stageResults: { PLAN: { verdict: 'PASS' } },
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const { writeV3State } = require('./test-helpers');
+  const statePath = writeV3State(sessionId, {
+    stages: ['PLAN', 'ARCH', 'DEV'],
+    completed: ['PLAN'],
+    pipelineId: 'standard',
+    taskType: 'feature',
+    environment: {},
+    enforced: true,
   });
 
   try {
@@ -270,33 +245,14 @@ test('前進場景：ARCH → DEV（Skill 委派）', () => {
 
 test('回退場景：REVIEW FAIL:HIGH → DEV（namespaced 格式）', () => {
   const sessionId = 'test-ns-2';
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'standard',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
-      environment: {},
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: null,
-      stageIndex: 0,
-      completedAgents: ['vibe:planner', 'vibe:architect', 'vibe:developer'],
-      stageResults: {
-        PLAN: { verdict: 'PASS' },
-        ARCH: { verdict: 'PASS' },
-        DEV: { verdict: 'PASS' },
-      },
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const { writeV3State } = require('./test-helpers');
+  const statePath = writeV3State(sessionId, {
+    stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
+    completed: ['PLAN', 'ARCH', 'DEV'],
+    pipelineId: 'standard',
+    taskType: 'feature',
+    environment: {},
+    enforced: true,
   });
 
   const transcriptPath = createTempTranscript(sessionId, [
@@ -347,33 +303,14 @@ test('回退場景：REVIEW FAIL:HIGH → DEV（namespaced 格式）', () => {
 
 test('回退場景：修復後重新執行 REVIEW（namespaced 格式）', () => {
   const sessionId = 'test-ns-3';
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'standard',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
-      environment: {},
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: null,
-      stageIndex: 0,
-      completedAgents: ['vibe:planner', 'vibe:architect', 'vibe:developer'],
-      stageResults: {
-        PLAN: { verdict: 'PASS' },
-        ARCH: { verdict: 'PASS' },
-        DEV: { verdict: 'PASS' },
-      },
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const { writeV3State } = require('./test-helpers');
+  const statePath = writeV3State(sessionId, {
+    stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
+    completed: ['PLAN', 'ARCH', 'DEV'],
+    pipelineId: 'standard',
+    taskType: 'feature',
+    environment: {},
+    enforced: true,
   });
 
   const transcriptPath = createTempTranscript(sessionId, [
@@ -424,29 +361,14 @@ console.log('\n🧪 Part 3: pipeline-check namespaced 提示');
 
 test('缺漏 ARCH 和 DEV 階段（混合格式）', () => {
   const sessionId = 'test-ns-4';
-  const statePath = createTempState(sessionId, {
-    phase: 'CLASSIFIED',
-    context: {
-      pipelineId: 'standard',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DEV'],
-      environment: {},
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: null,
-      stageIndex: 0,
-      completedAgents: ['vibe:planner'],
-      stageResults: { PLAN: { verdict: 'PASS' } },
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const { writeV3State } = require('./test-helpers');
+  const statePath = writeV3State(sessionId, {
+    stages: ['PLAN', 'ARCH', 'DEV'],
+    completed: ['PLAN'],
+    pipelineId: 'standard',
+    taskType: 'feature',
+    environment: {},
+    enforced: true,
   });
 
   try {
@@ -475,36 +397,14 @@ test('缺漏 ARCH 和 DEV 階段（混合格式）', () => {
 
 test('全部完成：無輸出且 state 保留', () => {
   const sessionId = 'test-ns-5';
-  const statePath = createTempState(sessionId, {
-    phase: 'COMPLETE',
-    context: {
-      pipelineId: 'standard',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
-      environment: {},
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: null,
-      stageIndex: 5, // DOCS 是 standard pipeline 的最後一個階段（index 5）
-      completedAgents: ['vibe:planner', 'vibe:architect', 'vibe:developer', 'vibe:code-reviewer', 'vibe:tester', 'vibe:doc-updater'],
-      stageResults: {
-        PLAN: { verdict: 'PASS' },
-        ARCH: { verdict: 'PASS' },
-        DEV: { verdict: 'PASS' },
-        REVIEW: { verdict: 'PASS' },
-        TEST: { verdict: 'PASS' },
-        DOCS: { verdict: 'PASS' },
-      },
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const { writeV3State } = require('./test-helpers');
+  const statePath = writeV3State(sessionId, {
+    stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
+    completed: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
+    pipelineId: 'standard',
+    taskType: 'feature',
+    environment: {},
+    enforced: true,
   });
 
   try {
@@ -543,29 +443,14 @@ test('全部完成：無輸出且 state 保留', () => {
 
 test('非強制 pipeline：不檢查', () => {
   const sessionId = 'test-ns-6';
-  const statePath = createTempState(sessionId, {
-    phase: 'IDLE', // 非強制
-    context: {
-      pipelineId: null,
-      taskType: 'bugfix',
-      expectedStages: ['PLAN', 'ARCH', 'DEV'],
-      environment: {},
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: null,
-      stageIndex: 0,
-      completedAgents: ['vibe:planner'],
-      stageResults: { PLAN: { verdict: 'PASS' } },
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const { writeV3State } = require('./test-helpers');
+  const statePath = writeV3State(sessionId, {
+    stages: ['PLAN', 'ARCH', 'DEV'],
+    completed: ['PLAN'],
+    pipelineId: null, // 非強制（null pipelineId → pipelineActive=false）
+    taskType: 'bugfix',
+    environment: {},
+    enforced: false,
   });
 
   try {
@@ -601,29 +486,14 @@ test('非強制 pipeline：不檢查', () => {
 
 test('ARCH→DESIGN 前進：前端框架不跳過 DESIGN', () => {
   const sessionId = `pipeline-test-design-frontend-${Date.now()}`;
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      environment: { framework: { name: 'react' } },
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: 'ARCH',
-      stageIndex: 1, // ARCH 在 full pipeline 的 index
-      completedAgents: ['vibe:planner'], // stage-transition.js 依賴 completedAgents (agentType 列表)
-      stageResults: { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } },
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const { writeV3State } = require('./test-helpers');
+  const statePath = writeV3State(sessionId, {
+    stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    completed: ['PLAN'],
+    pipelineId: 'full',
+    taskType: 'feature',
+    environment: { framework: { name: 'react' } },
+    enforced: true,
   });
 
   const transcriptPath = createTempTranscript(sessionId, [
@@ -665,29 +535,14 @@ test('ARCH→DESIGN 前進：前端框架不跳過 DESIGN', () => {
 
 test('ARCH→DESIGN 前進：後端框架跳過 DESIGN', () => {
   const sessionId = `pipeline-test-design-backend-${Date.now()}`;
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      environment: { framework: { name: 'express' } },
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: 'ARCH',
-      stageIndex: 1, // ARCH 在 full pipeline 的 index
-      completedAgents: ['vibe:planner'], // stage-transition.js 依賴 completedAgents (agentType 列表)
-      stageResults: { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } },
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const { writeV3State } = require('./test-helpers');
+  const statePath = writeV3State(sessionId, {
+    stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    completed: ['PLAN'],
+    pipelineId: 'full',
+    taskType: 'feature',
+    environment: { framework: { name: 'express' } },
+    enforced: true,
   });
 
   const transcriptPath = createTempTranscript(sessionId, [
@@ -730,29 +585,15 @@ test('ARCH→DESIGN 前進：後端框架跳過 DESIGN', () => {
 
 test('ARCH→DESIGN 前進：needsDesign=true 強制不跳過', () => {
   const sessionId = `pipeline-test-design-forced-${Date.now()}`;
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'full',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
-      environment: { framework: { name: 'express' } }, // 後端框架
-      openspecEnabled: false,
-      needsDesign: true, // 強制需要設計
-    },
-    progress: {
-      currentStage: 'ARCH',
-      stageIndex: 1, // ARCH 在 full pipeline 的 index
-      completedAgents: ['vibe:planner'], // stage-transition.js 依賴 completedAgents (agentType 列表)
-      stageResults: { PLAN: { verdict: 'PASS' }, ARCH: { verdict: 'PASS' } },
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const { writeV3State } = require('./test-helpers');
+  const statePath = writeV3State(sessionId, {
+    stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
+    completed: ['PLAN'],
+    pipelineId: 'full',
+    taskType: 'feature',
+    environment: { framework: { name: 'express' } }, // 後端框架
+    needsDesign: true, // 強制需要設計
+    enforced: true,
   });
 
   const transcriptPath = createTempTranscript(sessionId, [
@@ -794,7 +635,7 @@ test('ARCH→DESIGN 前進：needsDesign=true 強制不跳過', () => {
 test('pipeline-check 排除 skipped stages', () => {
   const sessionId = `pipeline-test-skip-check-${Date.now()}`;
   const { writeV3State } = require('./test-helpers');
-  // v3: DESIGN 和 E2E 跳過，其餘全部完成
+  // DESIGN 和 E2E 跳過，其餘全部完成
   const statePath = writeV3State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     completed: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'DOCS'],

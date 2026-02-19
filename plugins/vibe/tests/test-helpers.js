@@ -31,7 +31,7 @@ function cleanTestStateFiles() {
     { prefix: 'classified-reads-e2e-', suffix: '.json' },
     { prefix: 'flow-counter-test-', suffix: '.json' },
     { prefix: 'flow-counter-e2e-', suffix: '.json' },
-    // v4 新增：barrier / reflection / context 檔案
+    // v4 barrier / reflection / context 檔案
     { prefix: 'barrier-state-test-', suffix: '.json' },
     { prefix: 'barrier-state-e2e-', suffix: '.json' },
     { prefix: 'barrier-state-catalog-', suffix: '.json' },
@@ -62,7 +62,10 @@ function cleanTestStateFiles() {
 }
 
 /**
- * 建立 v3 Pipeline state（DAG 結構）
+ * 建立 v4 Pipeline state（DAG 結構）
+ *
+ * 注意：函式名稱保留 createV3State 以維持向後相容，
+ * 但實際建立的是 v4 格式（含 pipelineActive/activeStages/retryHistory/crashes）。
  *
  * @param {string} sessionId
  * @param {Object} opts
@@ -80,7 +83,7 @@ function cleanTestStateFiles() {
  * @param {boolean} opts.cancelled
  * @param {Object} opts.pendingRetry
  * @param {Object} opts.retries
- * @returns {Object} v3 state
+ * @returns {Object} v4 state
  */
 function createV3State(sessionId, opts = {}) {
   const stages = opts.stages || [];
@@ -111,11 +114,21 @@ function createV3State(sessionId, opts = {}) {
     }
   }
 
+  // 推導 pipelineActive
+  const pid = opts.pipelineId || null;
+  const enforced = opts.enforced !== undefined ? opts.enforced : (stages.length > 0);
+  const cancelled = opts.cancelled || false;
+  const allDone = stages.length > 0 && stages.every(s => completedSet.has(s) || skippedSet.has(s));
+  const pipelineActive = !!(pid && pid !== 'none') && enforced && !cancelled && stages.length > 0 && !allDone;
+
+  // 推導 activeStages
+  const activeStages = opts.active ? [opts.active] : [];
+
   return {
-    version: 3,
+    version: 4,
     sessionId,
-    classification: (opts.pipelineId || opts.taskType) ? {
-      pipelineId: opts.pipelineId || null,
+    classification: (pid || opts.taskType) ? {
+      pipelineId: pid || null,
       taskType: opts.taskType || null,
       source: opts.source || 'test',
       classifiedAt: new Date().toISOString(),
@@ -124,15 +137,18 @@ function createV3State(sessionId, opts = {}) {
     openspecEnabled: opts.openspecEnabled || false,
     needsDesign: opts.needsDesign || false,
     dag: stages.length > 0 ? dag : null,
-    enforced: opts.enforced !== undefined ? opts.enforced : (stages.length > 0),
     blueprint: null,
+    pipelineActive,
+    activeStages,
     stages: stagesObj,
     retries: opts.retries || {},
+    retryHistory: opts.retryHistory || {},
+    crashes: opts.crashes || {},
     pendingRetry: opts.pendingRetry || null,
     meta: {
       initialized: true,
-      cancelled: opts.cancelled || false,
-      lastTransition: new Date().toISOString(),
+      cancelled,
+      lastTransition: opts.lastTransition || new Date().toISOString(),
       reclassifications: [],
       pipelineRules: opts.pipelineRules || [],
     },
@@ -140,7 +156,8 @@ function createV3State(sessionId, opts = {}) {
 }
 
 /**
- * 寫入 v3 state 到 state file
+ * 寫入 v4 state 到 state file
+ * 函式名稱保留 writeV3State 以維持向後相容。
  */
 function writeV3State(sessionId, opts = {}) {
   const state = createV3State(sessionId, opts);

@@ -23,7 +23,8 @@ process.env.CLAUDE_PLUGIN_ROOT = PLUGIN_ROOT;
 
 let passed = 0;
 let failed = 0;
-require('./test-helpers').cleanTestStateFiles();
+const { cleanTestStateFiles, writeV3State } = require('./test-helpers');
+cleanTestStateFiles();
 
 function test(name, fn) {
   try {
@@ -75,29 +76,12 @@ test('PLAN 完成後建立 vibe-pipeline/plan tag', () => {
   const tagName = 'vibe-pipeline/plan';
   cleanupGitTag(tagName);
 
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'standard',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DEV'],
-      environment: {},
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: null,
-      stageIndex: 0,
-      completedAgents: [],
-      stageResults: {},
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const statePath = writeV3State(sessionId, {
+    stages: ['PLAN', 'ARCH', 'DEV'],
+    active: 'PLAN',
+    pipelineId: 'standard',
+    taskType: 'feature',
+    enforced: true,
   });
 
   try {
@@ -121,33 +105,13 @@ test('回退場景不建立 checkpoint（shouldRetry=true）', () => {
   const tagName = 'vibe-pipeline/review';
   cleanupGitTag(tagName);
 
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'standard',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
-      environment: {},
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: null,
-      stageIndex: 0,
-      completedAgents: ['vibe:planner', 'vibe:architect', 'vibe:developer'],
-      stageResults: {
-        PLAN: { verdict: 'PASS' },
-        ARCH: { verdict: 'PASS' },
-        DEV: { verdict: 'PASS' },
-      },
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const statePath = writeV3State(sessionId, {
+    stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
+    completed: ['PLAN', 'ARCH', 'DEV'],
+    active: 'REVIEW',
+    pipelineId: 'standard',
+    taskType: 'feature',
+    enforced: true,
   });
 
   // 建立 FAIL transcript
@@ -180,29 +144,12 @@ test('多個階段完成後各自有 tag', () => {
   tags.forEach(cleanupGitTag);
 
   // PLAN 完成
-  let statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'standard',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DEV'],
-      environment: {},
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: null,
-      stageIndex: 0,
-      completedAgents: [],
-      stageResults: {},
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  let statePath = writeV3State(sessionId, {
+    stages: ['PLAN', 'ARCH', 'DEV'],
+    active: 'PLAN',
+    pipelineId: 'standard',
+    taskType: 'feature',
+    enforced: true,
   });
 
   try {
@@ -212,30 +159,14 @@ test('多個階段完成後各自有 tag', () => {
       stop_hook_active: false,
     });
 
-    // ARCH 完成
-    statePath = createTempState(sessionId, {
-      phase: 'DELEGATING',
-      context: {
-        pipelineId: null,
-        taskType: 'feature',
-        expectedStages: ['PLAN', 'ARCH', 'DEV'],
-        environment: {},
-        openspecEnabled: false,
-        needsDesign: false,
-      },
-      progress: {
-        currentStage: null,
-        stageIndex: 0,
-        completedAgents: ['vibe:planner'],
-        stageResults: { PLAN: { verdict: 'PASS' } },
-        retries: {},
-        skippedStages: [],
-        pendingRetry: null,
-      },
-      meta: {
-        initialized: true,
-        lastTransition: new Date().toISOString(),
-      },
+    // ARCH 完成（重新寫入 state，PLAN 已完成，ARCH 為 active）
+    statePath = writeV3State(sessionId, {
+      stages: ['PLAN', 'ARCH', 'DEV'],
+      completed: ['PLAN'],
+      active: 'ARCH',
+      pipelineId: 'standard',
+      taskType: 'feature',
+      enforced: true,
     });
 
     runHook('stage-transition.js', {
@@ -261,29 +192,13 @@ console.log('\n🧪 Part 2: POST_STAGE_HINTS — 安全/覆蓋率提示注入');
 
 test('REVIEW → TEST 包含安全提示', () => {
   const sessionId = 'test-hints-1';
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'standard',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA'],
-      environment: {},
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: null,
-      stageIndex: 0,
-      completedAgents: ['vibe:planner', 'vibe:architect', 'vibe:developer'],
-      stageResults: {},
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const statePath = writeV3State(sessionId, {
+    stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA'],
+    completed: ['PLAN', 'ARCH', 'DEV'],
+    active: 'REVIEW',
+    pipelineId: 'standard',
+    taskType: 'feature',
+    enforced: true,
   });
 
   try {
@@ -304,29 +219,13 @@ test('REVIEW → TEST 包含安全提示', () => {
 
 test('TEST → QA 包含覆蓋率提示', () => {
   const sessionId = 'test-hints-2';
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'standard',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA'],
-      environment: {},
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: null,
-      stageIndex: 0,
-      completedAgents: ['vibe:planner', 'vibe:architect', 'vibe:developer', 'vibe:code-reviewer'],
-      stageResults: {},
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const statePath = writeV3State(sessionId, {
+    stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA'],
+    completed: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
+    active: 'TEST',
+    pipelineId: 'standard',
+    taskType: 'feature',
+    enforced: true,
   });
 
   try {
@@ -347,29 +246,13 @@ test('TEST → QA 包含覆蓋率提示', () => {
 
 test('DEV → REVIEW 無額外提示（DEV 不在 POST_STAGE_HINTS 中）', () => {
   const sessionId = 'test-hints-3';
-  const statePath = createTempState(sessionId, {
-    phase: 'DELEGATING',
-    context: {
-      pipelineId: 'standard',
-      taskType: 'feature',
-      expectedStages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST'],
-      environment: {},
-      openspecEnabled: false,
-      needsDesign: false,
-    },
-    progress: {
-      currentStage: null,
-      stageIndex: 0,
-      completedAgents: ['vibe:planner', 'vibe:architect'],
-      stageResults: {},
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-    },
-    meta: {
-      initialized: true,
-      lastTransition: new Date().toISOString(),
-    },
+  const statePath = writeV3State(sessionId, {
+    stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST'],
+    completed: ['PLAN', 'ARCH'],
+    active: 'DEV',
+    pipelineId: 'standard',
+    taskType: 'feature',
+    enforced: true,
   });
 
   try {

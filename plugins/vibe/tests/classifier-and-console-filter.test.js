@@ -295,42 +295,52 @@ function runTaskClassifier(stdinData, envOverrides = {}) {
 
 function createTestState(sessionId, overrides = {}) {
   const p = path.join(CLAUDE_TEST_DIR, `pipeline-state-${sessionId}.json`);
+  const ctx = overrides.context || {};
+  const pid = ctx.pipelineId || null;
+  const stages = ctx.expectedStages || [];
+
+  // 建立線性 DAG
+  const dag = {};
+  for (let i = 0; i < stages.length; i++) {
+    dag[stages[i]] = { deps: i > 0 ? [stages[i - 1]] : [] };
+  }
+
+  // 所有 stage 為 pending
+  const stagesObj = {};
+  for (const s of stages) {
+    stagesObj[s] = { status: 'pending', agent: null, verdict: null };
+  }
+
+  // pipelineActive：有 pipelineId（非 none）且有 stages
+  const pipelineActive = !!(pid && pid !== 'none') && stages.length > 0;
+
   const state = {
+    version: 4,
     sessionId,
-    phase: overrides.phase || 'IDLE',
-    context: {
-      pipelineId: null,
-      taskType: null,
-      expectedStages: [],
-      environment: { languages: { primary: null, secondary: [] }, framework: null, packageManager: null, tools: {} },
-      openspecEnabled: false,
-      pipelineRules: [],
-      needsDesign: false,
-      ...(overrides.context || {}),
-    },
-    progress: {
-      currentStage: null,
-      stageIndex: 0,
-      completedAgents: [],
-      stageResults: {},
-      retries: {},
-      skippedStages: [],
-      pendingRetry: null,
-      ...(overrides.progress || {}),
-    },
+    classification: pid ? {
+      pipelineId: pid,
+      taskType: ctx.taskType || null,
+      source: 'test',
+      classifiedAt: new Date().toISOString(),
+    } : null,
+    environment: ctx.environment || { languages: { primary: null, secondary: [] }, framework: null, packageManager: null, tools: {} },
+    openspecEnabled: ctx.openspecEnabled || false,
+    needsDesign: ctx.needsDesign || false,
+    dag: stages.length > 0 ? dag : null,
+    blueprint: null,
+    pipelineActive,
+    activeStages: [],
+    stages: stagesObj,
+    retries: {},
+    retryHistory: {},
+    crashes: {},
+    pendingRetry: null,
     meta: {
       initialized: true,
-      classifiedAt: null,
+      cancelled: (overrides.meta || {}).cancelled || false,
       lastTransition: new Date().toISOString(),
-      classificationSource: null,
-      classificationConfidence: null,
-      matchedRule: null,
-      layer: null,
       reclassifications: [],
-      llmClassification: null,
-      correctionCount: 0,
-      cancelled: false,
-      ...(overrides.meta || {}),
+      pipelineRules: ctx.pipelineRules || [],
     },
   };
   fs.writeFileSync(p, JSON.stringify(state, null, 2));

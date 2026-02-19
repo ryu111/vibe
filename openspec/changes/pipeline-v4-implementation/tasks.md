@@ -292,7 +292,7 @@
   - 移除 meta.cancelled（被 pipelineActive=false 取代）
   - 移除 isEnforced()（被 isActive 取代）
   - derivePhase() 保留但只用 v4 邏輯
-  - 移除向後相容函式（ensureV3 不再需要）
+  - ~~移除向後相容函式（ensureV3 不再需要）~~ ✅ v2.0.12 已完成
 
 - [ ] 5.3 清理 pipeline-controller.js v3 殘留 | files: `plugins/vibe/scripts/lib/flow/pipeline-controller.js`
   - 移除 shouldRetryStage import
