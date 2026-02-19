@@ -714,7 +714,7 @@ run_scenario() {
   # 5. 等待完成
   local final_status="UNKNOWN"
 
-  if [ "$id" = "C03" ] || [ "$id" = "E05" ]; then
+  if [ "$id" = "E05" ]; then
     final_status=$(wait_for_plan_then_cancel "$uuid" "$sess" "$timeout_sec" "$id")
   elif [ -n "$follow_up" ]; then
     final_status=$(handle_follow_up "$uuid" "$sess" "$follow_up" "$timeout_sec" "$id" "$project_dir" "$mem_dir")
@@ -842,7 +842,7 @@ main() {
     E01           # v4: fix 單階段（便宜）
     A08 B05 B08   # docs-only
     A07           # review-only
-    C06 C07 C08   # 模糊測試
+    C03 C04 C05   # 模糊測試
     A03 B04 D04   # quick-dev
     E02           # v4: quick-dev 三階段
     E06           # v4: pipeline 完成後 state 清理
@@ -851,7 +851,7 @@ main() {
     A05           # test-first
     A02 B01 B06 D03 # standard
     E03           # v4: Guard 阻擋驗證（standard）
-    C01 C02 C03 C04 C05 # 回復
+    C01 C02       # 回復（retry + 升級）
     E04           # v4: REVIEW FAIL 回退（含 retryHistory 驗證）
     E05           # v4: cancel 中斷（最後跑）
     A01 D01 D02 D05 # full / 環境

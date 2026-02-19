@@ -69,7 +69,7 @@ const REFERENCE_PIPELINES = {
   'standard':   { stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],                       enforced: true,  label: '標準開發', description: '新功能（無 UI）、大重構' },
   'quick-dev':  { stages: ['DEV', 'REVIEW', 'TEST'],                                               enforced: true,  label: '快速開發', description: 'bugfix + 補測試、小改動' },
   'fix':        { stages: ['DEV'],                                                                  enforced: true,  label: '快速修復', description: 'hotfix、config、一行修改' },
-  'test-first': { stages: ['TEST', 'DEV', 'TEST'],                                                  enforced: true,  label: 'TDD 開發', description: 'TDD 工作流' },
+  'test-first': { stages: ['TEST', 'DEV', 'TEST'],                                                    enforced: true,  label: 'TDD 開發', description: 'TDD 工作流（RED→GREEN→REFACTOR）' },
   'ui-only':    { stages: ['DESIGN', 'DEV', 'QA'],                                                  enforced: true,  label: 'UI 調整',  description: '純 UI/樣式調整' },
   'review-only':{ stages: ['REVIEW'],                                                               enforced: true,  label: '程式碼審查', description: '程式碼審查' },
   'docs-only':  { stages: ['DOCS'],                                                                 enforced: true,  label: '文件更新', description: '純文件更新' },

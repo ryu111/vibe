@@ -584,17 +584,17 @@ console.log('═'.repeat(55));
 
     test('F1: 偵測到遺漏階段（硬阻擋）', () => {
       assert.ok(checkResult.json);
-      assert.strictEqual(checkResult.json.continue, false);
-      assert.ok(checkResult.json.stopReason.includes('Pipeline 未完成'));
+      assert.strictEqual(checkResult.json.decision, 'block');
+      assert.ok(checkResult.json.reason.includes('Pipeline'));
     });
 
     test('F2: 遺漏提示包含 DEV 相關資訊', () => {
-      const msg = checkResult.json.systemMessage;
+      const msg = checkResult.json.reason;
       assert.ok(msg.includes('DEV') || msg.includes('/vibe:dev') || msg.includes('developer'));
     });
 
-    test('F3: continue=false（硬阻擋，強制繼續完成遺漏階段）', () => {
-      assert.strictEqual(checkResult.json.continue, false);
+    test('F3: decision=block（硬阻擋，強制繼續完成遺漏階段）', () => {
+      assert.strictEqual(checkResult.json.decision, 'block');
     });
   } finally {
     cleanState(sid);
@@ -862,13 +862,11 @@ console.log('══════════════════════�
 (() => {
   const sid = 'e2e-llm-first';
   try {
-    // J1-J5: 非顯式 prompt → main-agent → none pipeline → research taskType
+    // J1-J3: 模糊 prompt → main-agent → none（heuristic 未匹配）
     const mainAgentCases = [
       { prompt: '做一個 poc 測試看看', note: 'poc + 看看 → main-agent' },
       { prompt: 'scaffold 一個新專案', note: 'scaffold → main-agent' },
       { prompt: '簡單的範例 demo', note: '簡單 demo → main-agent' },
-      { prompt: '建立 hello world express server', note: 'hello world → main-agent' },
-      { prompt: 'develop a prototype app', note: 'prototype → main-agent' },
     ];
 
     for (let i = 0; i < mainAgentCases.length; i++) {
@@ -884,7 +882,29 @@ console.log('══════════════════════�
       });
     }
 
-    // J6-J8: 純 Research（Main Agent 自主判斷，command hook 回傳 none）
+    // J4-J5: 新增/建立/develop → 落入 Layer 2 main-agent（heuristic 不分類多階段 pipeline）
+    const featureFallbackCases = [
+      { prompt: '建立 hello world express server', note: '建立 → Layer 2 main-agent' },
+      { prompt: 'develop a prototype app', note: 'develop → Layer 2 main-agent' },
+    ];
+    // J4: 建立 → 不再被 heuristic 匹配 → main-agent
+    initState(sid);
+    runHook('task-classifier', { session_id: sid, prompt: featureFallbackCases[0].prompt });
+    test(`J4: main-agent → none — ${featureFallbackCases[0].note}`, () => {
+      const state = readState(sid);
+      assert.strictEqual(state.classification.pipelineId, 'none');
+      assert.strictEqual(state.classification.source, 'main-agent');
+    });
+    // J5: develop prototype → main-agent
+    initState(sid);
+    runHook('task-classifier', { session_id: sid, prompt: featureFallbackCases[1].prompt });
+    test(`J5: main-agent → none — ${featureFallbackCases[1].note}`, () => {
+      const state = readState(sid);
+      assert.strictEqual(state.classification.pipelineId, 'none');
+      assert.strictEqual(state.classification.source, 'main-agent');
+    });
+
+    // J6-J8: 純 Research（問句模式 → none）
     const pureResearchCases = [
       { prompt: '查看目前的架構', note: '查看(research) → main-agent' },
       { prompt: '這個 API 是什麼？', note: '是什麼(research) → main-agent' },
@@ -903,21 +923,21 @@ console.log('══════════════════════�
       });
     }
 
-    // J9-J10: Feature prompt（Main Agent 自主判斷，systemMessage 注入分類指令）
-    const pureFeatureCases = [
-      { prompt: '建立完整的使用者認證系統', note: '建立...系統 → main-agent' },
-      { prompt: 'implement user authentication', note: 'implement → main-agent' },
+    // J9-J10: 複雜 feature prompt → 落入 Layer 2 main-agent（heuristic 不分類多階段 pipeline）
+    const complexFeatureCases = [
+      { prompt: '建立完整的使用者認證系統', note: '建立...系統 → Layer 2 main-agent' },
+      { prompt: 'implement user authentication', note: 'implement → Layer 2 main-agent' },
     ];
 
-    for (let i = 0; i < pureFeatureCases.length; i++) {
-      const { prompt, note } = pureFeatureCases[i];
+    for (let i = 0; i < complexFeatureCases.length; i++) {
+      const { prompt, note } = complexFeatureCases[i];
       initState(sid);
       runHook('task-classifier', { session_id: sid, prompt });
 
-      test(`J${i + 9}: main-agent → none/research — ${note}`, () => {
+      test(`J${i + 9}: main-agent → none — ${note}`, () => {
         const state = readState(sid);
         assert.strictEqual(state.classification.pipelineId, 'none');
-        assert.strictEqual(state.classification.taskType, 'research');
+        assert.strictEqual(state.classification.source, 'main-agent');
       });
     }
 
@@ -1300,20 +1320,20 @@ console.log('══════════════════════�
       stop_hook_active: false,
     });
 
-    test('N1: pipeline-check 回應 continue=false', () => {
+    test('N1: pipeline-check 回應 decision=block', () => {
       assert.ok(checkResult.json);
-      assert.strictEqual(checkResult.json.continue, false);
+      assert.strictEqual(checkResult.json.decision, 'block');
     });
 
-    test('N2: block 訊息包含 REVIEW 和 TEST', () => {
-      const msg = checkResult.json.systemMessage || checkResult.json.stopReason || '';
+    test('N2: block reason 包含 REVIEW 和 TEST', () => {
+      const msg = checkResult.json.reason || '';
       assert.ok(msg.includes('REVIEW'), 'missing 應包含 REVIEW');
       assert.ok(msg.includes('TEST'), 'missing 應包含 TEST');
     });
 
-    test('N3: stopReason 包含 Pipeline 未完成', () => {
-      const reason = checkResult.json.stopReason;
-      assert.ok(reason.includes('Pipeline 未完成'), '應包含 Pipeline 未完成');
+    test('N3: reason 包含 Pipeline', () => {
+      const reason = checkResult.json.reason;
+      assert.ok(reason.includes('Pipeline'), '應包含 Pipeline');
     });
 
     // N4: 移除 pendingRetry 後，仍有遺漏（REVIEW failed + TEST+ pending）
@@ -1331,9 +1351,9 @@ console.log('══════════════════════�
 
     test('N4: 無 pendingRetry 時仍有遺漏階段', () => {
       assert.ok(checkResult2.json);
-      assert.strictEqual(checkResult2.json.continue, false);
-      const reason = checkResult2.json.stopReason;
-      assert.ok(reason.includes('Pipeline 未完成'), '應包含 Pipeline 未完成');
+      assert.strictEqual(checkResult2.json.decision, 'block');
+      const reason = checkResult2.json.reason;
+      assert.ok(reason.includes('Pipeline'), '應包含 Pipeline');
     });
 
     // N5: REVIEW reset 為 pending + 有 pendingRetry → 仍在 missing
@@ -1352,7 +1372,7 @@ console.log('══════════════════════�
 
     test('N5: REVIEW pending + pendingRetry → 仍在 missing 列表中', () => {
       assert.ok(checkResult3.json);
-      const msg = checkResult3.json.systemMessage || checkResult3.json.stopReason || '';
+      const msg = checkResult3.json.reason || '';
       assert.ok(msg.includes('REVIEW'), 'REVIEW 應在 missing 中');
     });
   } finally {

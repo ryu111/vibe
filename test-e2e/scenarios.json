@@ -58,7 +58,7 @@
       "category": "A",
       "categoryLabel": "Pipeline 正路徑",
       "name": "fix 快速修復",
-      "prompt": "[pipeline:fix] 把 plugins/vibe/server.js 第一行的 shebang 從 node 改成 env node",
+      "prompt": "[pipeline:fix] 在 plugins/vibe/server.js 頂部（shebang 之後）加一行 'use strict'; 宣告",
       "expected": {
         "pipelineId": "fix",
         "phase": "COMPLETE",
@@ -78,7 +78,7 @@
         "pipelineId": "test-first",
         "phase": "COMPLETE",
         "stageCount": 3,
-        "stages": ["TEST", "DEV", "TEST"],
+        "stages": ["TEST", "DEV", "TEST:2"],
         "source": "explicit"
       },
       "timeout": 120
@@ -162,20 +162,21 @@
       "id": "B01",
       "category": "B",
       "categoryLabel": "自然語言分類",
-      "name": "自然語言→standard",
+      "name": "自然語言→main-agent（新增模組）",
       "prompt": "新增一個 session 管理模組到 plugins/vibe/scripts/lib/ 目錄，包含 createSession、destroySession、getSessionInfo 三個函式",
       "expected": {
-        "pipelineId": "standard",
-        "phase": "COMPLETE"
+        "pipelineId": "none",
+        "phase": "IDLE"
       },
-      "timeout": 120
+      "timeout": 120,
+      "_note": "新增模組 → Layer 2 main-agent 自主判斷（heuristic 不分類多階段 pipeline）"
     },
     {
       "id": "B02",
       "category": "B",
       "categoryLabel": "自然語言分類",
       "name": "自然語言→fix",
-      "prompt": "plugins/vibe/server.js 的 port 寫死 3800 了，改成讀 VIBE_DASHBOARD_PORT 環境變數，預設 3800",
+      "prompt": "把 plugins/vibe/server.js 的 ALIVE_THRESHOLD_MS 從 120000 改成 180000（3 分鐘）",
       "expected": {
         "pipelineId": "fix",
         "phase": "COMPLETE"
@@ -198,13 +199,14 @@
       "id": "B04",
       "category": "B",
       "categoryLabel": "自然語言分類",
-      "name": "自然語言→quick-dev",
+      "name": "自然語言→fix（修復）",
       "prompt": "修復 plugins/vibe/scripts/lib/sentinel/tool-detector.js 的快取機制，加上過期時間 5 分鐘",
       "expected": {
-        "pipelineId": "quick-dev",
+        "pipelineId": "fix",
         "phase": "COMPLETE"
       },
-      "timeout": 120
+      "timeout": 120,
+      "_note": "修復 → heuristic:bugfix → fix pipeline（單階段 DEV）"
     },
     {
       "id": "B05",
@@ -222,13 +224,14 @@
       "id": "B06",
       "category": "B",
       "categoryLabel": "自然語言分類",
-      "name": "自然語言→standard（重構）",
+      "name": "自然語言→main-agent（重構）",
       "prompt": "重構 plugins/vibe/scripts/lib/sentinel/lang-map.js 把硬編碼的語言映射抽出成可配置的 JSON",
       "expected": {
-        "pipelineId": "standard",
-        "phase": "COMPLETE"
+        "pipelineId": "none",
+        "phase": "IDLE"
       },
-      "timeout": 120
+      "timeout": 120,
+      "_note": "重構 → Layer 2 main-agent 自主判斷（heuristic 不分類多階段 pipeline）"
     },
     {
       "id": "B07",
@@ -260,22 +263,6 @@
       "id": "C01",
       "category": "C",
       "categoryLabel": "回復路徑",
-      "name": "REVIEW FAIL→DEV→重審",
-      "prompt": "[pipeline:quick-dev] 修復 plugins/vibe/scripts/lib/hook-logger.js 的 error 處理",
-      "projectVariant": "buggy-review",
-      "expected": {
-        "pipelineId": "quick-dev",
-        "phase": "COMPLETE",
-
-        "hasRetries": true
-      },
-      "timeout": 120,
-      "_note": "buggy 版本植入 console.log 殘留讓 reviewer 報 FAIL（3 stages + 1 retry）"
-    },
-    {
-      "id": "C02",
-      "category": "C",
-      "categoryLabel": "回復路徑",
       "name": "TEST FAIL→DEV→重測",
       "prompt": "[pipeline:quick-dev] 補完 plugins/vibe/scripts/lib/sentinel/tool-detector.js 的邊界測試",
       "projectVariant": "buggy-test",
@@ -289,19 +276,7 @@
       "_note": "buggy 版本植入必定失敗的測試（3 stages + 1 retry）"
     },
     {
-      "id": "C03",
-      "category": "C",
-      "categoryLabel": "回復路徑",
-      "name": "Cancel 中斷",
-      "prompt": "[pipeline:standard] 新增一個完整的快取管理模組到 scripts/lib/",
-      "expected": {
-        "cancelled": true
-      },
-      "timeout": 120,
-      "_note": "等 PLAN 完成後送 /cancel"
-    },
-    {
-      "id": "C04",
+      "id": "C02",
       "category": "C",
       "categoryLabel": "回復路徑",
       "name": "Pipeline 升級",
@@ -314,22 +289,7 @@
       "_note": "fix 完成→follow-up 觸發升級→quick-dev（fix 1 + quick-dev 3 = 4 stages）"
     },
     {
-      "id": "C05",
-      "category": "C",
-      "categoryLabel": "回復路徑",
-      "name": "連續任務",
-      "prompt": "[pipeline:fix] 把 hook-logger.js 的 MAX_LINES 從 500 改成 1000",
-      "followUp": "plugins/vibe/scripts/lib/registry.js 有哪些 STAGES？",
-      "expected": {
-        "pipelineId": "fix",
-        "phase": "COMPLETE",
-        "sequentialClean": true
-      },
-      "timeout": 120,
-      "_note": "fix 完成→送研究問題→確認 state 正確重設"
-    },
-    {
-      "id": "C06",
+      "id": "C03",
       "category": "C",
       "categoryLabel": "回復路徑",
       "name": "極短 prompt",
@@ -341,7 +301,7 @@
       "_note": "短文本 Layer 3 LLM 觸發，不驗證具體 pipeline"
     },
     {
-      "id": "C07",
+      "id": "C04",
       "category": "C",
       "categoryLabel": "回復路徑",
       "name": "中英混合",
@@ -353,7 +313,7 @@
       "_note": "refactor 可能分類為 standard（6 stages）"
     },
     {
-      "id": "C08",
+      "id": "C05",
       "category": "C",
       "categoryLabel": "回復路徑",
       "name": "模糊意圖",
@@ -510,7 +470,7 @@
         }
       },
       "timeout": 120,
-      "_note": "E04: REVIEW FAIL → DEV 回退 → REVIEW 重跑 — 驗證 retryHistory 在回退場景正確累積（等同 C01 但額外驗 v4 retryHistory）"
+      "_note": "E04: REVIEW FAIL → DEV 回退 → REVIEW 重跑 — 驗證 retryHistory 在回退場景正確累積"
     },
     {
       "id": "E05",

@@ -78,6 +78,40 @@ function loadState(sessionId) {
 }
 
 /**
+ * 解析 suffixed stage：當 DAG 包含同 base name 的多個 stage（如 TEST、TEST:2）時，
+ * 根據依賴滿足度選擇正確的目標。
+ *
+ * 核心邏輯：多個同名候選 → 優先選依賴已滿足且 DAG 位置最晚的 pending/active stage。
+ * 這解決了 crash recovery 把早期 stage 重設為 pending 後造成的歧義。
+ *
+ * @param {Object} state - pipeline state
+ * @param {string} baseStage - AGENT_TO_STAGE 映射結果（如 TEST）
+ * @returns {string} 實際應追蹤的 stage ID
+ */
+function resolveSuffixedStage(state, baseStage) {
+  if (!baseStage || !state?.dag) return baseStage;
+  const dagStages = state.dagStages || Object.keys(state.dag);
+  // 收集所有同 base name 的 stage
+  const candidates = dagStages.filter(s => getBaseStage(s) === baseStage);
+  if (candidates.length <= 1) return baseStage;
+  // 多個同名 stage → 逆序找依賴已滿足且 pending/active 的
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    const s = candidates[i];
+    const st = state.stages?.[s]?.status;
+    if (st && st !== 'pending' && st !== 'active') continue;
+    const deps = state.dag[s]?.deps || state.dagDeps?.[s] || [];
+    const allDepsMet = deps.every(d => state.stages?.[d]?.status === 'completed');
+    if (allDepsMet) return s;
+  }
+  // fallback：第一個 pending/active
+  for (const s of candidates) {
+    const st = state.stages?.[s]?.status;
+    if (!st || st === 'pending' || st === 'active') return s;
+  }
+  return baseStage;
+}
+
+/**
  * 檢查 transcript 是否有 assistant 訊息（表示 agent 確實執行過）
  * CRASH 判斷必須先確認 agent 有實際輸出，才能視為「輸出缺失」
  * @param {string} transcriptPath
@@ -504,9 +538,9 @@ async function classify(sessionId, prompt, options = {}) {
   }
 
   // 已知模板 → 立即建 DAG（不論 explicit 或 regex/LLM 來源）
-  // pipeline-architect 只用於未知模板、自訂 DAG、或重複 stage（如 test-first [TEST,DEV,TEST]）
-  const hasUniqueStages = new Set(stages).size === stages.length;
-  if (PIPELINES[pipelineId] && stages.length > 0 && hasUniqueStages) {
+  // pipeline-architect 只用於未知模板或自訂 DAG
+  // 重複 stage（如 test-first [TEST,DEV,TEST]）由 templateToDag 內建的 deduplicateStages 處理
+  if (PIPELINES[pipelineId] && stages.length > 0) {
     // v4 Phase 4：已知模板改用 templateToDag（含 barrier/onFail/next）
     const dag = templateToDag(pipelineId, stages);
     const blueprint = buildBlueprint(dag);
@@ -589,7 +623,7 @@ function onDelegate(sessionId, agentType, toolInput) {
   if (!state) return { allow: true };
 
   const shortAgent = extractShortAgent(agentType);
-  const stage = AGENT_TO_STAGE[shortAgent] || '';
+  const stage = resolveSuffixedStage(state, AGENT_TO_STAGE[shortAgent] || '');
 
   // pendingRetry 防護：只允許 DEV
   const phase = ds.derivePhase(state);
@@ -638,12 +672,13 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
     return handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline);
   }
 
-  // 正常 stage agent
-  const currentStage = pipeline.agentToStage[agentType] || AGENT_TO_STAGE[shortAgent];
-  if (!currentStage) return { systemMessage: '' };
+  // 正常 stage agent（支援 suffixed stage 如 TEST:2）
+  const baseStage = pipeline.agentToStage[agentType] || AGENT_TO_STAGE[shortAgent];
+  if (!baseStage) return { systemMessage: '' };
 
   let state = loadState(sessionId);
   if (!state) return { systemMessage: '' };
+  const currentStage = resolveSuffixedStage(state, baseStage);
 
   // Design 需求偵測
   if (detectDesignNeed(state, currentStage)) {
@@ -1364,10 +1399,9 @@ function onSessionStop(sessionId) {
   ds.writeState(sessionId, state);
 
   // ── Crash Recovery：自動回收 crashed+pending 的階段 ──
-  // 模型在 -p 模式下可能不遵從 ⛔ 重新委派指令，導致 crashed stage
-  // 永遠卡在 pending。blockCount >= 2 時主動介入，讀取 context_file
-  // 用 inferRouteFromContent 推斷 verdict 並自動完成。
-  if (blockCount >= 2) {
+  // Agent crash 產生明確的 crashes 計數器，無需等 blockCount
+  // 累積 — 有 crash 就立即回收（-p 模式只有一次 Stop 事件）
+  {
     const crashedPending = Object.entries(state.stages)
       .filter(([id, s]) => s.status === ds.STAGE_STATUS.PENDING && (state.crashes?.[id] || 0) > 0);
 

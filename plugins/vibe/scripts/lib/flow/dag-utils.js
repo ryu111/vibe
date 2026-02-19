@@ -136,6 +136,20 @@ function validateDag(dag) {
 }
 
 /**
+ * 偵測並消除重複 stage 名稱（如 ['TEST','DEV','TEST'] → ['TEST','DEV','TEST:2']）
+ * 使用 `:N` 後綴，相容 getBaseStage() 的 `:` 分割邏輯。
+ * @param {string[]} stages
+ * @returns {string[]} 去重後的 stage 列表
+ */
+function deduplicateStages(stages) {
+  const count = {};
+  return stages.map(s => {
+    count[s] = (count[s] || 0) + 1;
+    return count[s] > 1 ? `${s}:${count[s]}` : s;
+  });
+}
+
+/**
  * 從線性 stage 列表建立 DAG（每個 stage 依賴前一個）
  * @param {string[]} stages - 如 ['PLAN', 'ARCH', 'DEV']
  * @returns {Object} DAG 物件
@@ -196,11 +210,12 @@ function buildBlueprint(dag) {
  * @returns {Object} 增強 DAG 物件（含 barrier/onFail/next 欄位）
  */
 function templateToDag(pipelineId, stages) {
-  // 取得 stages 列表
-  const templateStages = stages || REFERENCE_PIPELINES[pipelineId]?.stages || [];
-  if (templateStages.length === 0) {
+  // 取得 stages 列表（自動消除重複，如 TEST→DEV→TEST 變 TEST→DEV→TEST:2）
+  const rawStages = stages || REFERENCE_PIPELINES[pipelineId]?.stages || [];
+  if (rawStages.length === 0) {
     return {};
   }
+  const templateStages = deduplicateStages(rawStages);
 
   // 先用 linearToDag 建立基礎結構
   const dag = linearToDag(templateStages);
@@ -513,6 +528,7 @@ function enrichCustomDag(dag) {
 
 module.exports = {
   getBaseStage,
+  deduplicateStages,
   resolveAgent,
   topologicalSort,
   validateDag,

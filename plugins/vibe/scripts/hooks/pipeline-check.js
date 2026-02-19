@@ -25,9 +25,11 @@ safeRun('pipeline-check', (data) => {
     stopReason: result.stopReason,
   });
 
+  // ECC Stop hook 標準格式：decision:"block" + reason
+  // continue:false 在 -p 模式可能不被 honor，decision:"block" 更可靠
+  // reason 作為下一個 prompt 送回 Claude，確保模型繼續委派
   console.log(JSON.stringify({
-    continue: result.continue,
-    stopReason: result.stopReason,
-    systemMessage: result.systemMessage,
+    decision: 'block',
+    reason: result.systemMessage,
   }));
 });
