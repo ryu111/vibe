@@ -68,10 +68,18 @@ const FILE_PATH_PATTERN = /(?:plugins\/|scripts\/|src\/|lib\/|docs\/|tests?\/)\S
  * Layer 2（Main Agent systemMessage 自主判斷）處理。
  */
 const HEURISTIC_RULES = [
-  // system-feedback: pipeline 系統回饋（stop hook reason / delegation hint）
+  // system-feedback: pipeline 系統回饋（stop hook reason / delegation hint / 系統通知）
   // stop hook 的 decision:"block" reason 會成為新 prompt → 必須在最前面攔截
+  // 涵蓋：⛔ block reason + ⚠️ 警告 + background task 完成通知
   { id: 'system-feedback', pipeline: 'none',
-    test: (p) => /^⛔/.test(p.trim()) },
+    test: (p) => {
+      const t = p.trim();
+      // Hook block reason 前綴（pipeline-check / stage-transition 等）
+      if (/^[⛔⚠️]/.test(t)) return true;
+      // 系統通知模式（background task 結果、agent 回報、自動化觸發）
+      if (/^(Background task|Task .+ (completed|finished|failed)|Result from|Output from)/i.test(t)) return true;
+      return false;
+    }},
 
   // none: 純問答（最先匹配，避免誤分類）
   { id: 'question', pipeline: 'none',
@@ -88,10 +96,10 @@ const HEURISTIC_RULES = [
                  !/(?:重構|refactor|新增.*模組|新增.*功能)/i.test(p) },
 
   // fix: 修復/修正 bug（1 階段 — 多階段 quick-dev 交由 Layer 2）
-  // 排除系統通知、背景任務完成等非使用者意圖的 prompt
+  // 排除系統通知、背景任務完成、hook 回饋等非使用者意圖的 prompt
   { id: 'bugfix', pipeline: 'fix',
     test: (p) => /(?:修復|修正|fix|bug|邊界[條情]|防禦性|補[完上加].*測試|加[上入].*處理)/i.test(p) &&
-                 !/(completed|已完成|status|背景|background|通知|notification)/i.test(p) },
+                 !/(completed|已完成|finished|已結束|status|背景|background|通知|notification|pipeline|禁止停止|尚未完成)/i.test(p) },
 
   // 新增/建立/重構 → 不在 heuristic 層分類（需要完整 context 判斷 pipeline 規模）
   // 交由 Layer 2 Main Agent 根據對話 context 自主選擇 standard/quick-dev/fix

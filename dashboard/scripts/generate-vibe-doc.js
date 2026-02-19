@@ -20,26 +20,36 @@ const path = require('path');
 // ─── 模組映射（設計決策，新增組件時需更新） ───
 
 const SKILL_MODULE_MAP = {
-  scope: 'Flow', architect: 'Flow', checkpoint: 'Flow',
-  'context-status': 'Flow', 'env-detect': 'Flow', cancel: 'Flow', pipeline: 'Flow', timeline: 'Flow',
-  design: 'Design',
+  // Pipeline（2）
+  pipeline: 'Pipeline', cancel: 'Pipeline',
+  // Planning（4）
+  scope: 'Planning', architect: 'Planning', design: 'Planning', dev: 'Planning',
+  // Sentinel（9）
   review: 'Sentinel', lint: 'Sentinel', format: 'Sentinel',
   security: 'Sentinel', tdd: 'Sentinel', e2e: 'Sentinel',
   qa: 'Sentinel', coverage: 'Sentinel', verify: 'Sentinel',
+  // Patterns（9）
   'coding-standards': 'Patterns', 'frontend-patterns': 'Patterns',
   'backend-patterns': 'Patterns', 'db-patterns': 'Patterns',
   'typescript-patterns': 'Patterns', 'python-patterns': 'Patterns',
   'go-patterns': 'Patterns', 'testing-patterns': 'Patterns',
+  refactor: 'Patterns',
+  // Evolve（2）
   evolve: 'Evolve', 'doc-sync': 'Evolve',
-  dashboard: 'Dashboard',
+  // Monitor（4）
+  dashboard: 'Monitor', timeline: 'Monitor',
+  'context-status': 'Monitor', 'hook-diag': 'Monitor',
+  // Remote（2）
   remote: 'Remote', 'remote-config': 'Remote',
-  'hook-diag': '診斷',
-  health: '維護',
+  // Tools（4）
+  checkpoint: 'Tools', 'env-detect': 'Tools',
+  health: 'Tools', 'memory-audit': 'Tools',
 };
 
 const AGENT_MODULE_MAP = {
-  planner: 'Flow', architect: 'Flow', developer: 'Flow',
-  designer: 'Design',
+  'pipeline-architect': 'Pipeline',
+  planner: 'Planning', architect: 'Planning',
+  designer: 'Planning', developer: 'Planning',
   'code-reviewer': 'Sentinel', 'security-reviewer': 'Sentinel',
   tester: 'Sentinel', 'build-error-resolver': 'Sentinel',
   'e2e-runner': 'Sentinel', qa: 'Sentinel',
@@ -61,50 +71,49 @@ const AGENT_SHORT_DESC = {
 };
 
 const MODULE_INFO = [
-  { key: 'Flow',      desc: '開發工作流 + Pipeline 管理' },
-  { key: 'Design',    desc: 'UI/UX 設計系統生成' },
+  { key: 'Pipeline',  desc: 'Pipeline 工作流管理' },
+  { key: 'Planning',  desc: '規劃、架構設計、UI/UX 設計、開發實作' },
   { key: 'Sentinel',  desc: '品質全鏈守衛' },
-  { key: 'Patterns',  desc: '語言/框架模式庫' },
+  { key: 'Patterns',  desc: '語言/框架模式庫 + 重構' },
   { key: 'Evolve',    desc: '知識進化 + 文件同步' },
-  { key: 'Dashboard', desc: 'Pipeline 即時儀表板' },
+  { key: 'Monitor',   desc: 'Pipeline 監控 + 診斷' },
   { key: 'Remote',    desc: 'Telegram 遠端控制' },
-  { key: '維護',      desc: 'RAM 健康檢查' },
-  { key: '診斷',      desc: 'Hook 錯誤診斷' },
+  { key: 'Tools',     desc: '開發工具' },
 ];
 
 const HOOK_META_MAP = {
-  'pipeline-init':         { module: 'Flow',      strength: '—',      desc: '環境偵測 + state file 初始化' },
-  'dashboard-autostart':   { module: 'Dashboard', strength: '—',      desc: '自動啟動 WebSocket server' },
+  'pipeline-init':         { module: 'Pipeline',  strength: '—',      desc: '環境偵測 + state file 初始化' },
+  'dashboard-autostart':   { module: 'Monitor',   strength: '—',      desc: '自動啟動 WebSocket server' },
   'remote-autostart':      { module: 'Remote',    strength: '—',      desc: '自動啟動 bot daemon' },
-  'task-classifier':       { module: 'Flow',      strength: '軟→強',  desc: '任務分類 + pipeline 階段注入' },
+  'task-classifier':       { module: 'Pipeline',  strength: '軟→強',  desc: '任務分類 + pipeline 階段注入' },
   'remote-prompt-forward': { module: 'Remote',    strength: '—',      desc: '使用者輸入轉發 Telegram' },
-  'delegation-tracker':    { module: 'Flow',      strength: '—',      desc: '標記 delegationActive' },
-  'pipeline-guard':        { module: 'Flow',      strength: '硬阻擋', desc: '阻擋 Write|Edit|AskUserQuestion|EnterPlanMode（需用 delegation 或 /vibe:scope）' },
-  'suggest-compact':       { module: 'Flow',      strength: '軟建議', desc: '50 calls 建議 compact' },
+  'delegation-tracker':    { module: 'Pipeline',  strength: '—',      desc: '標記 delegationActive' },
+  'pipeline-guard':        { module: 'Pipeline',  strength: '硬阻擋', desc: '阻擋 Write|Edit|AskUserQuestion|EnterPlanMode（需用 delegation 或 /vibe:scope）' },
+  'suggest-compact':       { module: 'Pipeline',  strength: '軟建議', desc: '50 calls 建議 compact' },
   'danger-guard':          { module: 'Sentinel',  strength: '硬阻擋', desc: '攔截 rm -rf、DROP TABLE 等' },
   'remote-ask-intercept':  { module: 'Remote',    strength: '—',      desc: 'AskUserQuestion → inline keyboard' },
   'auto-lint':             { module: 'Sentinel',  strength: '強建議', desc: '自動 lint + systemMessage' },
   'auto-format':           { module: 'Sentinel',  strength: '—',      desc: '自動格式化（靜默）' },
   'test-check':            { module: 'Sentinel',  strength: '軟建議', desc: '修改程式碼 → 提醒跑測試' },
-  'log-compact':           { module: 'Flow',      strength: '—',      desc: '記錄 compact + 重設計數' },
-  'stage-transition':      { module: 'Flow',      strength: '強建議', desc: '判斷下一步（前進/回退/跳過）' },
+  'log-compact':           { module: 'Pipeline',  strength: '—',      desc: '記錄 compact + 重設計數' },
+  'stage-transition':      { module: 'Pipeline',  strength: '強建議', desc: '判斷下一步（前進/回退/跳過）' },
   'remote-sender':         { module: 'Remote',    strength: '—',      desc: 'Pipeline stage 完成 → Telegram' },
-  'pipeline-check':        { module: 'Flow',      strength: '強建議', desc: '結束前檢查遺漏階段' },
-  'task-guard':            { module: 'Flow',      strength: '硬阻擋', desc: '未完成任務時 block 退出' },
+  'pipeline-check':        { module: 'Pipeline',  strength: '強建議', desc: '結束前檢查遺漏階段' },
+  'task-guard':            { module: 'Pipeline',  strength: '硬阻擋', desc: '未完成任務時 block 退出' },
   'check-console-log':     { module: 'Sentinel',  strength: '強建議', desc: '偵測殘留 console.log/debugger' },
-  'dashboard-refresh':     { module: 'Dashboard', strength: '—',      desc: '觸發 Dashboard 同步鏈' },
+  'dashboard-refresh':     { module: 'Monitor',   strength: '—',      desc: '觸發 Dashboard 同步鏈' },
   'remote-receipt':        { module: 'Remote',    strength: '—',      desc: '/say 已讀回條 + 回合摘要' },
 };
 
 const HOOK_SCRIPT_MODULE = {
-  'pipeline-init.js': 'Flow', 'task-classifier.js': 'Flow',
-  'delegation-tracker.js': 'Flow', 'pipeline-guard.js': 'Flow',
-  'suggest-compact.js': 'Flow', 'log-compact.js': 'Flow',
-  'stage-transition.js': 'Flow', 'pipeline-check.js': 'Flow',
-  'task-guard.js': 'Flow', 'auto-lint.js': 'Sentinel',
+  'pipeline-init.js': 'Pipeline', 'task-classifier.js': 'Pipeline',
+  'delegation-tracker.js': 'Pipeline', 'pipeline-guard.js': 'Pipeline',
+  'suggest-compact.js': 'Pipeline', 'log-compact.js': 'Pipeline',
+  'stage-transition.js': 'Pipeline', 'pipeline-check.js': 'Pipeline',
+  'task-guard.js': 'Pipeline', 'auto-lint.js': 'Sentinel',
   'auto-format.js': 'Sentinel', 'test-check.js': 'Sentinel',
   'danger-guard.js': 'Sentinel', 'check-console-log.js': 'Sentinel',
-  'dashboard-autostart.js': 'Dashboard', 'dashboard-refresh.js': 'Dashboard',
+  'dashboard-autostart.js': 'Monitor', 'dashboard-refresh.js': 'Monitor',
   'remote-autostart.js': 'Remote', 'remote-prompt-forward.js': 'Remote',
   'remote-ask-intercept.js': 'Remote', 'remote-sender.js': 'Remote',
   'remote-receipt.js': 'Remote',
@@ -298,7 +307,7 @@ function generateVibeDoc(specs, metaPath) {
   d.push('');
   d.push('### 設計原則');
   d.push('');
-  d.push('- **先想清楚再寫碼**（Flow）— Pipeline 引導每一步');
+  d.push('- **先想清楚再寫碼**（Pipeline + Planning）— Pipeline 引導每一步');
   d.push('- **寫完就檢查**（Sentinel）— 問題不過夜');
   d.push('- **Claude 知道越多，寫越好**（Patterns）— 純知識注入');
   d.push('- **文件是程式碼的影子**（Evolve）— 自動同步');
@@ -439,9 +448,9 @@ function generateVibeDoc(specs, metaPath) {
   d.push('| e2e-runner | 跨步驟 | 複合流程、資料一致性 | 不重複 QA |');
   d.push('| qa | API/CLI | 啟動 app、呼叫 API | 不寫測試碼 |');
 
-  // ━━━ §4 Flow 模組 ━━━
+  // ━━━ §4 Pipeline + Planning 模組 ━━━
   d.push(hr);
-  d.push('## 4. Flow 模組 — 開發工作流');
+  d.push('## 4. Pipeline + Planning 模組 — 開發工作流');
   d.push('');
   d.push('### 核心理念');
   d.push('');
@@ -637,6 +646,7 @@ function generateVibeDoc(specs, metaPath) {
   d.push('| python-patterns | typing、async/await、dataclass、FastAPI/Django |');
   d.push('| go-patterns | Error handling、Concurrency、Interface、Table-driven tests |');
   d.push('| testing-patterns | 測試金字塔（70/20/10）、Mocking、Fixtures、覆蓋率目標 |');
+  d.push('| refactor | 安全重構策略、漸進式改進、技術債處理 |');
 
   // ━━━ §7 Evolve 模組 ━━━
   d.push(hr);
@@ -671,9 +681,9 @@ function generateVibeDoc(specs, metaPath) {
   d.push('| 0.7 | 成熟 | Skill：≥5 instincts, avg ≥ 0.7 |');
   d.push('| 0.9 | 可進化 | Agent：≥8 instincts, avg ≥ 0.8 |');
 
-  // ━━━ §8 Dashboard 模組 ━━━
+  // ━━━ §8 Monitor 模組 ━━━
   d.push(hr);
-  d.push('## 8. Dashboard 模組 — 即時監控');
+  d.push('## 8. Monitor 模組 — 即時監控與診斷');
   d.push('');
   d.push('### 架構');
   d.push('');

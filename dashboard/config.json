@@ -89,8 +89,8 @@
       "color": "var(--yellow)",
       "borderStyle": "dashed",
       "title": "PATTERNS",
-      "subtitle": "純知識庫 · 8 skills · 無 hooks/agents",
-      "detail": "coding-standards · frontend · backend · typescript · python · go · db · testing",
+      "subtitle": "純知識庫 + 重構 · 9 skills · 無 hooks/agents",
+      "detail": "coding-standards · frontend · backend · typescript · python · go · db · testing · refactor",
       "connectorLabel": "計畫 + 架構方案就緒"
     },
     {

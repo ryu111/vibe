@@ -868,8 +868,8 @@ function generateIndex(specs) {
   const totalAll = totalSkills + totalAgents + totalHooks + totalScripts;
   const pluginCount = pluginEntries.length;
 
-  // 知識庫 skills 計算（vibe 的 8 個 *-patterns + coding-standards）
-  const knowledgeSkills = ['coding-standards','frontend-patterns','backend-patterns','db-patterns','typescript-patterns','python-patterns','go-patterns','testing-patterns'];
+  // 知識庫 skills 計算（vibe 的 9 個 Patterns 模組 skills）
+  const knowledgeSkills = ['coding-standards','frontend-patterns','backend-patterns','db-patterns','typescript-patterns','python-patterns','go-patterns','testing-patterns','refactor'];
   const knowledgeCount = knowledgeSkills.length;
   const dynamicSkills = totalSkills - knowledgeCount;
 
@@ -918,7 +918,7 @@ function generateIndex(specs) {
 └─────────────────────┬────────────────────────┘
                       ▼
 ┌─ 知識模組 ────────────────────────────────────┐
-│  8 個純知識 skills（coding-standards + 7 語言） │
+│  9 個純知識 skills（coding-standards + 7 語言 + refactor） │
 │  無 hooks/agents — 按需載入                    │
 └─────────────────────┬────────────────────────┘
                       ▼
