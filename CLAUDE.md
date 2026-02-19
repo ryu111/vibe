@@ -263,7 +263,7 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 
 | 路徑 | 內容 | 維護方式 |
 |------|------|---------|
-| `docs/ref/` | plugin 設計文件 + `index.md` + `vibe.md` + `pipeline.md` + `collab.md` | index.md + vibe.md 自動生成 |
+| `docs/ref/` | plugin 設計文件 + `index.md` + `vibe.md` + `pipeline.md`（實作規格）+ `pipeline-issues.md`（技術債務）+ `collab.md` | index.md + vibe.md 自動生成 |
 | `docs/plugin-specs.json` | 組件數量 Single Source of Truth | 手動 |
 | `docs/ECC研究報告.md` | ECC 平台深度分析 | 手動 |
 | `dashboard/` | Build-time 靜態生成系統（HTML + index.md） | Stop hook 自動觸發 |
