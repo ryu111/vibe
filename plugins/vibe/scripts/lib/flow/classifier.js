@@ -68,6 +68,11 @@ const FILE_PATH_PATTERN = /(?:plugins\/|scripts\/|src\/|lib\/|docs\/|tests?\/)\S
  * Layer 2（Main Agent systemMessage 自主判斷）處理。
  */
 const HEURISTIC_RULES = [
+  // system-feedback: pipeline 系統回饋（stop hook reason / delegation hint）
+  // stop hook 的 decision:"block" reason 會成為新 prompt → 必須在最前面攔截
+  { id: 'system-feedback', pipeline: 'none',
+    test: (p) => /^⛔/.test(p.trim()) },
+
   // none: 純問答（最先匹配，避免誤分類）
   { id: 'question', pipeline: 'none',
     test: (p) => QUESTION_PATTERNS.some(r => r.test(p)) && !FILE_PATH_PATTERN.test(p) },

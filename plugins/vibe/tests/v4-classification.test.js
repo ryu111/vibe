@@ -147,6 +147,113 @@ promises.push(test('A08: 已取消 state 非顯式分類被抑制', async () => 
   cleanSessionState(sid);
 }));
 
+// A09: active pipeline 下非顯式分類被抑制（防止 stop hook feedback 幽靈 pipeline）
+promises.push(test('A09: active pipeline 非顯式分類被抑制（stop hook feedback 防禦）', async () => {
+  const sid = 'test-v4-a09';
+  cleanSessionState(sid);
+
+  // 前置：建立 ACTIVE state（pipelineActive=true + DAG + 進行中的 stages）
+  const dag = { DEV: { deps: [] }, REVIEW: { deps: ['DEV'] }, TEST: { deps: ['DEV'] } };
+  const state = {
+    version: 4,
+    sessionId: sid,
+    classification: {
+      pipelineId: 'quick-dev',
+      taskType: 'bugfix',
+      source: 'heuristic',
+      classifiedAt: new Date().toISOString(),
+    },
+    environment: {},
+    openspecEnabled: false,
+    needsDesign: false,
+    dag,
+    blueprint: null,
+    pipelineActive: true,  // ACTIVE
+    activeStages: ['DEV'],
+    stages: {
+      DEV: { status: 'active', agent: 'developer', verdict: null },
+      REVIEW: { status: 'pending', agent: null, verdict: null },
+      TEST: { status: 'pending', agent: null, verdict: null },
+    },
+    retries: {},
+    pendingRetry: null,
+    retryHistory: {},
+    crashes: {},
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
+      reclassifications: [],
+      pipelineRules: [],
+    },
+  };
+  ds.writeState(sid, state);
+
+  // 操作：非顯式分類（模擬 stop hook feedback 被 classifier 匹配為 fix）
+  const result = await ctrl.classify(sid, '修復一個小 bug');
+
+  // 驗證：output 應為 null（active pipeline 不接受非顯式重分類）
+  assert.strictEqual(
+    result.output,
+    null,
+    `active pipeline 下非顯式分類應被抑制，實際 output: ${JSON.stringify(result.output)}`
+  );
+
+  // 驗證：pipeline 分類未被覆寫
+  const newState = ds.readState(sid);
+  assert.strictEqual(newState.classification.pipelineId, 'quick-dev', 'pipelineId 不應被改變');
+  assert.strictEqual(newState.pipelineActive, true, 'pipelineActive 應維持 true');
+
+  cleanSessionState(sid);
+}));
+
+// A10: active pipeline 下顯式 [pipeline:xxx] 仍可覆寫
+promises.push(test('A10: active pipeline 顯式分類可覆寫', async () => {
+  const sid = 'test-v4-a10';
+  cleanSessionState(sid);
+
+  // 前置：同 A09，建立 ACTIVE state
+  const dag = { DEV: { deps: [] } };
+  const state = {
+    version: 4,
+    sessionId: sid,
+    classification: {
+      pipelineId: 'fix',
+      taskType: 'quickfix',
+      source: 'heuristic',
+      classifiedAt: new Date().toISOString(),
+    },
+    environment: {},
+    openspecEnabled: false,
+    needsDesign: false,
+    dag,
+    blueprint: null,
+    pipelineActive: true,
+    activeStages: ['DEV'],
+    stages: {
+      DEV: { status: 'active', agent: 'developer', verdict: null },
+    },
+    retries: {},
+    pendingRetry: null,
+    retryHistory: {},
+    crashes: {},
+    meta: {
+      initialized: true,
+      lastTransition: new Date().toISOString(),
+      reclassifications: [],
+      pipelineRules: [],
+    },
+  };
+  ds.writeState(sid, state);
+
+  // 操作：顯式分類
+  const result = await ctrl.classify(sid, '[pipeline:standard] 重新規劃');
+
+  // 驗證：顯式分類不應被抑制
+  assert.ok(result.output !== null, '顯式分類不應被抑制');
+
+  cleanSessionState(sid);
+}));
+
 // A04 衍生：COMPLETE state 自動 reset
 promises.push(test('A04（衍生）: COMPLETE state 分類前自動重設', async () => {
   const sid = 'test-v4-a04-derived';

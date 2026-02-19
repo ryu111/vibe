@@ -448,6 +448,13 @@ async function classify(sessionId, prompt, options = {}) {
 
   let state = loadState(sessionId);
 
+  // ACTIVE → 忽略非顯式分類（防止 stop hook feedback 覆寫進行中的 pipeline）
+  // stop hook decision:"block" 的 reason 成為新 prompt → classifier 重分類 → 幽靈 pipeline
+  // pipelineActive=true 時，pipeline 正在執行，任何非顯式重分類都是誤觸
+  if (ds.isActive(state) && result.source !== 'explicit') {
+    return { output: null };
+  }
+
   // CANCELLED → 忽略所有非顯式分類（防止 stop hook feedback 循環）
   // cancel 設 pipelineActive=false + meta.cancelled=true，但 stop hook 的
   // block reason 成為新 prompt → classifier 重新分類 → pipelineActive=true → 循環

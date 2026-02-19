@@ -44,6 +44,7 @@ function asyncTest(name, fn) {
 const {
   classifyWithConfidence,
   extractExplicitPipeline,
+  classifyByHeuristic,
   mapTaskTypeToPipeline,
   buildPipelineCatalogHint,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'classifier.js'));
@@ -142,6 +143,38 @@ asyncTest('Layer 1: 所有 pipeline ID 都可解析', async () => {
     assert.strictEqual(result.pipeline, id, `[pipeline:${id}] 應解析為 ${id}`);
     assert.strictEqual(result.source, 'explicit');
   }
+});
+
+// ─── Part 1b-2: classifyByHeuristic — system-feedback 偵測 ──
+
+console.log('\n🧪 Part 1b-2: classifyByHeuristic — system-feedback 偵測');
+console.log('═'.repeat(50));
+
+test('system-feedback: ⛔ 開頭 → none（stop hook reason）', () => {
+  const r = classifyByHeuristic('⛔ 禁止停止！Pipeline 缺 DEV 尚未完成。\n你必須立即呼叫 Skill 工具');
+  assert.ok(r, '應有匹配結果');
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+});
+
+test('system-feedback: ⛔ 含修復關鍵字仍匹配 system-feedback（優先於 bugfix）', () => {
+  const r = classifyByHeuristic('⛔ 禁止停止！修復尚未完成');
+  assert.ok(r);
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+});
+
+test('system-feedback: 非 ⛔ 開頭不匹配', () => {
+  const r = classifyByHeuristic('修復一個小 bug');
+  assert.ok(r);
+  assert.strictEqual(r.matchedRule, 'heuristic:bugfix', '非 ⛔ 開頭應正常匹配 bugfix');
+});
+
+asyncTest('Layer 1.5: ⛔ stop hook feedback → none/heuristic:system-feedback', async () => {
+  const result = await classifyWithConfidence('⛔ 禁止停止！Pipeline 缺 REVIEW, TEST 尚未完成。');
+  assert.strictEqual(result.pipeline, 'none');
+  assert.strictEqual(result.source, 'heuristic');
+  assert.strictEqual(result.matchedRule, 'heuristic:system-feedback');
 });
 
 // ─── Part 1c: classifyWithConfidence Fallback (async, 無 API key) ──
