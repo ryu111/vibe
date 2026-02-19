@@ -693,6 +693,43 @@ test('pipelineActive=true + tee .go → bash-write-bypass', () => {
 });
 
 // ═══════════════════════════════════════════════
+console.log('\n🔓 目標 3：Rule 6.5 Pipeline state file 寫入白名單（cancel 逃生門）');
+console.log('═'.repeat(55));
+// ═══════════════════════════════════════════════
+
+const os = require('os');
+
+// 目標 3.1：pipelineActive=true + Write pipeline-state-*.json → allow
+test('目標 3.1：Write pipeline-state-*.json → allow（cancel 逃生門）', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const stateFilePath = path.join(os.homedir(), '.claude', 'pipeline-state-test-session.json');
+  const r = evaluate('Write', { file_path: stateFilePath }, state);
+  assert.strictEqual(r.decision, 'allow', 'pipeline state file 寫入應被放行');
+});
+
+// 目標 3.2：pipelineActive=true + Edit pipeline-state-*.json → allow
+test('目標 3.2：Edit pipeline-state-*.json → allow（cancel 逃生門）', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const stateFilePath = path.join(os.homedir(), '.claude', 'pipeline-state-abc123.json');
+  const r = evaluate('Edit', { file_path: stateFilePath }, state);
+  assert.strictEqual(r.decision, 'allow', 'pipeline state file 編輯應被放行');
+});
+
+// 目標 3.3：pipelineActive=true + Write 其他 .json → block（非 state file）
+test('目標 3.3：Write 其他 .json 檔案 → block（非 pipeline state）', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const r = evaluate('Write', { file_path: '/some/path/config.json' }, state);
+  assert.strictEqual(r.decision, 'block', '非 pipeline state 的 JSON 應被阻擋');
+});
+
+// 目標 3.4：pipelineActive=true + Write pipeline-state 但路徑不在 ~/.claude/ → block
+test('目標 3.4：Write pipeline-state-*.json 但路徑不在 ~/.claude/ → block', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const r = evaluate('Write', { file_path: '/tmp/pipeline-state-evil.json' }, state);
+  assert.strictEqual(r.decision, 'block', '非 ~/.claude/ 路徑應被阻擋');
+});
+
+// ═══════════════════════════════════════════════
 // 結果輸出
 // ═══════════════════════════════════════════════
 
