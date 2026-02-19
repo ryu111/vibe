@@ -50,9 +50,9 @@ test('fix pipeline 只有 DEV', () => {
   assert.deepStrictEqual(stages, ['DEV']);
 });
 
-test('test-first pipeline：TDD 雙 TEST 結構', () => {
+test('test-first pipeline：TDD 語意化後綴結構', () => {
   const stages = PIPELINES['test-first'].stages;
-  assert.deepStrictEqual(stages, ['TEST', 'DEV', 'TEST']);
+  assert.deepStrictEqual(stages, ['TEST', 'DEV', 'TEST:verify']);
 });
 
 test('ui-only pipeline 包含 3 個階段', () => {
@@ -100,10 +100,10 @@ test('none pipeline 不強制', () => {
 
 // ===== TDD 雙 TEST 結構驗證 =====
 
-test('TDD pipeline TEST 出現兩次', () => {
+test('TDD pipeline 含 TEST:verify 語意化後綴', () => {
   const stages = PIPELINES['test-first'].stages;
-  const testCount = stages.filter(s => s === 'TEST').length;
-  assert.strictEqual(testCount, 2);
+  assert.ok(stages.includes('TEST:verify'),
+    `test-first 應含 TEST:verify，實際：${JSON.stringify(stages)}`);
 });
 
 test('TDD pipeline DEV 出現一次', () => {

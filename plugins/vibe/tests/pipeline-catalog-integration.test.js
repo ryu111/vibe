@@ -73,17 +73,20 @@ test('每個 pipeline 有 stages/enforced/label/description 欄位', () => {
   });
 });
 
-test('所有 pipeline 的 stages 是 STAGE_ORDER 子集', () => {
+test('所有 pipeline 的 stages 是 STAGE_ORDER 子集（含後綴 stage 用 base 比對）', () => {
+  // 語意化後綴 stage（如 TEST:verify）的 base（TEST）必須在 STAGE_ORDER 中
+  const getBase = (s) => s.split(':')[0];
   Object.entries(PIPELINES).forEach(([id, p]) => {
     p.stages.forEach(stage => {
-      assert.ok(STAGE_ORDER.includes(stage), `${id} 包含非法 stage: ${stage}`);
+      const base = getBase(stage);
+      assert.ok(STAGE_ORDER.includes(base), `${id} 包含非法 stage: ${stage}（base: ${base}）`);
     });
   });
 });
 
-test('TDD pipeline 包含重複 TEST', () => {
+test('TDD pipeline 含 TEST:verify 語意化後綴', () => {
   const stages = PIPELINES['test-first'].stages;
-  assert.deepStrictEqual(stages, ['TEST', 'DEV', 'TEST']);
+  assert.deepStrictEqual(stages, ['TEST', 'DEV', 'TEST:verify']);
 });
 
 test('PIPELINE_PRIORITY 升級路徑正確', () => {
@@ -198,15 +201,15 @@ test('security pipeline 階段結構', () => {
 
 console.log('\n🧪 Part 6: TDD Pipeline 雙 TEST 邊界測試');
 
-test('TDD pipeline 結構：TEST-DEV-TEST', () => {
+test('TDD pipeline 結構：TEST-DEV-TEST:verify', () => {
   const stages = PIPELINES['test-first'].stages;
-  assert.deepStrictEqual(stages, ['TEST', 'DEV', 'TEST']);
+  assert.deepStrictEqual(stages, ['TEST', 'DEV', 'TEST:verify']);
 });
 
-test('TDD pipeline 有兩個 TEST', () => {
+test('TDD pipeline 含 TEST:verify（語意化驗收 stage）', () => {
   const stages = PIPELINES['test-first'].stages;
-  const testCount = stages.filter(s => s === 'TEST').length;
-  assert.strictEqual(testCount, 2);
+  assert.ok(stages.includes('TEST:verify'),
+    `test-first 應含 TEST:verify，實際：${JSON.stringify(stages)}`);
 });
 
 test('TDD pipeline 包含 DEV', () => {

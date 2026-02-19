@@ -49,11 +49,11 @@ function cleanupTestFile() {
 section('Part 1: Schema — 事件類型與 envelope');
 
 // 1.1 EVENT_TYPES 完整性
-assert(Object.keys(EVENT_TYPES).length === 33, 'EVENT_TYPES 有 31 種事件（v4 新增 PIPELINE_CANCELLED + TRANSCRIPT_LEAK_WARNING）');
+assert(Object.keys(EVENT_TYPES).length === 32, 'EVENT_TYPES 有 32 種事件（移除 PIPELINE_ABORTED）');
 
 // 1.2 CATEGORIES 覆蓋所有事件
 const allCatTypes = Object.values(CATEGORIES).flat();
-assert(new Set(allCatTypes).size === 33, 'CATEGORIES 涵蓋全部 31 種事件（去重後）');
+assert(new Set(allCatTypes).size === 32, 'CATEGORIES 涵蓋全部 32 種事件（去重後，移除 PIPELINE_ABORTED）');
 
 // 1.3 CATEGORIES 和 EVENT_TYPES 一致
 const allEventValues = new Set(Object.values(EVENT_TYPES));
@@ -65,7 +65,7 @@ assert(
 );
 
 // 1.4 VALID_TYPES 是 Set
-assert(VALID_TYPES instanceof Set && VALID_TYPES.size === 33, 'VALID_TYPES 是 31 元素 Set（v4 新增 PIPELINE_CANCELLED + TRANSCRIPT_LEAK_WARNING）');
+assert(VALID_TYPES instanceof Set && VALID_TYPES.size === 32, 'VALID_TYPES 是 32 元素 Set（移除 PIPELINE_ABORTED）');
 
 // 1.5 createEnvelope
 const env = createEnvelope('session.start', 'sess-1', { foo: 'bar' });
@@ -91,14 +91,14 @@ assert(validate({ id: 'x', type: 'session.start', sessionId: 's', timestamp: -1,
 assert(validate({ id: 'x', type: 'session.start', sessionId: 's', timestamp: 1, data: 'str' }).valid === false, 'validate data 非物件');
 
 // 1.9 getTypesByCategory
-assert(getTypesByCategory('pipeline').length === 14, 'pipeline 分類有 14 種事件（v4 新增 pipeline.cancelled + barrier.crash-guard + stage.crash-recovery）');
+assert(getTypesByCategory('pipeline').length === 13, 'pipeline 分類有 13 種事件（移除 pipeline.aborted）');
 assert(getTypesByCategory('nonexist').length === 0, '不存在的分類回傳空陣列');
 
 // ── 目標 5：Timeline 新事件類型 ────────────────────
 section('目標 5：Timeline 新事件類型驗證');
 
-// 5.A EVENT_TYPES 總數為 31（v4 新增 PIPELINE_CANCELLED + TRANSCRIPT_LEAK_WARNING）
-assert(Object.keys(EVENT_TYPES).length === 33, 'EVENT_TYPES 總數應為 31');
+// 5.A EVENT_TYPES 總數為 32（移除 PIPELINE_ABORTED）
+assert(Object.keys(EVENT_TYPES).length === 32, 'EVENT_TYPES 總數應為 32');
 
 // 5.B CATEGORIES 為 7 個分類
 assert(Object.keys(CATEGORIES).length === 7, 'CATEGORIES 應有 7 個分類（session/task/agent/pipeline/quality/remote/safety）');
@@ -121,10 +121,10 @@ assert(
   'safety 分類應包含 safety.transcript-leak'
 );
 
-// 5.G safety 分類包含正確的事件類型（agent.crash + pipeline.aborted + safety.transcript-leak）
+// 5.G safety 分類包含正確的事件類型（agent.crash + safety.transcript-leak，已移除 pipeline.aborted）
 assert(CATEGORIES.safety.includes('agent.crash'), 'safety 分類應包含 agent.crash');
-assert(CATEGORIES.safety.includes('pipeline.aborted'), 'safety 分類應包含 pipeline.aborted');
-assert(CATEGORIES.safety.length === 5, 'safety 分類應有 5 個事件類型');
+assert(!CATEGORIES.safety.includes('pipeline.aborted'), 'safety 分類不應包含 pipeline.aborted（已移除）');
+assert(CATEGORIES.safety.length === 4, 'safety 分類應有 4 個事件類型（移除 pipeline.aborted 後）');
 
 // 5.H VALID_TYPES 包含新事件類型
 assert(VALID_TYPES.has('pipeline.cancelled'), 'VALID_TYPES 應包含 pipeline.cancelled');
@@ -170,8 +170,8 @@ assert(leakNoDetailText.includes('bot.js'), `無 detail 時應使用 source，�
 assert(EMOJI_MAP['pipeline.cancelled'] === '🚫', `pipeline.cancelled emoji 應為 🚫，得到：${EMOJI_MAP['pipeline.cancelled']}`);
 assert(EMOJI_MAP['safety.transcript-leak'] === '🔐', `safety.transcript-leak emoji 應為 🔐，得到：${EMOJI_MAP['safety.transcript-leak']}`);
 
-// 5.L getTypesByCategory('safety') 回傳 5 個事件（含 barrier.crash-guard + stage.crash-recovery）
-assert(getTypesByCategory('safety').length === 5, 'safety 分類應有 5 個事件類型');
+// 5.L getTypesByCategory('safety') 回傳 4 個事件（移除 pipeline.aborted，含 barrier.crash-guard + stage.crash-recovery）
+assert(getTypesByCategory('safety').length === 4, 'safety 分類應有 4 個事件類型（移除 pipeline.aborted 後）');
 
 // ══════════════════════════════════════════════════════
 // Part 2: Timeline — emit / query / queryLast

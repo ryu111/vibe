@@ -292,7 +292,6 @@ REVIEW 完成：FAIL（2 CRITICAL, 1 HIGH）
 | `"DEV"` | 失敗，回退到 DEV 修復（**僅限非並行節點**） | 委派 DEV，帶入 `context_file` 路徑 |
 | `"BARRIER"` | 並行節點完成（verdict 攜帶 PASS/FAIL） | barrier 合併結果，全到齊後決定路由 |
 | `"COMPLETE"` | 最後一個節點完成 | Pipeline 結束，解除 relay mode |
-| `"ABORT"` | 不可恢復的錯誤 | Pipeline 異常終止 |
 
 #### 並行節點的路由規則
 
@@ -409,8 +408,7 @@ Sub-agent 完成
              ├── route=NEXT    → "➡️ 委派 {skill}（Node Context: {...}）"
              ├── route=DEV     → "🔄 委派 /vibe:dev（Node Context: {...}）"
              ├── route=BARRIER → 更新計數 → 全到齊？→ "➡️ 委派 {next}"
-             ├── route=COMPLETE→ "✅ Pipeline 完成。自動模式解除。"
-             └── route=ABORT   → "⛔ Pipeline 異常終止。"
+             └── route=COMPLETE→ "✅ Pipeline 完成。自動模式解除。"
 ```
 
 Main Agent **只看 systemMessage**，不看 sub-agent 的回應內容（回應被 §2.3 約束為一行結論）。
@@ -491,7 +489,6 @@ Main Agent 呼叫 Task(REVIEW)
 | pipeline-architect DAG 建立 | `true` | stage-transition（解析 DAG 輸出） |
 | 最後一個 stage 完成（route: COMPLETE） | `false` | stage-transition |
 | 使用者 /vibe:cancel | `false` | cancel skill → controller API |
-| route: ABORT | `false` | stage-transition |
 | Session /clear | `false` | pipeline-init（清除 state） |
 
 ### 3.5 資訊隔離
@@ -780,7 +777,7 @@ function validateRoute(parsed) {
   // 合法 verdict
   if (!['PASS', 'FAIL'].includes(parsed.verdict)) return null;
   // 合法 route
-  if (!['NEXT', 'DEV', 'BARRIER', 'COMPLETE', 'ABORT'].includes(parsed.route)) return null;
+  if (!['NEXT', 'DEV', 'BARRIER', 'COMPLETE'].includes(parsed.route)) return null;
   // FAIL 必須有 severity
   if (parsed.verdict === 'FAIL' && !parsed.severity) parsed.severity = 'MEDIUM';
   // BARRIER 缺 barrierGroup → 補預設值 "default"（不拒絕）
@@ -1142,7 +1139,7 @@ stage-transition 解析邏輯（四層 fallback）：
              + Timeline emit: AGENT_CRASH 事件（note: early-crash）
 ```
 
-**差異說明**：IMPL stage 沒有 PIPELINE_ROUTE 是正常行為（IMPL 不強制輸出路由標記），直接前進。QUALITY stage 若有實質 assistant 輸出卻沒有路由，說明 agent 完成了工作但沒有輸出格式控制標記，走 E2 crash 重新委派流程（最多 3 次；3 次後 Pipeline ABORT）。
+**差異說明**：IMPL stage 沒有 PIPELINE_ROUTE 是正常行為（IMPL 不強制輸出路由標記），直接前進。QUALITY stage 若有實質 assistant 輸出卻沒有路由，說明 agent 完成了工作但沒有輸出格式控制標記，走 E2 crash 重新委派流程（最多 3 次；3 次後 Pipeline 強制終止）。
 
 ---
 
@@ -1167,7 +1164,7 @@ stage-transition 處理流程：
          │   systemMessage: "⛔ {stage} agent 無 PIPELINE_ROUTE 輸出（第 N/3 次）。立即重新委派。"
          └── 無 assistant 訊息（極早期崩潰）→ 視為正常完成，進入分支 C（PASS）
   3. 記錄 Timeline 事件：AGENT_CRASH
-  4. crashes[stage] >= 3 → Pipeline ABORT（異常終止）
+  4. crashes[stage] >= 3 → Pipeline 強制終止
      state.pipelineActive = false
      systemMessage: "⛔ {stage} crash 達 3 次上限，Pipeline 異常終止。自動模式已解除。"
 ```
@@ -1175,12 +1172,12 @@ stage-transition 處理流程：
 **關鍵決策**：
 - IMPL stage 無 PIPELINE_ROUTE → 視為 PASS 正常前進（IMPL 不強制輸出路由標記）
 - QUALITY stage 有 assistant 輸出但無路由 → **視為 crash**，重新委派（crash ≠ 通過審查）
-- QUALITY stage 3 次 crash → **Pipeline ABORT**（不是降級 PASS；3 次都失敗說明 agent 有根本問題，強制終止避免死鎖）
+- QUALITY stage 3 次 crash → **Pipeline 強制終止**（不是降級 PASS；3 次都失敗說明 agent 有根本問題，強制終止避免死鎖）
 
 **並行節點 crash 的特殊處理**：若 crash 的 stage 是 barrier 的一部分（如 REVIEW crash 但 TEST 已完成）：
 - crash 不計入 barrier.completed（因為沒有 ROUTE 輸出）
 - 重新委派後正常完成 → 計入 barrier.completed → 觸發合併
-- 3 次 crash 後 → Pipeline ABORT 異常終止（state.pipelineActive = false，自動模式解除）
+- 3 次 crash 後 → Pipeline 強制終止（state.pipelineActive = false，自動模式解除）
 
 **Barrier-crash guard**（v2.0.8）：防止 barrier sibling crash 後下游 stage 被提前委派。場景：REVIEW crash（pending+crashed）而 TEST 完成 → Branch C（非 barrier 收斂路徑）嘗試路由到 DOCS。Guard 機制：從 `readyStages` 排除 barrier.next 的下游 stage（如 DOCS），強制先重跑 crashed sibling（REVIEW）。重跑完成後 barrier 正常收斂。
 
@@ -1640,20 +1637,9 @@ task-classifier 處理邏輯：
 
 ---
 
-#### E22：Sub-agent 輸出 ABORT
+#### E22：（已移除）ABORT Route
 
-**場景**：Sub-agent 遇到不可恢復的錯誤，輸出 `route: ABORT`。
-
-**防護**：
-
-```
-ABORT 處理：
-  1. 立即停止 pipeline（pipelineActive = false）
-  2. 保留所有 state + context files（供診斷）
-  3. systemMessage: "⛔ Pipeline 異常終止：{hint}"
-  4. Timeline emit: PIPELINE_ABORTED
-  5. 不清理 state（使用者可用 /vibe:pipeline restart 恢復）
-```
+> **v2.1.7 移除**：ABORT route 從未被任何 agent 實際輸出，屬於死碼。所有不可恢復場景由 crash 計數器（MAX_CRASHES=3）自動處理。舊 transcript 中的 `route: "ABORT"` 會被 `validateRoute()` 自動修正為 `DEV`。
 
 ---
 
@@ -1693,7 +1679,6 @@ UX 設計：
 | `AGENT_CRASH` | Sub-agent 異常終止（無 PIPELINE_ROUTE） | `{ stage, crashCount }` | E2 |
 | `PIPELINE_CANCELLED` | 使用者 /vibe:cancel | `{ reason, completedStages }` | E9 |
 | `TRANSCRIPT_LEAK_WARNING` | Sub-agent 回應超過長度閾值（可能含報告） | `{ stage, responseLength }` | E12 |
-| `PIPELINE_ABORTED` | route: ABORT（不可恢復錯誤） | `{ stage, reason }` | E22 |
 | `RETRY_EXHAUSTED` | shouldStop 條件 (2) 觸發 FORCE_NEXT | `{ stage, retryCount, reason }` | E5 |
 
 ---
@@ -1735,7 +1720,7 @@ UX 設計：
     },
     "route": {
       "type": "string",
-      "enum": ["NEXT", "DEV", "BARRIER", "COMPLETE", "ABORT"]
+      "enum": ["NEXT", "DEV", "BARRIER", "COMPLETE"]
     },
     "severity": {
       "type": "string",

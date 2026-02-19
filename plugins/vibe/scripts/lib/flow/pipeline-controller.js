@@ -390,15 +390,6 @@ function emitAgentCrash(sessionId, stage, crashCount, willRetry) {
 }
 
 /**
- * emit PIPELINE_ABORTED 事件
- */
-function emitPipelineAborted(sessionId, stage, reason) {
-  try {
-    tlEmit(EVENT_TYPES.PIPELINE_ABORTED, sessionId, { stage, reason: reason || 'route=ABORT' });
-  } catch (_) {}
-}
-
-/**
  * 最低品質完整性保證：如果 DAG 含 DEV 且任務不是 fix（單一 DEV），
  * 則確保至少有 REVIEW + TEST 品質把關。
  *
@@ -628,7 +619,7 @@ async function classify(sessionId, prompt, options = {}) {
 
   // 已知模板 → 立即建 DAG（不論 explicit 或 regex/LLM 來源）
   // pipeline-architect 只用於未知模板或自訂 DAG
-  // 重複 stage（如 test-first [TEST,DEV,TEST]）由 templateToDag 內建的 deduplicateStages 處理
+  // test-first 使用語意化後綴（TEST:verify），deduplicateStages 作為安全網保留
   if (PIPELINES[pipelineId] && stages.length > 0) {
     // v4 Phase 4：已知模板改用 templateToDag（含 barrier/onFail/next）
     const dag = templateToDag(pipelineId, stages);
@@ -941,20 +932,6 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
     };
   }
 
-  // ── 分支 ABORT: pipeline 異常終止 ──
-  if (routeResult?.route === 'ABORT') {
-    emitPipelineAborted(sessionId, currentStage, routeResult?.hint || 'route=ABORT');
-    state = ds.markStageCompleted(state, currentStage, routeResult);
-    if (state.activeStages) {
-      state = { ...state, activeStages: state.activeStages.filter(s => s !== currentStage) };
-    }
-    state = { ...state, pipelineActive: false, activeStages: [] };
-    ds.writeState(sessionId, state);
-    return {
-      systemMessage: `⛔ Pipeline 異常終止！${routeResult?.hint ? '\n原因：' + routeResult.hint : ''}\n自動模式已解除。`,
-    };
-  }
-
   // ── 分支 BARRIER: 並行節點同步 ──
   if (routeResult?.route === 'BARRIER') {
     const barrierGroup = routeResult.barrierGroup || 'default';
@@ -1185,8 +1162,7 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
       };
     }
 
-    // 達到 crash 上限 → ABORT
-    emitPipelineAborted(sessionId, currentStage, `${currentStage} crash ${crashCount} 次`);
+    // 達到 crash 上限 → 強制終止（行 1146 已 emit willRetry=false 事件）
     state = ds.markStageCompleted(state, currentStage, null);
     if (state.activeStages) {
       state = { ...state, activeStages: state.activeStages.filter(s => s !== currentStage) };

@@ -6,7 +6,7 @@
  * envelope 建構函式和驗證邏輯。
  *
  * @module timeline/schema
- * @exports {Object} EVENT_TYPES - 33 種事件類型常數
+ * @exports {Object} EVENT_TYPES - 32 種事件類型常數
  * @exports {Object} CATEGORIES - 事件分類群組
  * @exports {function} createEnvelope - 建構統一 envelope
  * @exports {function} validate - 驗證事件格式
@@ -14,7 +14,7 @@
 'use strict';
 const crypto = require('crypto');
 
-// ── 33 種事件類型（7 大類） ─────────────────────────────
+// ── 32 種事件類型（7 大類） ─────────────────────────────
 
 const EVENT_TYPES = {
   // Session 生命週期
@@ -40,7 +40,6 @@ const EVENT_TYPES = {
   BARRIER_RESOLVED:    'barrier.resolved', // barrier 全部完成，已合併
   // v4 Phase 4：異常事件
   AGENT_CRASH:         'agent.crash',      // agent crash（無 PIPELINE_ROUTE 輸出）
-  PIPELINE_ABORTED:    'pipeline.aborted', // route=ABORT，pipeline 異常終止
   PIPELINE_CANCELLED:  'pipeline.cancelled', // 使用者取消 pipeline
   BARRIER_CRASH_GUARD: 'barrier.crash-guard', // barrier sibling crashed，阻擋下游
   STAGE_CRASH_RECOVERY:'stage.crash-recovery', // Stop hook 自動回收 crashed stage
@@ -75,10 +74,10 @@ const CATEGORIES = {
   task:     ['task.classified', 'prompt.received', 'delegation.start', 'task.incomplete'],
   agent:    ['tool.used', 'delegation.start'],
   // 注意：部分事件有意跨分類（如 delegation.start 同屬 task+agent，agent.crash 同屬 pipeline+safety）
-  pipeline: ['stage.start', 'stage.complete', 'stage.retry', 'pipeline.complete', 'pipeline.incomplete', 'route.fallback', 'retry.exhausted', 'barrier.waiting', 'barrier.resolved', 'agent.crash', 'pipeline.aborted', 'pipeline.cancelled', 'barrier.crash-guard', 'stage.crash-recovery'],
+  pipeline: ['stage.start', 'stage.complete', 'stage.retry', 'pipeline.complete', 'pipeline.incomplete', 'route.fallback', 'retry.exhausted', 'barrier.waiting', 'barrier.resolved', 'agent.crash', 'pipeline.cancelled', 'barrier.crash-guard', 'stage.crash-recovery'],
   quality:  ['tool.blocked', 'tool.guarded', 'quality.lint', 'quality.format', 'quality.test-needed'],
   remote:   ['ask.question', 'ask.answered', 'turn.summary', 'say.sent', 'say.completed', 'compact.suggested', 'compact.executed'],
-  safety:   ['agent.crash', 'pipeline.aborted', 'safety.transcript-leak', 'barrier.crash-guard', 'stage.crash-recovery'],
+  safety:   ['agent.crash', 'safety.transcript-leak', 'barrier.crash-guard', 'stage.crash-recovery'],
 };
 
 // 合法事件類型集合（快速查找用）

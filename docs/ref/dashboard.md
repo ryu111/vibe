@@ -110,10 +110,10 @@ Pipeline state 儲存於 `~/.claude/pipeline-state-{sessionId}.json`，格式：
 | `session` | `session.start` |
 | `task` | `task.classified`, `prompt.received`, `delegation.start`, `task.incomplete` |
 | `agent` | `tool.used`, `delegation.start` |
-| `pipeline` | `stage.start`, `stage.complete`, `stage.retry`, `pipeline.complete`, `pipeline.incomplete`, `route.fallback`, `retry.exhausted`, `barrier.waiting`, `barrier.resolved`, `agent.crash`, `pipeline.aborted`, `pipeline.cancelled`, `barrier.crash-guard`, `stage.crash-recovery` |
+| `pipeline` | `stage.start`, `stage.complete`, `stage.retry`, `pipeline.complete`, `pipeline.incomplete`, `route.fallback`, `retry.exhausted`, `barrier.waiting`, `barrier.resolved`, `agent.crash`, `pipeline.cancelled`, `barrier.crash-guard`, `stage.crash-recovery` |
 | `quality` | `tool.blocked`, `tool.guarded`, `quality.lint`, `quality.format`, `quality.test-needed` |
 | `remote` | `ask.question`, `ask.answered`, `turn.summary`, `say.sent`, `say.completed`, `compact.suggested`, `compact.executed` |
-| `safety` | `agent.crash`, `pipeline.aborted`, `safety.transcript-leak`, `barrier.crash-guard`, `stage.crash-recovery` |
+| `safety` | `agent.crash`, `safety.transcript-leak`, `barrier.crash-guard`, `stage.crash-recovery` |
 
 注意：`delegation.start` 同屬 `task` + `agent` 兩類；`agent.crash` 同屬 `pipeline` + `safety` 兩類。
 

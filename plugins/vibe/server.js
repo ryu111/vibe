@@ -169,7 +169,7 @@ function formatEvent(event, sessionId) {
     type = d.verdict === 'FAIL' ? 'fail' : 'pass';
   } else if (event.type === 'barrier.waiting') {
     type = 'active';
-  } else if (event.type === 'agent.crash' || event.type === 'pipeline.aborted') {
+  } else if (event.type === 'agent.crash') {
     type = 'fail';
   }
 

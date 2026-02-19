@@ -101,12 +101,12 @@ test('舊 state 沒有 pipelineId → 不崩潰', () => {
   assert.ok(!mockOldState.context.pipelineId);
 });
 
-test('TDD pipeline 允許重複 TEST（test-first 結構）', () => {
+test('TDD pipeline 含 TEST:verify 語意化後綴（test-first 結構）', () => {
   const stages = PIPELINES['test-first'].stages;
   assert.strictEqual(stages.length, 3);
   assert.strictEqual(stages[0], 'TEST');
   assert.strictEqual(stages[1], 'DEV');
-  assert.strictEqual(stages[2], 'TEST');
+  assert.strictEqual(stages[2], 'TEST:verify');
 });
 
 // ===== 5. Pipeline 優先級邊界測試 =====
@@ -258,28 +258,29 @@ console.log('\n🧪 Part 10: Stages 順序正確性');
 
 test('所有 pipeline 的 stages 順序與 STAGE_ORDER 一致（TDD 除外）', () => {
   const { STAGE_ORDER } = require(path.join(__dirname, '..', 'scripts', 'lib', 'registry.js'));
+  // getBaseStage 取 `:` 前的基礎 stage 名稱
+  const getBase = (s) => s.split(':')[0];
 
   Object.entries(PIPELINES).forEach(([id, p]) => {
-    if (id === 'test-first') return; // TDD 例外
+    if (id === 'test-first') return; // TDD 例外（TEST:verify 的 base 是 TEST）
     if (p.stages.length === 0) return; // none 例外
 
     let lastIndex = -1;
     p.stages.forEach(stage => {
-      const currentIndex = STAGE_ORDER.indexOf(stage);
+      const currentIndex = STAGE_ORDER.indexOf(getBase(stage));
       assert.ok(currentIndex > lastIndex, `${id} pipeline 的 ${stage} 順序錯誤`);
       lastIndex = currentIndex;
     });
   });
 });
 
-test('TDD pipeline 允許重複 TEST（唯一例外）', () => {
+test('TDD pipeline TEST:verify 不是重複 stage（語意化後綴）', () => {
   const stages = PIPELINES['test-first'].stages;
-  const testCount = stages.filter(s => s === 'TEST').length;
-  assert.strictEqual(testCount, 2);
+  assert.ok(stages.includes('TEST:verify'),
+    `test-first 應含 TEST:verify，實際：${JSON.stringify(stages)}`);
 
-  // 確認其他 pipeline 沒有重複階段
+  // 確認其他 pipeline 沒有重複階段（test-first 不再有重複）
   Object.entries(PIPELINES).forEach(([id, p]) => {
-    if (id === 'test-first') return;
     const uniqueStages = new Set(p.stages);
     assert.strictEqual(uniqueStages.size, p.stages.length, `${id} 有重複階段`);
   });

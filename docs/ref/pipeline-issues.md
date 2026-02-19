@@ -1,23 +1,23 @@
 # Pipeline 已知問題與技術債務
 
-> 從 `pipeline.md` 第 12 節提取。截至 v2.0.13（2026-02）的已知問題和改進空間。
+> 從 `pipeline.md` 第 12 節提取。截至 v2.1.7（2026-02）的已知問題和改進空間。
 
 ---
 
-## 優先級排序
+## 修復狀態總覽
 
-| 優先級 | 問題 | 理由 |
-|:------:|------|------|
-| **高** | P6 Context Window | 直接影響 agent 品質和整體效能 |
-| **中** | P4 系統通知誤分類 | 影響使用者體驗（不必要的 pipeline 啟動） |
-| **中** | P1 Cancel 死鎖 | workaround 可運作但不優雅 |
-| **中** | P9 Transcript 洩漏 | token 浪費，長 session 累積效應 |
-| **低** | P2 多次 writeState | 效能微量損失 |
-| **低** | P3 ABORT 未使用 | 死碼，不影響功能 |
-| **低** | P5 Classifier 侷限 | Layer 2 作為 fallback 尚可接受 |
-| **低** | P7 RAM 累積 | 有手動工具可用 |
-| **低** | P8 Barrier Timeout | 極少觸發 |
-| **低** | P10 Suffixed Stage | 功能正確，僅維護成本 |
+| 問題 | 嚴重度 | 狀態 | 修復版本 |
+|------|:------:|:----:|:-------:|
+| P1 Cancel 死鎖 | 中 | ✅ 已修復 | v2.1.4 |
+| P2 多次 writeState | 低 | ✅ 已修復 | v2.1.4 |
+| P3 ABORT 未使用 | 低 | ✅ 已修復 | v2.1.7 |
+| P4 系統通知誤分類 | 中 | ✅ 已修復 | v2.1.5 |
+| P5 Classifier 侷限 | 低 | ⚠️ 部分修復 | v2.1.5 |
+| P6 Context Window | 高 | ⚠️ 部分修復 | v2.1.5 |
+| P7 RAM 累積 | 中 | ✅ 已修復 | v2.1.6 |
+| P8 Barrier Timeout | 低 | ✅ 已修復 | v2.1.6 |
+| P9 Transcript 洩漏 | 中 | ⚠️ 部分修復 | v2.1.5 |
+| P10 Suffixed Stage | 低 | ✅ 已修復 | v2.1.7 |
 
 ---
 
@@ -56,11 +56,20 @@
 
 ---
 
-## P3：ABORT Route 未實際使用（嚴重度：低）
+## P3：ABORT Route 未實際使用（嚴重度：低）✅ 已修復
 
-**現狀**：`PIPELINE_ROUTE` schema 定義了 `route: "ABORT"`，E22 描述了處理邏輯，但實際上沒有任何 agent 的 `.md` 指導其輸出 ABORT。所有不可恢復情境（如 project 結構損壞）在實作中由 crash recovery 或 max-retries 處理。
+**修復內容（v2.1.7+）**：完整移除 ABORT route 死碼。
 
-**選項**：移除 ABORT route（簡化 schema）或在特定 agent 中加入 ABORT 輸出條件。
+**修復範圍**：
+1. `route-parser.js`：VALID_ROUTES 移除 `'ABORT'`
+2. `pipeline-controller.js`：刪除 `emitPipelineAborted()` 函式和 ABORT 分支；crash 達上限路徑改用 `emitAgentCrash(willRetry=false)`
+3. `schema.js`：移除 `PIPELINE_ABORTED` 事件類型（33→32 種）
+4. `formatter.js`：移除 `pipeline.aborted` 格式化；agent.crash 文字 `'ABORT'` → `'強制終止'`
+5. `server.js`：移除 `pipeline.aborted` 條件
+
+**向後相容**：舊 transcript 中的 `route: "ABORT"` 會被 `validateRoute()` 自動修正為 `DEV`（verdict=FAIL 預設回退），無需人工介入。
+
+**測試**：`v4-edge.test.js` J04 改為驗證 validateRoute 自動修正行為；`timeline.test.js` 更新 safety 分類長度 5→4。
 
 ---
 
@@ -224,10 +233,18 @@ Layer 2 仍依賴 Main Agent 的 context 理解能力，但 systemMessage 注入
 
 ---
 
-## P10：Suffixed Stage 追蹤複雜度（嚴重度：低）
+## P10：Suffixed Stage 追蹤複雜度（嚴重度：低）✅ 已修復
 
-**現狀**：`deduplicateStages()` 為 test-first 等 pipeline 產生 `TEST:2` 等 suffixed stage。`resolveSuffixedStage()` 處理追蹤歧義，但邏輯複雜（多候選逆序搜尋）。
+**修復內容（v2.1.7+）**：test-first pipeline 的 stages 從 `['TEST', 'DEV', 'TEST']` 改為 `['TEST', 'DEV', 'TEST:verify']`，從源頭消除重複歧義。
 
-**影響**：增加 crash recovery 和 barrier 邏輯的維護負擔。
+**修復範圍**：
+1. `registry.js`：test-first stages 語意化（`TEST:verify` 取代數字後綴 `TEST:2`）
+2. `dag-utils.js`：更新 `templateToDag()` 註解
+3. `pipeline-controller.js`：更新 `deduplicateStages` 相關註解
 
-**改進方向**：考慮用唯一 stage ID（如 `TEST_WRITE` / `TEST_VERIFY`）取代數字後綴，從源頭消除歧義。
+**特點**：
+- `deduplicateStages()` 保留作為安全網（防止未來其他 pipeline 意外重複），但 test-first 不再觸發
+- `resolveSuffixedStage()` 和 `getBaseStage()` 的冒號分割邏輯完全相容 `TEST:verify`
+- DAG 產出 `{ TEST: {deps:[]}, DEV: {deps:['TEST']}, 'TEST:verify': {deps:['DEV']} }`
+
+**測試**：4 個 pipeline-catalog 測試檔 + template-dag.test.js 全數通過。

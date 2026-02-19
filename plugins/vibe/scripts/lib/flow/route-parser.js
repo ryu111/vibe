@@ -21,7 +21,7 @@ const { PIPELINE_ROUTE_REGEX, VERDICT_REGEX, QUALITY_STAGES, MAX_RETRIES } = req
 
 // 合法的路由值
 const VALID_VERDICTS = new Set(['PASS', 'FAIL']);
-const VALID_ROUTES = new Set(['NEXT', 'DEV', 'BARRIER', 'COMPLETE', 'ABORT']);
+const VALID_ROUTES = new Set(['NEXT', 'DEV', 'BARRIER', 'COMPLETE']);
 const VALID_SEVERITIES = new Set(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
 
 // 掃描最後幾行 transcript（PIPELINE_ROUTE 通常在最後）

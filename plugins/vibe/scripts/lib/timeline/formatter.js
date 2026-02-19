@@ -34,7 +34,6 @@ const EMOJI_MAP = {
   'barrier.resolved':   '🔀',
   // v4 Phase 4：異常事件
   'agent.crash':        '💥',
-  'pipeline.aborted':   '⛔',
   'pipeline.cancelled': '🚫',
   'barrier.crash-guard': '🛑',
   'stage.crash-recovery': '🔄',
@@ -166,9 +165,7 @@ function formatEventText(event) {
       return `Barrier ${group} 解鎖：${verdict} → ${next}`;
     }
     case 'agent.crash':
-      return `${d.stage || '?'} agent crash（第 ${d.crashCount || 1} 次），${d.willRetry ? '重新委派' : 'ABORT'}`;
-    case 'pipeline.aborted':
-      return `Pipeline 異常終止（${d.reason || 'route=ABORT'}）`;
+      return `${d.stage || '?'} agent crash（第 ${d.crashCount || 1} 次），${d.willRetry ? '重新委派' : '強制終止'}`;
     case 'pipeline.cancelled':
       return `Pipeline 已取消${d.reason ? `（${d.reason}）` : ''}`;
     case 'barrier.crash-guard':

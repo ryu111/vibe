@@ -210,7 +210,7 @@ function buildBlueprint(dag) {
  * @returns {Object} 增強 DAG 物件（含 barrier/onFail/next 欄位）
  */
 function templateToDag(pipelineId, stages) {
-  // 取得 stages 列表（自動消除重複，如 TEST→DEV→TEST 變 TEST→DEV→TEST:2）
+  // 取得 stages 列表（已語意化後綴如 TEST:verify，deduplicateStages 為安全網）
   const rawStages = stages || REFERENCE_PIPELINES[pipelineId]?.stages || [];
   if (rawStages.length === 0) {
     return {};

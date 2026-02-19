@@ -6,7 +6,7 @@
  *   J01: state 損壞（JSON 格式錯誤）→ readState 回 null
  *   J02: transcript 不存在 → parseRoute 回 source=none
  *   J03: v2→v4 遷移鏈（ensureV4 兩步遷移）
- *   J04: ABORT route → pipelineActive=false（強制終止解除 guard）
+ *   J04: 不合法 route（ABORT）→ validateRoute 自動修正為 DEV，走回退邏輯
  *
  * 執行：node plugins/vibe/tests/v4-edge.test.js
  */
@@ -194,24 +194,24 @@ test('J03c: v4 state 直接通過 ensureV4（無修改）', () => {
   assert.strictEqual(result.version, 4);
 });
 
-// J04: ABORT route → pipelineActive=false
-test('J04: ABORT route → 模擬 onStageComplete 後 pipelineActive=false', () => {
-  // 直接驗證 ABORT 邏輯：讀取含 ABORT 路由的 transcript，
-  // pipeline-controller 應設 pipelineActive=false
+// J04: 不合法 route（ABORT）→ validateRoute 自動修正為 DEV，走回退邏輯
+test('J04: 不合法 route（ABORT）→ validateRoute 修正為 DEV，onStageComplete 走回退', () => {
+  // ABORT 已從 VALID_ROUTES 移除，validateRoute 遇到 ABORT 會自動修正為 DEV
+  // （verdict=FAIL 預設回退到 DEV），controller 走分支 A（回退），不終止
   const sid = 'test-j04';
   cleanSessionState(sid);
 
-  // 建立含 ABORT route 的 transcript
+  // 建立含 ABORT route 的 transcript（模擬舊版 agent 輸出）
   const TMP_DIR = os.tmpdir();
   const transcriptPath = path.join(TMP_DIR, `test-j04-transcript.jsonl`);
   fs.writeFileSync(transcriptPath, JSON.stringify({
     type: 'assistant',
     message: {
-      content: [{ type: 'text', text: '<!-- PIPELINE_ROUTE: { "verdict": "FAIL", "route": "ABORT", "hint": "系統錯誤" } -->' }],
+      content: [{ type: 'text', text: '<!-- PIPELINE_ROUTE: { "verdict": "FAIL", "route": "ABORT", "severity": "HIGH", "hint": "系統錯誤" } -->' }],
     },
   }) + '\n');
 
-  // 建立 active state
+  // 建立 active state（含 DEV stage 以便回退）
   const activeState = {
     version: 4,
     sessionId: sid,
@@ -240,45 +240,55 @@ test('J04: ABORT route → 模擬 onStageComplete 後 pipelineActive=false', () 
   };
   ds.writeState(sid, activeState);
 
+  // 驗證 validateRoute 修正行為
+  const { validateRoute } = require(path.join(PLUGIN_ROOT, 'scripts/lib/flow/route-parser.js'));
+  const { route: corrected, warnings } = validateRoute({ verdict: 'FAIL', route: 'ABORT', severity: 'HIGH' });
+  assert.ok(corrected, 'validateRoute 應回傳修正後的 route');
+  assert.strictEqual(corrected.route, 'DEV',
+    `ABORT 應被修正為 DEV（FAIL verdict 預設回退），實際：${corrected.route}`);
+  assert.ok(warnings.some(w => w.includes('ABORT')),
+    `warnings 應含 ABORT 相關訊息，實際：${JSON.stringify(warnings)}`);
+
   // 呼叫 onStageComplete（模擬 REVIEW agent 完成）
   const ctrl = require(path.join(PLUGIN_ROOT, 'scripts/lib/flow/pipeline-controller.js'));
   const result = ctrl.onStageComplete(sid, 'code-reviewer', transcriptPath);
 
-  // 驗證：systemMessage 應含終止訊息
+  // 驗證：走回退邏輯，systemMessage 應含回退指示（而非終止）
   assert.ok(result.systemMessage, 'systemMessage 應存在');
   assert.ok(
-    result.systemMessage.includes('⛔') || result.systemMessage.includes('終止') || result.systemMessage.includes('ABORT'),
-    `systemMessage 應含終止相關訊息，實際：${result.systemMessage}`
+    result.systemMessage.includes('FAIL') || result.systemMessage.includes('回退') || result.systemMessage.includes('DEV') || result.systemMessage.includes('🔄'),
+    `systemMessage 應含回退相關訊息，實際：${result.systemMessage}`
   );
 
-  // 驗證：state 應 pipelineActive=false
+  // 驗證：pipeline 應仍 active（回退，不是終止）
+  // 注意：REVIEW FAIL → DEV 修復，pipelineActive 仍為 true
   const updatedState = ds.readState(sid);
   assert.ok(updatedState, 'state 應存在');
-  assert.strictEqual(updatedState.pipelineActive, false,
-    `ABORT 後 pipelineActive 應為 false，實際：${updatedState.pipelineActive}`);
+  assert.strictEqual(updatedState.pipelineActive, true,
+    `ABORT 修正為 DEV 後 pipeline 應仍 active（回退，非終止），實際：${updatedState.pipelineActive}`);
 
   // 清理
   try { fs.unlinkSync(transcriptPath); } catch (_) {}
   cleanSessionState(sid);
 });
 
-// J04b: ABORT 後 Guard 放行
-test('J04b: ABORT 後 pipelineActive=false → Guard 放行', () => {
+// J04b: pipeline 停止後 Guard 放行
+test('J04b: pipeline 停止後 pipelineActive=false → Guard 放行', () => {
   const { evaluate } = require(path.join(PLUGIN_ROOT, 'scripts/lib/sentinel/guard-rules.js'));
-  const abortedState = {
+  const stoppedState = {
     version: 4,
     dag: { DEV: { deps: [] }, REVIEW: { deps: ['DEV'] } },
     stages: {
       DEV: { status: 'completed' },
       REVIEW: { status: 'completed' },
     },
-    pipelineActive: false,  // ABORT 後設為 false
+    pipelineActive: false,  // pipeline 停止後設為 false
     activeStages: [],
     classification: { pipelineId: 'quick-dev' },
   };
 
-  const result = evaluate('Write', { file_path: '/src/foo.js' }, abortedState);
-  assert.strictEqual(result.decision, 'allow', `ABORT 後 Guard 應放行，實際：${result.decision}`);
+  const result = evaluate('Write', { file_path: '/src/foo.js' }, stoppedState);
+  assert.strictEqual(result.decision, 'allow', `pipeline 停止後 Guard 應放行，實際：${result.decision}`);
 });
 
 console.log(`\n結果：${passed} passed, ${failed} failed\n`);

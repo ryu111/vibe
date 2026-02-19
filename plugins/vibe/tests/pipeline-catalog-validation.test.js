@@ -237,7 +237,8 @@ function runPipelineScenario({ id, pipelineId, prompt, label }) {
   test(`${id}: pipelineId = ${pipelineId}`, () => {
     assert.strictEqual(sc.classification.pipelineId, pipelineId);
   });
-  // v4: deduplicateStages 處理重複 stage（如 test-first [TEST,DEV,TEST] → [TEST,DEV,TEST:2]）
+  // v4: test-first stages 已語意化（TEST:verify 是唯一 key，無重複）
+  // deduplicateStages 保留為安全網，但 test-first 不再觸發
   const uniqueStages = [...new Set(stages)];
   const hasDuplicateStages = uniqueStages.length !== stages.length;
   test(`${id}: dag keys 檢查`, () => {
@@ -245,7 +246,7 @@ function runPipelineScenario({ id, pipelineId, prompt, label }) {
       // none pipeline → dag 應為 null
       assert.strictEqual(sc.dag, null, `none pipeline dag 應為 null`);
     } else {
-      // v4：所有 pipeline 都能建立有效 DAG（含重複 stage）
+      // v4：所有 pipeline 都能建立有效 DAG（含語意化後綴 stage）
       assert.ok(sc.dag, `dag 不應為 null`);
       assert.ok(Object.keys(sc.dag).length > 0, `dag 應有 stage`);
     }
@@ -300,10 +301,9 @@ function runPipelineScenario({ id, pipelineId, prompt, label }) {
   }
 
   // ─── Step 4: 每個 Stage 生命週期 ───────────────
-  // v4: 重複 stage pipeline（如 test-first [TEST,DEV,TEST:2]）DAG 有效
-  // 但生命週期測試循環用原始 stage 名稱（未去重），暫跳過
+  // 舊 v4: 重複 stage（如 test-first [TEST,DEV,TEST]）才需跳過，現已語意化無重複
   if (hasDuplicateStages) {
-    log('STEP', `跳過 stage 生命週期（重複 stage 去重後名稱不匹配）`);
+    log('STEP', `跳過 stage 生命週期（仍有重複 stage，罕見情況）`);
     test(`${id}: 重複 stage pipeline 分類正確`, () => {
       assert.strictEqual(sc.classification.pipelineId, pipelineId);
     });
@@ -312,9 +312,14 @@ function runPipelineScenario({ id, pipelineId, prompt, label }) {
     cleanTimeline(sid);
     return;
   }
+
+  // 取 stage 的基礎 stage 名（TEST:verify → TEST），用於 STAGES 查詢
+  function getBaseStage(stageId) { return stageId.split(':')[0]; }
+
   for (let i = 0; i < stages.length; i++) {
     const stage = stages[i];
-    const agentName = STAGES[stage].agent;
+    const baseStage = getBaseStage(stage);
+    const agentName = STAGES[baseStage].agent;
     const nsAgent = `vibe:${agentName}`;
     const isLast = (i === stages.length - 1);
 
@@ -461,7 +466,7 @@ const SCENARIOS = [
   {
     id: 'S5', pipelineId: 'test-first',
     prompt: '用 TDD 方式實作 email 驗證功能 [pipeline:test-first]',
-    label: 'TDD 開發（3 階段，雙 TEST）',
+    label: 'TDD 開發（3 階段，TEST:verify 語意化）',
   },
   {
     id: 'S6', pipelineId: 'ui-only',
@@ -974,16 +979,16 @@ for (const scenario of SCENARIOS) {
 })();
 
 // ═══════════════════════════════════════════════════════════════
-//  特殊場景 X6: TDD 模擬（使用 quick-dev 替代）
-//  v3 limitation: linearToDag([TEST,DEV,TEST]) 產生循環 DAG → 無法建立
-//  改用 quick-dev [DEV, REVIEW, TEST] 模擬 FAIL 重試流程
+//  特殊場景 X6: TDD 模擬（使用 quick-dev）
+//  test-first 的 TEST:verify 語意化後，S5 場景已直接涵蓋 test-first 生命週期
+//  X6 保留 quick-dev FAIL 重試流程測試，保持獨立覆蓋
 //  DEV PASS → REVIEW PASS → TEST FAIL:HIGH → DEV 修復 → TEST 重做 PASS
 // ═══════════════════════════════════════════════════════════════
 
 (() => {
   const sid = 'catalog-X6';
   console.log(`\n${'═'.repeat(65)}`);
-  console.log('  特殊場景 X6: TDD 模擬（v3 限制：改用 quick-dev 測試 FAIL 重試）');
+  console.log('  特殊場景 X6: TDD 模擬（使用 quick-dev 測試 FAIL 重試）');
   console.log('  Pipeline: quick-dev [DEV, REVIEW, TEST]');
   console.log(`${'═'.repeat(65)}`);
 
@@ -991,7 +996,7 @@ for (const scenario of SCENARIOS) {
   cleanTimeline(sid);
   initState(sid);
 
-  // 分類為 quick-dev（替代無法使用的 test-first）
+  // 分類為 quick-dev
   runHook('task-classifier', {
     session_id: sid, prompt: '修復並測試密碼強度驗證 [pipeline:quick-dev]',
   });
