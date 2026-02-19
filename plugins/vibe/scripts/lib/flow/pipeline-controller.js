@@ -1071,6 +1071,26 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
     if (!anySkipped) break;
     readyStages = ds.getReadyStages(state);
   }
+
+  // Barrier-crash 防護：當 barrier sibling 在 pending+crashed 狀態時，
+  // 排除 barrier 下游 stage，強制先重跑 crashed sibling
+  if (state.dag?.[currentStage]?.barrier) {
+    const barrier = state.dag[currentStage].barrier;
+    const siblings = barrier.siblings || [];
+    const pendingCrashedSiblings = siblings.filter(s =>
+      s !== currentStage &&
+      ((state.stages?.[s]?.status || 'pending') === 'pending') &&
+      ((state.crashes?.[s] || 0) > 0)
+    );
+    if (pendingCrashedSiblings.length > 0 && barrier.next) {
+      readyStages = readyStages.filter(s => s !== barrier.next);
+      emitTimeline(sessionId, 'barrier.crash-guard', {
+        stage: currentStage,
+        blockedDownstream: barrier.next,
+        pendingCrashedSiblings,
+      });
+    }
+  }
   if (skipIter <= 0 && readyStages.length > 0) {
     const hookLogger = require('../hook-logger.js');
     hookLogger.error('pipeline-controller', new Error(

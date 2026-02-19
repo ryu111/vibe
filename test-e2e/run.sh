@@ -351,6 +351,7 @@ poll_state() {
   local timeline_file="$CLAUDE_DIR/timeline-${uuid}.jsonl"
   local poll_interval=10
   local max_wall=1800  # 30 分鐘硬上限
+  local pid_file="/tmp/vibe-e2e-pid-${scenario_id}"
 
   while true; do
     # 硬上限
@@ -363,6 +364,19 @@ poll_state() {
     if (( idle_elapsed > idle_timeout )); then
       echo "TIMEOUT"
       return 1
+    fi
+
+    # Print 模式進程退出偵測：claude -p 結束後直接進入驗證，不等閒置逾時
+    if [ "$USE_TMUX" != "true" ] && [ -f "$pid_file" ]; then
+      local bg_pid
+      bg_pid=$(cat "$pid_file" 2>/dev/null)
+      if [ -n "$bg_pid" ] && ! kill -0 "$bg_pid" 2>/dev/null; then
+        # 等一下讓最後的 hook 完成檔案寫入
+        sleep 3
+        set_status "$scenario_id" "⏳ claude 已退出，驗證中..."
+        echo "PROCESS_EXIT"
+        return 0
+      fi
     fi
 
     # 活躍度偵測：timeline 或 state 檔案更新就重設閒置計時
