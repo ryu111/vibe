@@ -491,13 +491,15 @@ wait_for_plan_then_cancel() {
 
       if [ "$has_plan" = "yes" ]; then
         set_status "$scenario_id" "⏳ Cancel 中..."
-        # 直接修改 state file — 繞過 TUI 互動限制（v3: 設 meta.cancelled，phase 由 derivePhase 推導）
+        # 直接修改 state file — 模擬 /vibe:cancel skill 的完整操作
         node -e "
           const fs = require('fs');
           const f = '$state_file';
           const state = JSON.parse(fs.readFileSync(f, 'utf8'));
           state.meta = state.meta || {};
           state.meta.cancelled = true;
+          state.pipelineActive = false;
+          state.activeStages = [];
           fs.writeFileSync(f, JSON.stringify(state, null, 2));
         " 2>/dev/null
         # 中斷當前 session
@@ -610,6 +612,8 @@ start_claude_print() {
   (
     cd "$project_dir"
     unset CLAUDECODE  # 避免 nested session 檢測
+    # 關閉繼承的 pipe FD，避免 $() 命令替換阻塞
+    exec > /dev/null 2>&1
     eval "$(_claude_base_args "$uuid" "$mem_dir") -p $(printf '%q' "$prompt")" > "$log_file" 2>&1
   ) &
   local bg_pid=$!
@@ -625,6 +629,8 @@ send_followup_print() {
   (
     cd "$project_dir"
     unset CLAUDECODE  # 避免 nested session 檢測
+    # 關閉繼承的 pipe FD，避免 $() 命令替換阻塞
+    exec > /dev/null 2>&1
     eval "$(_claude_base_args "$uuid" "$mem_dir") --resume -p $(printf '%q' "$follow_up")" > "$log_file" 2>&1
   ) &
   local bg_pid=$!
