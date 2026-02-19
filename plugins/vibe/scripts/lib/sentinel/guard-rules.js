@@ -12,7 +12,7 @@
  * 4. activeStages.length > 0 → allow（sub-agent 委派中，放行）
  * 5. Task / Skill → allow（委派工具始終放行）
  * 6. READ_ONLY_TOOLS → allow（唯讀白名單）
- * 6.5. Pipeline state file 寫入 → allow（cancel skill 逃生門）
+ * 6.5. 特定 state file 寫入 → allow（cancel skill 逃生門：pipeline-state/task-guard-state/classifier-corpus）
  * 7. 其他 → block（Relay 模式阻擋）
  *
  * @module sentinel/guard-rules
@@ -167,7 +167,7 @@ function detectBashWriteTarget(command) {
  * 4. activeStages.length > 0 → allow（子 agent 委派中）
  * 5. Task / Skill → allow（委派工具始終放行）
  * 6. READ_ONLY_TOOLS → allow（唯讀白名單）
- * 6.5. Pipeline state file 寫入 → allow（cancel skill 逃生門）
+ * 6.5. 特定 state file 寫入 → allow（cancel skill 逃生門：pipeline-state/task-guard-state/classifier-corpus）
  * 7. 其他 → block（Main Agent 作為 Relay，不直接執行）
  *
  * @param {string} toolName
@@ -222,17 +222,24 @@ function evaluate(toolName, toolInput, state) {
     return { decision: 'allow' };
   }
 
-  // ── 6.5. Pipeline state file 寫入 → allow（cancel skill 逃生門） ──
-  // cancel skill 需要寫入 pipeline-state-*.json 來解除 guard，
-  // 但 guard 本身阻擋所有寫入工具 — 形成死鎖。
-  // 允許 Write/Edit 目標為 ~/.claude/ 下的 pipeline state 檔案。
+  // ── 6.5. 特定 state file 寫入 → allow（cancel skill 逃生門） ──
+  // cancel skill 需要寫入以下檔案來解除 guard，但 guard 本身阻擋所有寫入工具 — 形成死鎖。
+  // 白名單（路徑必須在 ~/.claude/ 下）：
+  //   1. pipeline-state-*.json  — cancel 解除 pipeline guard
+  //   2. task-guard-state-*.json — cancel 解除 task-guard
+  //   3. classifier-corpus.jsonl — cancel 語料回饋收集
   if (toolName === 'Write' || toolName === 'Edit') {
     const filePath = typeof toolInput?.file_path === 'string' ? toolInput.file_path : '';
     const baseName = path.basename(filePath);
-    if (baseName.startsWith('pipeline-state-') && baseName.endsWith('.json')) {
-      const dirName = path.dirname(filePath);
-      const homeDir = require('os').homedir();
-      if (dirName === path.join(homeDir, '.claude')) {
+    const dirName = path.dirname(filePath);
+    const homeDir = require('os').homedir();
+    const isClaudeDir = dirName === path.join(homeDir, '.claude');
+    if (isClaudeDir) {
+      if (
+        (baseName.startsWith('pipeline-state-') && baseName.endsWith('.json')) ||
+        (baseName.startsWith('task-guard-state-') && baseName.endsWith('.json')) ||
+        baseName === 'classifier-corpus.jsonl'
+      ) {
         return { decision: 'allow' };
       }
     }

@@ -21,23 +21,38 @@
 
 ---
 
-## P1：Cancel Skill 死鎖（嚴重度：中）
+## P1：Cancel Skill 死鎖（嚴重度：中）✅ 已修復
 
-**現狀**：`/vibe:cancel` 需要修改 `pipeline-state-{sid}.json` 將 `pipelineActive` 設為 `false`，但 `pipeline-guard` 的 `*` matcher 阻擋了所有工具呼叫（包括 Skill 觸發的 Write/Edit/Bash）。
+**修復內容（v2.0.7+）**：`guard-rules.js` 規則 6.5 新增白名單機制，放行以下 3 種 state file 的寫入（必須在 `~/.claude/` 目錄下）：
 
-**目前 workaround**：cancel skill 委派 `vibe:developer` agent → `delegation-tracker` 將其加入 `activeStages` → guard rule 放行 → developer 內部修改 state file。
+1. **pipeline-state-*.json** — cancel skill 解除 pipeline guard
+2. **task-guard-state-*.json** — cancel skill 解除 task-guard
+3. **classifier-corpus.jsonl** — cancel 語料回饋收集
 
-**正確修復**：在 guard 中加入 cancel 白名單（匹配 `pipeline-state-*.json` 的寫入操作），類似 v3 的 `CANCEL_STATE_FILE_RE` 但更精確。
+**實作位置**：`plugins/vibe/scripts/lib/sentinel/guard-rules.js` 第 225-246 行（規則 6.5）
+
+**特點**：
+- 白名單是路徑級別約束（必須在 `~/.claude/` 下）
+- 採用前綴+後綴匹配（避免過於寬鬆）
+- 相比 v3 的 `CANCEL_STATE_FILE_RE`，更精確和可擴展
+
+**測試**：`plugins/vibe/tests/guard-rules.test.js` 案例 3.5-3.10 覆蓋完整白名單邏輯
 
 ---
 
-## P2：onStageComplete() 多次 writeState（嚴重度：低）
+## P2：onStageComplete() 多次 writeState（嚴重度：低）✅ 已修復
 
-**現狀**：`stage-transition` 的 `onStageComplete()` 中有多處 `writeState()` 呼叫，分散在不同邏輯分支。每次寫入都是完整的 JSON serialization + atomic write。
+**修復內容（v2.0.9+）**：在 `onStageComplete()` 中提前執行 `isComplete()` 檢查，合併分支 C（正常前進→完成）和 BARRIER-PASS→完成 的雙重 writeState。
 
-**影響**：效能浪費（單次 stage 完成可能觸發 2-3 次 writeState），且增加維護複雜度。
+**修復位置**：
+1. **分支 C 正常前進**（行 1173-1194）：先檢查 isComplete → 修改 pipelineActive + activeStages → cleanupPatches → 單次 writeState
+2. **BARRIER-PASS 完成**（行 1020-1027）：同樣先檢查 isComplete → 合併狀態修改 → 單次 writeState
 
-**改進方向**：收集所有 state 變更後統一寫入一次（collect-then-flush 模式）。
+**效果**：
+- 消除 2 處雙重 writeState 的浪費（每處減少 1 次磁碟 I/O）
+- autoCheckpoint 保持在 writeState 之後，時序不變
+
+**測試**：現有 28+ 個測試檔驗證路由邏輯完整性，未發生重迴歸
 
 ---
 

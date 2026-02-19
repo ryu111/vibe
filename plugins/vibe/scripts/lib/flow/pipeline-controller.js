@@ -13,10 +13,6 @@
  * - onSessionStop(sessionId) — 閉環檢查
  *
  * @module flow/pipeline-controller
- *
- * @note 技術債務：onStageComplete() 在同一次呼叫中可能多次 writeState（例如：
- *   barrier 合併 + 前進到下一階段）。未來可考慮 batch write 模式（先累積所有
- *   狀態變更，最後一次性寫入），以減少 I/O 次數並降低 race condition 風險。
  */
 'use strict';
 
@@ -1018,18 +1014,17 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
     }
 
     // PASS → 前進到 barrier.next
+    if (!next && ds.isComplete(state)) {
+      // barrier.next 為空 → COMPLETE：合併 pipelineActive=false 到同一次寫入
+      state = { ...state, pipelineActive: false, activeStages: [] };
+      cleanupPatches();
+      ds.writeState(sessionId, state);
+      autoCheckpoint(currentStage);
+      return buildCompleteOutput(state, currentStage, pipeline);
+    }
+
     ds.writeState(sessionId, state);
     autoCheckpoint(currentStage);
-
-    if (!next) {
-      // barrier.next 為空 → COMPLETE
-      if (ds.isComplete(state)) {
-        state = { ...state, pipelineActive: false, activeStages: [] };
-        ds.writeState(sessionId, state);
-        cleanupPatches();
-        return buildCompleteOutput(state, currentStage, pipeline);
-      }
-    }
 
     // 前進到 next stage
     const nextHint = next ? buildDelegationHint(next, pipeline.stageMap) : null;
@@ -1170,15 +1165,13 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
     ));
   }
 
-  ds.writeState(sessionId, state);
-  autoCheckpoint(currentStage);
-
-  // 檢查是否完成
+  // 檢查是否完成：若完成，合併 pipelineActive=false 到同一次寫入
   if (ds.isComplete(state)) {
     // v4（任務 3.4）：最後一個 stage 完成 → pipelineActive = false（guard 解除）
     state = { ...state, pipelineActive: false, activeStages: [] };
-    ds.writeState(sessionId, state);
     cleanupPatches();
+    ds.writeState(sessionId, state);
+    autoCheckpoint(currentStage);
     // 若當前 stage 為 FAIL 但因 enforcePolicy（如無 DEV in DAG）強制前進至完成，
     // 在完成訊息前加入 FAIL 警告
     const completionMsg = buildCompleteOutput(state, currentStage, pipeline);
@@ -1193,6 +1186,9 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
     }
     return completionMsg;
   }
+
+  ds.writeState(sessionId, state);
+  autoCheckpoint(currentStage);
 
   if (readyStages.length === 0) {
     // 沒有 ready stages 但也沒完成 → 等待其他 active stages

@@ -730,6 +730,57 @@ test('目標 3.4：Write pipeline-state-*.json 但路徑不在 ~/.claude/ → bl
 });
 
 // ═══════════════════════════════════════════════
+console.log('\n🔓 目標 3.5-3.10：Rule 6.5 擴展白名單（task-guard + classifier-corpus）');
+console.log('═'.repeat(55));
+// ═══════════════════════════════════════════════
+
+// 目標 3.5：Write classifier-corpus.jsonl → allow
+test('目標 3.5：Write classifier-corpus.jsonl → allow', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const corpusPath = path.join(os.homedir(), '.claude', 'classifier-corpus.jsonl');
+  const r = evaluate('Write', { file_path: corpusPath }, state);
+  assert.strictEqual(r.decision, 'allow', 'classifier-corpus.jsonl 寫入應被放行');
+});
+
+// 目標 3.6：Write task-guard-state-*.json → allow
+test('目標 3.6：Write task-guard-state-*.json → allow', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const taskGuardPath = path.join(os.homedir(), '.claude', 'task-guard-state-abc123.json');
+  const r = evaluate('Write', { file_path: taskGuardPath }, state);
+  assert.strictEqual(r.decision, 'allow', 'task-guard-state 寫入應被放行');
+});
+
+// 目標 3.7：Edit task-guard-state-*.json → allow
+test('目標 3.7：Edit task-guard-state-*.json → allow', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const taskGuardPath = path.join(os.homedir(), '.claude', 'task-guard-state-session-xyz.json');
+  const r = evaluate('Edit', { file_path: taskGuardPath }, state);
+  assert.strictEqual(r.decision, 'allow', 'task-guard-state 編輯應被放行');
+});
+
+// 目標 3.8：Write classifier-corpus.jsonl 但路徑不在 ~/.claude/ → block
+test('目標 3.8：Write classifier-corpus.jsonl 但路徑不在 ~/.claude/ → block', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const r = evaluate('Write', { file_path: '/tmp/classifier-corpus.jsonl' }, state);
+  assert.strictEqual(r.decision, 'block', '非 ~/.claude/ 路徑的 classifier-corpus 應被阻擋');
+});
+
+// 目標 3.9：Write task-guard-state-*.json 但路徑不在 ~/.claude/ → block
+test('目標 3.9：Write task-guard-state-*.json 但路徑不在 ~/.claude/ → block', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const r = evaluate('Write', { file_path: '/var/tmp/task-guard-state-evil.json' }, state);
+  assert.strictEqual(r.decision, 'block', '非 ~/.claude/ 路徑的 task-guard-state 應被阻擋');
+});
+
+// 目標 3.10：Write 其他 .jsonl 檔案 → block（防止白名單過寬）
+test('目標 3.10：Write 其他 .jsonl 檔案 → block（防止白名單過寬）', () => {
+  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const otherJsonlPath = path.join(os.homedir(), '.claude', 'timeline-session.jsonl');
+  const r = evaluate('Write', { file_path: otherJsonlPath }, state);
+  assert.strictEqual(r.decision, 'block', '非白名單的 .jsonl 檔案應被阻擋');
+});
+
+// ═══════════════════════════════════════════════
 // 結果輸出
 // ═══════════════════════════════════════════════
 
