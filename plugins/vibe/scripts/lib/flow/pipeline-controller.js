@@ -462,6 +462,13 @@ async function classify(sessionId, prompt, options = {}) {
 
   let state = loadState(sessionId);
 
+  // CANCELLED → 忽略所有非顯式分類（防止 stop hook feedback 循環）
+  // cancel 設 pipelineActive=false + meta.cancelled=true，但 stop hook 的
+  // block reason 成為新 prompt → classifier 重新分類 → pipelineActive=true → 循環
+  if (state?.meta?.cancelled && result.source !== 'explicit') {
+    return { output: null };
+  }
+
   // COMPLETE → 允許新 pipeline
   if (state && ds.isComplete(state)) {
     // 非顯式分類 + 30 秒冷卻期：忽略 stop hook feedback
