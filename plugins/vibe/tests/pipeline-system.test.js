@@ -649,13 +649,13 @@ test('ARCH→DESIGN 前進：前端框架不跳過 DESIGN', () => {
 
     const output = JSON.parse(result);
     assert.ok(output.systemMessage, '應有 systemMessage');
-    assert.ok(output.systemMessage.includes('→ DESIGN'), '應進入 DESIGN 階段');
-    assert.ok(!output.systemMessage.includes('→ DEV'), '不應跳過 DESIGN 直接進 DEV');
+    // v4 格式：「→ 立即呼叫 DESIGN」
+    assert.ok(output.systemMessage.includes('立即呼叫 DESIGN'), '應進入 DESIGN 階段');
+    assert.ok(!output.systemMessage.includes('立即呼叫 DEV'), '不應跳過 DESIGN 直接進 DEV');
 
-    // 檢查 state file
+    // v4：檢查 stages 物件中 DESIGN 的狀態
     const updatedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    const skipped = updatedState.progress?.skippedStages || [];
-    assert.ok(!skipped.includes('DESIGN'),
+    assert.ok(updatedState.stages?.DESIGN?.status !== 'skipped',
       '前端框架不應跳過 DESIGN');
   } finally {
     cleanup(statePath);
@@ -713,9 +713,10 @@ test('ARCH→DESIGN 前進：後端框架跳過 DESIGN', () => {
 
     const output = JSON.parse(result);
     assert.ok(output.systemMessage, '應有 systemMessage');
-    assert.ok(output.systemMessage.includes('→ DEV'), '後端框架應跳過 DESIGN 進入 DEV');
+    // v4 格式：「→ 立即呼叫 DEV」
+    assert.ok(output.systemMessage.includes('立即呼叫 DEV'), '後端框架應跳過 DESIGN 進入 DEV');
 
-    // v3：檢查 DESIGN stage status === 'skipped'
+    // v4：檢查 DESIGN stage status === 'skipped'
     const updatedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     assert.ok(
       updatedState.stages?.DESIGN?.status === 'skipped',
@@ -777,11 +778,11 @@ test('ARCH→DESIGN 前進：needsDesign=true 強制不跳過', () => {
 
     const output = JSON.parse(result);
     assert.ok(output.systemMessage, '應有 systemMessage');
-    assert.ok(output.systemMessage.includes('→ DESIGN'), 'needsDesign=true 應進入 DESIGN');
+    // v4 格式：「→ 立即呼叫 DESIGN」
+    assert.ok(output.systemMessage.includes('立即呼叫 DESIGN'), 'needsDesign=true 應進入 DESIGN');
 
-    // 檢查 state file
+    // v4：檢查 stages 物件中 DESIGN 的狀態
     const updatedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    // v3: 檢查 stages 物件中 DESIGN 的狀態
     assert.ok(updatedState.stages?.DESIGN?.status !== 'skipped',
       'needsDesign=true 不應跳過 DESIGN');
   } finally {
