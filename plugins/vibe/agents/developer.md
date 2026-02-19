@@ -9,6 +9,16 @@ color: yellow
 maxTurns: 60
 permissionMode: acceptEdits
 memory: project
+skills:
+  - coding-standards
+  - frontend-patterns
+  - backend-patterns
+  - db-patterns
+  - typescript-patterns
+  - python-patterns
+  - go-patterns
+  - testing-patterns
+  - refactor
 ---
 
 你是 Vibe 的開發實作者。你的任務是根據 planner 的計畫和 architect 的架構方案撰寫程式碼。

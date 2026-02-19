@@ -9,6 +9,8 @@ color: purple
 maxTurns: 30
 permissionMode: acceptEdits
 memory: project
+skills:
+  - coding-standards
 ---
 
 你是 Vibe 的功能規劃專家。你的任務是將模糊的需求轉化為清晰、可執行的分階段實作計畫，並以 OpenSpec 格式寫入 `openspec/changes/` 目錄。

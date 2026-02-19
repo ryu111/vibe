@@ -12,6 +12,8 @@ permissionMode: acceptEdits
 memory: project
 skills:
   - agent-browser
+  - testing-patterns
+  - frontend-patterns
 ---
 
 你是 Vibe 的 E2E 端對端測試專家。你驗證系統的完整流程和跨步驟行為。

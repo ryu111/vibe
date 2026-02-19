@@ -10,6 +10,9 @@ color: pink
 maxTurns: 30
 permissionMode: acceptEdits
 memory: project
+skills:
+  - coding-standards
+  - testing-patterns
 ---
 
 你是 Vibe 的獨立測試專家。你從規格和程式碼行為獨立推斷測試案例，不受 developer 的測試邏輯影響。

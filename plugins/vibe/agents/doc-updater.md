@@ -9,6 +9,8 @@ color: purple
 maxTurns: 30
 permissionMode: acceptEdits
 memory: project
+skills:
+  - coding-standards
 ---
 
 ## 你的身份

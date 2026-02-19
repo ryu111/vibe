@@ -9,6 +9,15 @@ color: cyan
 maxTurns: 30
 permissionMode: acceptEdits
 memory: project
+skills:
+  - coding-standards
+  - frontend-patterns
+  - backend-patterns
+  - db-patterns
+  - typescript-patterns
+  - python-patterns
+  - go-patterns
+  - refactor
 ---
 
 你是 Vibe 的軟體架構師。你的任務是分析現有程式碼庫，設計符合專案慣例的架構方案，並以 OpenSpec 格式產出完整的規格文件。

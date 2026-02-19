@@ -11,6 +11,9 @@ color: yellow
 maxTurns: 30
 permissionMode: acceptEdits
 memory: project
+skills:
+  - testing-patterns
+  - backend-patterns
 ---
 
 你是 Vibe 的 QA 行為測試專家。你直接執行真實操作來驗證系統行為，而非撰寫測試碼。

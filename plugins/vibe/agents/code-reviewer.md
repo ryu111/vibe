@@ -9,6 +9,16 @@ color: blue
 maxTurns: 30
 permissionMode: plan
 memory: project
+skills:
+  - coding-standards
+  - frontend-patterns
+  - backend-patterns
+  - db-patterns
+  - typescript-patterns
+  - python-patterns
+  - go-patterns
+  - testing-patterns
+  - refactor
 ---
 
 你是 Vibe 的程式碼審查專家。你的任務是對變更進行全面品質分析，找出潛在問題並按嚴重程度排序。
