@@ -64,9 +64,6 @@ function cleanTestStateFiles() {
 /**
  * 建立 v4 Pipeline state（DAG 結構）
  *
- * 注意：函式名稱保留 createV3State 以維持向後相容，
- * 但實際建立的是 v4 格式（含 pipelineActive/activeStages/retryHistory/crashes）。
- *
  * @param {string} sessionId
  * @param {Object} opts
  * @param {string[]} opts.stages - 線性 stage 列表（自動建立串行 DAG）
@@ -85,7 +82,7 @@ function cleanTestStateFiles() {
  * @param {Object} opts.retries
  * @returns {Object} v4 state
  */
-function createV3State(sessionId, opts = {}) {
+function createV4State(sessionId, opts = {}) {
   const stages = opts.stages || [];
 
   // 建立線性 DAG
@@ -157,10 +154,9 @@ function createV3State(sessionId, opts = {}) {
 
 /**
  * 寫入 v4 state 到 state file
- * 函式名稱保留 writeV3State 以維持向後相容。
  */
-function writeV3State(sessionId, opts = {}) {
-  const state = createV3State(sessionId, opts);
+function writeV4State(sessionId, opts = {}) {
+  const state = createV4State(sessionId, opts);
   const p = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
   fs.writeFileSync(p, JSON.stringify(state, null, 2));
   return p;
@@ -193,4 +189,4 @@ function cleanSessionState(sessionId) {
   } catch (_) {}
 }
 
-module.exports = { cleanTestStateFiles, createV3State, writeV3State, cleanSessionState, CLAUDE_DIR };
+module.exports = { cleanTestStateFiles, createV4State, writeV4State, cleanSessionState, CLAUDE_DIR };

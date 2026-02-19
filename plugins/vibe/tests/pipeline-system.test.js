@@ -157,8 +157,8 @@ console.log('\n🧪 Part 2: stage-transition namespaced 輸出');
 
 test('前進場景：PLAN → ARCH（有 skill 的階段）', () => {
   const sessionId = 'test-ns-1';
-  const { writeV3State } = require('./test-helpers');
-  const statePath = writeV3State(sessionId, {
+  const { writeV4State } = require('./test-helpers');
+  const statePath = writeV4State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DEV'],
     completed: [],
     pipelineId: 'standard',
@@ -201,8 +201,8 @@ test('前進場景：PLAN → ARCH（有 skill 的階段）', () => {
 
 test('前進場景：ARCH → DEV（Skill 委派）', () => {
   const sessionId = 'test-ns-1b';
-  const { writeV3State } = require('./test-helpers');
-  const statePath = writeV3State(sessionId, {
+  const { writeV4State } = require('./test-helpers');
+  const statePath = writeV4State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DEV'],
     completed: ['PLAN'],
     pipelineId: 'standard',
@@ -245,8 +245,8 @@ test('前進場景：ARCH → DEV（Skill 委派）', () => {
 
 test('回退場景：REVIEW FAIL:HIGH → DEV（namespaced 格式）', () => {
   const sessionId = 'test-ns-2';
-  const { writeV3State } = require('./test-helpers');
-  const statePath = writeV3State(sessionId, {
+  const { writeV4State } = require('./test-helpers');
+  const statePath = writeV4State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
     completed: ['PLAN', 'ARCH', 'DEV'],
     pipelineId: 'standard',
@@ -303,8 +303,8 @@ test('回退場景：REVIEW FAIL:HIGH → DEV（namespaced 格式）', () => {
 
 test('回退場景：修復後重新執行 REVIEW（namespaced 格式）', () => {
   const sessionId = 'test-ns-3';
-  const { writeV3State } = require('./test-helpers');
-  const statePath = writeV3State(sessionId, {
+  const { writeV4State } = require('./test-helpers');
+  const statePath = writeV4State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
     completed: ['PLAN', 'ARCH', 'DEV'],
     pipelineId: 'standard',
@@ -361,8 +361,8 @@ console.log('\n🧪 Part 3: pipeline-check namespaced 提示');
 
 test('缺漏 ARCH 和 DEV 階段（混合格式）', () => {
   const sessionId = 'test-ns-4';
-  const { writeV3State } = require('./test-helpers');
-  const statePath = writeV3State(sessionId, {
+  const { writeV4State } = require('./test-helpers');
+  const statePath = writeV4State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DEV'],
     completed: ['PLAN'],
     pipelineId: 'standard',
@@ -397,8 +397,8 @@ test('缺漏 ARCH 和 DEV 階段（混合格式）', () => {
 
 test('全部完成：無輸出且 state 保留', () => {
   const sessionId = 'test-ns-5';
-  const { writeV3State } = require('./test-helpers');
-  const statePath = writeV3State(sessionId, {
+  const { writeV4State } = require('./test-helpers');
+  const statePath = writeV4State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
     completed: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
     pipelineId: 'standard',
@@ -443,8 +443,8 @@ test('全部完成：無輸出且 state 保留', () => {
 
 test('非強制 pipeline：不檢查', () => {
   const sessionId = 'test-ns-6';
-  const { writeV3State } = require('./test-helpers');
-  const statePath = writeV3State(sessionId, {
+  const { writeV4State } = require('./test-helpers');
+  const statePath = writeV4State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DEV'],
     completed: ['PLAN'],
     pipelineId: null, // 非強制（null pipelineId → pipelineActive=false）
@@ -486,8 +486,8 @@ test('非強制 pipeline：不檢查', () => {
 
 test('ARCH→DESIGN 前進：前端框架不跳過 DESIGN', () => {
   const sessionId = `pipeline-test-design-frontend-${Date.now()}`;
-  const { writeV3State } = require('./test-helpers');
-  const statePath = writeV3State(sessionId, {
+  const { writeV4State } = require('./test-helpers');
+  const statePath = writeV4State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     completed: ['PLAN'],
     pipelineId: 'full',
@@ -535,8 +535,8 @@ test('ARCH→DESIGN 前進：前端框架不跳過 DESIGN', () => {
 
 test('ARCH→DESIGN 前進：後端框架跳過 DESIGN', () => {
   const sessionId = `pipeline-test-design-backend-${Date.now()}`;
-  const { writeV3State } = require('./test-helpers');
-  const statePath = writeV3State(sessionId, {
+  const { writeV4State } = require('./test-helpers');
+  const statePath = writeV4State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     completed: ['PLAN'],
     pipelineId: 'full',
@@ -585,8 +585,8 @@ test('ARCH→DESIGN 前進：後端框架跳過 DESIGN', () => {
 
 test('ARCH→DESIGN 前進：needsDesign=true 強制不跳過', () => {
   const sessionId = `pipeline-test-design-forced-${Date.now()}`;
-  const { writeV3State } = require('./test-helpers');
-  const statePath = writeV3State(sessionId, {
+  const { writeV4State } = require('./test-helpers');
+  const statePath = writeV4State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     completed: ['PLAN'],
     pipelineId: 'full',
@@ -634,9 +634,9 @@ test('ARCH→DESIGN 前進：needsDesign=true 強制不跳過', () => {
 
 test('pipeline-check 排除 skipped stages', () => {
   const sessionId = `pipeline-test-skip-check-${Date.now()}`;
-  const { writeV3State } = require('./test-helpers');
+  const { writeV4State } = require('./test-helpers');
   // DESIGN 和 E2E 跳過，其餘全部完成
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     completed: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'DOCS'],
     skipped: ['DESIGN', 'E2E'],

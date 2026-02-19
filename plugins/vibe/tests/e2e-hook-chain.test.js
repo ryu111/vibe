@@ -22,8 +22,8 @@ const PLUGIN_ROOT = path.join(__dirname, '..');
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const HOOKS_DIR = path.join(PLUGIN_ROOT, 'scripts', 'hooks');
 
-// v3 state 工具
-const { createV3State, writeV3State, cleanTestStateFiles, cleanSessionState } = require('./test-helpers');
+// v4 state 工具
+const { createV4State, writeV4State, cleanTestStateFiles, cleanSessionState } = require('./test-helpers');
 const { derivePhase } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'flow', 'dag-state.js'));
 
 let passed = 0;
@@ -50,7 +50,7 @@ function test(name, fn) {
  * 無 DAG 的空白初始 state（模擬 pipeline-init hook）
  */
 function initState(sessionId, opts = {}) {
-  writeV3State(sessionId, opts);
+  writeV4State(sessionId, opts);
   return path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
 }
 
@@ -361,7 +361,7 @@ console.log('═'.repeat(55));
   const sid = 'e2e-cancel-1';
   try {
     // Step 1: 模擬進行中的 feature pipeline（v3: 用 DAG + completed stages）
-    writeV3State(sid, {
+    writeV4State(sid, {
       pipelineId: 'full',
       taskType: 'feature',
       enforced: true,
@@ -518,7 +518,7 @@ console.log('═'.repeat(55));
   const sid = 'e2e-retry-1';
   try {
     // 建立到 REVIEW 階段的 state（REVIEW 為 active 表示 code-reviewer 執行中）
-    writeV3State(sid, {
+    writeV4State(sid, {
       pipelineId: 'full',
       taskType: 'feature',
       enforced: true,
@@ -569,7 +569,7 @@ console.log('═'.repeat(55));
   const sid = 'e2e-check-1';
   try {
     // 只完成 PLAN 和 ARCH（v3: DAG + stages）
-    writeV3State(sid, {
+    writeV4State(sid, {
       pipelineId: 'full',
       taskType: 'feature',
       enforced: true,
@@ -610,7 +610,7 @@ console.log('═'.repeat(55));
   const sid = 'e2e-noncode-1';
   try {
     // v3: 需要 DAG + enforced 才會阻擋
-    writeV3State(sid, {
+    writeV4State(sid, {
       pipelineId: 'standard',
       taskType: 'feature',
       enforced: true,
@@ -743,7 +743,7 @@ console.log('══════════════════════�
   const sid = 'test-retry-revalidation';
   try {
     // 初始化 — feature pipeline，DEV 已完成，REVIEW 為 active（code-reviewer 執行中）
-    writeV3State(sid, {
+    writeV4State(sid, {
       pipelineId: 'full',
       taskType: 'feature',
       enforced: true,
@@ -1126,7 +1126,7 @@ console.log('══════════════════════�
     });
 
     // L3: CLASSIFIED（enforced）→ 阻擋（exit 2）
-    writeV3State(sid, {
+    writeV4State(sid, {
       pipelineId: 'standard',
       taskType: 'feature',
       enforced: true,
@@ -1146,7 +1146,7 @@ console.log('══════════════════════�
     });
 
     // L6: cancelled=true → 放行
-    writeV3State(sid, {
+    writeV4State(sid, {
       pipelineId: 'standard',
       taskType: 'feature',
       enforced: true,
@@ -1159,7 +1159,7 @@ console.log('══════════════════════�
     });
 
     // L7: 完整 hook 鏈 — feature pipeline + pipeline-guard 阻擋 AskUserQuestion 和 Write
-    writeV3State(sid, {
+    writeV4State(sid, {
       pipelineId: 'standard',
       taskType: 'feature',
       enforced: true,
@@ -1194,7 +1194,7 @@ console.log('══════════════════════�
   const sid = 'e2e-whitelist';
   try {
     // M1: EnterPlanMode 無條件阻擋
-    writeV3State(sid, { pipelineId: 'standard', taskType: 'feature', enforced: true, stages: ['PLAN', 'ARCH', 'DEV'] });
+    writeV4State(sid, { pipelineId: 'standard', taskType: 'feature', enforced: true, stages: ['PLAN', 'ARCH', 'DEV'] });
     const planMode = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'EnterPlanMode',
@@ -1208,7 +1208,7 @@ console.log('══════════════════════�
     });
 
     // M2: cancelled=true 後 EnterPlanMode 仍阻擋（無條件）
-    writeV3State(sid, { pipelineId: 'standard', taskType: 'feature', enforced: true, stages: ['PLAN', 'ARCH', 'DEV'], cancelled: true });
+    writeV4State(sid, { pipelineId: 'standard', taskType: 'feature', enforced: true, stages: ['PLAN', 'ARCH', 'DEV'], cancelled: true });
     const planModeAfterCancel = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'EnterPlanMode',
@@ -1221,7 +1221,7 @@ console.log('══════════════════════�
     });
 
     // M3: NotebookEdit 支援（程式碼檔案阻擋）
-    writeV3State(sid, { pipelineId: 'standard', taskType: 'feature', enforced: true, stages: ['PLAN', 'ARCH', 'DEV'] });
+    writeV4State(sid, { pipelineId: 'standard', taskType: 'feature', enforced: true, stages: ['PLAN', 'ARCH', 'DEV'] });
     const notebook = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'NotebookEdit',
@@ -1246,7 +1246,7 @@ console.log('══════════════════════�
     });
 
     // M5: DELEGATING 時 EnterPlanMode 仍阻擋（無條件）
-    writeV3State(sid, { pipelineId: 'standard', taskType: 'feature', enforced: true, stages: ['PLAN', 'ARCH', 'DEV'], active: 'PLAN' });
+    writeV4State(sid, { pipelineId: 'standard', taskType: 'feature', enforced: true, stages: ['PLAN', 'ARCH', 'DEV'], active: 'PLAN' });
     const planModeDelegate = runHook('pipeline-guard', {
       session_id: sid,
       tool_name: 'EnterPlanMode',
@@ -1298,7 +1298,7 @@ console.log('══════════════════════�
   try {
     // 模擬 REVIEW FAIL → DEV 修復後的 state（v3 格式）
     // REVIEW 為 failed，有 pendingRetry，TEST+ 仍為 pending
-    const v3State = createV3State(sid, {
+    const v3State = createV4State(sid, {
       pipelineId: 'full',
       taskType: 'feature',
       enforced: true,
@@ -1393,7 +1393,7 @@ console.log('══════════════════════�
   try {
     // O1: 過時 pipeline（lastTransition 超過 10 分鐘）+ 降級 → 應重設
     const staleTime = new Date(Date.now() - 15 * 60 * 1000).toISOString(); // 15 分鐘前
-    const staleState = createV3State(sid, {
+    const staleState = createV4State(sid, {
       pipelineId: 'standard',
       taskType: 'feature',
       enforced: true,
@@ -1434,7 +1434,7 @@ console.log('══════════════════════�
     });
 
     // O4: 新鮮 pipeline（lastTransition 剛剛）+ 降級 → 不應重設
-    const freshState = createV3State(sid, {
+    const freshState = createV4State(sid, {
       pipelineId: 'standard',
       taskType: 'feature',
       enforced: true,
@@ -1465,7 +1465,7 @@ console.log('══════════════════════�
     });
 
     // O6: 無 lastTransition 欄位 → 視為過時
-    const noTransState = createV3State(sid, {
+    const noTransState = createV4State(sid, {
       pipelineId: 'standard',
       taskType: 'feature',
       enforced: true,
@@ -1491,7 +1491,7 @@ console.log('══════════════════════�
     // O7: 已完成且已過冷卻期的 pipeline + 降級 → 正常流程（isComplete 先觸發 RESET）
     // 注意：COMPLETE→reset 有 30 秒冷卻期（防止 stop hook feedback 覆寫），
     // 模擬「使用者在 pipeline 完成後才送新任務」的真實場景
-    writeV3State(sid, {
+    writeV4State(sid, {
       pipelineId: 'fix',
       taskType: 'quickfix',
       enforced: true,
@@ -1532,7 +1532,7 @@ console.log('══════════════════════�
   const sid = 'test-qa-retry';
   try {
     // 初始化 — full pipeline，DEV/REVIEW/TEST 已完成，QA 為 active
-    writeV3State(sid, {
+    writeV4State(sid, {
       pipelineId: 'full',
       taskType: 'feature',
       enforced: true,
@@ -1645,7 +1645,7 @@ console.log('══════════════════════�
   try {
     // --- Part 1: E2E FAIL:CRITICAL → 回退到 DEV ---
 
-    writeV3State(sid, {
+    writeV4State(sid, {
       pipelineId: 'full',
       taskType: 'feature',
       enforced: true,
@@ -1687,7 +1687,7 @@ console.log('══════════════════════�
 
     // --- Part 2: E2E FAIL:MEDIUM → 不回退，繼續 DOCS ---
 
-    writeV3State(sid, {
+    writeV4State(sid, {
       pipelineId: 'full',
       taskType: 'feature',
       enforced: true,
@@ -1720,7 +1720,7 @@ console.log('══════════════════════�
 
     // --- Part 3: E2E FAIL:HIGH → 回退到 DEV ---
 
-    writeV3State(sid, {
+    writeV4State(sid, {
       pipelineId: 'full',
       taskType: 'feature',
       enforced: true,
@@ -1771,7 +1771,7 @@ console.log('══════════════════════�
   const sid = 'test-max-retries';
   try {
     // 初始化 — 已回退 3 次（MAX_RETRIES=3），REVIEW 為 active
-    const maxState = createV3State(sid, {
+    const maxState = createV4State(sid, {
       pipelineId: 'full',
       taskType: 'feature',
       enforced: true,
@@ -1843,7 +1843,7 @@ console.log('══════════════════════�
   const sid = 'test-cascading-retry';
   try {
     // 初始化 — full pipeline，DEV 已完成，REVIEW 為 active
-    writeV3State(sid, {
+    writeV4State(sid, {
       pipelineId: 'full',
       taskType: 'feature',
       enforced: true,
@@ -2004,7 +2004,7 @@ console.log('══════════════════════�
   const sid = 'test-tdd-loop';
   try {
     // quick-dev pipeline: DEV → REVIEW → TEST（DEV 為 active）
-    writeV3State(sid, {
+    writeV4State(sid, {
       pipelineId: 'quick-dev',
       taskType: 'bugfix',
       enforced: true,
@@ -2133,7 +2133,7 @@ console.log('══════════════════════�
   const sid = 'test-upgrade-pending';
   try {
     // 初始化 quick-dev pipeline，已有 pendingRetry（v3 格式）
-    const upgradeState = createV3State(sid, {
+    const upgradeState = createV4State(sid, {
       pipelineId: 'quick-dev',
       taskType: 'bugfix',
       enforced: true,
@@ -2204,7 +2204,7 @@ console.log('══════════════════════�
   const sid = 'test-review-only-fail';
   try {
     // code-reviewer 執行中（REVIEW 為 active）
-    writeV3State(sid, {
+    writeV4State(sid, {
       pipelineId: 'review-only',
       taskType: 'quickfix',
       enforced: true,

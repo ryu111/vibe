@@ -450,9 +450,14 @@ async function classify(sessionId, prompt, options = {}) {
 
   // ACTIVE → 忽略非顯式分類（防止 stop hook feedback 覆寫進行中的 pipeline）
   // stop hook decision:"block" 的 reason 成為新 prompt → classifier 重分類 → 幽靈 pipeline
-  // pipelineActive=true 時，pipeline 正在執行，任何非顯式重分類都是誤觸
+  // 例外：過時 pipeline（>10 分鐘無操作）允許重分類（使用者可能在開始新任務）
   if (ds.isActive(state) && result.source !== 'explicit') {
-    return { output: null };
+    const lastTransition = state.meta?.lastTransition;
+    const elapsedMs = lastTransition ? Date.now() - new Date(lastTransition).getTime() : Infinity;
+    if (elapsedMs < 10 * 60 * 1000) {
+      return { output: null };
+    }
+    // 過時 → 落入後續升降級邏輯處理
   }
 
   // CANCELLED → 忽略所有非顯式分類（防止 stop hook feedback 循環）

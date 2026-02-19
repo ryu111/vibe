@@ -22,7 +22,7 @@ process.env.CLAUDE_PLUGIN_ROOT = PLUGIN_ROOT;
 
 let passed = 0;
 let failed = 0;
-const { cleanTestStateFiles, writeV3State } = require('./test-helpers');
+const { cleanTestStateFiles, writeV4State } = require('./test-helpers');
 cleanTestStateFiles();
 
 function test(name, fn) {
@@ -111,7 +111,7 @@ console.log('\n🧪 Part 2: stage-transition OpenSpec 上下文注入');
 
 test('PLAN→ARCH 轉場注入 OpenSpec 提示（openspecEnabled=true）', () => {
   const sessionId = 'test-openspec-plan-to-arch';
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     active: 'PLAN',
     pipelineId: 'full',
@@ -141,7 +141,7 @@ test('PLAN→ARCH 轉場注入 OpenSpec 提示（openspecEnabled=true）', () =>
 
 test('ARCH→DEV 轉場注入 OpenSpec 提示（openspecEnabled=true）', () => {
   const sessionId = 'test-openspec-arch-to-dev';
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     completed: ['PLAN'],
     active: 'ARCH',
@@ -172,7 +172,7 @@ test('ARCH→DEV 轉場注入 OpenSpec 提示（openspecEnabled=true）', () => 
 
 test('PLAN→ARCH 轉場無 OpenSpec 提示（openspecEnabled=false）', () => {
   const sessionId = 'test-openspec-disabled-transition';
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     active: 'PLAN',
     pipelineId: 'full',
@@ -198,7 +198,7 @@ test('PLAN→ARCH 轉場無 OpenSpec 提示（openspecEnabled=false）', () => {
 
 test('DEV→REVIEW 轉場注入 OpenSpec 規格對照提示', () => {
   const sessionId = 'test-openspec-dev-to-review';
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     completed: ['PLAN', 'ARCH', 'DESIGN'],
     active: 'DEV',
@@ -229,7 +229,7 @@ test('DEV→REVIEW 轉場注入 OpenSpec 規格對照提示', () => {
 
 test('REVIEW→TEST 轉場注入 OpenSpec Scenario 測試提示', () => {
   const sessionId = 'test-openspec-review-to-test';
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     completed: ['PLAN', 'ARCH', 'DESIGN', 'DEV'],
     active: 'REVIEW',
@@ -260,7 +260,7 @@ test('REVIEW→TEST 轉場注入 OpenSpec Scenario 測試提示', () => {
 
 test('TEST→QA 轉場無 OpenSpec 提示（QA 無 OpenSpec 指引）', () => {
   const sessionId = 'test-openspec-test-to-qa';
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     completed: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW'],
     active: 'TEST',
@@ -287,7 +287,7 @@ test('TEST→QA 轉場無 OpenSpec 提示（QA 無 OpenSpec 指引）', () => {
 
 test('QA→E2E→DOCS 轉場注入 OpenSpec 歸檔提示', () => {
   const sessionId = 'test-openspec-to-docs';
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'],
     completed: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA'],
     active: 'E2E',

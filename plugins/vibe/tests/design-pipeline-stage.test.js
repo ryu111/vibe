@@ -25,7 +25,7 @@ const PROJECT_ROOT = path.join(PLUGIN_ROOT, '..', '..');
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 process.env.CLAUDE_PLUGIN_ROOT = PLUGIN_ROOT;
 
-const { writeV3State, cleanTestStateFiles } = require('./test-helpers');
+const { writeV4State, cleanTestStateFiles } = require('./test-helpers');
 
 let passed = 0;
 let failed = 0;
@@ -115,7 +115,7 @@ console.log('\n🧪 Part 2: Stage Transition 跳過邏輯');
 
 test('前端框架（react）→ DESIGN 不跳過', () => {
   const sessionId = `test-design-frontend-${Date.now()}`;
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: FULL_STAGES,
     completed: ['PLAN'],
     active: 'ARCH',
@@ -164,7 +164,7 @@ test('前端框架（react）→ DESIGN 不跳過', () => {
 
 test('前端框架（vue）→ DESIGN 不跳過', () => {
   const sessionId = `test-design-vue-${Date.now()}`;
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: FULL_STAGES,
     completed: ['PLAN'],
     active: 'ARCH',
@@ -210,7 +210,7 @@ test('前端框架（vue）→ DESIGN 不跳過', () => {
 
 test('後端框架（express）→ DESIGN 跳過，stages.DESIGN.status === skipped', () => {
   const sessionId = `test-design-backend-${Date.now()}`;
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: FULL_STAGES,
     completed: ['PLAN'],
     active: 'ARCH',
@@ -256,7 +256,7 @@ test('後端框架（express）→ DESIGN 跳過，stages.DESIGN.status === skip
 
 test('needsDesign=true（後端框架也不跳過）', () => {
   const sessionId = `test-design-forced-${Date.now()}`;
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: FULL_STAGES,
     completed: ['PLAN'],
     active: 'ARCH',
@@ -303,7 +303,7 @@ test('needsDesign=true（後端框架也不跳過）', () => {
 
 test('無框架資訊 → DESIGN 跳過', () => {
   const sessionId = `test-design-noframework-${Date.now()}`;
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: FULL_STAGES,
     completed: ['PLAN'],
     active: 'ARCH',
@@ -348,7 +348,7 @@ test('無框架資訊 → DESIGN 跳過', () => {
 
 test('E2E 跳過也正確記錄到 stages', () => {
   const sessionId = `test-design-e2e-skip-${Date.now()}`;
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: FULL_STAGES,
     completed: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST'],
     skipped: ['DESIGN'],
@@ -401,7 +401,7 @@ console.log('\n🧪 Part 3: Pipeline Check 跳過排除');
 
 test('所有階段 completed/skipped → pipeline-check 不阻擋', () => {
   const sessionId = `test-design-pipeline-check-${Date.now()}`;
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: FULL_STAGES,
     completed: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'DOCS'],
     skipped: ['DESIGN', 'E2E'],
@@ -439,7 +439,7 @@ test('所有階段 completed/skipped → pipeline-check 不阻擋', () => {
 test('空 skippedStages 不影響計算', () => {
   const sessionId = `test-design-empty-skip-${Date.now()}`;
   // 只有 PLAN completed，其他全部 pending → pipeline-check 應阻擋
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: FULL_STAGES,
     completed: ['PLAN'],
     pipelineId: 'full',
@@ -475,7 +475,7 @@ test('空 skippedStages 不影響計算', () => {
 
 test('部分跳過：DESIGN 跳過但 E2E 沒跳過', () => {
   const sessionId = `test-design-partial-skip-${Date.now()}`;
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: FULL_STAGES,
     completed: ['PLAN', 'ARCH', 'DEV'],
     skipped: ['DESIGN'],
@@ -720,7 +720,7 @@ console.log('\n🧪 Part 8: 邊界案例與錯誤處理');
 
 test('空值框架（framework: { name: "" }）→ 視為無框架，跳過 DESIGN', () => {
   const sessionId = `test-design-empty-framework-${Date.now()}`;
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: FULL_STAGES,
     completed: ['PLAN'],
     active: 'ARCH',
@@ -762,7 +762,7 @@ test('空值框架（framework: { name: "" }）→ 視為無框架，跳過 DESI
 
 test('needsDesign=false 明確設為 false（後端框架）→ 跳過 DESIGN', () => {
   const sessionId = `test-design-explicit-false-${Date.now()}`;
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: FULL_STAGES,
     completed: ['PLAN'],
     active: 'ARCH',
@@ -806,7 +806,7 @@ test('needsDesign=false 明確設為 false（後端框架）→ 跳過 DESIGN', 
 test('前端框架大小寫變化（React vs react）→ 正確辨識', () => {
   // 測試 FRONTEND_FRAMEWORKS 是小寫，檢查實際比對邏輯
   const sessionId = `test-design-case-${Date.now()}`;
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: FULL_STAGES,
     completed: ['PLAN'],
     active: 'ARCH',
@@ -856,7 +856,7 @@ test('前端框架大小寫變化（React vs react）→ 正確辨識', () => {
 
 test('多個階段跳過：DESIGN + E2E 同時跳過', () => {
   const sessionId = `test-design-multi-skip-${Date.now()}`;
-  const statePath = writeV3State(sessionId, {
+  const statePath = writeV4State(sessionId, {
     stages: FULL_STAGES,
     completed: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA', 'DOCS'],
     skipped: ['DESIGN', 'E2E'],
