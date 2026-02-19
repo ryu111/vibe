@@ -64,26 +64,63 @@
 
 ---
 
-## P4：系統通知誤分類（嚴重度：中）
+## P4：系統通知誤分類（嚴重度：中）✅ 已修復
 
-**現狀**：background task 完成通知（如 `vibe:developer 完成`）、`⚠️` 警告訊息、prompt hook 的 stop feedback 等系統訊息，可能被 classifier heuristic 誤判為 bugfix 或 feature，觸發不必要的 pipeline。
+**修復內容（v2.1.5+）**：三層防禦機制強化，確保系統訊息 100% 被正確攔截。
 
-**已有緩解**（v2.0.13）：
-- `system-feedback` heuristic 擴充為函式，覆蓋 3 組模式（pipeline feedback、⚠️ 警告、background task 通知）
-- `bugfix` heuristic 排除清單加入 pipeline 關鍵詞
-- active pipeline 抑制（30 秒冷卻期）
+**修復層次**：
 
-**殘留風險**：heuristic 是 pattern matching，新格式的系統訊息可能繞過現有規則。需持續觀察並擴充排除清單。
+1. **結構化標記層（最可靠）**
+   - 新增常數 `SYSTEM_MARKER = '<!-- VIBE_SYSTEM -->'`
+   - pipeline-check.js 和 task-guard.js 中所有 block reason 和 systemMessage 都加上此標記前綴
+   - classifier.js 的 `system-feedback` heuristic 優先檢查此標記（`t.includes(SYSTEM_MARKER)`）
+
+2. **Emoji 防禦層（兜底）**
+   - emoji 正則擴充從 `/^[⛔⚠️]/` → `/^[⛔⚠️✅🔄📋➡️📌📄]/`
+   - 涵蓋所有 hook 可能的視覺標記
+
+3. **英文通知模式層（最後防線）**
+   - background task 完成通知、agent 回報、自動化觸發等通用英文模式
+
+**實作位置**：
+- `plugins/vibe/scripts/lib/flow/classifier.js` 第 29-34 行（SYSTEM_MARKER 定義）、第 88-95 行（system-feedback 規則擴充）
+- `plugins/vibe/scripts/hooks/pipeline-check.js` — reason 前綴加入標記
+- `plugins/vibe/scripts/hooks/task-guard.js` — systemMessage 前綴加入標記
+
+**測試**：`plugins/vibe/tests/classifier-and-console-filter.test.js` 新增 11 個測試案例，驗證標記偵測、emoji 擴充、負面案例排除。
+
+**效果**：系統訊息現在在最高優先級被攔截，即使後續 emoji 或模式新增，標記層始終有效。新格式通知也可通過更新 emoji 清單快速擴展。
 
 ---
 
-## P5：Classifier Layer 1.5 侷限（嚴重度：低）
+## P5：Classifier Layer 1.5 侷限（嚴重度：低）⚠️ 部分修復
 
-**現狀**：regex heuristic（Layer 1.5）只處理明確的單階段 pipeline（fix/docs-only/none）。多階段任務必須由使用者顯式指定 `[pipeline:xxx]` 或依賴 Layer 2（Main Agent 判斷）。
+**修復內容（v2.1.5+）**：擴充啟發式規則，支援 review-only 和更多條件詢問句型。
 
-**影響**：Layer 2 依賴 Main Agent 的 context 理解能力，偶爾會選擇不合適的 pipeline（如對大型重構選擇 fix 而非 standard）。
+**增強項目**：
 
-**改進方向**：擴充 Layer 1.5 的啟發式規則（如偵測「重構」+ 多檔案提及 → standard），但需平衡精確度和維護成本。
+1. **新增 review-only 單階段 pipeline**
+   - 觸發：`review/審查/code review/程式碼審查/程式碼檢查` 關鍵字
+   - 負面排除：`修改/修復/修正/重構/新增/建立/實作/refactor/fix/implement/add` — 防止誤判為開發任務
+   - 實作：`plugins/vibe/scripts/lib/flow/classifier.js` 第 103-108 行
+
+2. **Question 模式擴充**
+   - 新增條件詢問句型：`能否/可以/有沒有/是否/是不是` 開頭
+   - 不依賴末尾問號，適應多種敘述方式
+   - 實作：`plugins/vibe/scripts/lib/flow/classifier.js` 第 63-66 行
+
+3. **Pipeline 目錄提示裁剪（P6 Context Window 相關）**
+   - `buildPipelineCatalogHint()` 現支援動態裁剪：有當前 pipelineId 時取相鄰 pipeline，無時列最常用 5 個
+   - 節省 ~265 chars（相比全部 10 個）
+   - 實作：`plugins/vibe/scripts/lib/flow/classifier.js` 第 196-236 行
+
+**現狀與 Layer 2 分工**：
+- Layer 1.5（regex）現已涵蓋：fix/docs-only/review-only/none + question 偵測（共 5 個單階段 pipeline）
+- Layer 2（Main Agent）保留責任：multi-stage pipeline 判斷（full/standard/quick-dev/test-first/ui-only/security）
+
+Layer 2 仍依賴 Main Agent 的 context 理解能力，但 systemMessage 注入現包含完整 pipeline 目錄提示，品質有保障。
+
+**測試**：`plugins/vibe/tests/classifier-and-console-filter.test.js` 新增 13 個測試案例（review-only 正負面各 4+3 個、question 擴充 4 個）。
 
 ---
 

@@ -19,6 +19,16 @@
 const { PIPELINES, TASKTYPE_TO_PIPELINE, PIPELINE_TO_TASKTYPE } = require('../registry.js');
 
 // ═══════════════════════════════════════════════
+// 系統標記常數
+// ═══════════════════════════════════════════════
+
+/**
+ * 結構化系統標記 — 用於識別 hook 輸出（pipeline-check reason、task-guard systemMessage）
+ * 加上此標記的訊息會被 system-feedback heuristic 最優先攔截，確保不會誤觸發 pipeline
+ */
+const SYSTEM_MARKER = '<!-- VIBE_SYSTEM -->';
+
+// ═══════════════════════════════════════════════
 // Layer 1: 顯式 Pipeline 覆寫
 // ═══════════════════════════════════════════════
 
@@ -45,11 +55,14 @@ function extractExplicitPipeline(prompt) {
 
 /**
  * 純問答偵測：prompt 看起來像研究/問答而非編碼任務
+ * 涵蓋：傳統疑問詞 + 條件詢問句型（能否/可以/有沒有/是否/是不是）
  */
 const QUESTION_PATTERNS = [
   /^.{0,10}(有幾個|有哪些|是什麼|怎麼|如何|為什麼|什麼是|列出|說明|解釋|分析|比較)/,
   /\?$/,
   /(幾個|幾種|哪些).{0,15}[？?]?$/,
+  // 條件詢問句型（疑問句，不帶修改意圖）
+  /^(能否|可以|有沒有|是否|是不是).{0,50}[？?]?$/,
 ];
 
 /**
@@ -70,13 +83,15 @@ const FILE_PATH_PATTERN = /(?:plugins\/|scripts\/|src\/|lib\/|docs\/|tests?\/)\S
 const HEURISTIC_RULES = [
   // system-feedback: pipeline 系統回饋（stop hook reason / delegation hint / 系統通知）
   // stop hook 的 decision:"block" reason 會成為新 prompt → 必須在最前面攔截
-  // 涵蓋：⛔ block reason + ⚠️ 警告 + background task 完成通知
+  // 涵蓋：SYSTEM_MARKER 標記 + emoji 前綴 + background task 完成通知
   { id: 'system-feedback', pipeline: 'none',
     test: (p) => {
       const t = p.trim();
-      // Hook block reason 前綴（pipeline-check / stage-transition 等）
-      if (/^[⛔⚠️]/.test(t)) return true;
-      // 系統通知模式（background task 結果、agent 回報、自動化觸發）
+      // 1. 結構化標記（最可靠，pipeline-check / task-guard 主動加上）
+      if (t.includes(SYSTEM_MARKER)) return true;
+      // 2. Emoji 前綴（防禦性兜底，涵蓋各種 hook 輸出格式）
+      if (/^[⛔⚠️✅🔄📋➡️📌📄]/.test(t)) return true;
+      // 3. 系統通知模式（background task 結果、agent 回報、自動化觸發）
       if (/^(Background task|Task .+ (completed|finished|failed)|Result from|Output from)/i.test(t)) return true;
       return false;
     }},
@@ -84,6 +99,13 @@ const HEURISTIC_RULES = [
   // none: 純問答（最先匹配，避免誤分類）
   { id: 'question', pipeline: 'none',
     test: (p) => QUESTION_PATTERNS.some(r => r.test(p)) && !FILE_PATH_PATTERN.test(p) },
+
+  // review-only: 程式碼審查（1 階段）
+  // 正面：review/審查/code review 等審查意圖
+  // 負面排除：含修改/修復/重構/新增/建立/實作等有開發意圖的詞彙 → 應走 quick-dev/standard
+  { id: 'review-only', pipeline: 'review-only',
+    test: (p) => /(?:review|審查|code\s+review|程式碼審查|程式碼檢查)/i.test(p) &&
+                 !/(修改|修復|修正|重構|新增|建立|實作|refactor|fix|implement|add)/i.test(p) },
 
   // docs-only: 更新/撰寫文件（1 階段）
   { id: 'docs', pipeline: 'docs-only',
@@ -219,6 +241,9 @@ function buildPipelineCatalogHint(currentPipelineId) {
 // ═══════════════════════════════════════════════
 
 module.exports = {
+  // 系統標記常數（供 hook 端 require，避免硬編碼）
+  SYSTEM_MARKER,
+
   // 主要 API（async）
   classifyWithConfidence,
 

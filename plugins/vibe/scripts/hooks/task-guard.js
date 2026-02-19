@@ -26,6 +26,7 @@ const DEFAULT_PROMISE = 'ALL_TASKS_COMPLETE';
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 const { reconstructTasks, extractPromise, getIncompleteTasks } = require(path.join(__dirname, '..', 'lib', 'task-parser.js'));
+const { SYSTEM_MARKER } = require(path.join(__dirname, '..', 'lib', 'flow', 'classifier.js'));
 
 function cleanup(statePath) {
   try {
@@ -102,7 +103,7 @@ process.stdin.on('end', () => {
       cleanup(statePath);
       console.log(JSON.stringify({
         continue: true,
-        systemMessage: `⚠️ task-guard：已達到最大阻擋次數（${state.blockCount}），強制放行。`,
+        systemMessage: `${SYSTEM_MARKER}⚠️ task-guard：已達到最大阻擋次數（${state.blockCount}），強制放行。`,
       }));
       process.exit(0);
     }
@@ -129,7 +130,7 @@ process.stdin.on('end', () => {
     console.log(JSON.stringify({
       continue: false,
       stopReason: `${incomplete.length} 個任務未完成`,
-      systemMessage: `⛔ 任務尚未完成（第 ${state.blockCount}/${state.maxBlocks || MAX_BLOCKS} 次阻擋）\n\n未完成項目（${incomplete.length}/${taskIds.length}）：\n${todoList}\n\n請繼續完成以上項目。完成後請將所有任務標記為 completed。\n如果確實已全部完成，輸出 <promise>${expectedPromise}</promise> 以退出。`,
+      systemMessage: `${SYSTEM_MARKER}⛔ 任務尚未完成（第 ${state.blockCount}/${state.maxBlocks || MAX_BLOCKS} 次阻擋）\n\n未完成項目（${incomplete.length}/${taskIds.length}）：\n${todoList}\n\n請繼續完成以上項目。完成後請將所有任務標記為 completed。\n如果確實已全部完成，輸出 <promise>${expectedPromise}</promise> 以退出。`,
     }));
   } catch (err) {
     hookLogger.error('task-guard', err);

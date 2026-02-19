@@ -10,6 +10,7 @@ const path = require('path');
 const { safeRun } = require(path.join(__dirname, '..', 'lib', 'hook-utils.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 const ctrl = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-controller.js'));
+const { SYSTEM_MARKER } = require(path.join(__dirname, '..', 'lib', 'flow', 'classifier.js'));
 
 safeRun('pipeline-check', (data) => {
   // 防迴圈：允許最多 3 次重試（multi-stage pipeline 在 -p 模式需要多次 re-prompt）
@@ -28,8 +29,10 @@ safeRun('pipeline-check', (data) => {
   // ECC Stop hook 標準格式：decision:"block" + reason
   // continue:false 在 -p 模式可能不被 honor，decision:"block" 更可靠
   // reason 作為下一個 prompt 送回 Claude，確保模型繼續委派
+  // reason 前綴加入 SYSTEM_MARKER：ECC 把 reason 作為新 prompt 送回 Claude，
+  // classifier 的 system-feedback heuristic 偵測到標記後直接 route 到 none，避免誤觸發 pipeline
   console.log(JSON.stringify({
     decision: 'block',
-    reason: result.systemMessage,
+    reason: `${SYSTEM_MARKER}${result.systemMessage}`,
   }));
 });

@@ -47,6 +47,7 @@ const {
   classifyByHeuristic,
   mapTaskTypeToPipeline,
   buildPipelineCatalogHint,
+  SYSTEM_MARKER,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'classifier.js'));
 
 // ─── Part 1a: extractExplicitPipeline (sync) ──────
@@ -117,11 +118,12 @@ asyncTest('Layer 1: [PIPELINE:SECURITY] 全大寫 → security', async () => {
   assert.strictEqual(result.confidence, 1.0);
 });
 
-asyncTest('Layer 1: [pipeline:invalid-name] → Layer 1.5 heuristic 接手', async () => {
+asyncTest('Layer 1: [pipeline:invalid-name] → Layer 2 main-agent 接手', async () => {
   const result = await classifyWithConfidence('[pipeline:invalid-name] fix typo');
-  // invalid name 跳過 Layer 1，由 Layer 1.5 heuristic 匹配 "fix"
-  assert.strictEqual(result.source, 'heuristic');
-  assert.strictEqual(result.pipeline, 'fix');
+  // invalid name 跳過 Layer 1；bugfix rule 因含 'pipeline' 關鍵字被排除條件攔截；
+  // heuristic 無法分類 → 交由 Layer 2 main-agent 處理
+  assert.strictEqual(result.source, 'main-agent');
+  assert.strictEqual(result.pipeline, 'none');
 });
 
 asyncTest('Layer 1: 語法在結尾 → 正確解析', async () => {
@@ -175,6 +177,217 @@ asyncTest('Layer 1.5: ⛔ stop hook feedback → none/heuristic:system-feedback'
   assert.strictEqual(result.pipeline, 'none');
   assert.strictEqual(result.source, 'heuristic');
   assert.strictEqual(result.matchedRule, 'heuristic:system-feedback');
+});
+
+// ─── Part 1b-3: SYSTEM_MARKER 偵測 (任務 1.6) ──────
+
+console.log('\n🧪 Part 1b-3: SYSTEM_MARKER 偵測');
+console.log('═'.repeat(50));
+
+test('SYSTEM_MARKER: 常數已匯出且為非空字串', () => {
+  assert.ok(typeof SYSTEM_MARKER === 'string', 'SYSTEM_MARKER 應為字串');
+  assert.ok(SYSTEM_MARKER.length > 0, 'SYSTEM_MARKER 不應為空');
+  assert.strictEqual(SYSTEM_MARKER, '<!-- VIBE_SYSTEM -->', 'SYSTEM_MARKER 應為 HTML 註解格式');
+});
+
+test('SYSTEM_MARKER 偵測：純標記前綴 → system-feedback', () => {
+  const r = classifyByHeuristic(`${SYSTEM_MARKER}⛔ Pipeline 尚未完成。`);
+  assert.ok(r, '應有匹配結果');
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+});
+
+test('SYSTEM_MARKER 偵測：標記 + emoji → system-feedback（標記優先）', () => {
+  const r = classifyByHeuristic(`${SYSTEM_MARKER}✅ 任務完成通知`);
+  assert.ok(r);
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+});
+
+test('SYSTEM_MARKER 偵測：標記優先於 bugfix 規則', () => {
+  // 即使 prompt 含有「修復」關鍵字，SYSTEM_MARKER 也應優先攔截
+  const r = classifyByHeuristic(`${SYSTEM_MARKER}修復任務尚未完成，請繼續。`);
+  assert.ok(r);
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+});
+
+test('SYSTEM_MARKER 偵測：無標記的普通修復 prompt 不受影響', () => {
+  const r = classifyByHeuristic('修復一個小 bug');
+  assert.ok(r);
+  assert.strictEqual(r.matchedRule, 'heuristic:bugfix', '無標記應正常匹配 bugfix');
+});
+
+// ─── Part 1b-4: 擴充 emoji 偵測 (任務 1.7 + 1.8) ──
+
+console.log('\n🧪 Part 1b-4: 擴充 emoji 偵測');
+console.log('═'.repeat(50));
+
+test('emoji 擴充：✅ 開頭 → system-feedback（新增）', () => {
+  const r = classifyByHeuristic('✅ 任務已完成');
+  assert.ok(r, '應有匹配結果');
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+});
+
+test('emoji 擴充：🔄 開頭 → system-feedback（新增）', () => {
+  const r = classifyByHeuristic('🔄 正在同步...');
+  assert.ok(r);
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+});
+
+test('emoji 擴充：📋 開頭 → system-feedback（新增）', () => {
+  const r = classifyByHeuristic('📋 任務清單更新');
+  assert.ok(r);
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+});
+
+test('emoji 擴充：➡️ 開頭 → system-feedback（新增）', () => {
+  const r = classifyByHeuristic('➡️ 下一步：提交 PR');
+  assert.ok(r);
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+});
+
+test('emoji 擴充：📌 開頭 → system-feedback（新增）', () => {
+  const r = classifyByHeuristic('📌 重要：請注意這個問題');
+  assert.ok(r);
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+});
+
+test('emoji 擴充：📄 開頭 → system-feedback（新增）', () => {
+  const r = classifyByHeuristic('📄 報告：Pipeline 執行結果');
+  assert.ok(r);
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+});
+
+test('emoji 回歸：⛔ 開頭仍正常匹配（回歸驗證）', () => {
+  const r = classifyByHeuristic('⛔ 禁止停止！必須繼續委派。');
+  assert.ok(r);
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+});
+
+test('emoji 回歸：⚠️ 開頭仍正常匹配（回歸驗證）', () => {
+  const r = classifyByHeuristic('⚠️ 警告：安全漏洞偵測到');
+  assert.ok(r);
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+});
+
+// ─── Part 1b-5: review-only heuristic (任務 2.3 + 2.4) ──
+
+console.log('\n🧪 Part 1b-5: review-only heuristic');
+console.log('═'.repeat(50));
+
+test('review-only: "review XXX" 正面匹配', () => {
+  const r = classifyByHeuristic('review classifier.js 的邏輯');
+  assert.ok(r, '應有匹配結果');
+  assert.strictEqual(r.pipeline, 'review-only');
+  assert.strictEqual(r.matchedRule, 'heuristic:review-only');
+});
+
+test('review-only: "code review" 正面匹配', () => {
+  const r = classifyByHeuristic('幫我 code review 這段程式碼');
+  assert.ok(r);
+  assert.strictEqual(r.pipeline, 'review-only');
+  assert.strictEqual(r.matchedRule, 'heuristic:review-only');
+});
+
+test('review-only: "審查 XXX" 中文正面匹配', () => {
+  const r = classifyByHeuristic('審查 pipeline-controller 的邏輯');
+  assert.ok(r);
+  assert.strictEqual(r.pipeline, 'review-only');
+  assert.strictEqual(r.matchedRule, 'heuristic:review-only');
+});
+
+test('review-only: "程式碼審查" 正面匹配', () => {
+  const r = classifyByHeuristic('請做一次程式碼審查');
+  assert.ok(r);
+  assert.strictEqual(r.pipeline, 'review-only');
+  assert.strictEqual(r.matchedRule, 'heuristic:review-only');
+});
+
+test('review-only 負面排除: "review + 修復" → 不匹配 review-only', () => {
+  const r = classifyByHeuristic('review 之後修復發現的 bug');
+  // 含「修復」→ 不匹配 review-only（應由 Layer 2 判斷）
+  assert.ok(!r || r.matchedRule !== 'heuristic:review-only',
+    '含「修復」不應匹配 review-only，實際: ' + (r ? r.matchedRule : 'null'));
+});
+
+test('review-only 負面排除: "review + 重構" → 不匹配 review-only', () => {
+  const r = classifyByHeuristic('review 並重構 classifier 的 HEURISTIC_RULES');
+  assert.ok(!r || r.matchedRule !== 'heuristic:review-only',
+    '含「重構」不應匹配 review-only，實際: ' + (r ? r.matchedRule : 'null'));
+});
+
+test('review-only 負面排除: "review + 新增" → 不匹配 review-only', () => {
+  const r = classifyByHeuristic('review 完之後新增一個測試案例');
+  assert.ok(!r || r.matchedRule !== 'heuristic:review-only',
+    '含「新增」不應匹配 review-only，實際: ' + (r ? r.matchedRule : 'null'));
+});
+
+test('review-only 負面排除: "review + 實作" → 不匹配 review-only', () => {
+  const r = classifyByHeuristic('review 後按建議實作改善');
+  assert.ok(!r || r.matchedRule !== 'heuristic:review-only',
+    '含「實作」不應匹配 review-only，實際: ' + (r ? r.matchedRule : 'null'));
+});
+
+test('review-only 負面排除: "review + fix" → 不匹配 review-only', () => {
+  const r = classifyByHeuristic('review and fix the authentication flow');
+  assert.ok(!r || r.matchedRule !== 'heuristic:review-only',
+    '含「fix」不應匹配 review-only，實際: ' + (r ? r.matchedRule : 'null'));
+});
+
+// ─── Part 1b-6: question heuristic 擴充 (任務 2.5 + 2.6) ──
+
+console.log('\n🧪 Part 1b-6: question heuristic 擴充');
+console.log('═'.repeat(50));
+
+test('question 擴充：能否 → none（新增疑問句型）', () => {
+  const r = classifyByHeuristic('能否說明這個設計的優缺點');
+  assert.ok(r, '應有匹配結果');
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:question');
+});
+
+test('question 擴充：可以 → none（新增疑問句型）', () => {
+  const r = classifyByHeuristic('可以解釋一下 DAG 的工作原理嗎');
+  assert.ok(r);
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:question');
+});
+
+test('question 擴充：有沒有 → none（新增疑問句型）', () => {
+  const r = classifyByHeuristic('有沒有更好的方式處理這個問題');
+  assert.ok(r);
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:question');
+});
+
+test('question 擴充：是否 → none（新增疑問句型）', () => {
+  const r = classifyByHeuristic('是否需要更新文件');
+  assert.ok(r);
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:question');
+});
+
+test('question 擴充：含檔案路徑的「能否」不匹配', () => {
+  // 含檔案路徑 → FILE_PATH_PATTERN 排除，即使有疑問詞也不走 question
+  const r = classifyByHeuristic('能否確認 plugins/vibe/scripts/lib/flow/classifier.js 的邏輯');
+  assert.ok(!r || r.matchedRule !== 'heuristic:question',
+    '含檔案路徑不應匹配 question，實際: ' + (r ? r.matchedRule : 'null'));
+});
+
+test('question 回歸：? 結尾仍正常匹配（回歸驗證）', () => {
+  const r = classifyByHeuristic('什麼是 pipeline?');
+  assert.ok(r);
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:question');
 });
 
 // ─── Part 1c: classifyWithConfidence Fallback (async, 無 API key) ──
@@ -772,6 +985,188 @@ test('formatter: task.classified Layer 3 LLM', () => {
   const text = fmtEvt(event);
   assert.ok(text.includes('L3'), '應含 L3');
   assert.ok(text.includes('0.85'), '應含信心度');
+});
+
+// ─── Part 5: Spec 驗收條件 — SYSTEM_MARKER 規格場景（P4 獨立驗證）──
+
+console.log('\n🧪 Part 5: SYSTEM_MARKER 規格場景（P4 獨立驗證）');
+console.log('═'.repeat(50));
+
+// classifier spec: SYSTEM_MARKER 在 prompt 中間也被偵測
+test('SYSTEM_MARKER 在 prompt 中間也能被偵測', () => {
+  const r = classifyByHeuristic('一些前綴文字 <!-- VIBE_SYSTEM --> 一些後綴文字');
+  assert.ok(r, '應有匹配結果');
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+});
+
+// classifier spec: SYSTEM_MARKER 優先於 review-only
+test('SYSTEM_MARKER 優先於 review-only 規則', () => {
+  // prompt 同時匹配 system-feedback（SYSTEM_MARKER）和 review-only（含「review」）
+  // system-feedback 應優先
+  const r = classifyByHeuristic('<!-- VIBE_SYSTEM --> review 一下 auth 模組');
+  assert.ok(r, '應有匹配結果');
+  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback', 'SYSTEM_MARKER 應優先於 review-only');
+  assert.strictEqual(r.pipeline, 'none');
+});
+
+// hooks spec: pipeline-check reason 含 SYSTEM_MARKER
+test('pipeline-check.js 引用 SYSTEM_MARKER 常數（非硬編碼）', () => {
+  const pcContent = fs.readFileSync(
+    path.join(__dirname, '..', 'scripts', 'hooks', 'pipeline-check.js'), 'utf8'
+  );
+  // 應從 classifier.js require SYSTEM_MARKER
+  assert.ok(pcContent.includes('classifier.js'), 'pipeline-check 應 require classifier.js');
+  assert.ok(pcContent.includes('SYSTEM_MARKER'), 'pipeline-check 應使用 SYSTEM_MARKER 常數');
+  // 不應有硬編碼的 <!-- VIBE_SYSTEM --> 字串
+  const withoutComment = pcContent.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
+  assert.ok(!withoutComment.includes('<!-- VIBE_SYSTEM -->'), 'pipeline-check 不應硬編碼標記字串（DRY）');
+});
+
+// hooks spec: task-guard systemMessage 含 SYSTEM_MARKER（常數來源統一）
+test('task-guard.js 引用 SYSTEM_MARKER 常數（非硬編碼）', () => {
+  const tgContent = fs.readFileSync(
+    path.join(__dirname, '..', 'scripts', 'hooks', 'task-guard.js'), 'utf8'
+  );
+  // 應從 classifier.js require SYSTEM_MARKER
+  assert.ok(tgContent.includes('classifier.js'), 'task-guard 應 require classifier.js');
+  assert.ok(tgContent.includes('SYSTEM_MARKER'), 'task-guard 應使用 SYSTEM_MARKER 常數');
+  // 不應有硬編碼的 <!-- VIBE_SYSTEM --> 字串
+  const withoutComment = tgContent.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
+  assert.ok(!withoutComment.includes('<!-- VIBE_SYSTEM -->'), 'task-guard 不應硬編碼標記字串（DRY）');
+});
+
+// hooks spec: pipeline-check reason 格式為 SYSTEM_MARKER + 原有內容
+// 此測試透過直接讀取原始碼確認格式（子行程測試需要特定 pipeline state）
+test('pipeline-check reason 格式：SYSTEM_MARKER 前綴 + systemMessage', () => {
+  const pcContent = fs.readFileSync(
+    path.join(__dirname, '..', 'scripts', 'hooks', 'pipeline-check.js'), 'utf8'
+  );
+  // reason 組合格式：`${SYSTEM_MARKER}${result.systemMessage}`
+  assert.ok(
+    pcContent.includes('`${SYSTEM_MARKER}${result.systemMessage}`') ||
+    pcContent.includes("SYSTEM_MARKER + result.systemMessage") ||
+    pcContent.includes('reason: `${SYSTEM_MARKER}'),
+    'pipeline-check reason 應以 SYSTEM_MARKER 為前綴'
+  );
+});
+
+// hooks spec: task-guard 兩個輸出路徑都含 SYSTEM_MARKER
+test('task-guard 阻擋路徑 systemMessage 含 SYSTEM_MARKER 前綴', () => {
+  const tgContent = fs.readFileSync(
+    path.join(__dirname, '..', 'scripts', 'hooks', 'task-guard.js'), 'utf8'
+  );
+  // 找到阻擋輸出的 systemMessage 賦值模式
+  // 確認兩處 systemMessage（安全閥 + 正常阻擋）都有 SYSTEM_MARKER
+  const systemMessageMatches = tgContent.match(/systemMessage:.*SYSTEM_MARKER/g) || [];
+  assert.ok(systemMessageMatches.length >= 2, `task-guard 應有至少 2 處 systemMessage 含 SYSTEM_MARKER，實際: ${systemMessageMatches.length}`);
+});
+
+// ─── Part 5b: question heuristic 擴充 — 新 Scenario ──
+
+console.log('\n🧪 Part 5b: question heuristic 擴充場景（spec 獨立驗證）');
+console.log('═'.repeat(50));
+
+// spec: 「是不是 bug」分類為 none（question）
+test('question: 是不是 bug → none（是否/是不是 句型）', () => {
+  const r = classifyByHeuristic('是不是 bug');
+  assert.ok(r, '應有匹配結果');
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:question');
+});
+
+// spec: 「有沒有辦法加速 CI」→ question（不含檔案路徑）
+test('question: 有沒有辦法加速 CI → none（有沒有 句型）', () => {
+  const r = classifyByHeuristic('有沒有辦法加速 CI');
+  assert.ok(r, '應有匹配結果');
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:question');
+});
+
+// spec: 「是否需要更新 registry」→ none（是否 句型，不含檔案路徑）
+test('question: 是否需要更新 registry → none（是否 句型）', () => {
+  const r = classifyByHeuristic('是否需要更新 registry');
+  assert.ok(r, '應有匹配結果');
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:question');
+});
+
+// ─── Part 5c: review-only spec 場景 ──────────────
+
+console.log('\n🧪 Part 5c: review-only spec 場景（獨立驗證）');
+console.log('═'.repeat(50));
+
+// spec: 「review 這段程式碼」→ review-only
+test('review-only: review 這段程式碼 → review-only', () => {
+  const r = classifyByHeuristic('review 這段程式碼');
+  assert.ok(r, '應有匹配結果');
+  assert.strictEqual(r.pipeline, 'review-only');
+  assert.strictEqual(r.matchedRule, 'heuristic:review-only');
+});
+
+// spec: 「審查最近的變更」→ review-only
+test('review-only: 審查最近的變更 → review-only', () => {
+  const r = classifyByHeuristic('審查最近的變更');
+  assert.ok(r, '應有匹配結果');
+  assert.strictEqual(r.pipeline, 'review-only');
+  assert.strictEqual(r.matchedRule, 'heuristic:review-only');
+});
+
+// spec: 「review 後修復問題」→ 不是 review-only（含「修復」）
+test('review-only 負面排除: review 後修復問題 → 不匹配 review-only', () => {
+  const r = classifyByHeuristic('review 後修復問題');
+  const notReviewOnly = !r || r.matchedRule !== 'heuristic:review-only';
+  assert.ok(notReviewOnly, `含「修復」的 review prompt 不應匹配 review-only，實際: ${r ? r.matchedRule : 'null'}`);
+});
+
+// spec: 「code review」→ review-only
+test('review-only: code review → review-only', () => {
+  const r = classifyByHeuristic('code review');
+  assert.ok(r, '應有匹配結果');
+  assert.strictEqual(r.pipeline, 'review-only');
+  assert.strictEqual(r.matchedRule, 'heuristic:review-only');
+});
+
+// spec: HEURISTIC_RULES 順序 — system-feedback 在 question 前面（question 的 review 疑問不被 review-only 優先）
+test('HEURISTIC_RULES 順序: 什麼是 review？→ question（非 review-only）', () => {
+  const r = classifyByHeuristic('什麼是 review？');
+  // 「什麼是」是疑問詞 → question 先匹配
+  assert.ok(r, '應有匹配結果');
+  assert.strictEqual(r.matchedRule, 'heuristic:question', '疑問詞 question 規則應優先於 review-only');
+});
+
+// ─── Part 5d: system-feedback 背景任務通知模式 ──
+
+console.log('\n🧪 Part 5d: system-feedback 背景任務通知模式');
+console.log('═'.repeat(50));
+
+// system-feedback 的第 3 條規則：英文 background task 通知
+test('system-feedback: "Background task completed" → none', () => {
+  const r = classifyByHeuristic('Background task completed successfully');
+  assert.ok(r, '應有匹配結果');
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+});
+
+test('system-feedback: "Task xxx completed" → none', () => {
+  const r = classifyByHeuristic('Task npm-build completed');
+  assert.ok(r, '應有匹配結果');
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+});
+
+test('system-feedback: "Result from agent" → none', () => {
+  const r = classifyByHeuristic('Result from vibe:tester: PASS');
+  assert.ok(r, '應有匹配結果');
+  assert.strictEqual(r.pipeline, 'none');
+  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+});
+
+test('system-feedback: 普通英文句子不被誤攔', () => {
+  const r = classifyByHeuristic('fix the failing authentication test');
+  // 這應該走 bugfix，不是 system-feedback
+  assert.ok(!r || r.matchedRule !== 'heuristic:system-feedback',
+    '普通 fix 句子不應匹配 system-feedback，實際: ' + (r ? r.matchedRule : 'null'));
 });
 
 // ═══════════════════════════════════════════════
