@@ -31,7 +31,7 @@ const { getBaseStage, resolveAgent, validateDag, repairDag, enrichCustomDag, lin
 const { shouldSkip } = require('./skip-predicates.js');
 const { ensureV4 } = require('./state-migrator.js');
 const { shouldStop } = require('./retry-policy.js');
-const { parseRoute, validateRoute, enforcePolicy } = require('./route-parser.js');
+const { parseRoute, validateRoute, enforcePolicy, inferRouteFromContent } = require('./route-parser.js');
 const { writeReflection, cleanReflectionForStage } = require('./reflection.js');
 const { buildNodeContext, formatNodeContext } = require('./node-context.js');
 const { discoverPipeline } = require('./pipeline-discovery.js');
@@ -223,6 +223,28 @@ function addRetryHistory(state, stage, routeResult, retryCount) {
   });
   retryHistory[stage] = stageHistory;
   return { ...state, retryHistory };
+}
+
+/**
+ * emit BARRIER_CRASH_GUARD 事件（barrier sibling crashed，阻擋下游）
+ */
+function emitBarrierCrashGuard(sessionId, stage, blockedDownstream, pendingCrashedSiblings) {
+  try {
+    const { emit } = require('../timeline/index.js');
+    const { EVENT_TYPES } = require('../timeline/schema.js');
+    emit(EVENT_TYPES.BARRIER_CRASH_GUARD, sessionId, { stage, blockedDownstream, pendingCrashedSiblings });
+  } catch (_) {}
+}
+
+/**
+ * emit STAGE_CRASH_RECOVERY 事件（Stop hook 自動回收 crashed stage）
+ */
+function emitStageCrashRecovery(sessionId, stage, verdict, blockCount, source) {
+  try {
+    const { emit } = require('../timeline/index.js');
+    const { EVENT_TYPES } = require('../timeline/schema.js');
+    emit(EVENT_TYPES.STAGE_CRASH_RECOVERY, sessionId, { stage, verdict, blockCount, source });
+  } catch (_) {}
 }
 
 /**
@@ -1084,11 +1106,7 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
     );
     if (pendingCrashedSiblings.length > 0 && barrier.next) {
       readyStages = readyStages.filter(s => s !== barrier.next);
-      emitTimeline(sessionId, 'barrier.crash-guard', {
-        stage: currentStage,
-        blockedDownstream: barrier.next,
-        pendingCrashedSiblings,
-      });
+      emitBarrierCrashGuard(sessionId, currentStage, barrier.next, pendingCrashedSiblings);
     }
   }
   if (skipIter <= 0 && readyStages.length > 0) {
@@ -1319,7 +1337,7 @@ function buildCompleteOutput(state, completedStage, pipeline) {
  * @returns {{ continue: boolean, stopReason?: string, systemMessage?: string } | null}
  */
 function onSessionStop(sessionId) {
-  const state = loadState(sessionId);
+  let state = loadState(sessionId);
   if (!state) return null;
   if (!state.dag) return null;
 
@@ -1344,6 +1362,66 @@ function onSessionStop(sessionId) {
   state.meta = state.meta || {};
   state.meta.pipelineCheckBlocks = blockCount;
   ds.writeState(sessionId, state);
+
+  // ── Crash Recovery：自動回收 crashed+pending 的階段 ──
+  // 模型在 -p 模式下可能不遵從 ⛔ 重新委派指令，導致 crashed stage
+  // 永遠卡在 pending。blockCount >= 2 時主動介入，讀取 context_file
+  // 用 inferRouteFromContent 推斷 verdict 並自動完成。
+  if (blockCount >= 2) {
+    const crashedPending = Object.entries(state.stages)
+      .filter(([id, s]) => s.status === ds.STAGE_STATUS.PENDING && (state.crashes?.[id] || 0) > 0);
+
+    if (crashedPending.length > 0) {
+      let recovered = 0;
+      for (const [stageId] of crashedPending) {
+        // 嘗試從 context_file 推斷 verdict
+        const ctxPath = path.join(CLAUDE_DIR, `pipeline-context-${sessionId}-${stageId}.md`);
+        let inferredVerdict = null;
+
+        if (fs.existsSync(ctxPath)) {
+          try {
+            const content = fs.readFileSync(ctxPath, 'utf8');
+            if (content.trim().length > 0) {
+              inferredVerdict = inferRouteFromContent(content, stageId);
+            }
+          } catch (_) { /* ignore read errors */ }
+        }
+
+        // 從 retryHistory 取最近 verdict 作為 fallback
+        if (!inferredVerdict && state.retryHistory?.[stageId]?.length > 0) {
+          const last = state.retryHistory[stageId][state.retryHistory[stageId].length - 1];
+          inferredVerdict = { verdict: last.verdict || 'FAIL', route: 'NEXT', _crashRecovered: true };
+        }
+
+        // 最終 fallback：標記為 FAIL
+        if (!inferredVerdict) {
+          inferredVerdict = { verdict: 'FAIL', route: 'NEXT', _crashRecovered: true };
+        }
+
+        inferredVerdict._crashRecovered = true;
+
+        state = ds.markStageCompleted(state, stageId, inferredVerdict);
+        recovered++;
+
+        emitStageCrashRecovery(sessionId, stageId, inferredVerdict, blockCount,
+          fs.existsSync(ctxPath) ? 'context_file' : 'retryHistory_fallback');
+      }
+
+      if (recovered > 0) {
+        ds.writeState(sessionId, state);
+
+        // 重新檢查：是否所有 stage 都已完成
+        const stillMissing = Object.entries(state.stages)
+          .filter(([, s]) => s.status !== ds.STAGE_STATUS.COMPLETED && s.status !== ds.STAGE_STATUS.SKIPPED);
+
+        if (stillMissing.length === 0) {
+          state.pipelineActive = false;
+          ds.writeState(sessionId, state);
+          return null; // pipeline 完成，放行
+        }
+      }
+    }
+  }
 
   // 超過 5 次 → 放行（避免無限迴圈；使用者可用 /vibe:cancel）
   if (blockCount > 5) return null;

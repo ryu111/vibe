@@ -6,7 +6,7 @@
  * envelope 建構函式和驗證邏輯。
  *
  * @module timeline/schema
- * @exports {Object} EVENT_TYPES - 31 種事件類型常數
+ * @exports {Object} EVENT_TYPES - 33 種事件類型常數
  * @exports {Object} CATEGORIES - 事件分類群組
  * @exports {function} createEnvelope - 建構統一 envelope
  * @exports {function} validate - 驗證事件格式
@@ -42,6 +42,8 @@ const EVENT_TYPES = {
   AGENT_CRASH:         'agent.crash',      // agent crash（無 PIPELINE_ROUTE 輸出）
   PIPELINE_ABORTED:    'pipeline.aborted', // route=ABORT，pipeline 異常終止
   PIPELINE_CANCELLED:  'pipeline.cancelled', // 使用者取消 pipeline
+  BARRIER_CRASH_GUARD: 'barrier.crash-guard', // barrier sibling crashed，阻擋下游
+  STAGE_CRASH_RECOVERY:'stage.crash-recovery', // Stop hook 自動回收 crashed stage
 
   // Agent 行為追蹤
   TOOL_USED:           'tool.used',
