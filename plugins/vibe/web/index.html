@@ -742,8 +742,8 @@
           if (matchedStages.length > 0) return { status: 'idle', label: '等待', dur: null };
           return { status: 'idle', label: '—', dur: null };
         }
-        // 從事件串流偵測 support/system agents
-        if (events?.length) {
+        // 從事件串流偵測 support/system agents（僅 pipeline 存在時顯示）
+        if (events?.length && hasPipeline(state)) {
           const lastDel = events.find(e => e.eventType === 'delegation.start' && e.text?.includes(agent.id));
           if (lastDel) return { status: 'idle', label: '完成', dur: null };
         }
