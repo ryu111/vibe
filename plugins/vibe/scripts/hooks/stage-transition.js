@@ -11,6 +11,7 @@ const path = require('path');
 const { safeRun } = require(path.join(__dirname, '..', 'lib', 'hook-utils.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
 const ctrl = require(path.join(__dirname, '..', 'lib', 'flow', 'pipeline-controller.js'));
+const { AGENT_TO_STAGE } = require(path.join(__dirname, '..', 'lib', 'registry.js'));
 
 safeRun('stage-transition', (data) => {
   // 防迴圈
@@ -27,11 +28,16 @@ safeRun('stage-transition', (data) => {
 
   if (!result.systemMessage) process.exit(0);
 
-  // Emit completion event
-  emit(EVENT_TYPES.STAGE_COMPLETE, sessionId, {
-    agentType,
-    message: result.systemMessage.slice(0, 200),
-  });
+  // pipeline-architect 完成不是 stage 完成，跳過 stage.complete 事件
+  const shortAgent = agentType.replace(/^vibe:/, '');
+  if (shortAgent !== 'pipeline-architect') {
+    const stage = AGENT_TO_STAGE[shortAgent] || shortAgent;
+    emit(EVENT_TYPES.STAGE_COMPLETE, sessionId, {
+      agentType,
+      stage,
+      message: result.systemMessage.slice(0, 200),
+    });
+  }
 
   console.log(JSON.stringify({
     continue: true,

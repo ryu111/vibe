@@ -20,7 +20,7 @@ const STAGES = {
   DEV:    { agent: 'developer',        emoji: '\u{1F4BB}',          label: '開發',       color: 'yellow' },
   REVIEW: { agent: 'code-reviewer',    emoji: '\u{1F50D}',          label: '審查',       color: 'blue' },
   TEST:   { agent: 'tester',           emoji: '\u{1F9EA}',          label: '測試',       color: 'pink' },
-  QA:     { agent: 'qa',               emoji: '\u2705',             label: '行為驗證',   color: 'yellow' },
+  QA:     { agent: 'qa',               emoji: '\u{1F52C}',          label: '行為驗證',   color: 'yellow' },
   E2E:    { agent: 'e2e-runner',       emoji: '\u{1F310}',          label: '端對端測試', color: 'green' },
   DOCS:   { agent: 'doc-updater',      emoji: '\u{1F4DD}',          label: '文件整理',   color: 'purple' },
 };

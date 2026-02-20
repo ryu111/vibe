@@ -18,7 +18,7 @@
     .layout.collapsed { --sidebar-w: 52px; }
 
     /* Sidebar */
-    .sidebar { background: var(--surface0); border-right: 1px solid var(--surface1); display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; transition: all 0.3s ease; }
+    .sidebar { background: var(--surface0); border-right: 1px solid var(--surface1); display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; transition: width 0.3s ease, min-width 0.3s ease; }
     .sb-top { padding: 10px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--surface1); min-height: 40px; }
     .sb-toggle { width: 28px; height: 28px; border-radius: 6px; background: var(--surface1); border: none; color: var(--text); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.2s; }
     .sb-toggle:hover { background: var(--surface2); }
@@ -66,16 +66,16 @@
 
     /* Collapsed sidebar mini cards */
     .collapsed .sc { padding: 6px; text-align: center; }
-    .collapsed .sc-title, .collapsed .sc-sub, .collapsed .sc-meta, .collapsed .sc-bar, .collapsed .sc .x, .collapsed .group-hdr, .collapsed .group-sep, .collapsed .cleanup-btn, .collapsed .stale-toggle { display: none; }
+    .collapsed .sc-title, .collapsed .sc-sub, .collapsed .sc-meta, .collapsed .sc-bar, .collapsed .sc .x, .collapsed .group-hdr, .collapsed .group-sep, .collapsed .cleanup-btn, .collapsed .stale-toggle, .collapsed .sc-res { display: none; }
     .collapsed .sc::before { content: attr(data-pct); font-size: 9px; color: var(--subtext0); }
 
     @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
     @keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
     /* Main */
-    .main { padding: 20px 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
-    .main h1 { font-size: 15px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .task-badge { font-size: 10px; padding: 2px 8px; border-radius: 6px; background: var(--surface1); color: var(--subtext0); font-weight: 500; }
+    .main { padding: 16px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+    .main h1 { font-size: 15px; display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-height: 32px; }
+    .task-badge { font-size: 10px; padding: 2px 8px; border-radius: 6px; background: var(--surface1); color: var(--subtext0); font-weight: 500; flex-shrink: 0; }
 
     /* Progress */
     .progress-bar { height: 5px; background: var(--surface1); border-radius: 3px; overflow: hidden; }
@@ -99,7 +99,7 @@
     .agent-row:hover { background: rgba(69,71,90,0.1); border-radius: 4px; }
     .al { width: 8px; height: 8px; border-radius: 50%; justify-self: center; }
     .al.running { background: var(--green); box-shadow: 0 0 8px var(--green); animation: alPulse 1.5s ease infinite; }
-    .al.completed { background: var(--green); }
+    .al.completed { background: var(--surface2); opacity: 0.6; }
     .al.error { background: var(--red); box-shadow: 0 0 6px var(--red); animation: alPulse 1.5s ease infinite; }
     .al.delegating { background: var(--purple); box-shadow: 0 0 8px var(--purple); animation: alPulse 1.5s ease infinite; }
     .al.idle { background: var(--surface2); opacity: 0.5; }
@@ -118,20 +118,20 @@
 
     /* 統計卡片 */
     .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-    .stat-card { background: var(--surface0); border-radius: 10px; padding: 12px 14px; border: 1px solid var(--surface1); display: flex; flex-direction: column; gap: 4px; }
+    .stat-card { background: var(--surface0); border-radius: 10px; padding: 12px 14px; border: 1px solid var(--surface1); display: flex; flex-direction: column; gap: 4px; min-width: 0; }
     .stat-card:hover { border-color: var(--surface2); }
-    .stat-card .stat-label { font-size: 9px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; }
-    .stat-card .stat-value { font-size: 22px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
-    .stat-card .stat-sub { font-size: 9px; color: var(--overlay0); }
+    .stat-card .stat-label { font-size: 9px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .stat-card .stat-value { font-size: 20px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .stat-card .stat-sub { font-size: 9px; color: var(--overlay0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     @media (max-width: 1100px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
     @media (max-width: 700px) { .stats-grid { grid-template-columns: 1fr; } }
 
     /* 動態 Pipeline 進度條 */
-    .pipeline-progress { background: var(--surface0); border-radius: 10px; padding: 14px 16px; border: 1px solid var(--surface1); }
+    .pipeline-progress { background: var(--surface0); border-radius: 10px; padding: 12px 14px; border: 1px solid var(--surface1); }
     .pipeline-progress h3 { font-size: 11px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
-    .pipeline-stages-bar { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; }
-    .ps-block { flex: 1; min-width: 32px; display: flex; flex-direction: column; gap: 4px; align-items: center; }
-    .ps-label { font-size: 8px; color: var(--subtext0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; text-align: center; }
+    .pipeline-stages-bar { display: flex; gap: 4px; align-items: flex-end; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+    .ps-block { flex: 1; min-width: 36px; max-width: 80px; display: flex; flex-direction: column; gap: 4px; align-items: center; }
+    .ps-label { font-size: 9px; color: var(--subtext0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; text-align: center; }
     .ps-bar { width: 100%; height: 8px; border-radius: 4px; background: var(--surface1); position: relative; overflow: hidden; }
     .ps-bar.completed { background: var(--green); }
     .ps-bar.active { background: var(--blue); animation: pulse 1.5s infinite; }
@@ -200,12 +200,12 @@
 
     /* Info Cards */
     .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .card { background: var(--surface0); border-radius: 10px; padding: 12px 14px; border: 1px solid var(--surface1); transition: border-color 0.3s; }
+    .card { background: var(--surface0); border-radius: 10px; padding: 12px 14px; border: 1px solid var(--surface1); transition: border-color 0.2s; min-width: 0; }
     .card:hover { border-color: var(--surface2); }
-    .card h3 { font-size: 10px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
-    .row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .row .label { color: var(--subtext0); }
-    .row .value { font-weight: 600; }
+    .card h3 { font-size: 10px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+    .row { display: flex; justify-content: space-between; align-items: baseline; padding: 2px 0; font-size: 11px; gap: 8px; }
+    .row .label { color: var(--subtext0); flex-shrink: 0; }
+    .row .value { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
 
     /* Timeline */
     .timeline { background: var(--surface0); border-radius: 10px; padding: 12px 14px; border: 1px solid var(--surface1); flex: 1; min-height: 80px; overflow: hidden; }
@@ -221,39 +221,39 @@
     @keyframes slideIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
 
     /* Dashboard 雙欄佈局 */
-    .dash-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+    .dash-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 360px); gap: 14px; }
     .dash-left, .dash-right { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; }
-    .dash-right { max-height: calc(100vh - 160px); }
-    @media (max-width: 960px) { .dash-grid { grid-template-columns: 1fr; } .dash-right { max-height: none; } }
+    .dash-right { max-height: calc(100vh - 130px); overflow-y: auto; }
+    @media (max-width: 960px) { .dash-grid { grid-template-columns: 1fr; } .dash-right { max-height: none; overflow-y: visible; } }
     /* Dashboard mini timeline */
-    .mini-tl { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-    .mini-tl h4 { font-size: 10px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
-    .mini-tl .tl-items-wrap { flex: 1; overflow-y: auto; min-height: 0; max-height: calc(100vh - 220px); }
+    .mini-tl { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--surface0); border-radius: 10px; padding: 12px 14px; border: 1px solid var(--surface1); }
+    .mini-tl h4 { font-size: 10px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; flex-shrink: 0; }
+    .mini-tl .tl-items-wrap { flex: 1; overflow-y: auto; min-height: 100px; max-height: 500px; }
     .mini-tl .tl-item { font-size: 10px; }
 
     /* Main Tabs */
-    .main-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--surface1); margin-bottom: 12px; }
-    .main-tab { background: none; color: var(--subtext0); border: none; border-bottom: 2px solid transparent; padding: 6px 16px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; transition: all 0.15s; }
+    .main-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--surface1); margin-bottom: 10px; flex-shrink: 0; }
+    .main-tab { background: none; color: var(--subtext0); border: none; border-bottom: 2px solid transparent; padding: 7px 14px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
     .main-tab:hover { color: var(--text); }
     .main-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
-    .main-tab .tab-count { font-size: 9px; font-weight: 400; color: var(--overlay0); margin-left: 4px; }
+    .main-tab .tab-count { font-size: 9px; font-weight: 400; color: var(--overlay0); margin-left: 4px; background: var(--surface1); padding: 1px 5px; border-radius: 8px; }
 
     /* Timeline full view */
-    .tl-full { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-    .tl-full .tl-items { flex: 1; overflow-y: auto; }
+    .tl-full { flex: 1; display: flex; flex-direction: column; min-height: 0; gap: 0; }
+    .tl-full .tl-items { flex: 1; overflow-y: auto; min-height: 200px; }
 
     /* Timeline Tabs + Filter */
-    .tl-tabs { display: flex; gap: 0; margin: 4px 0 2px; border-bottom: 1px solid var(--surface1); }
-    .tl-tab { background: none; color: var(--subtext0); border: none; border-bottom: 2px solid transparent; padding: 3px 10px; font-size: 10px; font-family: inherit; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+    .tl-tabs { display: flex; gap: 0; margin: 0 0 2px; border-bottom: 1px solid var(--surface1); flex-shrink: 0; }
+    .tl-tab { background: none; color: var(--subtext0); border: none; border-bottom: 2px solid transparent; padding: 5px 10px; font-size: 10px; font-family: inherit; cursor: pointer; transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
     .tl-tab:hover { color: var(--text); }
     .tl-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
-    .tl-filter { display: flex; gap: 4px; margin: 4px 0 6px; }
-    .tl-chip { background: var(--surface1); color: var(--subtext0); border: none; border-radius: 4px; padding: 2px 8px; font-size: 9px; font-family: inherit; cursor: pointer; transition: all 0.15s; }
+    .tl-filter { display: flex; gap: 4px; margin: 6px 0; align-items: center; }
+    .tl-chip { background: var(--surface1); color: var(--subtext0); border: none; border-radius: 4px; padding: 3px 10px; font-size: 9px; font-family: inherit; cursor: pointer; transition: all 0.15s; }
     .tl-chip:hover { background: var(--surface2); color: var(--text); }
-    .tl-chip.active { background: var(--blue); color: var(--base); }
+    .tl-chip.active { background: var(--blue); color: var(--bg); }
 
     /* Clear button */
-    .tl-clear { background: none; border: 1px solid var(--surface2); color: var(--subtext0); border-radius: 4px; padding: 2px 8px; font-size: 9px; font-family: inherit; cursor: pointer; transition: all 0.15s; margin-left: auto; }
+    .tl-clear { background: none; border: 1px solid var(--surface2); color: var(--subtext0); border-radius: 4px; padding: 3px 10px; font-size: 9px; font-family: inherit; cursor: pointer; transition: all 0.15s; margin-left: auto; }
     .tl-clear:hover { border-color: var(--red); color: var(--red); }
 
     /* Empty */
@@ -264,14 +264,14 @@
     @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 
     /* 工具列分隔區 */
-    .toolbar-sep { width: 1px; height: 18px; background: var(--surface1); margin: 0 2px; flex-shrink: 0; }
+    .toolbar-sep { width: 1px; height: 16px; background: var(--surface1); margin: 0 1px; flex-shrink: 0; }
     /* 連線燈號（工具列內） */
-    .conn-indicator { display: flex; align-items: center; gap: 5px; padding: 3px 8px; font-size: 10px; color: var(--subtext0); white-space: nowrap; }
+    .conn-indicator { display: flex; align-items: center; gap: 5px; padding: 3px 6px; font-size: 10px; color: var(--subtext0); white-space: nowrap; }
 
     /* 全螢幕模式 */
     .layout.fullscreen { grid-template-columns: 1fr; }
     .layout.fullscreen .sidebar { display: none; }
-    .layout.fullscreen .main { padding: 20px 40px; }
+    .layout.fullscreen .main { padding: 20px 32px; }
 
     /* Timeline 收合 */
     .timeline .tl-toggle { cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none; }
@@ -281,8 +281,8 @@
     .timeline.collapsed .tl-items { display: none; }
 
     /* 工具列 */
-    .toolbar { display: flex; align-items: center; gap: 6px; margin-left: auto; }
-    .tool-btn { background: var(--surface0); border: 1px solid var(--surface1); border-radius: 6px; padding: 4px 10px; font-size: 12px; color: var(--subtext1); cursor: pointer; font-family: inherit; transition: all 0.2s; display: flex; align-items: center; gap: 5px; }
+    .toolbar { display: flex; align-items: center; gap: 4px; margin-left: auto; flex-shrink: 0; }
+    .tool-btn { background: var(--surface0); border: 1px solid var(--surface1); border-radius: 6px; padding: 4px 9px; font-size: 11px; color: var(--subtext1); cursor: pointer; font-family: inherit; transition: border-color 0.2s, color 0.2s, background 0.2s; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
     .tool-btn:hover { border-color: var(--surface2); color: var(--text); background: var(--surface1); }
     .tool-btn.active { border-color: var(--blue); color: var(--blue); }
 
@@ -307,9 +307,12 @@
     .sc-res-fill.ram { background: var(--purple); }
 
     /* Responsive */
+    @media (max-width: 1200px) {
+      .dash-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 320px); }
+    }
     @media (max-width: 1100px) {
       .dash-grid { grid-template-columns: 1fr; }
-      .dash-right { max-height: none; }
+      .dash-right { max-height: none; overflow-y: visible; }
     }
     @media (max-width: 700px) {
       .layout, .layout.collapsed { grid-template-columns: 1fr; grid-template-rows: auto 1fr; --sidebar-w: 1fr; }
@@ -317,9 +320,10 @@
       .sb-body { flex-direction: row; flex-wrap: wrap; gap: 6px; overflow-x: auto; }
       .sc { min-width: 130px; flex-shrink: 0; }
       .cards { grid-template-columns: 1fr; }
-      .main { padding: 12px; }
-      .main h1 { font-size: 13px; }
-      .toolbar { margin-left: 0; flex-wrap: wrap; }
+      .main { padding: 10px 12px; gap: 12px; }
+      .main h1 { font-size: 13px; flex-wrap: wrap; }
+      .toolbar { margin-left: 0; flex-wrap: wrap; flex-shrink: unset; }
+      .tool-btn { font-size: 10px; padding: 3px 7px; }
     }
   </style>
 </head>
@@ -683,8 +687,14 @@
       ];
       const allAgents = [...systemAgents, ...pipelineAgents, ...supportAgents];
 
+      // Pipeline 是否已完成（所有燈號熄滅用）
+      const pipelineDone = hasPipeline(state) && getPipelineProgress(state) >= 100 && !state?.pipelineActive && (state?.activeStages || []).length === 0;
+
       // 取得每個 agent 的簡化狀態
       function getAgentStatus(agent) {
+        // Pipeline 完全結束 → 所有燈號熄滅
+        if (pipelineDone) return { status: 'idle', label: '—', dur: null };
+
         // 主 agent
         if (agent.id === 'main') {
           if (alive === false) return { status: 'idle', label: '閒置', dur: null };
@@ -693,16 +703,17 @@
           if (state?.pipelineActive) return { status: 'running', label: '運行中', dur: null };
           return { status: 'idle', label: '閒置', dur: null };
         }
-        // Pipeline stage agents
+        // Pipeline stage agents — 同時檢查 DAG stages 和 activeStages
         if (agent.stage) {
+          // 優先檢查 activeStages（delegation-tracker 追蹤的實際運行 agent）
+          const isInActiveStages = (state?.activeStages || []).some(s => s === agent.stage || s.split(':')[0] === agent.stage);
+          if (isInActiveStages) return { status: 'running', label: '執行中', dur: null };
+
           const dagKeys = Object.keys(state?.dag || {});
-          // 尋找含此 base stage 的 suffixed stages
           const matchedStages = dagKeys.filter(k => k === agent.stage || k.split(':')[0] === agent.stage);
           for (const sid of matchedStages) {
             const status = getStageStatus(sid, state);
-            if (status === 'active') {
-              return { status: 'running', label: '運行中', dur: null };
-            }
+            if (status === 'active') return { status: 'running', label: '執行中', dur: null };
           }
           // 找已完成的最近一個
           const completedStages = matchedStages.filter(k => getStageStatus(k, state) === 'completed' || getStageStatus(k, state) === 'failed');
@@ -711,16 +722,18 @@
             const verdict = getStageVerdict(last, state);
             const dur = getStageDuration(last, state);
             if (verdict === 'FAIL') return { status: 'error', label: getStageSeverity(last, state) || 'FAIL', dur };
-            return { status: 'completed', label: verdict || 'PASS', dur };
+            return { status: 'idle', label: verdict || 'PASS', dur };
           }
-          return { status: 'idle', label: '等待', dur: null };
+          // 在 DAG 中但還沒開始 → 等待；不在 DAG 中 → 閒置
+          if (matchedStages.length > 0) return { status: 'idle', label: '等待', dur: null };
+          return { status: 'idle', label: '—', dur: null };
         }
         // 從事件串流偵測 support/system agents
         if (events?.length) {
           const lastDel = events.find(e => e.eventType === 'delegation.start' && e.text?.includes(agent.id));
-          if (lastDel) return { status: 'completed', label: '完成', dur: null };
+          if (lastDel) return { status: 'idle', label: '完成', dur: null };
         }
-        return { status: 'idle', label: '閒置', dur: null };
+        return { status: 'idle', label: '—', dur: null };
       }
 
       const enriched = allAgents.map(a => ({ ...a, ...getAgentStatus(a) }));
@@ -1184,26 +1197,7 @@
 
           <!-- Main -->
           <div class="main">
-            ${s && s._heartbeatOnly ? html`
-              <h1>
-                💬 Session — ${sid(active)}
-                <div class="toolbar">
-                  <div class="conn-indicator"><span class="dot ${conn ? 'on' : 'off'}"></span><span>${conn ? '已連線' : '連線中…'}</span></div>
-                </div>
-              </h1>
-              <div style="padding:24px 0;text-align:center;color:var(--subtext0)">
-                <div style="font-size:36px;margin-bottom:12px">💬</div>
-                <div style="font-size:14px">Session 活躍中 — 尚未啟動 Pipeline</div>
-                <div style="font-size:12px;margin-top:8px;opacity:0.7">使用 <code>[pipeline:xxx]</code> 語法或自然語言描述任務來啟動工作流</div>
-              </div>
-              ${tlAll.length > 0 && html`
-                <div class="tl-items-wrap" style="max-height:400px;overflow-y:auto">
-                  ${tlAll.slice(0, 50).map((ev, i) => html`
-                    <div key=${i} class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
-                  `)}
-                </div>
-              `}
-            ` : s ? html`
+            ${s ? html`
               <h1>
                 🎯 Pipeline — ${sid(active)}
                 ${isComplete && html`<span style="margin-left:4px">🎉</span>`}
@@ -1249,8 +1243,18 @@
                         <h3>⏱ 各階段耗時</h3>
                         ${Object.keys(s.dag || {}).map(id => {
                           const dur = getStageDuration(id, s);
+                          const stageData = s.stages?.[id];
                           const meta = registry?.stages?.[id.split(':')[0]];
-                          return html`<div key=${id} class="row"><span class="label">${meta?.emoji || ''} ${id}</span><span class="value">${dur ? fmtSec(dur) : '—'}</span></div>`;
+                          const verdict = getStageVerdict(id, s);
+                          const status = getStageStatus(id, s);
+                          let durText = '—';
+                          if (dur) durText = fmtSec(dur);
+                          else if (status === 'completed' && stageData?.verdict?._crashRecovered) durText = '⚡ 回收';
+                          else if (status === 'completed') durText = '< 1s';
+                          else if (status === 'skipped') durText = '跳過';
+                          else if (status === 'active') durText = '進行中...';
+                          const verdictColor = verdict === 'PASS' ? 'var(--green)' : verdict === 'FAIL' ? 'var(--red)' : '';
+                          return html`<div key=${id} class="row"><span class="label">${meta?.emoji || ''} ${id}</span><span class="value" style="${verdictColor ? 'color:'+verdictColor : ''}">${durText}${verdict ? ' · '+verdict : ''}</span></div>`;
                         })}
                       </div>
                     </div>
