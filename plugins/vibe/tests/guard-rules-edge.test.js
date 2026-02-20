@@ -234,16 +234,16 @@ console.log('\n🛡️ evaluate() — 邊界狀態測試');
 console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
-test('AskUserQuestion — toolInput 為空物件', () => {
+test('AskUserQuestion — toolInput 為空物件 → allow（S1 白名單）', () => {
+  // S1 任務 3.1：AskUserQuestion 加入 READ_ONLY_TOOLS，pipeline relay 模式下放行
   const result = evaluate('AskUserQuestion', {}, ENFORCED_STATE);
-  assert.strictEqual(result.decision, 'block');
-  // CLASSIFIED 階段：must-delegate 統一阻擋（在 AskUserQuestion 特定檢查之前）
-  assert.strictEqual(result.reason, 'must-delegate');
+  assert.strictEqual(result.decision, 'allow');
 });
 
-test('AskUserQuestion — toolInput 為 null', () => {
+test('AskUserQuestion — toolInput 為 null → allow（S1 白名單）', () => {
+  // S1 任務 3.1：AskUserQuestion 加入 READ_ONLY_TOOLS，pipeline relay 模式下放行
   const result = evaluate('AskUserQuestion', null, ENFORCED_STATE);
-  assert.strictEqual(result.decision, 'block');
+  assert.strictEqual(result.decision, 'allow');
 });
 
 test('EnterPlanMode — toolInput 為空物件（無條件阻擋）', () => {
@@ -305,9 +305,9 @@ test('NotebookEdit 程式碼檔案 — CLASSIFIED 階段 must-delegate 統一訊
 });
 
 test('所有阻擋訊息包含 ⛔ 符號', () => {
+  // AskUserQuestion 已加入 READ_ONLY_TOOLS（S1）→ 不再是 block case
   const cases = [
     evaluate('Write', { file_path: 'app.js' }, ENFORCED_STATE),
-    evaluate('AskUserQuestion', {}, ENFORCED_STATE),
     evaluate('EnterPlanMode', {}, ENFORCED_STATE),
   ];
   cases.forEach(result => {

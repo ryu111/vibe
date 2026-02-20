@@ -401,6 +401,7 @@ module.exports = {
   parsePhasesFromTasks,
   generatePhaseDag,
   resolvePhaseDeps,
+  hasCyclicDeps,
   PIPELINE_PHASE_STAGES,
   PIPELINES_WITH_DOCS,
   PIPELINES_WITH_BARRIER,

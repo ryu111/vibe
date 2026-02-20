@@ -444,7 +444,9 @@ test('阻擋 — .yml 同樣受限', () => {
   }
 });
 
-test('阻擋 — AskUserQuestion（pipeline CLASSIFIED 階段）', () => {
+test('放行 — AskUserQuestion（S1 READ_ONLY_TOOLS 白名單，pipeline CLASSIFIED 階段）', () => {
+  // S1 任務 3.1：AskUserQuestion 加入 READ_ONLY_TOOLS，pipeline relay 模式下放行
+  // 讓 Main Agent 不確定 pipeline 時可以詢問使用者
   const sessionId = 'test-pg-12';
   try {
     writeV4State(sessionId, {
@@ -460,10 +462,7 @@ test('阻擋 — AskUserQuestion（pipeline CLASSIFIED 階段）', () => {
       tool_input: {},
     });
 
-    assert.strictEqual(result.exitCode, 2);
-    assert.ok(result.stderr.includes('⛔'));
-    // CLASSIFIED 階段：must-delegate 統一阻擋（含 AskUserQuestion）
-    assert.ok(result.stderr.includes('等待委派'));
+    assert.strictEqual(result.exitCode, 0);
   } finally {
     cleanState(sessionId);
   }

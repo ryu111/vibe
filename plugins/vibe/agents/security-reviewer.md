@@ -3,7 +3,7 @@ name: security-reviewer
 description: >-
   🛡️ 執行 OWASP Top 10 安全漏洞檢測，追蹤資料流，
   產出含攻擊場景與修復建議的安全報告。
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, Write
 model: opus
 color: red
 maxTurns: 30

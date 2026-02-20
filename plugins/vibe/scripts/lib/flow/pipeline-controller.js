@@ -862,17 +862,7 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
 
     // Phase 2：生成 DEV Node Context（含 retryContext）
     // H-2 修復：回退應找對應 phase 的 DEV（如 REVIEW:2 → DEV:2），而非第一個 DEV
-    const devStageId = (() => {
-      // 嘗試從 currentStage 提取 phase suffix（如 REVIEW:2 → ':2'）
-      const suffixMatch = currentStage.match(/:(\d+)$/);
-      if (suffixMatch && state.dag) {
-        const phaseSuffix = `:${suffixMatch[1]}`;
-        const samePhaseDevKey = `DEV${phaseSuffix}`;
-        if (state.dag[samePhaseDevKey]) return samePhaseDevKey;
-      }
-      // fallback：找第一個 DEV（非 phase DAG 或 DEV:N 不存在）
-      return Object.keys(state.dag || {}).find(s => getBaseStage(s) === 'DEV') || 'DEV';
-    })();
+    const devStageId = resolvePhaseDevStageId(currentStage, state.dag);
     const devHint = buildDelegationHint(devStageId, pipeline.stageMap);
     let devNodeContextStr = '';
     try {
@@ -1050,7 +1040,10 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
       deleteBarrier(sessionId);
       ds.writeState(sessionId, state);
 
-      const devHint = buildDelegationHint('DEV', pipeline.stageMap);
+      // M-1 修復：使用 resolvePhaseDevStageId 取得 phase-aware DEV stage
+      // 確保 barrier FAIL 回退時指向正確的 DEV:N（如 REVIEW:2 FAIL → DEV:2）
+      const barrierDevStageId = resolvePhaseDevStageId(currentStage, state.dag);
+      const devHint = buildDelegationHint(barrierDevStageId, pipeline.stageMap);
       const contextHint = mergedContextFile
         ? `📄 context_file: ${mergedContextFile}`
         : buildContextFileHint(sessionId, currentStage);
@@ -1063,9 +1056,12 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
       };
     }
 
-    // PASS → 前進到 barrier.next
-    if (!next && ds.isComplete(state)) {
-      // barrier.next 為空 → COMPLETE：合併 pipelineActive=false 到同一次寫入
+    // PASS → 用 getReadyStages() 取得完整就緒清單（處理菱形依賴 M-1 + 最終 DOCS M-2）
+    // barrier.next 僅作向後相容參考，實際路由以 getReadyStages() 為準
+    const passReadyStages = ds.getReadyStages(state);
+
+    if (passReadyStages.length === 0 && ds.isComplete(state)) {
+      // 無更多 ready stages 且全部完成 → COMPLETE
       state = { ...state, pipelineActive: false, activeStages: [] };
       cleanupPatches();
       ds.writeState(sessionId, state);
@@ -1076,18 +1072,29 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
     ds.writeState(sessionId, state);
     autoCheckpoint(currentStage);
 
-    // 前進到 next stage
-    const nextHint = next ? buildDelegationHint(next, pipeline.stageMap) : null;
-    if (nextHint) {
-      const nextNodeCtx = (() => {
+    if (passReadyStages.length > 0) {
+      // 有 ready stages（可能是 barrier.next、多個並行 DEV、或 DOCS）
+      const passHints = passReadyStages.map(s => buildDelegationHint(s, pipeline.stageMap));
+      // 單一 stage 時只顯示 hint（避免「委派 developer DEV:2 → DEV:2」重複）
+      // 多個並行 stage 時顯示 hint1 + hint2 → stage1 + stage2（並行）
+      const passAction = passReadyStages.length > 1
+        ? `${passHints.join(' + ')} → ${passReadyStages.join(' + ')}（並行）`
+        : passHints[0];
+      const passNodeCtx = (() => {
         try {
-          const ctx = buildNodeContext(state.dag, state, next, sessionId);
+          const ctx = buildNodeContext(state.dag, state, passReadyStages[0], sessionId);
           return '\n' + formatNodeContext(ctx);
         } catch (_) { return ''; }
       })();
       return {
-        systemMessage: `✅ Barrier ${barrierGroup} 完成（全部 PASS）\n➡️ ${nextHint}${nextNodeCtx}`,
+        systemMessage: `✅ Barrier ${barrierGroup} 完成（全部 PASS）\n➡️ ${passAction}${passNodeCtx}`,
       };
+    }
+
+    // 沒有 ready stages 也沒完成 → 等待其他 active stages
+    const activeAfterBarrier = ds.getActiveStages(state);
+    if (activeAfterBarrier.length > 0) {
+      return { systemMessage: `✅ Barrier ${barrierGroup} 完成。等待 ${activeAfterBarrier.join(', ')} 完成...` };
     }
 
     return { systemMessage: `✅ Barrier ${barrierGroup} 完成。` };
@@ -1484,6 +1491,37 @@ function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline) {
 // ────────────────── S3 Phase-Level 輔助函式 ──────────────────
 
 /**
+ * 找到活躍 openspec/changes 下第一個存在的 tasks.md 路徑（排除 archive/）。
+ *
+ * 目錄依名稱降序排列（最新優先）。
+ * 供 tryGeneratePhaseDag 和 extractPhaseInfo 共用，消除重複的目錄遍歷邏輯。
+ *
+ * @returns {string[]|null} tasks.md 路徑陣列（依優先順序），或 null（changesDir 不存在）
+ */
+function findActiveTasksMd() {
+  try {
+    const changesDir = path.join(process.cwd(), 'openspec', 'changes');
+    if (!fs.existsSync(changesDir)) return null;
+
+    const dirs = fs.readdirSync(changesDir)
+      .filter(d => d !== 'archive' && fs.statSync(path.join(changesDir, d)).isDirectory())
+      .sort()   // 確定性排序
+      .reverse(); // 最新的在前
+
+    const tasksPaths = [];
+    for (const dir of dirs) {
+      const tasksPath = path.join(changesDir, dir, 'tasks.md');
+      if (fs.existsSync(tasksPath)) {
+        tasksPaths.push(tasksPath);
+      }
+    }
+    return tasksPaths.length > 0 ? tasksPaths : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
  * 嘗試從 openspec/changes 的 tasks.md 生成 phase DAG。
  *
  * 讀取活躍 change 的 tasks.md，解析 phase 結構，
@@ -1497,19 +1535,11 @@ function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline) {
  */
 function tryGeneratePhaseDag(state) {
   const pipelineId = ds.getPipelineId(state) || 'standard';
+  const tasksPaths = findActiveTasksMd();
+  if (!tasksPaths) return null;
+
   try {
-    const changesDir = path.join(process.cwd(), 'openspec', 'changes');
-    if (!fs.existsSync(changesDir)) return null;
-
-    const dirs = fs.readdirSync(changesDir)
-      .filter(d => d !== 'archive' && fs.statSync(path.join(changesDir, d)).isDirectory())
-      .sort() // 確定性排序
-      .reverse(); // 最新的在前
-
-    for (const dir of dirs) {
-      const tasksPath = path.join(changesDir, dir, 'tasks.md');
-      if (!fs.existsSync(tasksPath)) continue;
-
+    for (const tasksPath of tasksPaths) {
       const content = fs.readFileSync(tasksPath, 'utf8');
       const phases = parsePhasesFromTasks(content);
       if (phases.length < 2) continue;
@@ -1525,6 +1555,28 @@ function tryGeneratePhaseDag(state) {
 }
 
 /**
+ * 從 currentStage 提取 phase suffix，在 DAG 中找到對應的 DEV:N stage。
+ *
+ * 用於 FAIL 回退路徑：確保 REVIEW:2 FAIL → 回退到 DEV:2，而非 DEV:1。
+ * Branch A（非 barrier）和 Barrier FAIL 分支共用此邏輯。
+ *
+ * @param {string} currentStage - 失敗的 stage ID（如 'REVIEW:2', 'TEST:3'）
+ * @param {Object} dag - pipeline DAG（可為 null）
+ * @returns {string} DEV stage ID（如 'DEV:2', 'DEV:1', 'DEV'）
+ */
+function resolvePhaseDevStageId(currentStage, dag) {
+  // 嘗試從 currentStage 提取 phase suffix（如 REVIEW:2 → ':2'）
+  const suffixMatch = currentStage.match(/:(\d+)$/);
+  if (suffixMatch && dag) {
+    const phaseSuffix = `:${suffixMatch[1]}`;
+    const samePhaseDevKey = `DEV${phaseSuffix}`;
+    if (dag[samePhaseDevKey]) return samePhaseDevKey;
+  }
+  // fallback：找第一個 DEV（非 phase DAG 或 DEV:N 不存在）
+  return Object.keys(dag || {}).find(s => getBaseStage(s) === 'DEV') || 'DEV';
+}
+
+/**
  * 計算 phase-level DAG 中的 phase 數量。
  * 計算有多少個 DEV:N stage（每個代表一個 phase）。
  *
@@ -1533,7 +1585,7 @@ function tryGeneratePhaseDag(state) {
  */
 function countPhaseCount(dag) {
   if (!dag) return 0;
-  return Object.keys(dag).filter(s => s.startsWith('DEV:')).length;
+  return Object.keys(dag).filter(s => getBaseStage(s) === 'DEV' && s.includes(':')).length;
 }
 
 /**
@@ -1544,26 +1596,18 @@ function countPhaseCount(dag) {
  */
 function extractPhaseInfo(dag) {
   if (!dag) return null;
-  const devStages = Object.keys(dag).filter(s => s.startsWith('DEV:'));
+  // M-2 修復：與 countPhaseCount 保持一致，用 getBaseStage 判斷而非 startsWith
+  const devStages = Object.keys(dag).filter(s => getBaseStage(s) === 'DEV' && s.includes(':'));
   if (devStages.length === 0) return null;
 
-  // 嘗試從 openspec/changes 讀取 phase 名稱和 tasks
+  // 嘗試從 openspec/changes 讀取 phase 名稱和 tasks（使用共用 findActiveTasksMd 避免重複 I/O 邏輯）
+  const tasksPaths = findActiveTasksMd();
+  if (!tasksPaths) return null;
+
   const phaseData = {};
   try {
-    const changesDir = path.join(process.cwd(), 'openspec', 'changes');
-    if (!fs.existsSync(changesDir)) return null;
-
-    const dirs = fs.readdirSync(changesDir)
-      .filter(d => d !== 'archive' && fs.statSync(path.join(changesDir, d)).isDirectory())
-      .sort()
-      .reverse();
-
-    for (const dir of dirs) {
-      const tasksPath = path.join(changesDir, dir, 'tasks.md');
-      if (!fs.existsSync(tasksPath)) continue;
-
+    for (const tasksPath of tasksPaths) {
       const content = fs.readFileSync(tasksPath, 'utf8');
-      // L-2：使用頂層已匯入的 parsePhasesFromTasks，避免冗餘 re-require
       const phases = parsePhasesFromTasks(content);
 
       for (const phase of phases) {
@@ -1593,7 +1637,8 @@ function extractPhaseInfo(dag) {
  */
 function buildPhaseProgressSummary(state, dag) {
   if (!dag) return '';
-  const devStages = Object.keys(dag).filter(s => s.startsWith('DEV:'));
+  // M-2 修復：與 countPhaseCount 保持一致，用 getBaseStage 判斷而非 startsWith
+  const devStages = Object.keys(dag).filter(s => getBaseStage(s) === 'DEV' && s.includes(':'));
   if (devStages.length === 0) return '';
 
   const phaseInfo = state?.phaseInfo || {};
@@ -1795,4 +1840,5 @@ module.exports = {
   buildKnowledgeHints,
   extractShortAgent,
   MAX_SKIP_ITERATIONS,
+  resolvePhaseDevStageId,
 };
