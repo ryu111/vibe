@@ -701,16 +701,16 @@ S1 ──→ S2 ──→ S3 ──→ S4 ──→ S5 ──→ S6 ──→ S7
 - [x] S4.10 — 測試
 - [x] S4.11 — 文檔更新
 
-### S5：FIC 狀態壓縮 — 0/9
-- [ ] S5.1 — 新增 status-writer.js
-- [ ] S5.2 — Markdown 摘要生成
-- [ ] S5.3 — 決策記錄整合 wisdom
-- [ ] S5.4 — onStageComplete() 整合
-- [ ] S5.5 — pipeline-init.js resume 整合
-- [ ] S5.6 — crash recovery 優先讀取
-- [ ] S5.7 — session-cleanup 清理
-- [ ] S5.8 — 測試
-- [ ] S5.9 — 文檔更新
+### S5：FIC 狀態壓縮 — 9/9
+- [x] S5.1 — 新增 status-writer.js
+- [x] S5.2 — Markdown 摘要生成
+- [x] S5.3 — 決策記錄整合 wisdom
+- [x] S5.4 — onStageComplete() 整合
+- [x] S5.5 — pipeline-init.js resume 整合
+- [x] S5.6 — crash recovery 優先讀取
+- [x] S5.7 — session-cleanup 清理
+- [x] S5.8 — 測試
+- [x] S5.9 — 文檔更新
 
 ### S6：三信號驗證 — 0/7
 - [ ] S6.1 — collectSignals() 實作
@@ -727,4 +727,4 @@ S1 ──→ S2 ──→ S3 ──→ S4 ──→ S5 ──→ S6 ──→ S7
 - [ ] S7.3 — tester.md 推導測試
 - [ ] S7.4 — 文檔更新
 
-**總計：47/71 項**
+**總計：56/71 項**

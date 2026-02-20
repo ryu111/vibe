@@ -64,13 +64,23 @@ safeRun('pipeline-init', (data) => {
             ? `${latest.completedCount}/${latest.totalCount} 階段完成`
             : '剛開始';
 
-          const resumeContext = [
+          let resumeContext = [
             `✅ 已自動接續未完成的 Pipeline：`,
             `- 來源 Session: ${shortId}... (${relativeTime})`,
             `- Pipeline: ${pipelineLabel}`,
             `- 進度: ${progressText}`,
             `如不需要此 pipeline，可使用 /vibe:cancel 取消。`,
           ].join('\n');
+
+          // S5：注入 pipeline-status 摘要（FIC 狀態壓縮）
+          // 讀取舊 session 的 status file（status 是以舊 sessionId 命名的）
+          try {
+            const { readStatus } = require(path.join(__dirname, '..', 'lib', 'flow', 'status-writer.js'));
+            const statusContent = readStatus(latest.sessionId);
+            if (statusContent) {
+              resumeContext += '\n\n' + statusContent;
+            }
+          } catch (_) {}
 
           console.log(JSON.stringify({ additionalContext: resumeContext }));
           process.exit(0); // 跳過 fresh state 建立（已用 resumed state）

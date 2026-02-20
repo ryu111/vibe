@@ -56,6 +56,8 @@ process.stdin.on('end', () => {
     cleanStaleFiles('reflection-memory-*.md', results);
     // pipeline-wisdom 檔案（v5 S4 跨 stage 知識累積）
     cleanStaleFiles('pipeline-wisdom-*.md', results);
+    // pipeline-status 檔案（v5 S5 FIC 狀態壓縮）
+    cleanStaleFiles('pipeline-status-*.md', results);
     // barrier-state 檔案（v4 Phase 4 並行同步）
     cleanStaleFiles('barrier-state-*.json', results);
     // 提前清理：COMPLETE pipeline 或超過 48h 的 pipeline state
@@ -214,6 +216,9 @@ function cleanStaleFiles(pattern, results) {
       }
       if (pattern === 'pipeline-wisdom-*.md') {
         return f.startsWith('pipeline-wisdom-') && f.endsWith('.md');
+      }
+      if (pattern === 'pipeline-status-*.md') {
+        return f.startsWith('pipeline-status-') && f.endsWith('.md');
       }
       return false;
     });

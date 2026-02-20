@@ -51,6 +51,9 @@ const { parsePhasesFromTasks, generatePhaseDag } = require('./phase-parser.js');
 // Wisdom Accumulation（S4：跨 Stage 知識傳遞）
 const { extractWisdom, writeWisdom } = require('./wisdom.js');
 
+// FIC 狀態壓縮（S5：Context 效率 + Crash Recovery）
+const { updateStatus: updatePipelineStatus } = require('./status-writer.js');
+
 // v4 Phase 4：Barrier 並行同步
 const { createBarrierGroup, updateBarrier, mergeBarrierResults, mergeContextFiles, readBarrier, checkTimeout, deleteBarrier, sweepTimedOutGroups } = require('./barrier.js');
 
@@ -1008,11 +1011,15 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
         const ready = ds.getReadyStages(state);
         if (ready.length > 0) {
           ds.writeState(sessionId, state);
+          // FIC 狀態壓縮（S5）：barrier 完成後也更新 status file
+          try { updatePipelineStatus(sessionId, state); } catch (_) {}
           const hints = ready.map(s => buildDelegationHint(s, pipeline.stageMap)).join(' + ');
           return { systemMessage: `${timeoutWarning}⚠️ Barrier ${barrierGroup} FAIL 但無 DEV 可回退，強制繼續。\n➡️ ${hints}` };
         }
         state = { ...state, pipelineActive: false, activeStages: [] };
         ds.writeState(sessionId, state);
+        // FIC 狀態壓縮（S5）：barrier 完成後也更新 status file
+        try { updatePipelineStatus(sessionId, state); } catch (_) {}
         const completeMsg = buildCompleteOutput(state, currentStage, pipeline);
         return {
           systemMessage: `${timeoutWarning}⚠️ Barrier ${barrierGroup} FAIL 但無 DEV 可回退。\n` + completeMsg.systemMessage,
@@ -1042,6 +1049,8 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
       // 確保 DEV 修復後重跑品質階段時 barrier 計數器是全新狀態
       deleteBarrier(sessionId);
       ds.writeState(sessionId, state);
+      // FIC 狀態壓縮（S5）：barrier 完成後也更新 status file
+      try { updatePipelineStatus(sessionId, state); } catch (_) {}
 
       // M-1 修復：使用 resolvePhaseDevStageId 取得 phase-aware DEV stage
       // 確保 barrier FAIL 回退時指向正確的 DEV:N（如 REVIEW:2 FAIL → DEV:2）
@@ -1068,11 +1077,15 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
       state = { ...state, pipelineActive: false, activeStages: [] };
       cleanupPatches();
       ds.writeState(sessionId, state);
+      // FIC 狀態壓縮（S5）：barrier 完成後也更新 status file
+      try { updatePipelineStatus(sessionId, state); } catch (_) {}
       autoCheckpoint(currentStage);
       return buildCompleteOutput(state, currentStage, pipeline);
     }
 
     ds.writeState(sessionId, state);
+    // FIC 狀態壓縮（S5）：barrier 完成後也更新 status file
+    try { updatePipelineStatus(sessionId, state); } catch (_) {}
     autoCheckpoint(currentStage);
 
     if (passReadyStages.length > 0) {
@@ -1205,6 +1218,14 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
         // 非關鍵路徑，靜默忽略
       }
     }
+  }
+
+  // ── FIC 狀態壓縮（S5）──
+  // 每個 stage PASS 後更新 pipeline-status-{sid}.md
+  try {
+    updatePipelineStatus(sessionId, state);
+  } catch (_) {
+    // 非關鍵路徑，靜默忽略
   }
 
   // Token 效率：品質 stage 完成時偵測回應長度
@@ -1809,6 +1830,13 @@ function onSessionStop(sessionId) {
 
       if (recovered > 0) {
         ds.writeState(sessionId, state);
+
+        // S5：crash recovery 後更新 status file 以反映恢復結果
+        try {
+          updatePipelineStatus(sessionId, state);
+        } catch (_) {
+          // 非關鍵路徑，靜默忽略
+        }
 
         // 重新檢查：是否所有 stage 都已完成
         const stillMissing = Object.entries(state.stages)
