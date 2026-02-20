@@ -339,15 +339,18 @@ function runPipelineScenario({ id, pipelineId, prompt, label }) {
     });
     log('DELEG', `phase=DELEGATING, activeStage=${stage}`);
 
-    // 4b: Guard 放行 sub-agent
+    // 4b: Guard 放行 sub-agent（寫 context_file 報告）
+    // v4 語意：sub-agent 寫出品質報告到 context_file 路徑（~/.claude/pipeline-context-*.md）
+    // 此路徑通過 Rule 4.5 的 isContextFile 檢查，不受品質門阻擋
+    const contextFilePath = path.join(CLAUDE_DIR, `pipeline-context-${sid}-${stage}.md`);
     const ga = runHook('pipeline-guard', {
       session_id: sid, tool_name: 'Write',
-      tool_input: { file_path: '/tmp/sub-agent-output.js', content: 'module.exports = {}' },
+      tool_input: { file_path: contextFilePath, content: '# 品質報告\n通過所有檢查。' },
     });
-    test(`${id}/${stage}[${i}]: sub-agent Write → allow`, () => {
+    test(`${id}/${stage}[${i}]: sub-agent Write context_file → allow`, () => {
       assert.strictEqual(ga.exitCode, 0);
     });
-    log('GUARD', `sub-agent Write → allowed`);
+    log('GUARD', `sub-agent Write context_file → allowed`);
 
     // 4c: Stage Transition (PASS verdict)
     const tp = createMockTranscript(sid, 'PASS');
@@ -769,16 +772,18 @@ for (const scenario of SCENARIOS) {
   });
   console.log(`    └─ exitCode=${epm.exitCode}, blocked ✓`);
 
-  // 3b: AskUserQuestion 阻擋（CLASSIFIED, 非 PLAN 階段）
-  log('STEP', 'AskUserQuestion 阻擋（CLASSIFIED, 非 PLAN）');
+  // 3b: AskUserQuestion 放行（S1: READ_ONLY_TOOLS 白名單）
+  // S1 Always-Pipeline：AskUserQuestion 加入 READ_ONLY_TOOLS，
+  // Main Agent 可在 pipeline active 時詢問使用者（如不確定 pipeline 選擇）
+  log('STEP', 'AskUserQuestion 放行（S1 READ_ONLY_TOOLS 白名單）');
   const auq = runHook('pipeline-guard', {
     session_id: sid, tool_name: 'AskUserQuestion',
     tool_input: { questions: [{ question: '?' }] },
   });
-  test('X3: AskUserQuestion (non-PLAN) → exit 2', () => {
-    assert.strictEqual(auq.exitCode, 2);
+  test('X3: AskUserQuestion (non-PLAN) → exit 0（S1 READ_ONLY_TOOLS 白名單）', () => {
+    assert.strictEqual(auq.exitCode, 0);
   });
-  console.log(`    └─ exitCode=${auq.exitCode}, blocked ✓`);
+  console.log(`    └─ exitCode=${auq.exitCode}, allowed ✓`);
 
   // 3c: Bash 讀取操作 — CLASSIFIED 階段 Bash 不在唯讀白名單，阻擋
   log('STEP', 'Bash 讀取阻擋（CLASSIFIED must-delegate）');

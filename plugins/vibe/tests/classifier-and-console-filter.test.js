@@ -44,9 +44,8 @@ function asyncTest(name, fn) {
 const {
   classifyWithConfidence,
   extractExplicitPipeline,
-  classifyByHeuristic,
+  isSystemFeedback,
   mapTaskTypeToPipeline,
-  buildPipelineCatalogHint,
   SYSTEM_MARKER,
 } = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'classifier.js'));
 
@@ -147,41 +146,9 @@ asyncTest('Layer 1: 所有 pipeline ID 都可解析', async () => {
   }
 });
 
-// ─── Part 1b-2: classifyByHeuristic — system-feedback 偵測 ──
+// ─── Part 1b-2: isSystemFeedback 偵測 (v5 Always-Pipeline) ──
 
-console.log('\n🧪 Part 1b-2: classifyByHeuristic — system-feedback 偵測');
-console.log('═'.repeat(50));
-
-test('system-feedback: ⛔ 開頭 → none（stop hook reason）', () => {
-  const r = classifyByHeuristic('⛔ 禁止停止！Pipeline 缺 DEV 尚未完成。\n你必須立即呼叫 Skill 工具');
-  assert.ok(r, '應有匹配結果');
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
-});
-
-test('system-feedback: ⛔ 含修復關鍵字仍匹配 system-feedback（優先於 bugfix）', () => {
-  const r = classifyByHeuristic('⛔ 禁止停止！修復尚未完成');
-  assert.ok(r);
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
-});
-
-test('system-feedback: 非 ⛔ 開頭不匹配', () => {
-  const r = classifyByHeuristic('修復一個小 bug');
-  assert.ok(r);
-  assert.strictEqual(r.matchedRule, 'heuristic:bugfix', '非 ⛔ 開頭應正常匹配 bugfix');
-});
-
-asyncTest('Layer 1.5: ⛔ stop hook feedback → none/heuristic:system-feedback', async () => {
-  const result = await classifyWithConfidence('⛔ 禁止停止！Pipeline 缺 REVIEW, TEST 尚未完成。');
-  assert.strictEqual(result.pipeline, 'none');
-  assert.strictEqual(result.source, 'heuristic');
-  assert.strictEqual(result.matchedRule, 'heuristic:system-feedback');
-});
-
-// ─── Part 1b-3: SYSTEM_MARKER 偵測 (任務 1.6) ──────
-
-console.log('\n🧪 Part 1b-3: SYSTEM_MARKER 偵測');
+console.log('\n🧪 Part 1b-2: isSystemFeedback 偵測');
 console.log('═'.repeat(50));
 
 test('SYSTEM_MARKER: 常數已匯出且為非空字串', () => {
@@ -190,204 +157,219 @@ test('SYSTEM_MARKER: 常數已匯出且為非空字串', () => {
   assert.strictEqual(SYSTEM_MARKER, '<!-- VIBE_SYSTEM -->', 'SYSTEM_MARKER 應為 HTML 註解格式');
 });
 
-test('SYSTEM_MARKER 偵測：純標記前綴 → system-feedback', () => {
-  const r = classifyByHeuristic(`${SYSTEM_MARKER}⛔ Pipeline 尚未完成。`);
-  assert.ok(r, '應有匹配結果');
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+test('isSystemFeedback: SYSTEM_MARKER 前綴 → true', () => {
+  assert.strictEqual(isSystemFeedback(`${SYSTEM_MARKER}⛔ Pipeline 尚未完成。`), true);
 });
 
-test('SYSTEM_MARKER 偵測：標記 + emoji → system-feedback（標記優先）', () => {
-  const r = classifyByHeuristic(`${SYSTEM_MARKER}✅ 任務完成通知`);
-  assert.ok(r);
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+test('isSystemFeedback: SYSTEM_MARKER 在中間 → true', () => {
+  assert.strictEqual(isSystemFeedback(`一些前綴 ${SYSTEM_MARKER} 後綴`), true);
 });
 
-test('SYSTEM_MARKER 偵測：標記優先於 bugfix 規則', () => {
-  // 即使 prompt 含有「修復」關鍵字，SYSTEM_MARKER 也應優先攔截
-  const r = classifyByHeuristic(`${SYSTEM_MARKER}修復任務尚未完成，請繼續。`);
-  assert.ok(r);
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+test('isSystemFeedback: ⛔ 開頭 → true', () => {
+  assert.strictEqual(isSystemFeedback('⛔ 禁止停止！Pipeline 缺 DEV 尚未完成。'), true);
 });
 
-test('SYSTEM_MARKER 偵測：無標記的普通修復 prompt 不受影響', () => {
-  const r = classifyByHeuristic('修復一個小 bug');
-  assert.ok(r);
-  assert.strictEqual(r.matchedRule, 'heuristic:bugfix', '無標記應正常匹配 bugfix');
+test('isSystemFeedback: ⚠️ 開頭 → true', () => {
+  assert.strictEqual(isSystemFeedback('⚠️ 警告：安全漏洞偵測到'), true);
 });
 
-// ─── Part 1b-4: 擴充 emoji 偵測 (任務 1.7 + 1.8) ──
+test('isSystemFeedback: ✅ 開頭 → true', () => {
+  assert.strictEqual(isSystemFeedback('✅ 任務已完成'), true);
+});
 
-console.log('\n🧪 Part 1b-4: 擴充 emoji 偵測');
+test('isSystemFeedback: 🔄 開頭 → true', () => {
+  assert.strictEqual(isSystemFeedback('🔄 正在同步...'), true);
+});
+
+test('isSystemFeedback: 📋 開頭 → true', () => {
+  assert.strictEqual(isSystemFeedback('📋 任務清單更新'), true);
+});
+
+test('isSystemFeedback: ➡️ 開頭 → true', () => {
+  assert.strictEqual(isSystemFeedback('➡️ 下一步：提交 PR'), true);
+});
+
+test('isSystemFeedback: 📌 開頭 → true', () => {
+  assert.strictEqual(isSystemFeedback('📌 重要：請注意這個問題'), true);
+});
+
+test('isSystemFeedback: 📄 開頭 → true', () => {
+  assert.strictEqual(isSystemFeedback('📄 報告：Pipeline 執行結果'), true);
+});
+
+test('isSystemFeedback: "Background task completed" → true', () => {
+  assert.strictEqual(isSystemFeedback('Background task completed successfully'), true);
+});
+
+test('isSystemFeedback: "Task xxx completed" → true', () => {
+  assert.strictEqual(isSystemFeedback('Task npm-build completed'), true);
+});
+
+test('isSystemFeedback: "Task xxx failed" → true', () => {
+  assert.strictEqual(isSystemFeedback('Task lint-check failed'), true);
+});
+
+test('isSystemFeedback: "Result from agent" → true', () => {
+  assert.strictEqual(isSystemFeedback('Result from vibe:tester: PASS'), true);
+});
+
+test('isSystemFeedback: "Output from xxx" → true', () => {
+  assert.strictEqual(isSystemFeedback('Output from build process'), true);
+});
+
+test('isSystemFeedback: 普通使用者輸入 → false', () => {
+  assert.strictEqual(isSystemFeedback('修復一個小 bug'), false);
+});
+
+test('isSystemFeedback: 普通英文 → false', () => {
+  assert.strictEqual(isSystemFeedback('fix the failing test'), false);
+});
+
+test('isSystemFeedback: 疑問句 → false', () => {
+  assert.strictEqual(isSystemFeedback('什麼是 pipeline?'), false);
+});
+
+test('isSystemFeedback: null → false', () => {
+  assert.strictEqual(isSystemFeedback(null), false);
+});
+
+test('isSystemFeedback: undefined → false', () => {
+  assert.strictEqual(isSystemFeedback(undefined), false);
+});
+
+test('isSystemFeedback: 空字串 → false', () => {
+  assert.strictEqual(isSystemFeedback(''), false);
+});
+
+test('isSystemFeedback: 只有空白 → false', () => {
+  assert.strictEqual(isSystemFeedback('   '), false);
+});
+
+asyncTest('classifyWithConfidence: ⛔ stop hook → none/system', async () => {
+  const result = await classifyWithConfidence('⛔ 禁止停止！Pipeline 缺 REVIEW, TEST 尚未完成。');
+  assert.strictEqual(result.pipeline, 'none');
+  assert.strictEqual(result.source, 'system');
+  assert.strictEqual(result.matchedRule, 'system-feedback');
+});
+
+asyncTest('classifyWithConfidence: SYSTEM_MARKER → none/system', async () => {
+  const result = await classifyWithConfidence(`${SYSTEM_MARKER}修復任務尚未完成`);
+  assert.strictEqual(result.pipeline, 'none');
+  assert.strictEqual(result.source, 'system');
+  assert.strictEqual(result.matchedRule, 'system-feedback');
+});
+
+asyncTest('classifyWithConfidence: Background task → none/system', async () => {
+  const result = await classifyWithConfidence('Background task completed successfully');
+  assert.strictEqual(result.pipeline, 'none');
+  assert.strictEqual(result.source, 'system');
+});
+
+// ─── Part 1b-3: v5 分類場景 — 原 heuristic 命中的 prompt 現在全部交給 main-agent ──
+
+console.log('\n🧪 Part 1b-3: v5 分類場景（原 heuristic → main-agent）');
 console.log('═'.repeat(50));
 
-test('emoji 擴充：✅ 開頭 → system-feedback（新增）', () => {
-  const r = classifyByHeuristic('✅ 任務已完成');
-  assert.ok(r, '應有匹配結果');
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+asyncTest('v5 場景: 修復 bug → main-agent（原 heuristic:bugfix）', async () => {
+  const result = await classifyWithConfidence('修復一個小 bug');
+  assert.strictEqual(result.source, 'main-agent');
+  assert.strictEqual(result.pipeline, 'none');
 });
 
-test('emoji 擴充：🔄 開頭 → system-feedback（新增）', () => {
-  const r = classifyByHeuristic('🔄 正在同步...');
-  assert.ok(r);
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+asyncTest('v5 場景: fix typo → main-agent（原 heuristic:bugfix）', async () => {
+  const result = await classifyWithConfidence('fix the failing authentication test');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-test('emoji 擴充：📋 開頭 → system-feedback（新增）', () => {
-  const r = classifyByHeuristic('📋 任務清單更新');
-  assert.ok(r);
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+asyncTest('v5 場景: 改成 → main-agent（原 heuristic:fix-change）', async () => {
+  const result = await classifyWithConfidence('把 port 改成 3000');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-test('emoji 擴充：➡️ 開頭 → system-feedback（新增）', () => {
-  const r = classifyByHeuristic('➡️ 下一步：提交 PR');
-  assert.ok(r);
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+asyncTest('v5 場景: 換成 → main-agent（原 heuristic:fix-change）', async () => {
+  const result = await classifyWithConfidence('把 JSON 換成 YAML');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-test('emoji 擴充：📌 開頭 → system-feedback（新增）', () => {
-  const r = classifyByHeuristic('📌 重要：請注意這個問題');
-  assert.ok(r);
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+asyncTest('v5 場景: 更新文件 → main-agent（原 heuristic:docs）', async () => {
+  const result = await classifyWithConfidence('更新 README 文件');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-test('emoji 擴充：📄 開頭 → system-feedback（新增）', () => {
-  const r = classifyByHeuristic('📄 報告：Pipeline 執行結果');
-  assert.ok(r);
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+asyncTest('v5 場景: review → main-agent（原 heuristic:review-only）', async () => {
+  const result = await classifyWithConfidence('review classifier.js 的邏輯');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-test('emoji 回歸：⛔ 開頭仍正常匹配（回歸驗證）', () => {
-  const r = classifyByHeuristic('⛔ 禁止停止！必須繼續委派。');
-  assert.ok(r);
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+asyncTest('v5 場景: code review → main-agent（原 heuristic:review-only）', async () => {
+  const result = await classifyWithConfidence('幫我 code review 這段程式碼');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-test('emoji 回歸：⚠️ 開頭仍正常匹配（回歸驗證）', () => {
-  const r = classifyByHeuristic('⚠️ 警告：安全漏洞偵測到');
-  assert.ok(r);
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+asyncTest('v5 場景: 什麼是 → main-agent（原 heuristic:question）', async () => {
+  const result = await classifyWithConfidence('什麼是 pipeline?');
+  assert.strictEqual(result.source, 'main-agent');
+  assert.strictEqual(result.pipeline, 'none');
 });
 
-// ─── Part 1b-5: review-only heuristic (任務 2.3 + 2.4) ──
-
-console.log('\n🧪 Part 1b-5: review-only heuristic');
-console.log('═'.repeat(50));
-
-test('review-only: "review XXX" 正面匹配', () => {
-  const r = classifyByHeuristic('review classifier.js 的邏輯');
-  assert.ok(r, '應有匹配結果');
-  assert.strictEqual(r.pipeline, 'review-only');
-  assert.strictEqual(r.matchedRule, 'heuristic:review-only');
+asyncTest('v5 場景: 能否說明 → main-agent（原 heuristic:question）', async () => {
+  const result = await classifyWithConfidence('能否說明這個設計的優缺點');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-test('review-only: "code review" 正面匹配', () => {
-  const r = classifyByHeuristic('幫我 code review 這段程式碼');
-  assert.ok(r);
-  assert.strictEqual(r.pipeline, 'review-only');
-  assert.strictEqual(r.matchedRule, 'heuristic:review-only');
+asyncTest('v5 場景: 是否需要 → main-agent（原 heuristic:question）', async () => {
+  const result = await classifyWithConfidence('是否需要更新文件');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-test('review-only: "審查 XXX" 中文正面匹配', () => {
-  const r = classifyByHeuristic('審查 pipeline-controller 的邏輯');
-  assert.ok(r);
-  assert.strictEqual(r.pipeline, 'review-only');
-  assert.strictEqual(r.matchedRule, 'heuristic:review-only');
+asyncTest('v5 場景: 修正邊界 → main-agent（原 heuristic:bugfix）', async () => {
+  const result = await classifyWithConfidence('修正邊界條件處理');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-test('review-only: "程式碼審查" 正面匹配', () => {
-  const r = classifyByHeuristic('請做一次程式碼審查');
-  assert.ok(r);
-  assert.strictEqual(r.pipeline, 'review-only');
-  assert.strictEqual(r.matchedRule, 'heuristic:review-only');
+asyncTest('v5 場景: 補完測試 → main-agent（原 heuristic:bugfix）', async () => {
+  const result = await classifyWithConfidence('補完測試案例');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-test('review-only 負面排除: "review + 修復" → 不匹配 review-only', () => {
-  const r = classifyByHeuristic('review 之後修復發現的 bug');
-  // 含「修復」→ 不匹配 review-only（應由 Layer 2 判斷）
-  assert.ok(!r || r.matchedRule !== 'heuristic:review-only',
-    '含「修復」不應匹配 review-only，實際: ' + (r ? r.matchedRule : 'null'));
+asyncTest('v5 場景: 重構認證模組 → main-agent', async () => {
+  const result = await classifyWithConfidence('重構認證模組');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-test('review-only 負面排除: "review + 重構" → 不匹配 review-only', () => {
-  const r = classifyByHeuristic('review 並重構 classifier 的 HEURISTIC_RULES');
-  assert.ok(!r || r.matchedRule !== 'heuristic:review-only',
-    '含「重構」不應匹配 review-only，實際: ' + (r ? r.matchedRule : 'null'));
+asyncTest('v5 場景: 建立 REST API → main-agent', async () => {
+  const result = await classifyWithConfidence('建立一個完整的 REST API server');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-test('review-only 負面排除: "review + 新增" → 不匹配 review-only', () => {
-  const r = classifyByHeuristic('review 完之後新增一個測試案例');
-  assert.ok(!r || r.matchedRule !== 'heuristic:review-only',
-    '含「新增」不應匹配 review-only，實際: ' + (r ? r.matchedRule : 'null'));
+asyncTest('v5 場景: 新增功能 → main-agent', async () => {
+  const result = await classifyWithConfidence('新增使用者認證功能');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-test('review-only 負面排除: "review + 實作" → 不匹配 review-only', () => {
-  const r = classifyByHeuristic('review 後按建議實作改善');
-  assert.ok(!r || r.matchedRule !== 'heuristic:review-only',
-    '含「實作」不應匹配 review-only，實際: ' + (r ? r.matchedRule : 'null'));
+asyncTest('v5 場景: 審查最近變更 → main-agent（原 heuristic:review-only）', async () => {
+  const result = await classifyWithConfidence('審查最近的變更');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-test('review-only 負面排除: "review + fix" → 不匹配 review-only', () => {
-  const r = classifyByHeuristic('review and fix the authentication flow');
-  assert.ok(!r || r.matchedRule !== 'heuristic:review-only',
-    '含「fix」不應匹配 review-only，實際: ' + (r ? r.matchedRule : 'null'));
+asyncTest('v5 場景: 撰寫 docs → main-agent（原 heuristic:docs）', async () => {
+  const result = await classifyWithConfidence('撰寫 JSDoc 註解');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-// ─── Part 1b-6: question heuristic 擴充 (任務 2.5 + 2.6) ──
-
-console.log('\n🧪 Part 1b-6: question heuristic 擴充');
-console.log('═'.repeat(50));
-
-test('question 擴充：能否 → none（新增疑問句型）', () => {
-  const r = classifyByHeuristic('能否說明這個設計的優缺點');
-  assert.ok(r, '應有匹配結果');
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:question');
+asyncTest('v5 場景: 有沒有更好方式 → main-agent（原 heuristic:question）', async () => {
+  const result = await classifyWithConfidence('有沒有更好的方式處理這個問題');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-test('question 擴充：可以 → none（新增疑問句型）', () => {
-  const r = classifyByHeuristic('可以解釋一下 DAG 的工作原理嗎');
-  assert.ok(r);
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:question');
+asyncTest('v5 場景: 加上錯誤處理 → main-agent（原 heuristic:bugfix）', async () => {
+  const result = await classifyWithConfidence('加上錯誤處理');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
-test('question 擴充：有沒有 → none（新增疑問句型）', () => {
-  const r = classifyByHeuristic('有沒有更好的方式處理這個問題');
-  assert.ok(r);
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:question');
-});
-
-test('question 擴充：是否 → none（新增疑問句型）', () => {
-  const r = classifyByHeuristic('是否需要更新文件');
-  assert.ok(r);
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:question');
-});
-
-test('question 擴充：含檔案路徑的「能否」不匹配', () => {
-  // 含檔案路徑 → FILE_PATH_PATTERN 排除，即使有疑問詞也不走 question
-  const r = classifyByHeuristic('能否確認 plugins/vibe/scripts/lib/flow/classifier.js 的邏輯');
-  assert.ok(!r || r.matchedRule !== 'heuristic:question',
-    '含檔案路徑不應匹配 question，實際: ' + (r ? r.matchedRule : 'null'));
-});
-
-test('question 回歸：? 結尾仍正常匹配（回歸驗證）', () => {
-  const r = classifyByHeuristic('什麼是 pipeline?');
-  assert.ok(r);
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:question');
+asyncTest('v5 場景: 防禦性檢查 → main-agent（原 heuristic:bugfix）', async () => {
+  const result = await classifyWithConfidence('加入防禦性檢查');
+  assert.strictEqual(result.source, 'main-agent');
 });
 
 // ─── Part 1c: classifyWithConfidence Fallback (async, 無 API key) ──
@@ -439,66 +421,11 @@ asyncTest('Fallback: 中文 prompt → none/main-agent', async () => {
   assert.strictEqual(result.source, 'main-agent');
 });
 
-asyncTest('Fallback: 疑問句 → none/heuristic', async () => {
+asyncTest('Fallback: 疑問句 → none/main-agent（v5 無 heuristic）', async () => {
   const result = await classifyWithConfidence('什麼是 pipeline?');
   assert.strictEqual(result.pipeline, 'none');
-  // Layer 1.5 heuristic 的 question 規則偵測疑問句
-  assert.strictEqual(result.source, 'heuristic');
-});
-
-// ─── Part 1d: buildPipelineCatalogHint ──────────
-
-console.log('\n🧪 Part 1d: buildPipelineCatalogHint');
-console.log('═'.repeat(50));
-
-test('buildPipelineCatalogHint: 回傳非空字串', () => {
-  const hint = buildPipelineCatalogHint();
-  assert.ok(typeof hint === 'string');
-  assert.ok(hint.length > 0);
-});
-
-test('buildPipelineCatalogHint: 包含 [pipeline:xxx] 語法', () => {
-  const hint = buildPipelineCatalogHint();
-  assert.ok(hint.includes('[pipeline:'), '應包含 [pipeline: 語法');
-});
-
-test('buildPipelineCatalogHint: 無參數時包含最常用的 5 個 pipeline', () => {
-  const hint = buildPipelineCatalogHint();
-  // 無參數時回傳最常用的 5 個（PRIORITY_ORDER 前 5 個：quick-dev, standard, fix, full, test-first）
-  const top5 = ['quick-dev', 'standard', 'fix', 'full', 'test-first'];
-  for (const id of top5) {
-    assert.ok(hint.includes(`[pipeline:${id}]`), `應包含 [pipeline:${id}]`);
-  }
-  // 並且不超過 5 個（counting [pipeline:xxx] 出現次數）
-  const matches = (hint.match(/\[pipeline:[a-z-]+\]/g) || []).length;
-  assert.ok(matches <= 5, `不應超過 5 個 pipeline，實際: ${matches}`);
-  // 應包含 fallback 提示
-  assert.ok(hint.includes('/vibe:pipeline'), '應包含完整清單提示');
-});
-
-test('buildPipelineCatalogHint: 有 pipelineId 時回傳相鄰 pipeline 並排除自身', () => {
-  const hint = buildPipelineCatalogHint('quick-dev');
-  // quick-dev 在 PRIORITY_ORDER index=0，相鄰窗口後排除自身
-  assert.ok(!hint.includes('[pipeline:quick-dev]'), '不應包含 quick-dev 自身');
-  // 應包含相鄰的 pipeline（standard 在 index=1）
-  assert.ok(hint.includes('[pipeline:standard]'), '應包含相鄰的 standard');
-  // 不超過 5 個
-  const matches = (hint.match(/\[pipeline:[a-z-]+\]/g) || []).length;
-  assert.ok(matches <= 5, `不應超過 5 個 pipeline，實際: ${matches}`);
-});
-
-test('buildPipelineCatalogHint: 有中間 pipelineId 時排除自身', () => {
-  // standard 在 PRIORITY_ORDER index=1，相鄰窗口為 [quick-dev, standard, fix, full]
-  // 排除自身 standard 後應為 [quick-dev, fix, full]
-  const hint = buildPipelineCatalogHint('standard');
-  assert.ok(!hint.includes('[pipeline:standard]'), '不應包含 standard 自身');
-  assert.ok(hint.includes('[pipeline:quick-dev]'), '應包含相鄰的 quick-dev');
-  assert.ok(hint.includes('[pipeline:fix]'), '應包含相鄰的 fix');
-});
-
-test('buildPipelineCatalogHint: 不包含 none', () => {
-  const hint = buildPipelineCatalogHint();
-  assert.ok(!hint.includes('[pipeline:none]'), '不應包含 [pipeline:none]');
+  // v5：無 heuristic，疑問句交由 Main Agent 判斷
+  assert.strictEqual(result.source, 'main-agent');
 });
 
 // ─── Part 1f: mapTaskTypeToPipeline ─────────────
@@ -726,7 +653,7 @@ test('none pipeline 每次都注入 systemMessage', () => {
     assert.ok(output.length > 0, 'none pipeline 應每次都有輸出');
     const parsed = JSON.parse(output);
     assert.ok(parsed.systemMessage, 'none pipeline 應注入 systemMessage');
-    assert.ok(parsed.systemMessage.includes('Pipeline 自主分類'), 'systemMessage 應包含分類指令');
+    assert.ok(parsed.systemMessage.includes('Pipeline 路由器'), 'systemMessage 應包含分類指令');
   } finally {
     cleanupTestState(sid);
   }
@@ -987,27 +914,21 @@ test('formatter: task.classified Layer 3 LLM', () => {
   assert.ok(text.includes('0.85'), '應含信心度');
 });
 
-// ─── Part 5: Spec 驗收條件 — SYSTEM_MARKER 規格場景（P4 獨立驗證）──
+// ─── Part 5: Spec 驗收條件 — SYSTEM_MARKER + isSystemFeedback 規格場景 ──
 
-console.log('\n🧪 Part 5: SYSTEM_MARKER 規格場景（P4 獨立驗證）');
+console.log('\n🧪 Part 5: SYSTEM_MARKER + isSystemFeedback 規格場景');
 console.log('═'.repeat(50));
 
-// classifier spec: SYSTEM_MARKER 在 prompt 中間也被偵測
-test('SYSTEM_MARKER 在 prompt 中間也能被偵測', () => {
-  const r = classifyByHeuristic('一些前綴文字 <!-- VIBE_SYSTEM --> 一些後綴文字');
-  assert.ok(r, '應有匹配結果');
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+// isSystemFeedback: SYSTEM_MARKER 在 prompt 中間也被偵測
+test('isSystemFeedback: SYSTEM_MARKER 在 prompt 中間也能被偵測', () => {
+  assert.strictEqual(isSystemFeedback('一些前綴文字 <!-- VIBE_SYSTEM --> 一些後綴文字'), true);
 });
 
-// classifier spec: SYSTEM_MARKER 優先於 review-only
-test('SYSTEM_MARKER 優先於 review-only 規則', () => {
-  // prompt 同時匹配 system-feedback（SYSTEM_MARKER）和 review-only（含「review」）
-  // system-feedback 應優先
-  const r = classifyByHeuristic('<!-- VIBE_SYSTEM --> review 一下 auth 模組');
-  assert.ok(r, '應有匹配結果');
-  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback', 'SYSTEM_MARKER 應優先於 review-only');
-  assert.strictEqual(r.pipeline, 'none');
+// isSystemFeedback: SYSTEM_MARKER 優先性（含 review 關鍵字仍偵測為系統回饋）
+asyncTest('classifyWithConfidence: SYSTEM_MARKER + review → system（非 main-agent）', async () => {
+  const result = await classifyWithConfidence('<!-- VIBE_SYSTEM --> review 一下 auth 模組');
+  assert.strictEqual(result.source, 'system');
+  assert.strictEqual(result.pipeline, 'none');
 });
 
 // hooks spec: pipeline-check reason 含 SYSTEM_MARKER
@@ -1015,34 +936,27 @@ test('pipeline-check.js 引用 SYSTEM_MARKER 常數（非硬編碼）', () => {
   const pcContent = fs.readFileSync(
     path.join(__dirname, '..', 'scripts', 'hooks', 'pipeline-check.js'), 'utf8'
   );
-  // 應從 classifier.js require SYSTEM_MARKER
   assert.ok(pcContent.includes('classifier.js'), 'pipeline-check 應 require classifier.js');
   assert.ok(pcContent.includes('SYSTEM_MARKER'), 'pipeline-check 應使用 SYSTEM_MARKER 常數');
-  // 不應有硬編碼的 <!-- VIBE_SYSTEM --> 字串
   const withoutComment = pcContent.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
   assert.ok(!withoutComment.includes('<!-- VIBE_SYSTEM -->'), 'pipeline-check 不應硬編碼標記字串（DRY）');
 });
 
-// hooks spec: task-guard systemMessage 含 SYSTEM_MARKER（常數來源統一）
+// hooks spec: task-guard systemMessage 含 SYSTEM_MARKER
 test('task-guard.js 引用 SYSTEM_MARKER 常數（非硬編碼）', () => {
   const tgContent = fs.readFileSync(
     path.join(__dirname, '..', 'scripts', 'hooks', 'task-guard.js'), 'utf8'
   );
-  // 應從 classifier.js require SYSTEM_MARKER
   assert.ok(tgContent.includes('classifier.js'), 'task-guard 應 require classifier.js');
   assert.ok(tgContent.includes('SYSTEM_MARKER'), 'task-guard 應使用 SYSTEM_MARKER 常數');
-  // 不應有硬編碼的 <!-- VIBE_SYSTEM --> 字串
   const withoutComment = tgContent.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
   assert.ok(!withoutComment.includes('<!-- VIBE_SYSTEM -->'), 'task-guard 不應硬編碼標記字串（DRY）');
 });
 
-// hooks spec: pipeline-check reason 格式為 SYSTEM_MARKER + 原有內容
-// 此測試透過直接讀取原始碼確認格式（子行程測試需要特定 pipeline state）
 test('pipeline-check reason 格式：SYSTEM_MARKER 前綴 + systemMessage', () => {
   const pcContent = fs.readFileSync(
     path.join(__dirname, '..', 'scripts', 'hooks', 'pipeline-check.js'), 'utf8'
   );
-  // reason 組合格式：`${SYSTEM_MARKER}${result.systemMessage}`
   assert.ok(
     pcContent.includes('`${SYSTEM_MARKER}${result.systemMessage}`') ||
     pcContent.includes("SYSTEM_MARKER + result.systemMessage") ||
@@ -1051,122 +965,257 @@ test('pipeline-check reason 格式：SYSTEM_MARKER 前綴 + systemMessage', () =
   );
 });
 
-// hooks spec: task-guard 兩個輸出路徑都含 SYSTEM_MARKER
 test('task-guard 阻擋路徑 systemMessage 含 SYSTEM_MARKER 前綴', () => {
   const tgContent = fs.readFileSync(
     path.join(__dirname, '..', 'scripts', 'hooks', 'task-guard.js'), 'utf8'
   );
-  // 找到阻擋輸出的 systemMessage 賦值模式
-  // 確認兩處 systemMessage（安全閥 + 正常阻擋）都有 SYSTEM_MARKER
   const systemMessageMatches = tgContent.match(/systemMessage:.*SYSTEM_MARKER/g) || [];
   assert.ok(systemMessageMatches.length >= 2, `task-guard 應有至少 2 處 systemMessage 含 SYSTEM_MARKER，實際: ${systemMessageMatches.length}`);
 });
 
-// ─── Part 5b: question heuristic 擴充 — 新 Scenario ──
+// ─── Part 5b: AskUserQuestion guard 放行驗證 ──
 
-console.log('\n🧪 Part 5b: question heuristic 擴充場景（spec 獨立驗證）');
+console.log('\n🧪 Part 5b: AskUserQuestion guard 放行驗證');
 console.log('═'.repeat(50));
 
-// spec: 「是不是 bug」分類為 none（question）
-test('question: 是不是 bug → none（是否/是不是 句型）', () => {
-  const r = classifyByHeuristic('是不是 bug');
-  assert.ok(r, '應有匹配結果');
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:question');
+test('AskUserQuestion 在 READ_ONLY_TOOLS 白名單中', () => {
+  const { evaluate } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
+  // pipelineActive=true + 無 activeStages → READ_ONLY_TOOLS 白名單判斷
+  const state = {
+    version: 4,
+    pipelineActive: true,
+    activeStages: [],
+    stages: {},
+    dag: { DEV: { deps: [] } },
+  };
+  const result = evaluate('AskUserQuestion', {}, state);
+  assert.strictEqual(result.decision, 'allow', 'AskUserQuestion 應在 pipelineActive 時被白名單放行');
 });
 
-// spec: 「有沒有辦法加速 CI」→ question（不含檔案路徑）
-test('question: 有沒有辦法加速 CI → none（有沒有 句型）', () => {
-  const r = classifyByHeuristic('有沒有辦法加速 CI');
-  assert.ok(r, '應有匹配結果');
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:question');
+test('AskUserQuestion 在 pipelineActive=false 時放行', () => {
+  const { evaluate } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
+  const state = {
+    version: 4,
+    pipelineActive: false,
+    activeStages: [],
+    stages: {},
+  };
+  const result = evaluate('AskUserQuestion', {}, state);
+  assert.strictEqual(result.decision, 'allow', 'AskUserQuestion 在 pipelineActive=false 時應放行');
 });
 
-// spec: 「是否需要更新 registry」→ none（是否 句型，不含檔案路徑）
-test('question: 是否需要更新 registry → none（是否 句型）', () => {
-  const r = classifyByHeuristic('是否需要更新 registry');
-  assert.ok(r, '應有匹配結果');
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:question');
+test('AskUserQuestion 有 activeStages 時放行（sub-agent 委派中）', () => {
+  const { evaluate } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
+  const state = {
+    version: 4,
+    pipelineActive: true,
+    activeStages: ['DEV'],
+    stages: { DEV: { status: 'active' } },
+    dag: { DEV: { deps: [] } },
+  };
+  const result = evaluate('AskUserQuestion', {}, state);
+  assert.strictEqual(result.decision, 'allow', 'AskUserQuestion 在 sub-agent 委派中應放行');
 });
 
-// ─── Part 5c: review-only spec 場景 ──────────────
+test('AskUserQuestion 無 state 時放行（未初始化）', () => {
+  const { evaluate } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'sentinel', 'guard-rules.js'));
+  const result = evaluate('AskUserQuestion', {}, null);
+  assert.strictEqual(result.decision, 'allow', 'AskUserQuestion 在 state=null 時應放行');
+});
 
-console.log('\n🧪 Part 5c: review-only spec 場景（獨立驗證）');
+// ─── Part 5c: S1 新增邊界案例 — isSystemFeedback 完整覆蓋 ──
+
+console.log('\n🧪 Part 5c: S1 新增邊界案例');
 console.log('═'.repeat(50));
 
-// spec: 「review 這段程式碼」→ review-only
-test('review-only: review 這段程式碼 → review-only', () => {
-  const r = classifyByHeuristic('review 這段程式碼');
-  assert.ok(r, '應有匹配結果');
-  assert.strictEqual(r.pipeline, 'review-only');
-  assert.strictEqual(r.matchedRule, 'heuristic:review-only');
+test('isSystemFeedback: "Task xxx finished" → true（finished 格式）', () => {
+  assert.strictEqual(isSystemFeedback('Task webpack-build finished'), true);
 });
 
-// spec: 「審查最近的變更」→ review-only
-test('review-only: 審查最近的變更 → review-only', () => {
-  const r = classifyByHeuristic('審查最近的變更');
-  assert.ok(r, '應有匹配結果');
-  assert.strictEqual(r.pipeline, 'review-only');
-  assert.strictEqual(r.matchedRule, 'heuristic:review-only');
+test('isSystemFeedback: "Task xxx finished" 含空白 → true', () => {
+  assert.strictEqual(isSystemFeedback('Task long-running-job finished with output'), true);
 });
 
-// spec: 「review 後修復問題」→ 不是 review-only（含「修復」）
-test('review-only 負面排除: review 後修復問題 → 不匹配 review-only', () => {
-  const r = classifyByHeuristic('review 後修復問題');
-  const notReviewOnly = !r || r.matchedRule !== 'heuristic:review-only';
-  assert.ok(notReviewOnly, `含「修復」的 review prompt 不應匹配 review-only，實際: ${r ? r.matchedRule : 'null'}`);
+test('isSystemFeedback: 前置空白後的 emoji → trim() 後仍偵測', () => {
+  assert.strictEqual(isSystemFeedback('   ⛔ 系統警告'), true);
 });
 
-// spec: 「code review」→ review-only
-test('review-only: code review → review-only', () => {
-  const r = classifyByHeuristic('code review');
-  assert.ok(r, '應有匹配結果');
-  assert.strictEqual(r.pipeline, 'review-only');
-  assert.strictEqual(r.matchedRule, 'heuristic:review-only');
+test('isSystemFeedback: 前置空白後的 SYSTEM_MARKER → true', () => {
+  assert.strictEqual(isSystemFeedback(`   ${SYSTEM_MARKER}系統訊息`), true);
 });
 
-// spec: HEURISTIC_RULES 順序 — system-feedback 在 question 前面（question 的 review 疑問不被 review-only 優先）
-test('HEURISTIC_RULES 順序: 什麼是 review？→ question（非 review-only）', () => {
-  const r = classifyByHeuristic('什麼是 review？');
-  // 「什麼是」是疑問詞 → question 先匹配
-  assert.ok(r, '應有匹配結果');
-  assert.strictEqual(r.matchedRule, 'heuristic:question', '疑問詞 question 規則應優先於 review-only');
+test('isSystemFeedback: 英文字母開頭（非 emoji / SYSTEM_MARKER / 英文系統通知）→ false', () => {
+  // 實作使用字元類別 regex，其 Unicode 範圍可能廣泛命中 emoji
+  // 本測試確認：明確非系統訊息的英文開頭字串回傳 false
+  assert.strictEqual(isSystemFeedback('Hello, how are you?'), false);
 });
 
-// ─── Part 5d: system-feedback 背景任務通知模式 ──
+test('isSystemFeedback: 中文開頭（無前導 emoji/SYSTEM_MARKER）→ false', () => {
+  assert.strictEqual(isSystemFeedback('請幫我新增一個登入功能'), false);
+});
 
-console.log('\n🧪 Part 5d: system-feedback 背景任務通知模式');
+test('isSystemFeedback: "background task" 小寫 → true（大小寫不敏感）', () => {
+  assert.strictEqual(isSystemFeedback('background task completed'), true);
+});
+
+test('isSystemFeedback: "BACKGROUND TASK" 全大寫 → true（大小寫不敏感）', () => {
+  assert.strictEqual(isSystemFeedback('BACKGROUND TASK COMPLETED'), true);
+});
+
+test('isSystemFeedback: "output from" 小寫 → true（大小寫不敏感）', () => {
+  assert.strictEqual(isSystemFeedback('output from linter'), true);
+});
+
+test('isSystemFeedback: "result from" 小寫 → true（大小寫不敏感）', () => {
+  assert.strictEqual(isSystemFeedback('result from pipeline'), true);
+});
+
+test('isSystemFeedback: SYSTEM_MARKER 後跟 newline → true', () => {
+  assert.strictEqual(isSystemFeedback(`${SYSTEM_MARKER}\n繼續執行`), true);
+});
+
+test('isSystemFeedback: 純 SYSTEM_MARKER 無後綴 → true', () => {
+  assert.strictEqual(isSystemFeedback(SYSTEM_MARKER), true);
+});
+
+// ─── Part 5d: classifyWithConfidence main-agent 路徑結構驗證 ──
+
+console.log('\n🧪 Part 5d: classifyWithConfidence main-agent 結構驗證');
 console.log('═'.repeat(50));
 
-// system-feedback 的第 3 條規則：英文 background task 通知
-test('system-feedback: "Background task completed" → none', () => {
-  const r = classifyByHeuristic('Background task completed successfully');
-  assert.ok(r, '應有匹配結果');
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+asyncTest('main-agent: 返回 confidence=0', async () => {
+  const result = await classifyWithConfidence('幫我寫一個功能');
+  assert.strictEqual(result.source, 'main-agent');
+  assert.strictEqual(result.confidence, 0, 'main-agent 路徑 confidence 應為 0');
 });
 
-test('system-feedback: "Task xxx completed" → none', () => {
-  const r = classifyByHeuristic('Task npm-build completed');
-  assert.ok(r, '應有匹配結果');
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+asyncTest('main-agent: 返回 matchedRule=main-agent', async () => {
+  const result = await classifyWithConfidence('幫我寫一個功能');
+  assert.strictEqual(result.matchedRule, 'main-agent', 'main-agent 路徑 matchedRule 應為 main-agent');
 });
 
-test('system-feedback: "Result from agent" → none', () => {
-  const r = classifyByHeuristic('Result from vibe:tester: PASS');
-  assert.ok(r, '應有匹配結果');
-  assert.strictEqual(r.pipeline, 'none');
-  assert.strictEqual(r.matchedRule, 'heuristic:system-feedback');
+asyncTest('main-agent: 返回 pipeline=none', async () => {
+  const result = await classifyWithConfidence('幫我寫一個功能');
+  assert.strictEqual(result.pipeline, 'none', 'main-agent 路徑 pipeline 應為 none');
 });
 
-test('system-feedback: 普通英文句子不被誤攔', () => {
-  const r = classifyByHeuristic('fix the failing authentication test');
-  // 這應該走 bugfix，不是 system-feedback
-  assert.ok(!r || r.matchedRule !== 'heuristic:system-feedback',
-    '普通 fix 句子不應匹配 system-feedback，實際: ' + (r ? r.matchedRule : 'null'));
+asyncTest('main-agent: 返回物件有四個欄位', async () => {
+  const result = await classifyWithConfidence('實作使用者登入');
+  assert.ok('pipeline' in result, '應有 pipeline 欄位');
+  assert.ok('confidence' in result, '應有 confidence 欄位');
+  assert.ok('source' in result, '應有 source 欄位');
+  assert.ok('matchedRule' in result, '應有 matchedRule 欄位');
+});
+
+asyncTest('system-feedback: 返回 confidence=0.9', async () => {
+  const result = await classifyWithConfidence('⛔ Pipeline 尚未完成');
+  assert.strictEqual(result.source, 'system');
+  assert.strictEqual(result.confidence, 0.9, 'system-feedback 路徑 confidence 應為 0.9');
+});
+
+asyncTest('system-feedback: 返回 matchedRule=system-feedback', async () => {
+  const result = await classifyWithConfidence('✅ 任務完成');
+  assert.strictEqual(result.matchedRule, 'system-feedback');
+});
+
+asyncTest('explicit: 返回 confidence=1.0', async () => {
+  const result = await classifyWithConfidence('[pipeline:fix] 修正 typo');
+  assert.strictEqual(result.source, 'explicit');
+  assert.strictEqual(result.confidence, 1.0, 'explicit 路徑 confidence 應為 1.0');
+});
+
+asyncTest('explicit: 返回 matchedRule=explicit', async () => {
+  const result = await classifyWithConfidence('[pipeline:fix] 修正 typo');
+  assert.strictEqual(result.matchedRule, 'explicit');
+});
+
+// ─── Part 5e: classify() controller 系統整合 — system-feedback 靜默忽略 ──
+
+console.log('\n🧪 Part 5e: task-classifier 系統整合 — system-feedback 靜默行為');
+console.log('═'.repeat(50));
+
+test('system-feedback: ⛔ 開頭 → task-classifier 無輸出（靜默忽略）', () => {
+  const sid = 'test-sysfb-block-' + Date.now();
+  try {
+    createTestState(sid);
+    const result = runTaskClassifier({ session_id: sid, prompt: '⛔ Pipeline 缺 DEV 尚未完成。' });
+    assert.strictEqual(result.stdout, '', 'system-feedback 訊息不應觸發分類輸出');
+  } finally {
+    cleanupTestState(sid);
+  }
+});
+
+test('system-feedback: SYSTEM_MARKER → task-classifier 無輸出', () => {
+  const sid = 'test-sysfb-marker-' + Date.now();
+  try {
+    createTestState(sid);
+    const result = runTaskClassifier({ session_id: sid, prompt: `${SYSTEM_MARKER}⛔ Pipeline 修復任務未完成` });
+    assert.strictEqual(result.stdout, '', 'SYSTEM_MARKER 訊息不應觸發分類輸出');
+  } finally {
+    cleanupTestState(sid);
+  }
+});
+
+test('system-feedback: Background task → task-classifier 無輸出', () => {
+  const sid = 'test-sysfb-bg-' + Date.now();
+  try {
+    createTestState(sid);
+    const result = runTaskClassifier({ session_id: sid, prompt: 'Background task completed successfully' });
+    assert.strictEqual(result.stdout, '', 'Background task 不應觸發分類輸出');
+  } finally {
+    cleanupTestState(sid);
+  }
+});
+
+test('system-feedback: Task xxx finished → task-classifier 無輸出', () => {
+  const sid = 'test-sysfb-taskfin-' + Date.now();
+  try {
+    createTestState(sid);
+    const result = runTaskClassifier({ session_id: sid, prompt: 'Task webpack-build finished' });
+    assert.strictEqual(result.stdout, '', 'Task finished 訊息不應觸發分類輸出');
+  } finally {
+    cleanupTestState(sid);
+  }
+});
+
+// ─── Part 5f: classify() systemMessage 包含 AskUserQuestion 提示 ──
+
+console.log('\n🧪 Part 5f: pipeline 選擇表 systemMessage 包含 AskUserQuestion 提示');
+console.log('═'.repeat(50));
+
+test('none pipeline systemMessage 包含 AskUserQuestion 指引', () => {
+  const sid = 'test-sysmsg-ask-' + Date.now();
+  try {
+    createTestState(sid);
+    const result = runTaskClassifier({ session_id: sid, prompt: '看看目前的狀況' });
+    assert.ok(result.stdout.length > 0, '應有 systemMessage 輸出');
+    const parsed = JSON.parse(result.stdout);
+    assert.ok(parsed.systemMessage, '應有 systemMessage');
+    assert.ok(
+      parsed.systemMessage.includes('AskUserQuestion'),
+      'systemMessage 應包含 AskUserQuestion 指引（不確定時詢問使用者）'
+    );
+  } finally {
+    cleanupTestState(sid);
+  }
+});
+
+test('none pipeline systemMessage 包含所有 pipeline 選項', () => {
+  const sid = 'test-sysmsg-options-' + Date.now();
+  try {
+    createTestState(sid);
+    const result = runTaskClassifier({ session_id: sid, prompt: '幫我做點事' });
+    const parsed = JSON.parse(result.stdout);
+    const msg = parsed.systemMessage;
+    // 驗證關鍵 pipeline 選項都在 systemMessage 中
+    assert.ok(msg.includes('fix'), '應包含 fix pipeline');
+    assert.ok(msg.includes('quick-dev'), '應包含 quick-dev pipeline');
+    assert.ok(msg.includes('standard'), '應包含 standard pipeline');
+    assert.ok(msg.includes('full'), '應包含 full pipeline');
+    assert.ok(msg.includes('chat') || msg.includes('none'), '應包含 chat/none 選項');
+  } finally {
+    cleanupTestState(sid);
+  }
 });
 
 // ═══════════════════════════════════════════════

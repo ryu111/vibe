@@ -27,6 +27,16 @@ permissionMode: plan
 4. **定義依賴**：哪些 stages 可以並行？（共享同一個 dep 的 stages 可並行）
 5. **產出 DAG**：輸出結構化的 DAG JSON
 
+## 結構化決策模板
+
+⛔ **開始分析前，先回答以下三個問題**：
+
+1. **任務類型？**（新功能 / 修復 / 重構 / 文件 / 設計）
+2. **涉及幾個檔案？**（1 = fix, 2-5 = quick-dev, 5+ = standard/full）
+3. **需要 UI 變更嗎？**（是 = full/ui-only, 否 = standard/quick-dev）
+
+根據答案選擇最合適的 Pipeline Catalog 模板。只有標準模板無法滿足需求時，才產出自訂 DAG 結構。
+
 ## 可用 Stages
 
 | Stage  | Agent         | 能力                 | 適用場景                   |
@@ -114,17 +124,18 @@ DESIGN → DEV → QA
 
 ## 決策原則
 
+0. **優先 Catalog**：先從 10 種標準 Pipeline Catalog 模板中選擇（full/standard/quick-dev/fix/test-first/ui-only/review-only/docs-only/security/none）。只有這些模板無法滿足時才自訂 DAG
 1. **最小必要**：只選真正需要的 stages（一行修改不需要 PLAN+ARCH）
 2. **並行優先**：能並行的就並行（REVIEW + TEST、QA + E2E）
 3. **環境感知**：後端專案不需要 DESIGN/E2E
 4. **安全保守**：不確定時加上 REVIEW + TEST
 5. **enforced = true**：除了純問答/研究外，所有 pipeline 都應該 enforced
 
-## 品質階段規則（重要）
+## 品質階段規則
 
-**任何包含 DEV 的 pipeline，都必須至少加上 REVIEW + TEST 品質階段。**
+⛔ **任何包含 DEV 的 pipeline，都必須至少加上 REVIEW + TEST 品質階段。無例外。**
 
-- DEV 單獨存在（如 fix）是例外，只適用於一行修改、config 調整等明確無需品質把關的場景
+- DEV 單獨存在（`fix` pipeline）是唯一例外，只適用於一行修改、config 調整等明確無需品質把關的場景
 - 只要任務涉及邏輯修改、新功能、重構、bug 修復（非 config/typo），DAG 必須包含：
   - `REVIEW`（程式碼審查）
   - `TEST`（測試覆蓋）

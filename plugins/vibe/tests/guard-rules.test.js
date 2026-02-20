@@ -214,13 +214,11 @@ console.log('\n🛡️ evaluate() — AskUserQuestion 測試');
 console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
-test('AskUserQuestion → 阻擋（CLASSIFIED must-delegate）', () => {
+test('AskUserQuestion → 放行（S1: READ_ONLY_TOOLS 白名單）', () => {
+  // S1 任務 3.1：AskUserQuestion 加入 READ_ONLY_TOOLS，在 pipeline relay 模式下放行
+  // 這讓 Main Agent 不確定 pipeline 時可以詢問使用者（不被 must-delegate 阻擋）
   const result = evaluate('AskUserQuestion', {}, ENFORCED_STATE);
-  assert.strictEqual(result.decision, 'block');
-  // CLASSIFIED 階段：must-delegate 統一阻擋（在 AskUserQuestion 特定檢查之前）
-  assert.strictEqual(result.reason, 'must-delegate');
-  assert.ok(result.message.includes('⛔'));
-  assert.ok(result.message.includes('等待委派'));
+  assert.strictEqual(result.decision, 'allow');
 });
 
 test('AskUserQuestion — PLAN 階段放行（需 DELEGATING phase）', () => {
@@ -594,11 +592,11 @@ test('v4：Bash 危險指令 → block（無論 pipelineActive）', () => {
   assert.strictEqual(evaluate('Bash', { command: 'DROP TABLE x' }, safe).decision, 'block');
 });
 
-test('v4：AskUserQuestion + pipelineActive=true + activeStages=[] → block', () => {
+test('v4：AskUserQuestion + pipelineActive=true + activeStages=[] → allow（S1 白名單）', () => {
+  // S1 任務 3.1：AskUserQuestion 加入 READ_ONLY_TOOLS，pipeline relay 模式下放行
   const state = makeV4State({ pipelineActive: true, activeStages: [] });
   const r = evaluate('AskUserQuestion', {}, state);
-  assert.strictEqual(r.decision, 'block');
-  assert.strictEqual(r.reason, 'must-delegate');
+  assert.strictEqual(r.decision, 'allow');
 });
 
 test('v4：AskUserQuestion + activeStages=[PLAN]（PLAN 委派中）→ allow', () => {

@@ -110,6 +110,25 @@ context_file 寫入完成後，最終回應**只輸出**：
 1. **結論摘要**（3-5 行）：測試總數、通過/失敗數、覆蓋率概況
 2. **PIPELINE_ROUTE 標記**（最後一行，**必須**包含）
 
+## Goal Objects 推導測試（S7）
+
+若 OpenSpec 的 proposal.md 包含 Goal 區塊，應從 success_criteria 推導測試案例：
+
+1. **量化指標 → 自動化測試**：
+   - `test_coverage >= 80%` → 確認執行 coverage 報告
+   - `lint_clean: 0 errors` → 確認 lint 結果
+   - `response_time < 200ms` → 效能測試
+
+2. **質性指標 → 行為測試**：
+   - `functional: "用戶可以登入"` → 建立登入流程的端到端測試
+   - 每個質性指標至少有 1 個對應測試案例
+
+3. **constraints → 邊界測試**：
+   - hard constraint → 測試違反情境確認被阻擋
+   - soft constraint → 記錄但不強制測試
+
+4. **無 Goal 時**：從程式碼行為和 specs 推導測試（向後兼容）
+
 ## 規則
 
 1. **獨立視角**：不看 developer 的測試理由，從規格和行為獨立推斷

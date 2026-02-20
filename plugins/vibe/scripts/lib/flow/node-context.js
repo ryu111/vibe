@@ -16,14 +16,93 @@
 
 const path = require('path');
 const os = require('os');
+const { execSync } = require('child_process');
 
 const { readReflection, getReflectionPath } = require('./reflection.js');
 const { getBaseStage } = require('./dag-utils.js');
+const { readWisdom } = require('./wisdom.js');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
-// Node Context 最大字元上限（約 500 tokens）
-const MAX_NODE_CONTEXT_CHARS = 2000;
+// Node Context 最大字元上限（約 500 tokens，S4 調整為 2500 容納 wisdom 欄位）
+const MAX_NODE_CONTEXT_CHARS = 2500;
+
+// 需要注入 signals 的 stage 集合（S6 三信號驗證）
+const SIGNAL_STAGES = new Set(['REVIEW', 'TEST', 'QA', 'SECURITY']);
+
+// lint 執行 timeout（毫秒）
+const LINT_TIMEOUT_MS = 15000;
+
+// ────────────────── collectSignals ──────────────────
+
+/**
+ * 收集 lint + test 最新結果作為確定性信號。
+ *
+ * 策略：
+ * - lint：嘗試執行 env-detector 偵測到的 linter（如 eslint），收集 error/warning 數量
+ * - test：不實際執行測試（太耗時），只標記 runner 可用性
+ * - 若執行失敗或不存在 → 回傳 null（不阻擋 pipeline）
+ *
+ * @param {Object} env - state.environment（含 tools.linter / tools.test）
+ * @returns {{ lint: { errors: number, warnings: number }|null, test: { runner: string, available: boolean }|null }}
+ */
+function collectSignals(env) {
+  const signals = { lint: null, test: null };
+
+  // lint 信號：嘗試執行 linter 取得 error/warning 數量
+  if (env?.tools?.linter) {
+    const linter = env.tools.linter;
+    try {
+      if (linter === 'eslint') {
+        // eslint JSON 格式輸出，--quiet 只計 errors（但 warningCount 仍在 JSON 內）
+        const result = execSync('npx eslint . --format json 2>/dev/null || true', {
+          encoding: 'utf8',
+          timeout: LINT_TIMEOUT_MS,
+          cwd: process.cwd(),
+        });
+        try {
+          const parsed = JSON.parse(result);
+          let errors = 0;
+          let warnings = 0;
+          for (const file of parsed) {
+            errors += file.errorCount || 0;
+            warnings += file.warningCount || 0;
+          }
+          signals.lint = { errors, warnings };
+        } catch (_) {
+          // JSON 解析失敗，lint 信號保持 null
+        }
+      } else if (linter === 'ruff') {
+        // ruff JSON 格式輸出，每個條目代表一個 violation（全部視為 error）
+        const result = execSync('ruff check . --output-format json 2>/dev/null || true', {
+          encoding: 'utf8',
+          timeout: LINT_TIMEOUT_MS,
+          cwd: process.cwd(),
+        });
+        try {
+          const parsed = JSON.parse(result);
+          signals.lint = { errors: Array.isArray(parsed) ? parsed.length : 0, warnings: 0 };
+        } catch (_) {
+          // JSON 解析失敗，lint 信號保持 null
+        }
+      }
+      // 其他 linter 目前不支援 JSON 輸出，信號保持 null
+    } catch (_) {
+      // lint 執行失敗（timeout / 不存在），不阻擋 pipeline
+      signals.lint = null;
+    }
+  }
+
+  // test 信號：不實際執行測試（太耗時），只標記 runner 可用性
+  if (env?.tools?.test) {
+    signals.test = { runner: env.tools.test, available: true };
+  }
+
+  return signals;
+}
+
+// Phase 任務範圍最大字元上限（注入到 systemMessage）
+const MAX_PHASE_SCOPE_CHARS = 500;
 
 // ────────────────── getRetryContext ──────────────────
 
@@ -128,6 +207,15 @@ function buildNodeContext(dag, state, stage, sessionId) {
   // 環境資訊精簡版（只取 language/framework/frontend）
   const env = buildEnvSnapshot(state);
 
+  // 讀取跨 stage 知識（S4 Wisdom Accumulation）
+  const wisdom = sessionId ? readWisdom(sessionId) : null;
+
+  // 品質 stage 的確定性信號（S6 三信號驗證）
+  // 只為 REVIEW/TEST/QA/SECURITY 等品質 stage 收集，DEV/PLAN 等實作 stage 不需要
+  const signals = SIGNAL_STAGES.has(getBaseStage(stage))
+    ? collectSignals(state?.environment)
+    : null;
+
   // 組裝 Node Context
   const context = {
     node: {
@@ -140,6 +228,8 @@ function buildNodeContext(dag, state, stage, sessionId) {
     context_files: prevContextFiles,
     env,
     retryContext: getRetryContext(sessionId, stage, state),
+    wisdom: wisdom || null,
+    signals: signals || null,
   };
 
   // 確保 JSON 不超過 MAX_NODE_CONTEXT_CHARS
@@ -163,11 +253,24 @@ function buildNodeContext(dag, state, stage, sessionId) {
       json = JSON.stringify(context);
     }
 
-    // 最後防線：若還是超過，移除整個 retryContext 只保留最小 hint
+    // 第三層防線：若還是超過，移除整個 retryContext 只保留最小 hint
     if (json.length > MAX_NODE_CONTEXT_CHARS && context.retryContext) {
       context.retryContext = context.retryContext.hint
         ? { hint: context.retryContext.hint.slice(0, 100) }
         : null;
+      json = JSON.stringify(context);
+    }
+
+    // 第四層：截斷 wisdom（跨 stage 知識，次要資訊）
+    if (json.length > MAX_NODE_CONTEXT_CHARS && context.wisdom) {
+      context.wisdom = null;
+      json = JSON.stringify(context);
+    }
+
+    // 第五層：截斷 signals（確定性信號，品質 stage 可重新收集）
+    if (json.length > MAX_NODE_CONTEXT_CHARS && context.signals) {
+      context.signals = null;
+      json = JSON.stringify(context);
     }
   }
 
@@ -266,7 +369,66 @@ function formatNodeContext(nodeContext) {
     }
   }
 
+  // wisdom（之前 stage 的學習筆記，null 時省略；截斷到 100 字元避免格式行過長）
+  if (nodeContext.wisdom) {
+    const wisdomSnippet = nodeContext.wisdom.slice(0, 100);
+    parts.push(`wisdom=${wisdomSnippet}`);
+  }
+
+  // signals（確定性信號，null 時省略）
+  if (nodeContext.signals) {
+    const s = nodeContext.signals;
+    const signalParts = [];
+    if (s.lint !== null && s.lint !== undefined) {
+      signalParts.push(`lint:${s.lint.errors}err/${s.lint.warnings}warn`);
+    }
+    if (s.test !== null && s.test !== undefined) {
+      signalParts.push(`test:${s.test.runner || 'available'}`);
+    }
+    if (signalParts.length > 0) {
+      parts.push(`signals=${signalParts.join(',')}`);
+    }
+  }
+
   return `<!-- NODE_CONTEXT: ${parts.join(' | ')} -->`;
+}
+
+// ────────────────── buildPhaseScopeHint ──────────────────
+
+/**
+ * 為 suffixed stage（如 DEV:2）從 pipeline state 的 phaseInfo 提取 phase 任務範圍。
+ *
+ * 設計原則：
+ * - 只在 suffixed stage（stageId 含 `:N`）時觸發
+ * - 從 state.phaseInfo[N] 讀取該 phase 的 task 列表
+ * - 總長度超過 MAX_PHASE_SCOPE_CHARS 時截斷
+ * - 非 suffixed stage 或無 phaseInfo → 返回空字串
+ *
+ * @param {string} stageId - stage ID（如 'DEV:2'）
+ * @param {Object} state - pipeline state（含 phaseInfo）
+ * @returns {string} phase 任務範圍字串，空或截斷後返回
+ */
+function buildPhaseScopeHint(stageId, state) {
+  // 只處理 suffixed stage（DEV:N, REVIEW:N, TEST:N）
+  const suffixMatch = stageId && stageId.match(/^([A-Z]+):(\d+)$/);
+  if (!suffixMatch) return '';
+
+  const phaseIdx = parseInt(suffixMatch[2], 10);
+  const phaseInfo = state?.phaseInfo;
+  if (!phaseInfo || !phaseInfo[phaseIdx]) return '';
+
+  const info = phaseInfo[phaseIdx];
+  if (!info.tasks || info.tasks.length === 0) return '';
+
+  const phaseName = info.name || `Phase ${phaseIdx}`;
+  const taskLines = info.tasks.map(t => `- [ ] ${t}`).join('\n');
+  const hint = `## ${phaseName} 任務範圍\n${taskLines}`;
+
+  // 截斷保護
+  if (hint.length > MAX_PHASE_SCOPE_CHARS) {
+    return hint.slice(0, MAX_PHASE_SCOPE_CHARS - 3) + '...';
+  }
+  return hint;
 }
 
 // ────────────────── Exports ──────────────────
@@ -275,6 +437,10 @@ module.exports = {
   buildNodeContext,
   getRetryContext,
   buildEnvSnapshot,
+  collectSignals,
   formatNodeContext,
+  buildPhaseScopeHint,
   MAX_NODE_CONTEXT_CHARS,
+  MAX_PHASE_SCOPE_CHARS,
+  SIGNAL_STAGES,
 };

@@ -769,8 +769,10 @@ test('classify() 超時 barrier 後寫回更新的 state（ds.writeState）', ()
     path.join(PLUGIN_ROOT, 'scripts/lib/flow/pipeline-controller.js'),
     'utf8'
   );
-  const sweepIdx = src.indexOf('sweepTimedOutGroups');
-  const surrounding = src.slice(sweepIdx, sweepIdx + 1500);
+  // 找 sweepTimedOutGroups 的實際呼叫位置（第二次出現，第一次是 require 宣告行）
+  const firstIdx = src.indexOf('sweepTimedOutGroups');
+  const callIdx = src.indexOf('sweepTimedOutGroups', firstIdx + 1);
+  const surrounding = src.slice(callIdx, callIdx + 1500);
   assert.ok(surrounding.includes('ds.writeState'), 'classify() 應在超時處理後寫回 state');
 });
 
@@ -862,16 +864,21 @@ test('sweepTimedOutGroups：所有現有 stages 為 PASS，缺席 stage 填入 F
 
 section('版號驗證');
 
-test('plugin.json 版號為 2.1.9', () => {
+test('plugin.json 版號為有效 semver 格式', () => {
   const pluginJson = JSON.parse(fs.readFileSync(
     path.join(PLUGIN_ROOT, '.claude-plugin/plugin.json'),
     'utf8'
   ));
-  assert.strictEqual(pluginJson.version, '2.1.9',
-    `plugin.json 版號應為 2.1.9，實際：${pluginJson.version}`);
+  // 驗證 semver 格式（x.y.z），而非固定值（避免每次更新都要手改測試）
+  assert.ok(/^\d+\.\d+\.\d+$/.test(pluginJson.version),
+    `plugin.json 版號應為 semver 格式，實際：${pluginJson.version}`);
 });
 
-test('CLAUDE.md 版號同步標記', () => {
+test('CLAUDE.md 版號與 plugin.json 同步', () => {
+  const pluginJson = JSON.parse(fs.readFileSync(
+    path.join(PLUGIN_ROOT, '.claude-plugin/plugin.json'),
+    'utf8'
+  ));
   // CLAUDE.md 在專案根目錄 /Users/sbu/projects/vibe/
   // PLUGIN_ROOT = /Users/sbu/projects/vibe/plugins/vibe
   // 專案根目錄 = PLUGIN_ROOT/../..
@@ -879,8 +886,9 @@ test('CLAUDE.md 版號同步標記', () => {
     path.join(PLUGIN_ROOT, '../../CLAUDE.md'),
     'utf8'
   );
-  // 確認 CLAUDE.md 中 vibe 版號記錄
-  assert.ok(claudeMd.includes('vibe'), 'CLAUDE.md 應包含 vibe 相關資訊');
+  // 確認 CLAUDE.md 包含目前 plugin.json 的實際版號
+  assert.ok(claudeMd.includes(pluginJson.version),
+    `CLAUDE.md 應包含 plugin.json 版號 ${pluginJson.version}`);
 });
 
 // ──────────────── 最終結果 ────────────────

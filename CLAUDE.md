@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 2.1.9 | 全方位開發工作流 | 37 | 12 | 19 | 50 |
+| **vibe** | 2.2.9 | 全方位開發工作流 | 37 | 12 | 19 | 53 |
 
 ### vibe plugin 功能模組
 
@@ -52,6 +52,20 @@ openspec/
 **Pipeline 對接**：PLAN→proposal.md | ARCH→design+specs+tasks | DESIGN→design-system+mockup | DEV→tasks.md打勾 | REVIEW→specs對照審查 | TEST→specs→測試案例 | DOCS→archive歸檔
 **Agent 覆蓋**：9/12 agents 整合 OpenSpec（planner/architect/designer/developer/code-reviewer/tester/qa/doc-updater/security-reviewer），build-error-resolver、e2e-runner 和 pipeline-architect 不需要
 
+**tasks.md Phase 格式**（S3）：tasks.md 的 `## Phase N: 標題` 分組結構會被 `phase-parser.js` 解析，自動生成 Phase-Level D-R-T DAG。格式：
+```markdown
+## Phase 1: 功能名稱
+deps: []
+- [ ] task 描述
+
+## Phase 2: 功能名稱
+deps: [Phase 1]
+- [ ] task 描述
+```
+觸發條件：≥ 2 個 phase → 啟用 phase-level D-R-T；1 個 phase 或無 phase → 退化為標準單 D-R-T。
+
+**Goal Objects**（S7）：proposal.md 中的 `## Goal` 區塊定義量化成功標準（success_criteria + constraints），讓 code-reviewer 驗證達成度、tester 推導測試案例。
+
 ## 設計哲學
 
 1. **自然語言優先**：`$ARGUMENTS` 模式 — 使用者說意圖，Claude 判讀語意 + 組合執行
@@ -84,7 +98,7 @@ plugins/vibe/
 │       ├── hook-logger.js   # Hook 錯誤日誌（~/.claude/hook-errors.log）
 │       ├── hook-utils.js    # safeRun() JSON stdin 安全解析
 │       ├── task-parser.js   # Transcript JSONL 解析
-│       ├── flow/            # ★ dag-state, dag-utils, pipeline-controller, route-parser, barrier, node-context, reflection, atomic-write, skip-predicates, state-migrator, classifier, retry-policy, pipeline-resume, env-detector, counter, uiux-resolver, pipeline-discovery
+│       ├── flow/            # ★ dag-state, dag-utils, pipeline-controller, route-parser, barrier, node-context, reflection, atomic-write, skip-predicates, state-migrator, classifier, retry-policy, pipeline-resume, env-detector, counter, uiux-resolver, pipeline-discovery, phase-parser, wisdom, status-writer
 │       ├── sentinel/        # lang-map, tool-detector, guard-rules
 │       ├── dashboard/       # server-manager
 │       ├── remote/          # telegram, transcript, bot-manager
@@ -115,9 +129,11 @@ v4 核心改變：集中式 DAG 控制 → 分散式節點自治。Main Agent �
 - **Pipeline Skill**（`/vibe:pipeline`）：提供 stage 定義、DAG 結構規範、範例模板
 - **Hook Stack**（5 核心）：防護 + 追蹤 + 引導 + 閉環
 
-**v4 State Schema**：`dag`（含 barrier/onFail/next）+ `stages`（含 contextFile）+ `classification` + `pipelineActive`（布林值守衛）+ `activeStages`（並行追蹤）+ `retryHistory`（收斂分析）+ `retries` + `crashes`。Phase 由 `derivePhase(state)` 即時推導。
+**v4 State Schema**：`dag`（含 barrier/onFail/next）+ `stages`（含 contextFile）+ `classification` + `pipelineActive`（布林值守衛）+ `activeStages`（並行追蹤）+ `retryHistory`（收斂分析）+ `retries` + `crashes` + `phaseInfo`（phase 名稱/tasks 映射）。Phase 由 `derivePhase(state)` 即時推導。
 
-**v4 Guard 簡化**：從 v3 的 5 phase 判斷簡化為 `pipelineActive` 布林值 — `true` = 阻擋 Main Agent 寫入，`false` = 放行。`activeStages.length > 0` 判斷子 agent 放行。
+**v4 Guard 簡化**：從 v3 的 5 phase 判斷簡化為 `pipelineActive` 布林值 — `true` = 阻擋 Main Agent 寫入，`false` = 放行。`activeStages.length > 0` 判斷子 agent 放行。**Rule 4.5 品質門防護**（S2）：REVIEW/TEST stage active 時阻擋程式碼檔案 Write/Edit（TEST 允許寫測試檔案，REVIEW 完全唯讀）。
+
+**S3 Phase-Level D-R-T 循環**：tasks.md 有 ≥ 2 個 `## Phase N: 標題` 時，`phase-parser.js` 自動生成 suffixed stage DAG（`DEV:1 → REVIEW:1 + TEST:1 → DEV:2 → ...`），讓每個 phase 擁有獨立的品質門。Node Context 注入 `## Phase N 任務範圍` 讓 DEV agent 只聚焦當前 phase。1 個 phase 或無 phase → 退化為標準單 D-R-T。
 
 ### Pipeline Catalog（10 種參考模板）
 
@@ -137,7 +153,7 @@ v4 核心改變：集中式 DAG 控制 → 分散式節點自治。Main Agent �
 | **none** | （空） | 問答、研究、trivial | ❌ |
 
 **使用方式**：
-- **Main Agent 自主分類**：task-classifier 注入 `systemMessage` 分類指令，Main Agent 根據完整對話 context 選擇 pipeline 並呼叫 `/vibe:pipeline`
+- **Main Agent 主動選擇**（v5 Always-Pipeline）：task-classifier 注入 `systemMessage` pipeline 選擇表，Main Agent 根據完整對話 context 主動選擇 pipeline 並呼叫 `/vibe:pipeline`；不確定時用 AskUserQuestion 反問使用者
 - **顯式指定**：在 prompt 中使用 `[pipeline:xxx]` 語法（如 `[pipeline:tdd] 實作 XXX 功能`）
 
 **強制性**（pipelineActive）：
@@ -165,7 +181,7 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 | DOCS | doc-updater | haiku/purple | `/vibe:doc-sync` |
 
 **防禦機制**（v4：所有 hook 為 pipeline-controller 薄代理）：
-- `task-classifier`（UserPromptSubmit）→ `ctrl.classify()` — 顯式 [pipeline:xxx] 建 DAG + 非顯式注入 systemMessage 分類指令
+- `task-classifier`（UserPromptSubmit）→ `ctrl.classify()` — 顯式 [pipeline:xxx] 建 DAG + system-feedback 過濾 + 非顯式注入 systemMessage pipeline 選擇表
 - `pipeline-guard`（PreToolUse *）→ `ctrl.canProceed()` — pipelineActive 判斷 + 唯讀白名單
 - `delegation-tracker`（PreToolUse Task）→ `ctrl.onDelegate()` — activeStages 追蹤
 - `stage-transition`（SubagentStop）→ `ctrl.onStageComplete()` — PIPELINE_ROUTE 解析 + Barrier + 回退/前進/完成
@@ -202,6 +218,8 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
   - 例：`pipeline-state-{sessionId}.json`、`barrier-state-{sessionId}.json`、`compact-counter-{sessionId}.json`
 - **context_file**：`~/.claude/pipeline-context-{sessionId}-{stage}.md`（Sub-agent 品質報告，Main Agent 不可見）
 - **Reflexion Memory**：`~/.claude/reflection-memory-{sessionId}-{stage}.md`（跨迭代反思記憶）
+- **Wisdom Memory**：`~/.claude/pipeline-wisdom-{sessionId}.md`（跨 Stage 知識累積，品質 stage PASS 後自動提取）
+- **Pipeline Status**：`~/.claude/pipeline-status-{sessionId}.md`（FIC 壓縮狀態摘要，Compact/Crash Recovery 恢復用）
 - **全域共享 daemon**：`~/.claude/dashboard-server.pid`、`~/.claude/remote-bot.pid`
 - **Hook 錯誤日誌**：`~/.claude/hook-errors.log`（自動截斷 500 行，`/hook-diag` 查看）
 - **認證檔案**：`~/.claude/remote.env`（`KEY=VALUE` 格式，環境變數優先）
@@ -263,7 +281,7 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 
 | 路徑 | 內容 | 維護方式 |
 |------|------|---------|
-| `docs/ref/` | plugin 設計文件 + `index.md` + `vibe.md` + `pipeline.md`（實作規格）+ `pipeline-issues.md`（技術債務）+ `dashboard.md`（UI/UX 規格）+ `dashboard-issues.md`（Dashboard 問題）+ `collab.md` | index.md + vibe.md 自動生成 |
+| `docs/ref/` | plugin 設計文件 + `index.md` + `vibe.md` + `pipeline.md`（實作規格）+ `dashboard.md`（UI/UX 規格）+ `dashboard-issues.md`（Dashboard 問題）+ `collab.md` | index.md + vibe.md 自動生成 |
 | `docs/plugin-specs.json` | 組件數量 Single Source of Truth | 手動 |
 | `docs/ECC研究報告.md` | ECC 平台深度分析 | 手動 |
 | `dashboard/` | Build-time 靜態生成系統（HTML + index.md） | Stop hook 自動觸發 |

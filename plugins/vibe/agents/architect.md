@@ -125,24 +125,40 @@ Reason: {移除原因}
 Migration: {遷移指引}
 ```
 
-### tasks.md 格式
+### tasks.md 格式（Phase 分組）
+
+⛔ **必須使用 phase 格式**：讓 Pipeline 自動為每個 phase 建立 D-R-T 循環（DEV → REVIEW → TEST）。
 
 ```markdown
 # 實作任務
 
-## 1. {任務群組名稱}
-- [ ] 1.1 {任務描述} | files: {影響檔案}
-- [ ] 1.2 {任務描述} | files: {影響檔案}
+## Phase 1: {功能名稱}
+deps: []
+- [ ] {具體實作任務描述} | files: {影響檔案}
+- [ ] {具體實作任務描述} | files: {影響檔案}
 
-## 2. {任務群組名稱}
-- [ ] 2.1 {任務描述} | files: {影響檔案} | depends: 1.1
-- [ ] 2.2 {任務描述} | files: {影響檔案}
+## Phase 2: {功能名稱}
+deps: [Phase 1]
+- [ ] {具體實作任務描述} | files: {影響檔案}
+- [ ] {具體實作任務描述} | files: {影響檔案}
 
-## 3. 驗證
-- [ ] 3.1 執行測試確認功能正確
-- [ ] 3.2 確認 lint/format 通過
-- [ ] 3.3 確認文件同步
+## Phase 3: {功能名稱}
+deps: [Phase 1]
+- [ ] {具體實作任務描述}（可與 Phase 2 並行）
 ```
+
+**格式規則**：
+- `## Phase N: 標題` — phase 標題（N 為正整數）
+- `deps: []` — 無依賴，可立即開始
+- `deps: [Phase M]` — 依賴 Phase M 完成後才能開始
+- `deps: [Phase M, Phase K]` — 同時依賴多個 phase
+- `- [ ] 任務描述` — 待完成任務
+- `- [x] 任務描述` — 已完成任務
+
+**觸發條件**：
+- ≥ 2 個 phase → 自動啟用 phase-level D-R-T 循環（DEV:1 → REVIEW:1+TEST:1 → DEV:2 → ...）
+- 1 個 phase 或無 phase → 退化為標準單 D-R-T 循環
+- `[pipeline:fix]` 等單階段 pipeline → 不受影響
 
 ## 前端設計標記（條件執行）
 
@@ -169,6 +185,19 @@ Migration: {遷移指引}
 <!-- PIPELINE_ROUTE: { "verdict": "PASS", "route": "NEXT" } -->
 ```
 
+## 灰色地帶確認清單
+
+⛔ **在設計完成前，你必須在 design.md 中明確回答以下灰色地帶決策**：
+
+1. **API response 格式？**（JSON 結構、錯誤碼慣例、分頁格式）
+2. **錯誤處理策略？**（throw vs return error vs Result type）
+3. **日誌級別？**（debug/info/warn/error 的使用場景）
+4. **測試策略？**（unit only / + integration / + e2e）
+5. **狀態管理？**（local state / global store / server state）
+
+每個決策必須在 design.md 的「## 決策」section 中明確記錄，不可留待實作時臨場決定。
+未回答的灰色地帶會導致 DEV 階段的實作不一致。
+
 ## 規則
 
 1. **不寫程式碼**：只定義介面和結構，不實作
@@ -178,3 +207,4 @@ Migration: {遷移指引}
 5. **介面先行**：先定義模組間的介面，再處理內部結構
 6. **使用繁體中文**：所有產出使用繁體中文
 7. **寫入檔案**：design.md、specs/、tasks.md 必須寫入 change 目錄
+8. **灰色地帶必記錄**：design.md 的「決策」section 必須涵蓋灰色地帶確認清單中的所有 5 項決策

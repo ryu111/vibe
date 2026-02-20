@@ -29,7 +29,7 @@ const { ensureV4 } = require('./state-migrator.js');
 const { shouldStop } = require('./retry-policy.js');
 const { parseRoute, validateRoute, enforcePolicy, inferRouteFromContent } = require('./route-parser.js');
 const { writeReflection, cleanReflectionForStage } = require('./reflection.js');
-const { buildNodeContext, formatNodeContext } = require('./node-context.js');
+const { buildNodeContext, formatNodeContext, buildPhaseScopeHint } = require('./node-context.js');
 const { discoverPipeline } = require('./pipeline-discovery.js');
 
 // Registry
@@ -42,8 +42,17 @@ const {
   KNOWLEDGE_SKILLS,
 } = require('../registry.js');
 
-// Classifier（Layer 1 explicit + Layer 2 Main Agent 自主判斷）
-const { classifyWithConfidence, buildPipelineCatalogHint } = require('./classifier.js');
+// Classifier（Layer 1 explicit + system-feedback + Layer 2 Main Agent 主動選擇）
+const { classifyWithConfidence } = require('./classifier.js');
+
+// Phase Parser（S3：phase-level D-R-T 循環）
+const { parsePhasesFromTasks, generatePhaseDag } = require('./phase-parser.js');
+
+// Wisdom Accumulation（S4：跨 Stage 知識傳遞）
+const { extractWisdom, writeWisdom } = require('./wisdom.js');
+
+// FIC 狀態壓縮（S5：Context 效率 + Crash Recovery）
+const { updateStatus: updatePipelineStatus } = require('./status-writer.js');
 
 // v4 Phase 4：Barrier 並行同步
 const { createBarrierGroup, updateBarrier, mergeBarrierResults, mergeContextFiles, readBarrier, checkTimeout, deleteBarrier, sweepTimedOutGroups } = require('./barrier.js');
@@ -64,17 +73,11 @@ function extractShortAgent(agentType) {
   return agentType.includes(':') ? agentType.split(':')[1] : agentType;
 }
 
-/** 讀取 state（自動遷移 v3 → v4，v2 或未知格式回傳 null；遷移後持久化） */
+/** 讀取 state（只接受 v4 格式；v3 或未知格式回傳 null，不再遷移） */
 function loadState(sessionId) {
   const raw = ds.readState(sessionId);
   if (!raw) return null;
-  const state = ensureV4(raw);
-  // 遷移後持久化：確保磁碟上的 state 是 v4 格式
-  // （classify 的 early-return 路徑不會寫回，導致下游讀到 v3 格式）
-  if (state && raw.version !== 4) {
-    ds.writeState(sessionId, state);
-  }
-  return state;
+  return ensureV4(raw);
 }
 
 /**
@@ -506,43 +509,29 @@ async function classify(sessionId, prompt, options = {}) {
     }
   }
 
-  // ACTIVE → 忽略非顯式分類（防止 stop hook feedback 覆寫進行中的 pipeline）
-  // stop hook decision:"block" 的 reason 成為新 prompt → classifier 重分類 → 幽靈 pipeline
-  // 例外：過時 pipeline（>10 分鐘無操作）允許重分類（使用者可能在開始新任務）
-  if (ds.isActive(state) && result.source !== 'explicit') {
-    const lastTransition = state.meta?.lastTransition;
-    const elapsedMs = lastTransition ? Date.now() - new Date(lastTransition).getTime() : Infinity;
-    if (elapsedMs < 10 * 60 * 1000) {
-      return { output: null };
-    }
-    // 過時 → 落入後續升降級邏輯處理
+  // system-feedback → 靜默忽略（hook 輸出 / 系統通知不觸發 pipeline）
+  if (result.source === 'system') {
+    return { output: null };
   }
 
-  // CANCELLED → 忽略所有非顯式分類（防止 stop hook feedback 循環）
-  // cancel 設 pipelineActive=false + meta.cancelled=true，但 stop hook 的
-  // block reason 成為新 prompt → classifier 重新分類 → pipelineActive=true → 循環
+  // ACTIVE → 忽略非顯式分類（防止 stop hook feedback 覆寫進行中的 pipeline）
+  if (ds.isActive(state) && result.source !== 'explicit') {
+    return { output: null };
+  }
+
+  // CANCELLED → 忽略非顯式分類（防止 cancel 後的 stop hook feedback 循環）
   if (state?.meta?.cancelled && result.source !== 'explicit') {
     return { output: null };
   }
 
   // COMPLETE → 允許新 pipeline
   if (state && ds.isComplete(state)) {
-    // 非顯式分類 + 30 秒冷卻期：忽略 stop hook feedback
-    // stop hook 的 decision:"block" 回饋會成為新 prompt，此時 pipeline 可能剛完成
-    // （crash recovery / barrier 合併等延遲完成）。若立即 reset，
-    // stop hook 的 reason 文字會被 classifier 當作新任務分類成 none，覆寫真正的 state。
-    if (result.source !== 'explicit') {
-      const lastTransition = state.meta?.lastTransition;
-      const elapsedMs = lastTransition ? Date.now() - new Date(lastTransition).getTime() : Infinity;
-      if (elapsedMs < 30000) {
-        return { output: null };
-      }
-      // 非顯式新任務：完全重設（不保留舊分類，避免降級檢查誤擋）
-      state = ds.reset(state);
-    } else {
+    if (result.source === 'explicit') {
       // 顯式 [pipeline:xxx]：保留前一個 classification 供 reclassification 追蹤
-      // （如 fix→quick-dev 升級，需要記錄 from→to）
       state = ds.resetKeepingClassification(state);
+    } else {
+      // 非顯式新任務：完全重設
+      state = ds.reset(state);
     }
     ds.writeState(sessionId, state);
   }
@@ -553,39 +542,16 @@ async function classify(sessionId, prompt, options = {}) {
     ds.writeState(sessionId, state);
   }
 
-  // 已取消（v4: pipelineActive=false + 有舊的非 trivial 分類 + DAG 殘留）→
-  // 只有顯式 [pipeline:xxx] 才能重新啟動
-  // 注意：none pipeline 的 pipelineActive=false 是正常狀態（非取消），不應抑制
-  const existingPid = state?.classification?.pipelineId;
-  const isCancelledState = !ds.isActive(state) &&
-    !!existingPid && existingPid !== 'none' &&
-    !!(state?.dag);  // v4：有 DAG 殘留 = 已取消
-  if (state && isCancelledState) {
-    if (result.source !== 'explicit') {
-      return { output: null }; // 非顯式分類被抑制
-    }
-    // 顯式指定 → 重設取消狀態，允許重新分類
-    state = ds.reset(state);
-    ds.writeState(sessionId, state);
-  }
-
   // 已分類 + 同一 pipeline → 不重複（none 除外：每次都需注入 systemMessage）
   const existingPipelineId = ds.getPipelineId(state);
   if (existingPipelineId === pipelineId && existingPipelineId && pipelineId !== 'none') {
-    return { output: null }; // 不輸出
+    return { output: null };
   }
 
-  // 升級判斷
-  if (existingPipelineId && existingPipelineId !== pipelineId) {
+  // 升級判斷：只允許升級，降級被忽略（使用者可用 [pipeline:xxx] 覆寫）
+  if (existingPipelineId && existingPipelineId !== pipelineId && result.source !== 'explicit') {
     const isUpgrade = (PIPELINE_PRIORITY[pipelineId] || 0) > (PIPELINE_PRIORITY[existingPipelineId] || 0);
-    if (!isUpgrade) {
-      // 降級：檢查 stale
-      const last = state.meta?.lastTransition ? new Date(state.meta.lastTransition).getTime() : 0;
-      const isStale = (Date.now() - last) > 10 * 60 * 1000;
-      if (!isStale) return { output: null };
-      // stale → reset + 重分類
-      state = ds.reset(state);
-    }
+    if (!isUpgrade) return { output: null };
   }
 
   // 設定分類
@@ -598,28 +564,33 @@ async function classify(sessionId, prompt, options = {}) {
   });
   ds.writeState(sessionId, state);
 
-  // 非顯式 → 注入分類指令（systemMessage 強制）+ pipeline 目錄（additionalContext 參考）
+  // Main Agent 主動選擇：注入 pipeline 選擇表（systemMessage 強制）
   if (stages.length === 0 || pipelineId === 'none') {
     const kh = buildKnowledgeHints(state);
-    const catalogHint = buildPipelineCatalogHint();
-    const refParts = [catalogHint];
-    if (kh) refParts.push(kh);
-    if (barrierWarnings.length > 0) refParts.push(barrierWarnings.join('\n'));
+    const contextParts = [];
+    if (kh) contextParts.push(kh);
+    if (barrierWarnings.length > 0) contextParts.push(barrierWarnings.join('\n'));
     return {
       output: {
         systemMessage:
-          'Pipeline 自主分類：根據任務性質選擇 pipeline 並呼叫 /vibe:pipeline。\n' +
-          '判斷規則（按順序檢查）：\n' +
-          '1. 純問答/研究/解釋/查詢 → 直接回答（不呼叫 pipeline）\n' +
-          '2. 一行修改/改常量/改設定/hotfix → [pipeline:fix]\n' +
-          '3. bugfix + 需要測試 → [pipeline:quick-dev]\n' +
-          '4. 純 UI/樣式調整 → [pipeline:ui-only]\n' +
-          '5. 安全修復/漏洞修補 → [pipeline:security]\n' +
-          '6. TDD/先寫測試 → [pipeline:test-first]\n' +
-          '7. 新功能（有 UI）→ [pipeline:full]\n' +
-          '8. 新功能（無 UI）/大型重構 → [pipeline:standard]\n' +
-          '不確定時偏向使用 pipeline。呼叫 /vibe:pipeline 並在 prompt 中加入 [pipeline:xxx] 語法。',
-        additionalContext: refParts.join('\n'),
+          '你是 Pipeline 路由器。分析使用者需求，選擇最合適的工作流。\n\n' +
+          '| Pipeline | 適用場景 | 使用方式 |\n' +
+          '|----------|---------|--------|\n' +
+          '| chat | 問答、研究、解釋、查詢、trivial | 直接回答，不呼叫 pipeline |\n' +
+          '| fix | hotfix、一行修改、改設定/常量 | /vibe:pipeline [pipeline:fix] |\n' +
+          '| quick-dev | bugfix + 補測試、小改動（2-5 檔案） | /vibe:pipeline [pipeline:quick-dev] |\n' +
+          '| standard | 新功能（無 UI）、大重構 | /vibe:pipeline [pipeline:standard] |\n' +
+          '| full | 新功能（含 UI） | /vibe:pipeline [pipeline:full] |\n' +
+          '| test-first | TDD 工作流 | /vibe:pipeline [pipeline:test-first] |\n' +
+          '| ui-only | 純 UI/樣式調整 | /vibe:pipeline [pipeline:ui-only] |\n' +
+          '| review-only | 程式碼審查 | /vibe:pipeline [pipeline:review-only] |\n' +
+          '| docs-only | 純文件更新 | /vibe:pipeline [pipeline:docs-only] |\n' +
+          '| security | 安全修復 | /vibe:pipeline [pipeline:security] |\n\n' +
+          '判斷原則：\n' +
+          '- 偏向使用 pipeline（寧可多走品質流程也不要漏）\n' +
+          '- 不確定時用 AskUserQuestion 問使用者選擇 pipeline\n' +
+          '- 複合任務：分解後依序執行（第一個完成 → 開始第二個）',
+        ...(contextParts.length > 0 ? { additionalContext: contextParts.join('\n') } : {}),
       },
     };
   }
@@ -885,25 +856,33 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
     deleteBarrier(sessionId);
     ds.writeState(sessionId, state);
 
-    const devHint = buildDelegationHint('DEV', pipeline.stageMap);
     // systemMessage 只含路由指令，不含品質報告內容
     // 詳細報告已寫入 context_file（~/.claude/pipeline-context-{sid}-{stage}.md）
     const contextHint = buildContextFileHint(sessionId, currentStage);
 
     // Phase 2：生成 DEV Node Context（含 retryContext）
-    const devStageId = Object.keys(state.dag || {}).find(s => getBaseStage(s) === 'DEV') || 'DEV';
+    // H-2 修復：回退應找對應 phase 的 DEV（如 REVIEW:2 → DEV:2），而非第一個 DEV
+    const devStageId = resolvePhaseDevStageId(currentStage, state.dag);
+    const devHint = buildDelegationHint(devStageId, pipeline.stageMap);
     let devNodeContextStr = '';
     try {
       const devNodeCtx = buildNodeContext(state.dag, state, devStageId, sessionId);
       devNodeContextStr = '\n' + formatNodeContext(devNodeCtx);
     } catch (_) {}
 
+    // 低信心升級（S6 三信號驗證）：REVIEW FAIL + uncertain=true → 建議 Main Agent 確認
+    // 讓 Main Agent 可使用 AskUserQuestion 向使用者確認是否需要回退修復
+    const uncertainHint = (getBaseStage(currentStage) === 'REVIEW' && routeResult?.uncertain === true)
+      ? '\n⚠️ REVIEW 信心不足（uncertain），建議使用 AskUserQuestion 確認是否需要回退修復。'
+      : '';
+
     return {
       systemMessage:
         `🔄 ${currentStage} FAIL（${retryCount + 1}/${MAX_RETRIES}）\n` +
         `➡️ ${devHint}` +
         (contextHint ? `\n${contextHint}` : '') +
-        devNodeContextStr,
+        devNodeContextStr +
+        uncertainHint,
     };
   }
 
@@ -1033,11 +1012,15 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
         const ready = ds.getReadyStages(state);
         if (ready.length > 0) {
           ds.writeState(sessionId, state);
+          // FIC 狀態壓縮（S5）：barrier 完成後也更新 status file
+          try { updatePipelineStatus(sessionId, state); } catch (_) {}
           const hints = ready.map(s => buildDelegationHint(s, pipeline.stageMap)).join(' + ');
           return { systemMessage: `${timeoutWarning}⚠️ Barrier ${barrierGroup} FAIL 但無 DEV 可回退，強制繼續。\n➡️ ${hints}` };
         }
         state = { ...state, pipelineActive: false, activeStages: [] };
         ds.writeState(sessionId, state);
+        // FIC 狀態壓縮（S5）：barrier 完成後也更新 status file
+        try { updatePipelineStatus(sessionId, state); } catch (_) {}
         const completeMsg = buildCompleteOutput(state, currentStage, pipeline);
         return {
           systemMessage: `${timeoutWarning}⚠️ Barrier ${barrierGroup} FAIL 但無 DEV 可回退。\n` + completeMsg.systemMessage,
@@ -1067,8 +1050,13 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
       // 確保 DEV 修復後重跑品質階段時 barrier 計數器是全新狀態
       deleteBarrier(sessionId);
       ds.writeState(sessionId, state);
+      // FIC 狀態壓縮（S5）：barrier 完成後也更新 status file
+      try { updatePipelineStatus(sessionId, state); } catch (_) {}
 
-      const devHint = buildDelegationHint('DEV', pipeline.stageMap);
+      // M-1 修復：使用 resolvePhaseDevStageId 取得 phase-aware DEV stage
+      // 確保 barrier FAIL 回退時指向正確的 DEV:N（如 REVIEW:2 FAIL → DEV:2）
+      const barrierDevStageId = resolvePhaseDevStageId(currentStage, state.dag);
+      const devHint = buildDelegationHint(barrierDevStageId, pipeline.stageMap);
       const contextHint = mergedContextFile
         ? `📄 context_file: ${mergedContextFile}`
         : buildContextFileHint(sessionId, currentStage);
@@ -1081,31 +1069,49 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
       };
     }
 
-    // PASS → 前進到 barrier.next
-    if (!next && ds.isComplete(state)) {
-      // barrier.next 為空 → COMPLETE：合併 pipelineActive=false 到同一次寫入
+    // PASS → 用 getReadyStages() 取得完整就緒清單（處理菱形依賴 M-1 + 最終 DOCS M-2）
+    // barrier.next 僅作向後相容參考，實際路由以 getReadyStages() 為準
+    const passReadyStages = ds.getReadyStages(state);
+
+    if (passReadyStages.length === 0 && ds.isComplete(state)) {
+      // 無更多 ready stages 且全部完成 → COMPLETE
       state = { ...state, pipelineActive: false, activeStages: [] };
       cleanupPatches();
       ds.writeState(sessionId, state);
+      // FIC 狀態壓縮（S5）：barrier 完成後也更新 status file
+      try { updatePipelineStatus(sessionId, state); } catch (_) {}
       autoCheckpoint(currentStage);
       return buildCompleteOutput(state, currentStage, pipeline);
     }
 
     ds.writeState(sessionId, state);
+    // FIC 狀態壓縮（S5）：barrier 完成後也更新 status file
+    try { updatePipelineStatus(sessionId, state); } catch (_) {}
     autoCheckpoint(currentStage);
 
-    // 前進到 next stage
-    const nextHint = next ? buildDelegationHint(next, pipeline.stageMap) : null;
-    if (nextHint) {
-      const nextNodeCtx = (() => {
+    if (passReadyStages.length > 0) {
+      // 有 ready stages（可能是 barrier.next、多個並行 DEV、或 DOCS）
+      const passHints = passReadyStages.map(s => buildDelegationHint(s, pipeline.stageMap));
+      // 單一 stage 時只顯示 hint（避免「委派 developer DEV:2 → DEV:2」重複）
+      // 多個並行 stage 時顯示 hint1 + hint2 → stage1 + stage2（並行）
+      const passAction = passReadyStages.length > 1
+        ? `${passHints.join(' + ')} → ${passReadyStages.join(' + ')}（並行）`
+        : passHints[0];
+      const passNodeCtx = (() => {
         try {
-          const ctx = buildNodeContext(state.dag, state, next, sessionId);
+          const ctx = buildNodeContext(state.dag, state, passReadyStages[0], sessionId);
           return '\n' + formatNodeContext(ctx);
         } catch (_) { return ''; }
       })();
       return {
-        systemMessage: `✅ Barrier ${barrierGroup} 完成（全部 PASS）\n➡️ ${nextHint}${nextNodeCtx}`,
+        systemMessage: `✅ Barrier ${barrierGroup} 完成（全部 PASS）\n➡️ ${passAction}${passNodeCtx}`,
       };
+    }
+
+    // 沒有 ready stages 也沒完成 → 等待其他 active stages
+    const activeAfterBarrier = ds.getActiveStages(state);
+    if (activeAfterBarrier.length > 0) {
+      return { systemMessage: `✅ Barrier ${barrierGroup} 完成。等待 ${activeAfterBarrier.join(', ')} 完成...` };
     }
 
     return { systemMessage: `✅ Barrier ${barrierGroup} 完成。` };
@@ -1192,6 +1198,35 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
   // Phase 2（soft 引入）：從 activeStages 移除已完成的 stage
   if (state.activeStages) {
     state = { ...state, activeStages: state.activeStages.filter(s => s !== currentStage) };
+  }
+
+  // ── Wisdom Accumulation（S4）──
+  // 品質 stage PASS 時，從 context_file 提取學習筆記並追加到 pipeline-wisdom-{sid}.md
+  // FAIL 不提取（避免寫入不正確的建議）
+  const WISDOM_STAGES = new Set(['REVIEW', 'TEST', 'QA', 'E2E', 'SECURITY']);
+  if (WISDOM_STAGES.has(getBaseStage(currentStage))) {
+    const contextFile = state.stages?.[currentStage]?.contextFile;
+    if (contextFile) {
+      try {
+        const contextContent = fs.existsSync(contextFile)
+          ? fs.readFileSync(contextFile, 'utf8')
+          : null;
+        if (contextContent) {
+          const wisdom = extractWisdom(currentStage, contextContent);
+          if (wisdom) writeWisdom(sessionId, currentStage, wisdom.summary);
+        }
+      } catch (_) {
+        // 非關鍵路徑，靜默忽略
+      }
+    }
+  }
+
+  // ── FIC 狀態壓縮（S5）──
+  // 每個 stage PASS 後更新 pipeline-status-{sid}.md
+  try {
+    updatePipelineStatus(sessionId, state);
+  } catch (_) {
+    // 非關鍵路徑，靜默忽略
   }
 
   // Token 效率：品質 stage 完成時偵測回應長度
@@ -1322,9 +1357,23 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
     } catch (_) {}
   }
 
+  // M-2：為 suffixed ready stage 注入 phase 任務範圍（buildPhaseScopeHint）
+  let phaseScopeStr = '';
+  if (readyStages.length > 0) {
+    try {
+      const firstStage = readyStages[0];
+      const scopeHint = buildPhaseScopeHint(firstStage, state);
+      if (scopeHint) phaseScopeStr = `\n${scopeHint}`;
+    } catch (_) {}
+  }
+
+  // S3.9：suffixed stage 完成時建議 Main Agent 更新 TaskList 進度
+  const phaseCompletionHint = buildPhaseCompletionHint(currentStage, routeResult?.verdict || 'PASS');
+  const phaseHintStr = phaseCompletionHint ? `\n${phaseCompletionHint}` : '';
+
   const mainMsg =
     `✅ ${currentStage} 完成 → 立即呼叫 ${label}\n` +
-    `⛔ 你必須立即呼叫以下 Skill，不要輸出文字：${hints.join(' + ')}${stageContext}${qualityWarning}${routeReminder}${nodeContextStr}`;
+    `⛔ 你必須立即呼叫以下 Skill，不要輸出文字：${hints.join(' + ')}${stageContext}${qualityWarning}${routeReminder}${phaseHintStr}${phaseScopeStr}${nodeContextStr}`;
 
   return {
     systemMessage: (mainMsg + leakCompactHint) || null,
@@ -1405,7 +1454,23 @@ function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline) {
     } else {
       // Phase 2: DAG 合法 → 品質保障 + v4 metadata 注入
       dag = ensureQualityStagesIfDev(dag);
-      dag = enrichCustomDag(dag);
+
+      // S3.7：整合 phase-level D-R-T 循環
+      // 當 tasks.md 有 ≥ 2 個 phase 時，用 phase DAG 覆蓋 pipeline-architect 產出的 DAG
+      const phaseResult = tryGeneratePhaseDag(state);
+      if (phaseResult && Object.keys(phaseResult.dag).length > 0) {
+        dag = phaseResult.dag;
+        rationale += (rationale ? ' | ' : '') + `Phase-level D-R-T（${countPhaseCount(phaseResult.dag)} phases）`;
+        // M-3：直接使用 tryGeneratePhaseDag 已解析的 phases，避免 extractPhaseInfo 重複 I/O
+        const phaseInfoFromResult = {};
+        for (const phase of phaseResult.phases) {
+          phaseInfoFromResult[phase.index] = { name: phase.name, tasks: phase.tasks };
+        }
+        state = { ...state, phaseInfo: phaseInfoFromResult };
+      } else {
+        dag = enrichCustomDag(dag);
+      }
+
       if (!blueprint && dag) {
         blueprint = buildBlueprint(dag);
       }
@@ -1435,6 +1500,15 @@ function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline) {
     }
   }
 
+  // S3.8：如果是 phase-level DAG，儲存 phase 資訊到 state（供 node-context 使用）
+  // M-3：若已由 tryGeneratePhaseDag 路徑注入 phaseInfo，則跳過重複 I/O 的 extractPhaseInfo
+  if (!state.phaseInfo) {
+    const phaseInfo = extractPhaseInfo(dag);
+    if (phaseInfo) {
+      state = { ...state, phaseInfo };
+    }
+  }
+
   ds.writeState(sessionId, state);
 
   // 計算第一批
@@ -1445,6 +1519,9 @@ function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline) {
 
   const hints = ready.map(s => buildDelegationHint(s, pipeline.stageMap));
 
+  // S3.8：phase 進度摘要（供 Main Agent 用 TaskCreate 建立 todos）
+  const phaseProgressMsg = buildPhaseProgressSummary(state, dag);
+
   return {
     systemMessage:
       `⛔ Pipeline 已建立（${stageCount} 階段` +
@@ -1452,8 +1529,210 @@ function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline) {
       (parallelGroups > 0 ? `，${parallelGroups} 組並行` : '') +
       `）。\n` +
       (rationale ? `📋 ${rationale}\n` : '') +
+      phaseProgressMsg +
       `➡️ ${hints.join(' + ')}`,
   };
+}
+
+// ────────────────── S3 Phase-Level 輔助函式 ──────────────────
+
+/**
+ * 找到活躍 openspec/changes 下第一個存在的 tasks.md 路徑（排除 archive/）。
+ *
+ * 目錄依名稱降序排列（最新優先）。
+ * 供 tryGeneratePhaseDag 和 extractPhaseInfo 共用，消除重複的目錄遍歷邏輯。
+ *
+ * @returns {string[]|null} tasks.md 路徑陣列（依優先順序），或 null（changesDir 不存在）
+ */
+function findActiveTasksMd() {
+  try {
+    const changesDir = path.join(process.cwd(), 'openspec', 'changes');
+    if (!fs.existsSync(changesDir)) return null;
+
+    const dirs = fs.readdirSync(changesDir)
+      .filter(d => d !== 'archive' && fs.statSync(path.join(changesDir, d)).isDirectory())
+      .sort()   // 確定性排序
+      .reverse(); // 最新的在前
+
+    const tasksPaths = [];
+    for (const dir of dirs) {
+      const tasksPath = path.join(changesDir, dir, 'tasks.md');
+      if (fs.existsSync(tasksPath)) {
+        tasksPaths.push(tasksPath);
+      }
+    }
+    return tasksPaths.length > 0 ? tasksPaths : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * 嘗試從 openspec/changes 的 tasks.md 生成 phase DAG。
+ *
+ * 讀取活躍 change 的 tasks.md，解析 phase 結構，
+ * 如果有 ≥ 2 個 phase 則生成 phase-level DAG。
+ *
+ * M-3 修復：同時返回 phases 資料，供呼叫端直接建立 phaseInfo，
+ * 避免 extractPhaseInfo 重複讀取 tasks.md（I/O 最佳化）。
+ *
+ * @param {Object} state - pipeline state（含 classification.pipelineId）
+ * @returns {{ dag: Object, phases: Array }|null} dag + phases，或 null（退化）
+ */
+function tryGeneratePhaseDag(state) {
+  const pipelineId = ds.getPipelineId(state) || 'standard';
+  const tasksPaths = findActiveTasksMd();
+  if (!tasksPaths) return null;
+
+  try {
+    for (const tasksPath of tasksPaths) {
+      const content = fs.readFileSync(tasksPath, 'utf8');
+      const phases = parsePhasesFromTasks(content);
+      if (phases.length < 2) continue;
+
+      const phaseDag = generatePhaseDag(phases, pipelineId);
+      if (Object.keys(phaseDag).length > 0) {
+        // 返回 dag 和 phases（供呼叫端直接建立 phaseInfo）
+        return { dag: phaseDag, phases };
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+/**
+ * 從 currentStage 提取 phase suffix，在 DAG 中找到對應的 DEV:N stage。
+ *
+ * 用於 FAIL 回退路徑：確保 REVIEW:2 FAIL → 回退到 DEV:2，而非 DEV:1。
+ * Branch A（非 barrier）和 Barrier FAIL 分支共用此邏輯。
+ *
+ * @param {string} currentStage - 失敗的 stage ID（如 'REVIEW:2', 'TEST:3'）
+ * @param {Object} dag - pipeline DAG（可為 null）
+ * @returns {string} DEV stage ID（如 'DEV:2', 'DEV:1', 'DEV'）
+ */
+function resolvePhaseDevStageId(currentStage, dag) {
+  // 嘗試從 currentStage 提取 phase suffix（如 REVIEW:2 → ':2'）
+  const suffixMatch = currentStage.match(/:(\d+)$/);
+  if (suffixMatch && dag) {
+    const phaseSuffix = `:${suffixMatch[1]}`;
+    const samePhaseDevKey = `DEV${phaseSuffix}`;
+    if (dag[samePhaseDevKey]) return samePhaseDevKey;
+  }
+  // fallback：找第一個 DEV（非 phase DAG 或 DEV:N 不存在）
+  return Object.keys(dag || {}).find(s => getBaseStage(s) === 'DEV') || 'DEV';
+}
+
+/**
+ * 計算 phase-level DAG 中的 phase 數量。
+ * 計算有多少個 DEV:N stage（每個代表一個 phase）。
+ *
+ * @param {Object} dag
+ * @returns {number}
+ */
+function countPhaseCount(dag) {
+  if (!dag) return 0;
+  return Object.keys(dag).filter(s => getBaseStage(s) === 'DEV' && s.includes(':')).length;
+}
+
+/**
+ * 從 phase-level DAG 提取 phase 資訊（供 node-context 使用）。
+ *
+ * @param {Object} dag
+ * @returns {Object|null} phaseInfo 物件，或 null（非 phase DAG）
+ */
+function extractPhaseInfo(dag) {
+  if (!dag) return null;
+  // M-2 修復：與 countPhaseCount 保持一致，用 getBaseStage 判斷而非 startsWith
+  const devStages = Object.keys(dag).filter(s => getBaseStage(s) === 'DEV' && s.includes(':'));
+  if (devStages.length === 0) return null;
+
+  // 嘗試從 openspec/changes 讀取 phase 名稱和 tasks（使用共用 findActiveTasksMd 避免重複 I/O 邏輯）
+  const tasksPaths = findActiveTasksMd();
+  if (!tasksPaths) return null;
+
+  const phaseData = {};
+  try {
+    for (const tasksPath of tasksPaths) {
+      const content = fs.readFileSync(tasksPath, 'utf8');
+      const phases = parsePhasesFromTasks(content);
+
+      for (const phase of phases) {
+        phaseData[phase.index] = {
+          name: phase.name,
+          tasks: phase.tasks,
+        };
+      }
+      if (Object.keys(phaseData).length > 0) break;
+    }
+  } catch (_) {}
+
+  return Object.keys(phaseData).length > 0 ? phaseData : null;
+}
+
+/**
+ * 建立 phase 進度摘要訊息（S3.8：供 Main Agent 用 TaskCreate 建立 todos）。
+ *
+ * 格式：
+ *   Pipeline: standard (N phases)
+ *    Phase 1: 標題 [DEV:1 ⏳] [REVIEW:1 ⏳] [TEST:1 ⏳]
+ *    Phase 2: 標題 [DEV:2 ⏳] [REVIEW:2 ⏳] [TEST:2 ⏳]
+ *
+ * @param {Object} state - pipeline state（含 phaseInfo + stages）
+ * @param {Object} dag - phase DAG
+ * @returns {string} 進度摘要字串，非 phase DAG 時返回空字串
+ */
+function buildPhaseProgressSummary(state, dag) {
+  if (!dag) return '';
+  // M-2 修復：與 countPhaseCount 保持一致，用 getBaseStage 判斷而非 startsWith
+  const devStages = Object.keys(dag).filter(s => getBaseStage(s) === 'DEV' && s.includes(':'));
+  if (devStages.length === 0) return '';
+
+  const phaseInfo = state?.phaseInfo || {};
+  const pipelineId = ds.getPipelineId(state) || 'pipeline';
+  const phaseCount = devStages.length;
+
+  const lines = [`📌 Pipeline: ${pipelineId} (${phaseCount} phases)`];
+
+  for (const devStageId of devStages.sort()) {
+    const idxMatch = devStageId.match(/^DEV:(\d+)$/);
+    if (!idxMatch) continue;
+    const idx = parseInt(idxMatch[1], 10);
+    const info = phaseInfo[idx];
+    const phaseName = info?.name || `Phase ${idx}`;
+
+    // 收集此 phase 的所有 stages
+    const phaseStages = Object.keys(dag).filter(s => {
+      const match = s.match(/:(\d+)$/);
+      return match && parseInt(match[1], 10) === idx;
+    });
+
+    const stageStatus = phaseStages
+      .sort()
+      .map(s => `[${s} ⏳]`)
+      .join(' ');
+
+    lines.push(` ${phaseName}: ${stageStatus}`);
+  }
+
+  return lines.join('\n') + '\n';
+}
+
+/**
+ * 建立 phase 完成建議訊息（S3.9：onStageComplete 時同步 TaskUpdate）。
+ *
+ * @param {string} stageId - 已完成的 stage ID（如 'REVIEW:1'）
+ * @param {string} verdict - PASS 或 FAIL
+ * @returns {string} 建議訊息，非 suffixed stage 返回空字串
+ */
+function buildPhaseCompletionHint(stageId, verdict) {
+  const suffixMatch = stageId.match(/^([A-Z]+):(\d+)$/);
+  if (!suffixMatch) return '';
+
+  const baseStage = suffixMatch[1];
+  const phaseIdx = suffixMatch[2];
+  const verdictEmoji = verdict === 'PASS' ? '✅' : '❌';
+
+  return `📌 Phase ${phaseIdx} 的 ${baseStage} 完成（${verdict} ${verdictEmoji}），建議更新 TaskList 進度`;
 }
 
 /** 組裝完成輸出 */
@@ -1553,6 +1832,13 @@ function onSessionStop(sessionId) {
       if (recovered > 0) {
         ds.writeState(sessionId, state);
 
+        // S5：crash recovery 後更新 status file 以反映恢復結果
+        try {
+          updatePipelineStatus(sessionId, state);
+        } catch (_) {
+          // 非關鍵路徑，靜默忽略
+        }
+
         // 重新檢查：是否所有 stage 都已完成
         const stillMissing = Object.entries(state.stages)
           .filter(([, s]) => s.status !== ds.STAGE_STATUS.COMPLETED && s.status !== ds.STAGE_STATUS.SKIPPED);
@@ -1607,4 +1893,5 @@ module.exports = {
   buildKnowledgeHints,
   extractShortAgent,
   MAX_SKIP_ITERATIONS,
+  resolvePhaseDevStageId,
 };

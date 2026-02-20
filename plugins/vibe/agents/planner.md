@@ -80,16 +80,24 @@ created: YYYY-MM-DD
 - **registry.js 變更**：是/否
 - **hook 變更**：{列表}
 
-## 階段分解
+## 階段分解（Phase 分組）
+
+⛔ **必須按 phase 分組**：每個 phase 是一個獨立可驗證的功能單元。
+- 依賴關係明確（`deps: []` 或 `deps: [Phase N]`）
+- 獨立 phase 可並行實作
+- 每個 phase 完成後可獨立審查和測試
 
 ### Phase 1：{階段名稱}
+deps: []
 - **產出**：具體的交付物
 - **修改檔案**：列出預期修改的檔案
-- **依賴**：前置條件
+- **依賴**：前置條件（對應 deps 欄位）
 - **風險**：可能的問題
 - **驗收條件**：如何確認完成
 
-### Phase 2：...
+### Phase 2：{階段名稱}
+deps: [Phase 1]
+...
 
 ## 風險摘要
 
@@ -112,6 +120,37 @@ created: YYYY-MM-DD
 ```
 <!-- PIPELINE_ROUTE: { "verdict": "PASS", "route": "NEXT" } -->
 ```
+
+## Goal Objects 結構（S7）
+
+在 proposal.md 中必須包含 Goal 區塊，定義明確的成功標準：
+
+### 格式
+
+```yaml
+## Goal
+success_criteria:
+  - metric: test_coverage
+    target: ">= 80%"
+    weight: 0.3
+  - metric: lint_clean
+    target: "0 errors"
+    weight: 0.2
+  - metric: functional
+    description: "用戶可以登入並看到 dashboard"
+    weight: 0.5
+constraints:
+  - type: hard
+    rule: "不改動 auth middleware 的公開 API"
+  - type: soft
+    rule: "偏好 functional style"
+```
+
+### 規則
+- **success_criteria**：至少 2 個，必須有 `metric` + `target`（量化）或 `description`（質性）
+- **weight**：總和 = 1.0，反映各指標的相對重要性
+- **constraints**：`hard`（不可違反）vs `soft`（偏好，可權衡）
+- 若 prompt 未提供明確目標，planner 應推斷合理的成功標準並在 proposal.md 中列出
 
 ## 規則
 

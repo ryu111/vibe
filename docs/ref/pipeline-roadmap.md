@@ -4,6 +4,7 @@
 > 建立日期：2026-02-20 | 基準版本：v2.1.9
 > 追蹤方式：各 Section 的 checkbox 依序完成
 > 實作順序：S1 → S2 → S3 → S4 → S5 → S6 → S7（編號 = 執行順序）
+> **Checkbox 完成條件**：每個 checkbox 必須經過完整 pipeline 閉環（DEV + REVIEW + TEST + DOCS 全 PASS）才能勾選，DEV 完成只是中間狀態
 
 ---
 
@@ -150,21 +151,21 @@ classify(sessionId, prompt):
 
 **Checklist**：
 
-- [ ] S1.1 — classifier.js：刪除 `HEURISTIC_RULES`、`classifyByHeuristic()`、`QUESTION_PATTERNS`、`FILE_PATH_PATTERN`
-- [ ] S1.2 — classifier.js：`classifyWithConfidence()` 簡化為 Layer 1 + fallback `{ source: 'main-agent' }`
-- [ ] S1.3 — classifier.js：刪除 `buildPipelineCatalogHint()`（功能併入 systemMessage）
-- [ ] S1.4 — pipeline-controller.js：`classify()` 中 `source === 'main-agent'` 路徑改為注入新 systemMessage（pipeline 選擇表）
-- [ ] S1.5 — pipeline-controller.js：刪除 COMPLETE→reset 30 秒冷卻邏輯
-- [ ] S1.6 — pipeline-controller.js：刪除 cancelled 抑制邏輯（非顯式分類被抑制的路徑）
-- [ ] S1.7 — pipeline-controller.js：簡化升降級判斷（去除 stale 偵測複雜度）
-- [ ] S1.8 — pipeline-controller.js：systemMessage 加入 AskUserQuestion 引導（不確定時問使用者）
-- [ ] S1.9 — pipeline-controller.js：systemMessage 加入複合任務分解引導
-- [ ] S1.10 — 測試：新增 20+ 分類場景測試（覆蓋 10 種 pipeline + chat + 複合 + 邊界）
-- [ ] S1.11 — 測試：驗證 AskUserQuestion 在 pipelineActive=false 時不被 guard 阻擋
+- [x] S1.1 — classifier.js：刪除 `HEURISTIC_RULES`、`classifyByHeuristic()`、`QUESTION_PATTERNS`、`FILE_PATH_PATTERN`
+- [x] S1.2 — classifier.js：`classifyWithConfidence()` 簡化為 Layer 1 + fallback `{ source: 'main-agent' }`
+- [x] S1.3 — classifier.js：刪除 `buildPipelineCatalogHint()`（功能併入 systemMessage）
+- [x] S1.4 — pipeline-controller.js：`classify()` 中 `source === 'main-agent'` 路徑改為注入新 systemMessage（pipeline 選擇表）
+- [x] S1.5 — pipeline-controller.js：刪除 COMPLETE→reset 30 秒冷卻邏輯
+- [x] S1.6 — pipeline-controller.js：刪除 cancelled 抑制邏輯（非顯式分類被抑制的路徑）
+- [x] S1.7 — pipeline-controller.js：簡化升降級判斷（去除 stale 偵測複雜度）
+- [x] S1.8 — pipeline-controller.js：systemMessage 加入 AskUserQuestion 引導（不確定時問使用者）
+- [x] S1.9 — pipeline-controller.js：systemMessage 加入複合任務分解引導
+- [x] S1.10 — 測試：新增 20+ 分類場景測試（覆蓋 10 種 pipeline + chat + 複合 + 邊界）
+- [x] S1.11 — 測試：驗證 AskUserQuestion 在 pipelineActive=false 時不被 guard 阻擋
 - [ ] S1.12 — 驗證：實際 session 測試 10 個常見 prompt，確認 Opus 分類準確度
-- [ ] S1.13 — 清理：刪除 classifier.js 中無用的 exports（classifyByHeuristic / buildPipelineCatalogHint）
-- [ ] S1.14 — 文檔：更新 CLAUDE.md Classifier 架構描述（三層 → 二層 + AskUserQuestion）
-- [ ] S1.15 — 文檔：更新 MEMORY.md classifier 相關記憶
+- [x] S1.13 — 清理：刪除 classifier.js 中無用的 exports（classifyByHeuristic / buildPipelineCatalogHint）
+- [x] S1.14 — 文檔：更新 CLAUDE.md Classifier 架構描述（三層 → 二層 + AskUserQuestion）
+- [x] S1.15 — 文檔：更新 MEMORY.md classifier 相關記憶
 
 **影響範圍**：
 - `plugins/vibe/scripts/lib/flow/classifier.js`（大幅簡化）
@@ -235,14 +236,14 @@ REVIEW agent 有時自己修改程式碼而不返回 DEV，根因：
 
 **Checklist**：
 
-- [ ] S2.1 — agents/pipeline-architect.md：新增結構化三問決策模板
-- [ ] S2.2 — agents/pipeline-architect.md：明確「優先使用 Catalog 模板」指令
-- [ ] S2.3 — agents/pipeline-architect.md：新增「最低品質保證」規則（有 DEV 必有 REVIEW+TEST）
-- [ ] S2.4 — agents/architect.md：新增灰色地帶確認清單（5 項 ⛔ 強制）
-- [ ] S2.5 — agents/architect.md：要求在 design.md 記錄決策
-- [ ] S2.6 — agents/code-reviewer.md：⛔ 禁止 Write/Edit 修改程式碼（只能寫 context_file 報告）
-- [ ] S2.7 — agents/security-reviewer.md：同 S2.6 約束
-- [ ] S2.8 — guard-rules.js：REVIEW/TEST stage 時阻擋對 src/ 的 Write/Edit（可選強化層）
+- [x] S2.1 — agents/pipeline-architect.md：新增結構化三問決策模板
+- [x] S2.2 — agents/pipeline-architect.md：明確「優先使用 Catalog 模板」指令
+- [x] S2.3 — agents/pipeline-architect.md：新增「最低品質保證」規則（有 DEV 必有 REVIEW+TEST）
+- [x] S2.4 — agents/architect.md：新增灰色地帶確認清單（5 項 ⛔ 強制）
+- [x] S2.5 — agents/architect.md：要求在 design.md 記錄決策
+- [x] S2.6 — agents/code-reviewer.md：⛔ 禁止 Write/Edit 修改程式碼（只能寫 context_file 報告）
+- [x] S2.7 — agents/security-reviewer.md：同 S2.6 約束
+- [x] S2.8 — guard-rules.js：REVIEW/TEST stage 時阻擋對 src/ 的 Write/Edit（含 TEST 測試檔案例外）
 - [ ] S2.9 — 驗證：用 3 個模糊 prompt 測試 pipeline-architect 產出品質
 - [ ] S2.10 — 驗證：測試 REVIEW agent 發現問題時確實返回 FAIL 而非自行修改
 
@@ -343,20 +344,21 @@ stage-transition 在 PASS/FAIL 時透過 pipeline-controller 同步 TaskUpdate�
 
 **Checklist**：
 
-- [ ] S3.1 — agents/planner.md：指引在 proposal.md 中按 phase 分組需求
-- [ ] S3.2 — agents/architect.md：指引在 tasks.md 中使用 phase 格式（含 deps 標記）
-- [ ] S3.3 — 新增 `plugins/vibe/scripts/lib/flow/phase-parser.js`（解析 tasks.md phase 結構）
-- [ ] S3.4 — phase-parser.js：parsePhasesFromTasks() 提取 phase 名稱、deps、task 列表
-- [ ] S3.5 — phase-parser.js：generatePhaseDag() 從 phase 結構產出 suffixed stage DAG
-- [ ] S3.6 — phase-parser.js：處理 phase 間依賴（deps → DAG edges）+ 獨立 phase 並行
-- [ ] S3.7 — pipeline-controller.js：handlePipelineArchitectComplete() 整合 phase DAG 生成
-- [ ] S3.8 — pipeline-controller.js：DAG 建立後用 TaskCreate 建立 phase-level todos
-- [ ] S3.9 — pipeline-controller.js：onStageComplete() 同步 TaskUpdate（phase 進度）
-- [ ] S3.10 — agents/developer.md：⛔ 新增自檢指令「每完成一個 task 先 self-review 再繼續」
-- [ ] S3.11 — node-context.js：suffixed stage 的 Node Context 注入 phase 範圍限定（只給該 phase 的 task）
-- [ ] S3.12 — 測試：phase 解析 + DAG 生成 + TodoList 同步整合測試
-- [ ] S3.13 — 測試：2-phase 和 3-phase 場景的 E2E 驗證
-- [ ] S3.14 — 文檔：更新 CLAUDE.md Pipeline 委派架構 + OpenSpec tasks.md 格式
+- [x] S3.1 — agents/planner.md：指引在 proposal.md 中按 phase 分組需求
+- [x] S3.2 — agents/architect.md：指引在 tasks.md 中使用 phase 格式（含 deps 標記）
+- [x] S3.3 — 新增 `plugins/vibe/scripts/lib/flow/phase-parser.js`（解析 tasks.md phase 結構）
+- [x] S3.4 — phase-parser.js：parsePhasesFromTasks() 提取 phase 名稱、deps、task 列表
+- [x] S3.5 — phase-parser.js：generatePhaseDag() 從 phase 結構產出 suffixed stage DAG
+- [x] S3.6 — phase-parser.js：處理 phase 間依賴（deps → DAG edges）+ 獨立 phase 並行
+- [x] S3.7 — pipeline-controller.js：handlePipelineArchitectComplete() 整合 phase DAG 生成
+- [x] S3.8 — pipeline-controller.js：DAG 建立後用 TaskCreate 建立 phase-level todos
+- [x] S3.9 — pipeline-controller.js：onStageComplete() 同步 TaskUpdate（phase 進度）
+- [x] S3.10 — agents/developer.md：⛔ 新增自檢指令「每完成一個 task 先 self-review 再繼續」
+- [x] S3.11 — node-context.js：suffixed stage 的 Node Context 注入 phase 範圍限定（只給該 phase 的 task）
+- [x] S3.12 — 測試：phase 解析 + DAG 生成 + TodoList 同步整合測試
+- [x] S3.13 — 測試：2-phase 和 3-phase 場景的 E2E 驗證
+- [x] S3.14 — 文檔：更新 CLAUDE.md Pipeline 委派架構 + OpenSpec tasks.md 格式
+- [ ] S3.15 — 流程：Roadmap checkbox 完成條件自動化（pipeline 完整閉環 DEV+REVIEW+TEST+DOCS 全 PASS 才能勾選，DEV 完成只是中間狀態）
 
 **影響範圍**：
 - 新增 `plugins/vibe/scripts/lib/flow/phase-parser.js`
@@ -414,17 +416,17 @@ node-context.js (下一個 stage 委派時)
 
 **Checklist**：
 
-- [ ] S4.1 — 新增 `plugins/vibe/scripts/lib/flow/wisdom.js`（readWisdom/writeWisdom/extractWisdom）
-- [ ] S4.2 — wisdom.js：extractWisdom() 從 context_file 內容提取結構化摘要（≤ 200 chars）
-- [ ] S4.3 — wisdom.js：writeWisdom() 追加到 `~/.claude/pipeline-wisdom-{sid}.md`
-- [ ] S4.4 — wisdom.js：readWisdom() 讀取並截斷（MAX_WISDOM_CHARS = 500）
-- [ ] S4.5 — pipeline-controller.js：onStageComplete() 分支 C（PASS）後呼叫 extractWisdom + writeWisdom
-- [ ] S4.6 — node-context.js：buildNodeContext() 新增 wisdom 欄位（讀取 pipeline-wisdom）
-- [ ] S4.7 — node-context.js：formatNodeContext() 新增 `wisdom=...` 輸出段
-- [ ] S4.8 — node-context.js：MAX_NODE_CONTEXT_CHARS 從 2000 調整為 2500
-- [ ] S4.9 — session-cleanup.js：清理 `pipeline-wisdom-*.md` 殘留檔案
-- [ ] S4.10 — 測試：wisdom 讀寫 + 截斷 + Node Context 整合測試
-- [ ] S4.11 — 文檔：更新 CLAUDE.md State 與命名慣例 + MEMORY.md
+- [x] S4.1 — 新增 `plugins/vibe/scripts/lib/flow/wisdom.js`（readWisdom/writeWisdom/extractWisdom）
+- [x] S4.2 — wisdom.js：extractWisdom() 從 context_file 內容提取結構化摘要（≤ 200 chars）
+- [x] S4.3 — wisdom.js：writeWisdom() 追加到 `~/.claude/pipeline-wisdom-{sid}.md`
+- [x] S4.4 — wisdom.js：readWisdom() 讀取並截斷（MAX_WISDOM_CHARS = 500）
+- [x] S4.5 — pipeline-controller.js：onStageComplete() 分支 C（PASS）後呼叫 extractWisdom + writeWisdom
+- [x] S4.6 — node-context.js：buildNodeContext() 新增 wisdom 欄位（讀取 pipeline-wisdom）
+- [x] S4.7 — node-context.js：formatNodeContext() 新增 `wisdom=...` 輸出段
+- [x] S4.8 — node-context.js：MAX_NODE_CONTEXT_CHARS 從 2000 調整為 2500
+- [x] S4.9 — session-cleanup.js：清理 `pipeline-wisdom-*.md` 殘留檔案
+- [x] S4.10 — 測試：wisdom 讀寫 + 截斷 + Node Context 整合測試
+- [x] S4.11 — 文檔：更新 CLAUDE.md State 與命名慣例 + MEMORY.md
 
 **影響範圍**：
 - 新增 `plugins/vibe/scripts/lib/flow/wisdom.js`
@@ -505,13 +507,13 @@ Signal 3: 低信心升級（可選）
 
 **Checklist**：
 
-- [ ] S6.1 — node-context.js：新增 `collectSignals()` 收集 lint/test 最新結果
-- [ ] S6.2 — node-context.js：buildNodeContext() 為 REVIEW/TEST stage 注入 signals 欄位
-- [ ] S6.3 — node-context.js：formatNodeContext() 新增 `signals=lint:0err,test:42pass` 輸出
-- [ ] S6.4 — agents/code-reviewer.md：指引參考 signals 做判斷（lint 0 error → 跳過 lint 檢查）
-- [ ] S6.5 — pipeline-controller.js：REVIEW verdict 含 uncertain + FAIL → 低信心升級邏輯
-- [ ] S6.6 — 測試：signals 收集 + Node Context 注入 + 低信心升級
-- [ ] S6.7 — 文檔：更新 pipeline.md 品質機制描述
+- [x] S6.1 — node-context.js：新增 `collectSignals()` 收集 lint/test 最新結果
+- [x] S6.2 — node-context.js：buildNodeContext() 為 REVIEW/TEST stage 注入 signals 欄位
+- [x] S6.3 — node-context.js：formatNodeContext() 新增 `signals=lint:0err,test:42pass` 輸出
+- [x] S6.4 — agents/code-reviewer.md：指引參考 signals 做判斷（lint 0 error → 跳過 lint 檢查）
+- [x] S6.5 — pipeline-controller.js：REVIEW verdict 含 uncertain + FAIL → 低信心升級邏輯
+- [x] S6.6 — 測試：signals 收集 + Node Context 注入 + 低信心升級
+- [x] S6.7 — 文檔：更新 pipeline.md 品質機制描述
 
 **影響範圍**：
 - `plugins/vibe/scripts/lib/flow/node-context.js`
@@ -549,10 +551,10 @@ constraints:
 
 **Checklist**：
 
-- [ ] S7.1 — agents/planner.md：指引在 proposal.md 產出 Goal 結構
-- [ ] S7.2 — agents/code-reviewer.md：參照 Goal success_criteria 做驗證
-- [ ] S7.3 — agents/tester.md：從 success_criteria 推導測試案例
-- [ ] S7.4 — 文檔：更新 OpenSpec 規格管理描述
+- [x] S7.1 — agents/planner.md：指引在 proposal.md 產出 Goal 結構
+- [x] S7.2 — agents/code-reviewer.md：參照 Goal success_criteria 做驗證
+- [x] S7.3 — agents/tester.md：從 success_criteria 推導測試案例
+- [x] S7.4 — 文檔：更新 OpenSpec 規格管理描述
 
 **影響範圍**：
 - `plugins/vibe/agents/planner.md`
@@ -640,88 +642,89 @@ S1 ──→ S2 ──→ S3 ──→ S4 ──→ S5 ──→ S6 ──→ S7
 
 ## 七、總 Checkbox 進度
 
-### S1：Always-Pipeline 架構 — 0/15
-- [ ] S1.1 — classifier.js：刪除 HEURISTIC_RULES + classifyByHeuristic + QUESTION_PATTERNS + FILE_PATH_PATTERN
-- [ ] S1.2 — classifier.js：classifyWithConfidence() 簡化（Layer 1 + fallback main-agent）
-- [ ] S1.3 — classifier.js：刪除 buildPipelineCatalogHint()
-- [ ] S1.4 — pipeline-controller.js：main-agent 路徑改為注入新 systemMessage
-- [ ] S1.5 — pipeline-controller.js：刪除 COMPLETE→reset 30 秒冷卻
-- [ ] S1.6 — pipeline-controller.js：刪除 cancelled 抑制邏輯
-- [ ] S1.7 — pipeline-controller.js：簡化升降級判斷
-- [ ] S1.8 — pipeline-controller.js：systemMessage 加入 AskUserQuestion 引導
-- [ ] S1.9 — pipeline-controller.js：systemMessage 加入複合任務分解引導
-- [ ] S1.10 — 測試：20+ 分類場景測試
-- [ ] S1.11 — 測試：AskUserQuestion guard 放行驗證
-- [ ] S1.12 — 驗證：10 個 prompt 實測
-- [ ] S1.13 — 清理：刪除無用 exports
-- [ ] S1.14 — 文檔：CLAUDE.md 更新
-- [ ] S1.15 — 文檔：MEMORY.md 更新
+### S1：Always-Pipeline 架構 — 14/15 ✅
+- [x] S1.1 — classifier.js：刪除 HEURISTIC_RULES + classifyByHeuristic + QUESTION_PATTERNS + FILE_PATH_PATTERN
+- [x] S1.2 — classifier.js：classifyWithConfidence() 簡化（Layer 1 + fallback main-agent）
+- [x] S1.3 — classifier.js：刪除 buildPipelineCatalogHint()
+- [x] S1.4 — pipeline-controller.js：main-agent 路徑改為注入新 systemMessage
+- [x] S1.5 — pipeline-controller.js：刪除 COMPLETE→reset 30 秒冷卻
+- [x] S1.6 — pipeline-controller.js：刪除 cancelled 抑制邏輯
+- [x] S1.7 — pipeline-controller.js：簡化升降級判斷
+- [x] S1.8 — pipeline-controller.js：systemMessage 加入 AskUserQuestion 引導
+- [x] S1.9 — pipeline-controller.js：systemMessage 加入複合任務分解引導
+- [x] S1.10 — 測試：20+ 分類場景測試
+- [x] S1.11 — 測試：AskUserQuestion guard 放行驗證
+- [ ] S1.12 — 驗證：10 個 prompt 實測（需實際 session）
+- [x] S1.13 — 清理：刪除無用 exports
+- [x] S1.14 — 文檔：CLAUDE.md 更新
+- [x] S1.15 — 文檔：MEMORY.md 更新
 
-### S2：Architect + REVIEW 防護 — 0/10
-- [ ] S2.1 — pipeline-architect.md 三問模板
-- [ ] S2.2 — pipeline-architect.md 優先 Catalog
-- [ ] S2.3 — pipeline-architect.md 品質保證規則
-- [ ] S2.4 — architect.md 灰色地帶清單
-- [ ] S2.5 — architect.md 決策記錄指令
-- [ ] S2.6 — code-reviewer.md ⛔ 禁止 Write/Edit
-- [ ] S2.7 — security-reviewer.md ⛔ 禁止 Write/Edit
-- [ ] S2.8 — guard-rules.js REVIEW/TEST 寫入阻擋（可選）
+### S2：Architect + REVIEW 防護 — 8/10 ✅
+- [x] S2.1 — pipeline-architect.md 三問模板
+- [x] S2.2 — pipeline-architect.md 優先 Catalog
+- [x] S2.3 — pipeline-architect.md 品質保證規則
+- [x] S2.4 — architect.md 灰色地帶清單
+- [x] S2.5 — architect.md 決策記錄指令
+- [x] S2.6 — code-reviewer.md ⛔ 禁止 Write/Edit
+- [x] S2.7 — security-reviewer.md ⛔ 禁止 Write/Edit
+- [x] S2.8 — guard-rules.js REVIEW/TEST 寫入阻擋（含 TEST 測試檔案例外）
 - [ ] S2.9 — pipeline-architect 驗證測試
 - [ ] S2.10 — REVIEW 越權修改驗證測試
 
-### S3：Phase-Level D-R-T — 0/14
-- [ ] S3.1 — planner.md phase 分組指引
-- [ ] S3.2 — architect.md tasks.md phase 格式
-- [ ] S3.3 — 新增 phase-parser.js
-- [ ] S3.4 — parsePhasesFromTasks() 實作
-- [ ] S3.5 — generatePhaseDag() 實作
-- [ ] S3.6 — phase 依賴 → DAG edges + 並行
-- [ ] S3.7 — handlePipelineArchitectComplete() 整合
-- [ ] S3.8 — DAG 建立後 TaskCreate 同步
-- [ ] S3.9 — onStageComplete() TaskUpdate 同步
-- [ ] S3.10 — developer.md 自檢指令
-- [ ] S3.11 — Node Context phase 範圍限定
-- [ ] S3.12 — phase 解析 + DAG 生成測試
-- [ ] S3.13 — 2-3 phase E2E 驗證
-- [ ] S3.14 — 文檔更新
+### S3：Phase-Level D-R-T — 14/15 ✅
+- [x] S3.1 — planner.md phase 分組指引
+- [x] S3.2 — architect.md tasks.md phase 格式
+- [x] S3.3 — 新增 phase-parser.js
+- [x] S3.4 — parsePhasesFromTasks() 實作
+- [x] S3.5 — generatePhaseDag() 實作
+- [x] S3.6 — phase 依賴 → DAG edges + 並行
+- [x] S3.7 — handlePipelineArchitectComplete() 整合
+- [x] S3.8 — DAG 建立後 TaskCreate 同步
+- [x] S3.9 — onStageComplete() TaskUpdate 同步
+- [x] S3.10 — developer.md 自檢指令
+- [x] S3.11 — Node Context phase 範圍限定
+- [x] S3.12 — phase 解析 + DAG 生成測試
+- [x] S3.13 — 2-3 phase E2E 驗證
+- [x] S3.14 — 文檔更新
+- [ ] S3.15 — Roadmap checkbox 完成條件自動化（pipeline 閉環才勾選）
 
-### S4：Wisdom Accumulation — 0/11
-- [ ] S4.1 — 新增 wisdom.js
-- [ ] S4.2 — extractWisdom() 實作
-- [ ] S4.3 — writeWisdom() 實作
-- [ ] S4.4 — readWisdom() + 截斷
-- [ ] S4.5 — onStageComplete() 整合
-- [ ] S4.6 — buildNodeContext() wisdom 欄位
-- [ ] S4.7 — formatNodeContext() wisdom 輸出
-- [ ] S4.8 — MAX_NODE_CONTEXT_CHARS 調整
-- [ ] S4.9 — session-cleanup 清理
-- [ ] S4.10 — 測試
-- [ ] S4.11 — 文檔更新
+### S4：Wisdom Accumulation — 11/11 ✅
+- [x] S4.1 — 新增 wisdom.js
+- [x] S4.2 — extractWisdom() 實作
+- [x] S4.3 — writeWisdom() 實作
+- [x] S4.4 — readWisdom() + 截斷
+- [x] S4.5 — onStageComplete() 整合
+- [x] S4.6 — buildNodeContext() wisdom 欄位
+- [x] S4.7 — formatNodeContext() wisdom 輸出
+- [x] S4.8 — MAX_NODE_CONTEXT_CHARS 調整
+- [x] S4.9 — session-cleanup 清理
+- [x] S4.10 — 測試
+- [x] S4.11 — 文檔更新
 
-### S5：FIC 狀態壓縮 — 0/9
-- [ ] S5.1 — 新增 status-writer.js
-- [ ] S5.2 — Markdown 摘要生成
-- [ ] S5.3 — 決策記錄整合 wisdom
-- [ ] S5.4 — onStageComplete() 整合
-- [ ] S5.5 — pipeline-init.js resume 整合
-- [ ] S5.6 — crash recovery 優先讀取
-- [ ] S5.7 — session-cleanup 清理
-- [ ] S5.8 — 測試
-- [ ] S5.9 — 文檔更新
+### S5：FIC 狀態壓縮 — 9/9
+- [x] S5.1 — 新增 status-writer.js
+- [x] S5.2 — Markdown 摘要生成
+- [x] S5.3 — 決策記錄整合 wisdom
+- [x] S5.4 — onStageComplete() 整合
+- [x] S5.5 — pipeline-init.js resume 整合
+- [x] S5.6 — crash recovery 優先讀取
+- [x] S5.7 — session-cleanup 清理
+- [x] S5.8 — 測試
+- [x] S5.9 — 文檔更新
 
-### S6：三信號驗證 — 0/7
-- [ ] S6.1 — collectSignals() 實作
-- [ ] S6.2 — buildNodeContext() signals 欄位
-- [ ] S6.3 — formatNodeContext() signals 輸出
-- [ ] S6.4 — code-reviewer.md 指引
-- [ ] S6.5 — 低信心升級邏輯
-- [ ] S6.6 — 測試
-- [ ] S6.7 — 文檔更新
+### S6：三信號驗證 — 7/7
+- [x] S6.1 — collectSignals() 實作
+- [x] S6.2 — buildNodeContext() signals 欄位
+- [x] S6.3 — formatNodeContext() signals 輸出
+- [x] S6.4 — code-reviewer.md 指引
+- [x] S6.5 — 低信心升級邏輯
+- [x] S6.6 — 測試
+- [x] S6.7 — 文檔更新
 
-### S7：Goal Objects — 0/4
-- [ ] S7.1 — planner.md Goal 結構
-- [ ] S7.2 — code-reviewer.md 參照 Goal
-- [ ] S7.3 — tester.md 推導測試
-- [ ] S7.4 — 文檔更新
+### S7：Goal Objects — 4/4 ✅
+- [x] S7.1 — planner.md Goal 結構
+- [x] S7.2 — code-reviewer.md 參照 Goal
+- [x] S7.3 — tester.md 推導測試
+- [x] S7.4 — 文檔更新
 
-**總計：0/70 項**
+**總計：67/71 項**

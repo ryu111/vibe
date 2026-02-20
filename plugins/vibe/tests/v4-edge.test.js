@@ -138,8 +138,8 @@ test('J03: v2 state → ensureV4 回傳 null（v2 不再支援）', () => {
   assert.strictEqual(v4State, null, 'v2 state 應無法遷移，ensureV4 應回傳 null');
 });
 
-// J03b: v3→v4 遷移（只需一步）
-test('J03b: v3 state → ensureV4 一步遷移（v3→v4）', () => {
+// J03b: v3 state 不再支援（v3→v4 遷移已移除）
+test('J03b: v3 state → ensureV4 回傳 null（v3 不再支援）', () => {
   const v3State = {
     version: 3,
     sessionId: 'test-j03b',
@@ -168,15 +168,13 @@ test('J03b: v3 state → ensureV4 一步遷移（v3→v4）', () => {
     },
   };
 
+  // v3 被 detectVersion 識別為版本 0（不支援），與 v2 同等處理
   const version = detectVersion(v3State);
-  assert.strictEqual(version, 3, 'v3 state 應被偵測為版本 3');
+  assert.strictEqual(version, 0, 'v3 state 應被偵測為版本 0（不支援），與 v2 相同');
 
-  const v4State = ensureV4(v3State);
-  assert.strictEqual(v4State.version, 4, '遷移後應為版本 4');
-  assert.ok('pipelineActive' in v4State, 'v4 應有 pipelineActive');
-  // v3 有 standard pipeline + 未取消 + 有 DAG + 未全完成 → pipelineActive=true
-  assert.strictEqual(v4State.pipelineActive, true,
-    `v3 進行中的 pipeline 應遷移為 pipelineActive=true，實際：${v4State.pipelineActive}`);
+  // ensureV4 對 v3 應回傳 null（v3→v4 遷移已移除）
+  const result = ensureV4(v3State);
+  assert.strictEqual(result, null, 'v3 state 不再支援遷移，ensureV4 應回傳 null');
 });
 
 // J03c: v4 state 直接通過（不重複遷移）

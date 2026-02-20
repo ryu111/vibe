@@ -1028,6 +1028,40 @@ function writeReflection(sessionId, stage, verdict, retryCount) {
 
 **預期效果**：減少 30-50% 的跨 stage 回退，特別是那些「reviewer 能看出問題也能看出解法」的情境。
 
+### 7.2a 三信號驗證（S6）
+
+**問題**：QUALITY 品質 agents 的判斷完全依賴 LLM，可能過度嚴格或遺漏邊界案例。程式碼的某些方面（如 lint 錯誤）具有確定性，應以自動化工具作為信號而非 LLM 推測。
+
+**機制**：在 Node Context 中注入**三信號驗證**，提供確定性的 lint 和 test 結果作為品質 agents 的決策參考：
+
+```javascript
+signals: {
+  lint: { errors: 5, warnings: 2 } | null,    // ESLint / Ruff 實際運行結果，無錯誤時設為 null
+  test: { runner: 'jest', available: true }   // 測試框架可用性（不實際執行，避免耗時）
+}
+```
+
+**collectSignals() 實作**（`node-context.js`）：
+
+- **lint 信號**：嘗試執行專案的 linter（eslint / ruff）取得實際的 error/warning 計數；若執行失敗或超時 → 回傳 null（不阻擋 pipeline）
+- **test 信號**：檢查環境中是否有測試框架可用（jest / pytest / mocha），標記 runner 和 available 欄位；不實際執行測試（避免耗時）
+
+**SIGNAL_STAGES 定義**：只在 REVIEW / TEST / QA / SECURITY 階段注入 signals 欄位。DEV / ARCH / PLAN / DESIGN / DOCS 等 IMPL stages 無 signals（設為 null）。
+
+**Code-Reviewer 使用指引**：
+
+- `signals.lint = null`（無 lint 信號）→ 進行完整 lint 檢查
+- `signals.lint.errors = 0 && warnings = 0` → **跳過 lint 問題**報告（確定性信號覆蓋），將注意力集中在語意、邏輯、架構審查
+- `signals.lint.errors > 0` → 在 HIGH 或 MEDIUM 區段報告 lint 錯誤，附上實際數量
+- `signals.test.available = true` → 記錄專案有測試框架可用，期望提交時應包含測試
+
+**低信心升級邏輯**：當 review 結果信心不足（線索不充分、無法確定問題嚴重度）時，在 PIPELINE_ROUTE 中加入 `"uncertain": true` 欄位，系統會提示 Main Agent 在回退前確認是否需要修復。
+
+**預期效果**：
+- 減少誤報（lint 0 error 被 LLM 報告為風格問題）
+- 提升審查效率（減少語法層檢查，專注語意層）
+- 降低虛假重試（確定信號可重現，LLM 推測可能誤判）
+
 ### 7.3 shouldStop — 多維收斂條件
 
 `shouldStop()` 是 `retry-policy.js` 中的唯一停止判斷入口。
@@ -1113,6 +1147,75 @@ shouldStop() ────────┬─ (1) PASS          → NEXT（正常�
 6. DEV 完成 → 回到步驟 1
 
 **並行場景的 shouldStop 行為**：barrier 合併（§4.2 `mergeBarrierResults()`）產出的 FAIL 結果進入 shouldStop() 時，以 **severity 最高的 FAIL stage** 作為 `stage` 參數、合併後的 `severity` 作為 `verdict.severity`、該 stage 的 `retryHistory` 作為收斂判斷依據。
+
+### 7.5 Goal Objects 量化成功標準（S7）
+
+**問題**：Pipeline 完成時，agent 不知道「做到什麼程度算成功」。REVIEW agent 發現 MEDIUM 問題要不要回退？TEST agent 80% 覆蓋率夠不夠？DOCS agent 文件變更要不要同步？
+
+**機制**：在 OpenSpec 的 `proposal.md` 中定義 Goal 區塊，明確列出量化的成功標準（success_criteria）和約束條件（constraints）。Agent 在完成工作時參照 Goal 驗證達成度。
+
+**Goal 結構**：
+
+```yaml
+## Goal
+
+success_criteria:
+  - metric: test_coverage
+    target: ">= 80%"
+    weight: 0.3              # 相對重要性（總和 = 1.0）
+  - metric: lint_clean
+    target: "0 errors"
+    weight: 0.2
+  - metric: functional
+    description: "使用者可以登入並看到 dashboard"
+    weight: 0.5
+
+constraints:
+  - type: hard
+    rule: "不修改公開 API 簽名"
+  - type: soft
+    rule: "偏好函式式風格"
+```
+
+**規則**：
+- **success_criteria**：至少 2 個，每個必須有 `metric` + `target`（量化）或 `description`（質性）
+- **weight**：反映各指標相對重要性，總和必須 = 1.0
+- **constraints**：hard（必須遵守）vs soft（偏好，可權衡）
+
+**Agent 使用指引**：
+
+| Agent | 使用方式 |
+|-------|---------|
+| **planner** | 從 proposal 推斷合理的成功標準，若使用者未明確定義則預設常識標準 |
+| **code-reviewer** | 驗證 success_criteria 達成；未達成的指標標記為 MEDIUM/HIGH；hard constraint 違反標記為 CRITICAL |
+| **tester** | 從 success_criteria 推導測試案例；量化指標（如 coverage >= 80%）轉換為自動化測試驗證 |
+
+**範例**：
+
+```markdown
+## Goal
+
+success_criteria:
+  - metric: functional_completeness
+    description: "user 可完成登入→查詢→登出完整流程"
+    weight: 0.5
+  - metric: test_coverage
+    target: ">= 85%"
+    weight: 0.3
+  - metric: performance
+    target: "response_time < 200ms (p99)"
+    weight: 0.2
+
+constraints:
+  - type: hard
+    rule: "不修改 auth middleware 公開 API"
+  - type: hard
+    rule: "DB schema 無破壞性變更"
+  - type: soft
+    rule: "使用非同步 I/O"
+```
+
+**設計決策**：Goal Objects 是**可選的**（無 Goal 時 agent 按既有邏輯運行，保持向後兼容）。如果 proposal 含有 Goal 區塊，agent 應優先參考；無 Goal 時按專案預設標準（如 test coverage >= 80%）執行。
 
 ---
 
@@ -1370,7 +1473,7 @@ v4 實際機制與已知限制：
   - guard 只看 pipelineActive 布林值 → false 即放行
 ```
 
-**已知技術債務**：cancel 需要透過委派 developer agent 來繞過 guard 限制。正確做法是在 guard 中加入 cancel 白名單（類似 v3 的 CANCEL_STATE_FILE_RE），但目前的 workaround 可運作。詳見 `pipeline-issues.md` P1。
+**已知技術債務**：cancel 需要透過委派 developer agent 來繞過 guard 限制。正確做法是在 guard 中加入 cancel 白名單（類似 v3 的 CANCEL_STATE_FILE_RE），但目前的 workaround 可運作。
 
 ---
 
@@ -1681,6 +1784,30 @@ UX 設計：
 | `TRANSCRIPT_LEAK_WARNING` | Sub-agent 回應超過長度閾值（可能含報告） | `{ stage, responseLength }` | E12 |
 | `RETRY_EXHAUSTED` | shouldStop 條件 (2) 觸發 FORCE_NEXT | `{ stage, retryCount, reason }` | E5 |
 
+### 向下相容移除（v2.2.9+）
+
+**v3 Pipeline State 遷移支援已移除**：
+
+從 v2.0.9 到 v2.2.8，系統提供自動遷移機制（`state-migrator.js`），將 v3 舊格式的 pipeline state（及更早版本）升級為 v4 結構。
+
+**自 v2.2.9 起，此遷移機制已刪除**：
+
+- `state-migrator.js` 中的 `migrateStateVersion()` 函式已移除
+- 不再識別並轉換 v3 格式的 `pipeline-state-{sid}.json`
+- 舊 v3 state 檔案會被視為無效並被系統忽略（pipeline-init 檢查版本字段時拒絕 v3 state）
+
+**影響**：
+
+- **新 session**（v2.2.9 之後啟動）：無影響，直接建立 v4 state
+- **恢復舊 session**（v2.2.8 或更早的 session ID）：
+  - 若 `~/.claude/pipeline-state-{sessionId}.json` 格式為 v3 → 被忽略
+  - Pipeline 重新初始化為新 v4 state（狀態丟失）
+  - 舊 session 的進度無法恢復
+
+**遷移建議**：
+
+如果使用者有進行中的 v2.2.8 pipeline session，應在升級至 v2.2.9 前完成。升級後無法恢復舊 session 的 pipeline 狀態。
+
 ---
 
 ## 9. 風險評估
@@ -1698,11 +1825,9 @@ UX 設計：
 | State 寫入損毀 | 低 | Atomic Write（`pid.timestamp.counter` 三因子唯一性 + renameSync） | ✅ 穩定 |
 | Self-Refine 降級不當 | 中 | CRITICAL 永不降級 + 降級建議寫入 context_file 供後續 stage 二次檢查 | ✅ 穩定 |
 | Reflexion Memory 累積過大 | 低 | 每輪 ≤ 500 chars，總計 ≤ 3000 chars + PASS 後自動清理 | ✅ 穩定 |
-| **系統通知誤分類** | 中 | background task 完成通知被 classifier heuristic 誤判為 bugfix；v2.0.13 擴充 system-feedback heuristic | ⚠️ 有殘留風險，見 pipeline-issues.md P4 |
-| **Cancel skill 死鎖** | 中 | pipeline-guard 阻擋 cancel 寫入 state file，需透過委派 developer 繞過 | ⚠️ workaround 可運作，見 pipeline-issues.md P1 |
-| Context Window 壓縮 | 高 | Node Context 三層截斷策略（reflectionContent → 清空 → 只保留 hint） | ⚠️ 根因為 MCP 工具定義佔用，見 pipeline-issues.md P6 |
-
-已知問題完整清單見 [`pipeline-issues.md`](./pipeline-issues.md)。
+| **系統通知誤分類** | 中 | background task 完成通知由 classifier 的 `isSystemFeedback()` 函式偵測（SYSTEM_MARKER + emoji 前綴），確保不觸發意外 pipeline；v2.2.0 整合為核心 Layer 1 | ✅ 已解決 |
+| **Cancel skill 死鎖** | 中 | pipeline-guard 阻擋 cancel 寫入 state file，需透過委派 developer 繞過 | ⚠️ workaround 可運作 |
+| Context Window 壓縮 | 高 | Node Context 三層截斷策略（reflectionContent → 清空 → 只保留 hint） | ⚠️ 根因為 MCP 工具定義佔用 |
 
 ---
 

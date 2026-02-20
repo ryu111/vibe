@@ -590,7 +590,9 @@ test('Write — file_path 為 Unicode 字元 → 正常判斷', () => {
   }
 });
 
-test('AskUserQuestion — 有額外欄位 → 阻擋（忽略額外欄位）', () => {
+test('AskUserQuestion — 有額外欄位 → 放行（S1 READ_ONLY_TOOLS 白名單）', () => {
+  // S1 任務 3.1：AskUserQuestion 加入 READ_ONLY_TOOLS，pipeline relay 模式下放行
+  // 即使有額外欄位也放行（忽略 toolInput，只看 toolName）
   const sessionId = 'test-input-4';
   try {
     writeState(sessionId, makeEnforcedState());
@@ -604,9 +606,7 @@ test('AskUserQuestion — 有額外欄位 → 阻擋（忽略額外欄位）', (
       },
     });
 
-    assert.strictEqual(result.exitCode, 2);
-    // CLASSIFIED 階段：must-delegate 統一阻擋，訊息為「等待委派」
-    assert.ok(result.stderr.includes('等待委派'));
+    assert.strictEqual(result.exitCode, 0);
   } finally {
     cleanState(sessionId);
   }

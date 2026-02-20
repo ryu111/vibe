@@ -1095,11 +1095,12 @@ console.log('══════════════════════�
 })();
 
 // ═══════════════════════════════════════════════
-// Scenario L: pipeline-guard — Pipeline 模式下阻擋 AskUserQuestion
-// 驗證：pipelineEnforced=true 時 AskUserQuestion 被硬阻擋（exit 2）
+// Scenario L: pipeline-guard — AskUserQuestion 行為
+// S1 任務 3.1：AskUserQuestion 加入 READ_ONLY_TOOLS 白名單，在 pipeline relay 模式下放行
+// 讓 Main Agent 不確定 pipeline 時可以詢問使用者（不再被 must-delegate 阻擋）
 // ═══════════════════════════════════════════════
 
-console.log('\n⛔ Scenario L: pipeline-guard — Pipeline 自動閉環（阻擋 AskUserQuestion）');
+console.log('\n✅ Scenario L: pipeline-guard — AskUserQuestion 白名單放行（S1）');
 console.log('═══════════════════════════════════════════════════════');
 
 (() => {
@@ -1125,7 +1126,7 @@ console.log('══════════════════════�
       assert.strictEqual(r2.exitCode, 0);
     });
 
-    // L3: CLASSIFIED（enforced）→ 阻擋（exit 2）
+    // L3: CLASSIFIED（enforced）→ AskUserQuestion 仍放行（S1 READ_ONLY_TOOLS 白名單）
     writeV4State(sid, {
       pipelineId: 'standard',
       taskType: 'feature',
@@ -1133,16 +1134,18 @@ console.log('══════════════════════�
       stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],
     });
     const r3 = runHook('pipeline-guard', askInput);
-    test('L3: CLASSIFIED（enforced）→ pipeline-guard 阻擋（exit 2）', () => {
-      assert.strictEqual(r3.exitCode, 2);
+    test('L3: CLASSIFIED（enforced）→ AskUserQuestion 放行（READ_ONLY_TOOLS 白名單）', () => {
+      assert.strictEqual(r3.exitCode, 0);
     });
 
-    test('L4: 阻擋訊息包含 must-delegate 指示', () => {
-      assert.ok(r3.stderr.includes('等待委派'), '應提示委派 sub-agent');
+    test('L4: AskUserQuestion 放行無阻擋訊息', () => {
+      // 放行時 exitCode=0，無 stderr 阻擋訊息
+      assert.strictEqual(r3.exitCode, 0);
     });
 
-    test('L5: 阻擋訊息包含工具名稱', () => {
-      assert.ok(r3.stderr.includes('AskUserQuestion'), '應提及被阻擋的工具');
+    test('L5: AskUserQuestion 在 pipeline relay 模式下可使用', () => {
+      // S1: 允許 Main Agent 用 AskUserQuestion 詢問使用者選擇 pipeline
+      assert.strictEqual(r3.exitCode, 0);
     });
 
     // L6: cancelled=true → 放行
@@ -1158,7 +1161,7 @@ console.log('══════════════════════�
       assert.strictEqual(r4.exitCode, 0);
     });
 
-    // L7: 完整 hook 鏈 — feature pipeline + pipeline-guard 阻擋 AskUserQuestion 和 Write
+    // L7: feature pipeline — AskUserQuestion 放行，Write 阻擋
     writeV4State(sid, {
       pipelineId: 'standard',
       taskType: 'feature',
@@ -1173,9 +1176,9 @@ console.log('══════════════════════�
       tool_input: { file_path: 'src/app.js' },
     });
 
-    test('L7: feature pipeline 同時阻擋 AskUserQuestion 和 Write', () => {
-      assert.strictEqual(askGate.exitCode, 2, 'pipeline-guard 應阻擋 AskUserQuestion');
-      assert.strictEqual(writeGate.exitCode, 2, 'pipeline-guard 應阻擋 Write');
+    test('L7: feature pipeline — AskUserQuestion 放行，Write 仍阻擋', () => {
+      assert.strictEqual(askGate.exitCode, 0, 'AskUserQuestion 應放行（READ_ONLY_TOOLS）');
+      assert.strictEqual(writeGate.exitCode, 2, 'Write 仍應阻擋（must-delegate）');
     });
   } finally {
     cleanState(sid);
@@ -1381,17 +1384,18 @@ console.log('══════════════════════�
 })();
 
 // ═══════════════════════════════════════════════
-// Scenario O: task-classifier stale pipeline 重設（v1.0.43 修復）
-// 驗證：過時的 enforced pipeline 在降級分類時自動重設
+// Scenario O: task-classifier pipeline 分類行為（S1 簡化後）
+// S1 任務 2.3 刪除了 stale 偵測（10 分鐘超時重設）
+// 新行為：ACTIVE pipeline 下非顯式分類一律靜默忽略（不重設）
 // ═══════════════════════════════════════════════
 
-console.log('\n🕰️ Scenario O: task-classifier stale pipeline 重設');
+console.log('\n🕰️ Scenario O: task-classifier pipeline 分類行為（S1 後）');
 console.log('═══════════════════════════════════════════════════════');
 
 (() => {
   const sid = 'e2e-stale-pipeline';
   try {
-    // O1: 過時 pipeline（lastTransition 超過 10 分鐘）+ 降級 → 應重設
+    // O1: ACTIVE pipeline + 非顯式降級 → 靜默忽略（S1 後不重設，即使超過 10 分鐘）
     const staleTime = new Date(Date.now() - 15 * 60 * 1000).toISOString(); // 15 分鐘前
     const staleState = createV4State(sid, {
       pipelineId: 'standard',
@@ -1412,28 +1416,26 @@ console.log('══════════════════════�
       prompt: '查看目前的程式碼結構',
     });
 
-    test('O1: 過時 pipeline + 降級 → 重設為新分類', () => {
+    test('O1: ACTIVE pipeline + 非顯式降級 → 靜默忽略（S1 後不重設）', () => {
+      // S1 刪除 stale 偵測：ACTIVE pipeline 下非顯式分類一律靜默忽略
       const state = readState(sid);
-      assert.notStrictEqual(state.classification?.pipelineId, 'standard', '應重設 pipeline');
+      assert.strictEqual(state.classification?.pipelineId, 'standard', 'ACTIVE pipeline 應保持 standard');
     });
 
-    test('O2: 重設後 stages 為空或全 pending', () => {
+    test('O2: ACTIVE pipeline 忽略降級後 stages 保持原狀', () => {
       const state = readState(sid);
-      // reset → 新初始 state，stages 可能為空或 DAG 為 null
-      if (state.dag) {
-        // 如果有新 DAG，所有 stages 應為 pending
-        for (const [, s] of Object.entries(state.stages)) {
-          assert.notStrictEqual(s.status, 'completed', '重設後不應有 completed stages');
-        }
+      // 忽略分類 → stages 保持原狀（PLAN 應仍 completed）
+      if (state.stages?.PLAN) {
+        assert.strictEqual(state.stages.PLAN.status, 'completed', 'PLAN 應保持 completed');
       }
     });
 
-    test('O3: 重設後 pendingRetry 被清除', () => {
+    test('O3: pendingRetry 保持 null（未被清除）', () => {
       const state = readState(sid);
       assert.strictEqual(state.pendingRetry, null, 'pendingRetry 應為 null');
     });
 
-    // O4: 新鮮 pipeline（lastTransition 剛剛）+ 降級 → 不應重設
+    // O4: ACTIVE pipeline（任何時間）+ 降級 → 保持原 pipeline
     const freshState = createV4State(sid, {
       pipelineId: 'standard',
       taskType: 'feature',
@@ -1464,7 +1466,7 @@ console.log('══════════════════════�
       assert.strictEqual(state.stages.ARCH.status, 'completed', 'ARCH 應保留 completed');
     });
 
-    // O6: 無 lastTransition 欄位 → 視為過時
+    // O6: 無 lastTransition 欄位 → ACTIVE pipeline 仍保持（S1 後不視為過時）
     const noTransState = createV4State(sid, {
       pipelineId: 'standard',
       taskType: 'feature',
@@ -1483,14 +1485,13 @@ console.log('══════════════════════�
       prompt: '看看這個 API 怎麼用',
     });
 
-    test('O6: 無 lastTransition → 視為過時，降級重設', () => {
+    test('O6: 無 lastTransition → ACTIVE pipeline 保持（S1 後不重設）', () => {
+      // S1 刪除 stale 偵測：無論 lastTransition 是否存在，ACTIVE pipeline 均保持
       const state = readState(sid);
-      assert.notStrictEqual(state.classification?.pipelineId, 'standard', '應重設');
+      assert.strictEqual(state.classification?.pipelineId, 'standard', 'ACTIVE pipeline 應保持');
     });
 
-    // O7: 已完成且已過冷卻期的 pipeline + 降級 → 正常流程（isComplete 先觸發 RESET）
-    // 注意：COMPLETE→reset 有 30 秒冷卻期（防止 stop hook feedback 覆寫），
-    // 模擬「使用者在 pipeline 完成後才送新任務」的真實場景
+    // O7: 已完成 pipeline → isComplete 觸發 RESET，新分類套用
     writeV4State(sid, {
       pipelineId: 'fix',
       taskType: 'quickfix',
@@ -1498,13 +1499,6 @@ console.log('══════════════════════�
       stages: ['DEV'],
       completed: ['DEV'],
     });
-    // 將 lastTransition 設為 1 分鐘前（超過 30 秒冷卻期）
-    {
-      const s = readState(sid);
-      s.meta = s.meta || {};
-      s.meta.lastTransition = new Date(Date.now() - 60000).toISOString();
-      fs.writeFileSync(path.join(CLAUDE_DIR, `pipeline-state-${sid}.json`), JSON.stringify(s, null, 2));
-    }
 
     runHook('task-classifier', {
       session_id: sid,
