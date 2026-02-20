@@ -63,7 +63,7 @@ const API_ONLY_FRAMEWORKS = ['express', 'fastify', 'hono', 'koa', 'nest'];
 
 // ────────────────── Pipeline 定義 ──────────────────
 
-// 10 種參考工作流模板（v3：DAG 由 pipeline-architect agent 動態生成，這些作為參考範例）
+// 10 種參考工作流模板（DAG 由 pipeline-architect agent 動態生成，這些作為參考範例）
 const REFERENCE_PIPELINES = {
   'full':       { stages: ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW', 'TEST', 'QA', 'E2E', 'DOCS'], enforced: true,  label: '完整開發', description: '新功能（含 UI）' },
   'standard':   { stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'DOCS'],                       enforced: true,  label: '標準開發', description: '新功能（無 UI）、大重構' },
@@ -105,10 +105,10 @@ const PIPELINE_TO_TASKTYPE = {
 // 品質階段 — 會輸出 verdict，失敗時可觸發回退
 const QUALITY_STAGES = ['REVIEW', 'TEST', 'QA', 'E2E'];
 
-// Verdict 正規表達式（v3 fallback 用）
+// Verdict 正規表達式（PIPELINE_VERDICT fallback 用）
 const VERDICT_REGEX = /<!-- PIPELINE_VERDICT:\s*(PASS|FAIL(?::(?:CRITICAL|HIGH|MEDIUM|LOW))?)\s*-->/;
 
-// Route 正規表達式（v4 PIPELINE_ROUTE 協議）
+// Route 正規表達式（PIPELINE_ROUTE 協議）
 // 注意：JSON payload 中不可含 '-->'，route-parser.js validateRoute() 會自動 sanitize
 const PIPELINE_ROUTE_REGEX = /<!-- PIPELINE_ROUTE:\s*([\s\S]*?)\s*-->/;
 

@@ -196,8 +196,8 @@ function formatDuration(ms) {
 }
 
 /**
- * 從 v3 DAG state 提取已完成的 stage 名稱
- * v3 state.stages 是 { stageId: { status, agent, verdict, ... } } 映射
+ * 從 state 提取已完成的 stage 名稱
+ * state.stages 是 { stageId: { status, agent, verdict, ... } } 映射
  */
 function extractCompletedStages(state) {
   const stages = state.stages || {};
@@ -295,7 +295,7 @@ async function handleSender(data) {
       const r = stageResults[s];
       return !r || r.verdict !== 'FAIL';
     });
-    // 總耗時：用 classifiedAt 作為 pipeline 起始（v3 存在 classification.classifiedAt）
+    // 總耗時：用 classifiedAt 作為 pipeline 起始
     const startStr = classification.classifiedAt || null;
     const startMs = startStr ? new Date(startStr).getTime() : null;
     const totalDuration = startMs ? formatDuration(Date.now() - startMs) : null;

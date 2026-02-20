@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * v4-lifecycle.test.js — Pipeline 生命週期閉環測試（G05-G07）
+ * pipeline-lifecycle.test.js — Pipeline 生命週期閉環測試（G05-G07）
  *
  * 場景：
  *   G05: 連續阻擋 ≥3 → cancel 提示出現
  *   G06: onDelegate 重設阻擋計數器
  *   G07: pipelineActive=false → onSessionStop 返回 null
  *
- * 執行：node plugins/vibe/tests/v4-lifecycle.test.js
+ * 執行：node plugins/vibe/tests/pipeline-lifecycle.test.js
  */
 'use strict';
 

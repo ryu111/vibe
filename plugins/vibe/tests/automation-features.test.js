@@ -23,7 +23,7 @@ process.env.CLAUDE_PLUGIN_ROOT = PLUGIN_ROOT;
 
 let passed = 0;
 let failed = 0;
-const { cleanTestStateFiles, writeV4State } = require('./test-helpers');
+const { cleanTestStateFiles, writeTestState } = require('./test-helpers');
 cleanTestStateFiles();
 
 function test(name, fn) {
@@ -76,7 +76,7 @@ test('PLAN 完成後建立 vibe-pipeline/plan tag', () => {
   const tagName = 'vibe-pipeline/plan';
   cleanupGitTag(tagName);
 
-  const statePath = writeV4State(sessionId, {
+  const statePath = writeTestState(sessionId, {
     stages: ['PLAN', 'ARCH', 'DEV'],
     active: 'PLAN',
     pipelineId: 'standard',
@@ -105,7 +105,7 @@ test('回退場景不建立 checkpoint（shouldRetry=true）', () => {
   const tagName = 'vibe-pipeline/review';
   cleanupGitTag(tagName);
 
-  const statePath = writeV4State(sessionId, {
+  const statePath = writeTestState(sessionId, {
     stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
     completed: ['PLAN', 'ARCH', 'DEV'],
     active: 'REVIEW',
@@ -144,7 +144,7 @@ test('多個階段完成後各自有 tag', () => {
   tags.forEach(cleanupGitTag);
 
   // PLAN 完成
-  let statePath = writeV4State(sessionId, {
+  let statePath = writeTestState(sessionId, {
     stages: ['PLAN', 'ARCH', 'DEV'],
     active: 'PLAN',
     pipelineId: 'standard',
@@ -160,7 +160,7 @@ test('多個階段完成後各自有 tag', () => {
     });
 
     // ARCH 完成（重新寫入 state，PLAN 已完成，ARCH 為 active）
-    statePath = writeV4State(sessionId, {
+    statePath = writeTestState(sessionId, {
       stages: ['PLAN', 'ARCH', 'DEV'],
       completed: ['PLAN'],
       active: 'ARCH',
@@ -192,7 +192,7 @@ console.log('\n🧪 Part 2: POST_STAGE_HINTS — 安全/覆蓋率提示注入');
 
 test('REVIEW → TEST 包含安全提示', () => {
   const sessionId = 'test-hints-1';
-  const statePath = writeV4State(sessionId, {
+  const statePath = writeTestState(sessionId, {
     stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA'],
     completed: ['PLAN', 'ARCH', 'DEV'],
     active: 'REVIEW',
@@ -219,7 +219,7 @@ test('REVIEW → TEST 包含安全提示', () => {
 
 test('TEST → QA 包含覆蓋率提示', () => {
   const sessionId = 'test-hints-2';
-  const statePath = writeV4State(sessionId, {
+  const statePath = writeTestState(sessionId, {
     stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST', 'QA'],
     completed: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
     active: 'TEST',
@@ -246,7 +246,7 @@ test('TEST → QA 包含覆蓋率提示', () => {
 
 test('DEV → REVIEW 無額外提示（DEV 不在 POST_STAGE_HINTS 中）', () => {
   const sessionId = 'test-hints-3';
-  const statePath = writeV4State(sessionId, {
+  const statePath = writeTestState(sessionId, {
     stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW', 'TEST'],
     completed: ['PLAN', 'ARCH'],
     active: 'DEV',
@@ -571,13 +571,13 @@ test('unit: 大小寫不敏感 — TypeScript/PYTHON 正常匹配', () => {
 console.log('\n🧪 Part 4: Pipeline 完成三步閉環');
 // ═══════════════════════════════════════════════
 
-// 注意：使用 writeV4State 建立 DAG 結構。DOCS 是最後階段，
+// 注意：使用 writeTestState 建立 DAG 結構。DOCS 是最後階段，
 // doc-updater 完成後觸發 pipeline 完成流程。
 
 test('Pipeline 完成訊息包含已完成階段列表', () => {
   const sessionId = 'test-complete-1';
-  const { writeV4State } = require('./test-helpers');
-  const statePath = writeV4State(sessionId, {
+  const { writeTestState } = require('./test-helpers');
+  const statePath = writeTestState(sessionId, {
     stages: ['DEV', 'REVIEW', 'TEST', 'DOCS'],
     completed: ['DEV', 'REVIEW', 'TEST'],
     active: 'DOCS',
@@ -604,8 +604,8 @@ test('Pipeline 完成訊息包含已完成階段列表', () => {
 
 test('Pipeline 完成訊息包含跳過階段（如有）', () => {
   const sessionId = 'test-complete-2';
-  const { writeV4State } = require('./test-helpers');
-  const statePath = writeV4State(sessionId, {
+  const { writeTestState } = require('./test-helpers');
+  const statePath = writeTestState(sessionId, {
     stages: ['DEV', 'DOCS'],
     completed: ['DEV'],
     active: 'DOCS',
@@ -633,8 +633,8 @@ test('Pipeline 完成訊息包含跳過階段（如有）', () => {
 
 test('Pipeline 完成訊息結構正確（精簡格式）', () => {
   const sessionId = 'test-complete-3';
-  const { writeV4State } = require('./test-helpers');
-  const statePath = writeV4State(sessionId, {
+  const { writeTestState } = require('./test-helpers');
+  const statePath = writeTestState(sessionId, {
     stages: ['DEV', 'DOCS'],
     completed: ['DEV'],
     active: 'DOCS',
@@ -666,8 +666,8 @@ test('Pipeline 完成訊息結構正確（精簡格式）', () => {
 
 test('Pipeline 完成後 derivePhase 為 COMPLETE', () => {
   const sessionId = 'test-complete-4';
-  const { writeV4State } = require('./test-helpers');
-  const statePath = writeV4State(sessionId, {
+  const { writeTestState } = require('./test-helpers');
+  const statePath = writeTestState(sessionId, {
     stages: ['DOCS'],
     active: 'DOCS',
     pipelineId: 'docs-only',

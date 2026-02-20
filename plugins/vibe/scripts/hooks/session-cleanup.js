@@ -52,13 +52,13 @@ process.stdin.on('end', () => {
     cleanStaleFiles('pipeline-state-*.json', results);
     // pipeline-context 檔案（品質階段的詳細報告）
     cleanStaleFiles('pipeline-context-*.md', results);
-    // reflection-memory 檔案（v4 回退歷史記錄）
+    // reflection-memory 檔案（回退歷史記錄）
     cleanStaleFiles('reflection-memory-*.md', results);
-    // pipeline-wisdom 檔案（v5 S4 跨 stage 知識累積）
+    // pipeline-wisdom 檔案（跨 stage 知識累積）
     cleanStaleFiles('pipeline-wisdom-*.md', results);
-    // pipeline-status 檔案（v5 S5 FIC 狀態壓縮）
+    // pipeline-status 檔案（FIC 狀態壓縮）
     cleanStaleFiles('pipeline-status-*.md', results);
-    // barrier-state 檔案（v4 Phase 4 並行同步）
+    // barrier-state 檔案（barrier 並行同步）
     cleanStaleFiles('barrier-state-*.json', results);
     // 提前清理：COMPLETE pipeline 或超過 48h 的 pipeline state
     cleanCompletedPipelineStates(sessionId, results);

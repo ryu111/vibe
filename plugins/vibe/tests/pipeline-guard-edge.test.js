@@ -164,7 +164,7 @@ test('State file 為空物件 → 放行（initialized=false）', () => {
       tool_input: { file_path: 'src/app.js' },
     });
 
-    // 空物件：detectVersion=0 → ensureV4 returns null → allow
+    // 空物件：detectVersion=0 → ensureCurrentSchema returns null → allow
     assert.strictEqual(result.exitCode, 0);
   } finally {
     cleanState(sessionId);

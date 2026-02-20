@@ -16,10 +16,10 @@
 
 const { QUALITY_STAGES, MAX_RETRIES } = require('../registry.js');
 
-// ────────────────── v4 shouldStop ──────────────────
+// ────────────────── shouldStop ──────────────────
 
 /**
- * 判斷是否應停止回退（v4 多條件版本）
+ * 判斷是否應停止回退（多條件版本）
  *
  * @param {string} stage - 當前階段
  * @param {{ verdict: string, severity?: string }|null} verdict - 解析結果

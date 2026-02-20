@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * pipeline-controller.js — Pipeline v4 統一 API
+ * pipeline-controller.js — Pipeline 統一 API
  *
  * 所有 hook 的唯一邏輯入口。每個方法對應一個 hook 事件。
  * Hook 腳本只需：解析 stdin → 呼叫 controller → 輸出結果。
@@ -25,7 +25,7 @@ const { execSync } = require('child_process');
 const ds = require('./dag-state.js');
 const { getBaseStage, resolveAgent, validateDag, repairDag, enrichCustomDag, linearToDag, templateToDag, buildBlueprint } = require('./dag-utils.js');
 const { shouldSkip } = require('./skip-predicates.js');
-const { ensureV4 } = require('./state-migrator.js');
+const { ensureCurrentSchema } = require('./state-migrator.js');
 const { shouldStop } = require('./retry-policy.js');
 const { parseRoute, validateRoute, enforcePolicy, inferRouteFromContent } = require('./route-parser.js');
 const { writeReflection, cleanReflectionForStage } = require('./reflection.js');
@@ -73,11 +73,11 @@ function extractShortAgent(agentType) {
   return agentType.includes(':') ? agentType.split(':')[1] : agentType;
 }
 
-/** 讀取 state（只接受 v4 格式；v3 或未知格式回傳 null，不再遷移） */
+/** 讀取 state（只接受當前 schema 格式；舊格式回傳 null，不再遷移） */
 function loadState(sessionId) {
   const raw = ds.readState(sessionId);
   if (!raw) return null;
-  return ensureV4(raw);
+  return ensureCurrentSchema(raw);
 }
 
 /**

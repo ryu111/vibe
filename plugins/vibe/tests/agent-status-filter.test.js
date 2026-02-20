@@ -19,7 +19,7 @@
  *
  * 策略：
  *   - getAgentInfo / AgentStatus / getStatus 為 index.html 內嵌函式，無法 require
- *   - 測試中複製核心邏輯（同 v3-alignment.test.js 做法）
+ *   - 測試中複製核心邏輯（同 dashboard-adapter.test.js 做法）
  *   - 不依賴 Preact / DOM，純函式邏輯驗證
  *
  * 執行：node plugins/vibe/tests/agent-status-filter.test.js
@@ -1013,8 +1013,8 @@ test('isPipelineComplete=true 且 delegationActive=true → step 4 仍跳過（�
   assert.strictEqual(result.status, 'running', 'delegationActive=true 時 step 1 先設 running，step 4 跳過不影響');
 });
 
-test('adaptV3 計算：所有 stages completed → isPipelineComplete=true', () => {
-  // 複製 adaptV3 邏輯並驗證 isPipelineComplete 計算
+test('adaptState 計算：所有 stages completed → isPipelineComplete=true', () => {
+  // 複製 adaptState 邏輯並驗證 isPipelineComplete 計算
   function computeIsPipelineComplete(dagKeys, stages) {
     return dagKeys.length > 0 && dagKeys.every(id => {
       const st = stages[id]?.status;
@@ -1031,7 +1031,7 @@ test('adaptV3 計算：所有 stages completed → isPipelineComplete=true', () 
   assert.strictEqual(computeIsPipelineComplete(dagKeys, stages), true, '全部 completed → true');
 });
 
-test('adaptV3 計算：有 active stage → isPipelineComplete=false', () => {
+test('adaptState 計算：有 active stage → isPipelineComplete=false', () => {
   function computeIsPipelineComplete(dagKeys, stages) {
     return dagKeys.length > 0 && dagKeys.every(id => {
       const st = stages[id]?.status;
@@ -1048,7 +1048,7 @@ test('adaptV3 計算：有 active stage → isPipelineComplete=false', () => {
   assert.strictEqual(computeIsPipelineComplete(dagKeys, stages), false, 'active stage → false');
 });
 
-test('adaptV3 計算：completed + skipped 混合 → isPipelineComplete=true', () => {
+test('adaptState 計算：completed + skipped 混合 → isPipelineComplete=true', () => {
   function computeIsPipelineComplete(dagKeys, stages) {
     return dagKeys.length > 0 && dagKeys.every(id => {
       const st = stages[id]?.status;
@@ -1066,7 +1066,7 @@ test('adaptV3 計算：completed + skipped 混合 → isPipelineComplete=true', 
   assert.strictEqual(computeIsPipelineComplete(dagKeys, stages), true, 'completed+skipped+failed 混合 → true');
 });
 
-test('adaptV3 計算：空 DAG → isPipelineComplete=false（dagKeys.length=0）', () => {
+test('adaptState 計算：空 DAG → isPipelineComplete=false（dagKeys.length=0）', () => {
   function computeIsPipelineComplete(dagKeys, stages) {
     return dagKeys.length > 0 && dagKeys.every(id => {
       const st = stages[id]?.status;
@@ -1076,7 +1076,7 @@ test('adaptV3 計算：空 DAG → isPipelineComplete=false（dagKeys.length=0�
   assert.strictEqual(computeIsPipelineComplete([], {}), false, '空 DAG → false（不算 complete）');
 });
 
-test('adaptV3 計算：有 pending stage → isPipelineComplete=false', () => {
+test('adaptState 計算：有 pending stage → isPipelineComplete=false', () => {
   function computeIsPipelineComplete(dagKeys, stages) {
     return dagKeys.length > 0 && dagKeys.every(id => {
       const st = stages[id]?.status;
@@ -1093,7 +1093,7 @@ test('adaptV3 計算：有 pending stage → isPipelineComplete=false', () => {
 });
 
 test('isPipelineComplete=true 保留 expectedStages（避免破壞 pct/hasPipeline/isComplete）', () => {
-  // adaptV3 在 isPipelineComplete=true 時仍然回傳 expectedStages: dagKeys
+  // adaptState 在 isPipelineComplete=true 時仍然回傳 expectedStages: dagKeys
   // 此測試確認 isPipelineComplete=true 的 state 仍可正確計算 pct（不清空 expectedStages）
   const agent = makeAgent('planner', { stage: 'PLAN', group: 'pipeline' });
   const s = {

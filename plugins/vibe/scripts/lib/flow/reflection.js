@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * reflection.js — Reflexion Memory 管理（v4）
+ * reflection.js — Reflexion Memory 管理
  *
  * 記錄品質階段的回退歷史，供下一輪 agent 讀取改進。
  * 策略：Markdown append 模式，每輪 500 chars 上限，總計 3000 chars 上限。

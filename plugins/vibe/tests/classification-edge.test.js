@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * v4-classification.test.js — Pipeline v4 分類邊界測試
+ * classification-edge.test.js — Pipeline 分類邊界測試
  *
  * 場景：
  *   A07: 已取消 state 下顯式 [pipeline:xxx] 重啟
  *   A08: 已取消 state 下非顯式分類被抑制
  *
- * 執行：node plugins/vibe/tests/v4-classification.test.js
+ * 執行：node plugins/vibe/tests/classification-edge.test.js
  */
 'use strict';
 

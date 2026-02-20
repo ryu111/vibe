@@ -14,7 +14,7 @@ const os = require('os');
 const assert = require('assert');
 const { execSync } = require('child_process');
 
-const { createV4State, writeV4State, CLAUDE_DIR } = require('./test-helpers');
+const { createTestState, writeTestState, CLAUDE_DIR } = require('./test-helpers');
 
 const PLUGIN_ROOT = path.join(__dirname, '..');
 const PIPELINE_GUARD_SCRIPT = path.join(PLUGIN_ROOT, 'scripts', 'hooks', 'pipeline-guard.js');
@@ -93,7 +93,7 @@ test('Pipeline 重設：cancel 後 meta.cancelled=true', () => {
   const sessionId = 'test-cancel-pipeline-1';
   try {
     // 初始 v3 state：standard pipeline，PLAN 已完成，ARCH active
-    writeV4State(sessionId, {
+    writeTestState(sessionId, {
       stages: ['PLAN', 'ARCH', 'DEV'],
       completed: ['PLAN'],
       active: 'ARCH',
@@ -160,7 +160,7 @@ test('只重設 cancelled，不清除完成記錄', () => {
   const sessionId = 'test-cancel-preserve-1';
   try {
     // v3 state：standard pipeline，PLAN/ARCH/DEV 已完成
-    writeV4State(sessionId, {
+    writeTestState(sessionId, {
       stages: ['PLAN', 'ARCH', 'DEV', 'REVIEW'],
       completed: ['PLAN', 'ARCH', 'DEV'],
       pipelineId: 'standard',
@@ -206,7 +206,7 @@ test('放行 — 未強制（enforced=false，無 DAG）', () => {
   const sessionId = 'test-pg-2';
   try {
     // v3 state：有分類但無 DAG，不強制（none pipeline）
-    writeV4State(sessionId, {
+    writeTestState(sessionId, {
       stages: [],
       pipelineId: 'none',
       taskType: 'quickfix',
@@ -229,7 +229,7 @@ test('放行 — DELEGATING（有 active stage = sub-agent 操作）', () => {
   const sessionId = 'test-pg-3';
   try {
     // v3 state：DEV active → DELEGATING phase
-    writeV4State(sessionId, {
+    writeTestState(sessionId, {
       stages: ['PLAN', 'ARCH', 'DEV'],
       completed: ['PLAN', 'ARCH'],
       active: 'DEV',
@@ -254,7 +254,7 @@ test('阻擋 — 非程式碼檔案（.md）同樣受限', () => {
   const sessionId = 'test-pg-4';
   try {
     // v3 state：CLASSIFIED phase（有 DAG、pending stages、無 active、enforced）
-    writeV4State(sessionId, {
+    writeTestState(sessionId, {
       stages: ['PLAN', 'ARCH', 'DEV'],
       pipelineId: 'standard',
       taskType: 'feature',
@@ -276,7 +276,7 @@ test('阻擋 — 非程式碼檔案（.md）同樣受限', () => {
 test('阻擋 — 非程式碼檔案（.json）同樣受限', () => {
   const sessionId = 'test-pg-5';
   try {
-    writeV4State(sessionId, {
+    writeTestState(sessionId, {
       stages: ['PLAN', 'ARCH', 'DEV'],
       pipelineId: 'standard',
       taskType: 'feature',
@@ -299,7 +299,7 @@ test('阻擋 — pipeline 啟動 + 未委派 + 程式碼檔案', () => {
   const sessionId = 'test-pg-6';
   try {
     // v3 CLASSIFIED：enforced + 有 DAG + 全 pending + 無 active
-    writeV4State(sessionId, {
+    writeTestState(sessionId, {
       stages: ['PLAN', 'ARCH', 'DEV'],
       pipelineId: 'standard',
       taskType: 'feature',
@@ -325,7 +325,7 @@ test('放行 — cancel 後（meta.cancelled=true）', () => {
   const sessionId = 'test-pg-7';
   try {
     // v3 state with cancelled=true
-    writeV4State(sessionId, {
+    writeTestState(sessionId, {
       stages: ['PLAN', 'ARCH', 'DEV'],
       completed: ['PLAN', 'ARCH'],
       pipelineId: 'standard',
@@ -384,7 +384,7 @@ test('放行 — 無 DAG（分類前/none pipeline）', () => {
   const sessionId = 'test-pg-9';
   try {
     // v3 state 有 initialized 但沒有 dag → IDLE → 不 enforced
-    writeV4State(sessionId, {
+    writeTestState(sessionId, {
       stages: [],
       enforced: false,
     });
@@ -404,7 +404,7 @@ test('放行 — 無 DAG（分類前/none pipeline）', () => {
 test('阻擋 — Edit 工具同樣受限', () => {
   const sessionId = 'test-pg-10';
   try {
-    writeV4State(sessionId, {
+    writeTestState(sessionId, {
       stages: ['PLAN', 'ARCH', 'DEV'],
       pipelineId: 'standard',
       taskType: 'feature',
@@ -428,7 +428,7 @@ test('阻擋 — Edit 工具同樣受限', () => {
 test('阻擋 — .yml 同樣受限', () => {
   const sessionId = 'test-pg-11';
   try {
-    writeV4State(sessionId, {
+    writeTestState(sessionId, {
       stages: ['PLAN', 'ARCH', 'DEV'],
       pipelineId: 'standard',
       taskType: 'feature',
@@ -452,7 +452,7 @@ test('放行 — AskUserQuestion（S1 READ_ONLY_TOOLS 白名單，pipeline CLASS
   // 讓 Main Agent 不確定 pipeline 時可以詢問使用者
   const sessionId = 'test-pg-12';
   try {
-    writeV4State(sessionId, {
+    writeTestState(sessionId, {
       stages: ['PLAN', 'ARCH', 'DEV'],
       pipelineId: 'standard',
       taskType: 'feature',
@@ -474,7 +474,7 @@ test('放行 — AskUserQuestion（S1 READ_ONLY_TOOLS 白名單，pipeline CLASS
 test('放行 — AskUserQuestion（meta.cancelled=true）', () => {
   const sessionId = 'test-pg-13';
   try {
-    writeV4State(sessionId, {
+    writeTestState(sessionId, {
       stages: ['PLAN', 'ARCH', 'DEV'],
       pipelineId: 'standard',
       taskType: 'feature',
@@ -497,7 +497,7 @@ test('放行 — AskUserQuestion（meta.cancelled=true）', () => {
 test('阻擋 — EnterPlanMode（無條件阻擋，pipeline 啟動中）', () => {
   const sessionId = 'test-pg-14';
   try {
-    writeV4State(sessionId, {
+    writeTestState(sessionId, {
       stages: ['PLAN', 'ARCH', 'DEV'],
       pipelineId: 'standard',
       taskType: 'feature',
@@ -521,7 +521,7 @@ test('阻擋 — EnterPlanMode（無條件阻擋，即使無 pipeline）', () =>
   const sessionId = 'test-pg-15';
   try {
     // 即使沒有 enforced pipeline，EnterPlanMode 也被阻擋（無條件）
-    writeV4State(sessionId, {
+    writeTestState(sessionId, {
       stages: [],
       pipelineId: 'none',
       taskType: 'quickfix',

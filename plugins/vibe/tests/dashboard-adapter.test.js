@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 /**
- * v3-alignment.test.js — v3 State 適配層單元測試
+ * dashboard-adapter.test.js — Dashboard State 適配層單元測試
  *
  * 測試範圍：
- *   1. adaptV3()：v3 DAG state → v2 相容格式轉換（複製自 web/index.html，可獨立測試）
+ *   1. adaptState()：DAG state → Dashboard 相容格式轉換（複製自 web/index.html，可獨立測試）
  *   2. pct()：進度百分比計算（含 skippedStages 排除）
- *   3. bot.js handleStatus / handleStages v3 欄位讀取邏輯（純邏輯萃取，不依賴 Telegram）
+ *   3. bot.js handleStatus / handleStages 欄位讀取邏輯（純邏輯萃取，不依賴 Telegram）
  *   4. remote-hub.js buildProgressBar dagStages 參數（確認已無 expectedStages 殘留）
  *
  * 策略：
- *   - adaptV3 / pct 在 index.html 中無法 require，故在測試中複製核心邏輯（同 e2e-formats.test.js 的 formatter.js 做法）
+ *   - adaptState / pct 在 index.html 中無法 require，故在測試中複製核心邏輯（同 e2e-formats.test.js 的 formatter.js 做法）
  *   - bot.js / remote-hub.js 邏輯以純函式形式萃取驗證
  *
- * 執行：node plugins/vibe/tests/v3-alignment.test.js
+ * 執行：node plugins/vibe/tests/dashboard-adapter.test.js
  */
 'use strict';
 
@@ -40,16 +40,16 @@ function section(name) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 複製自 web/index.html（adaptV3 + pct）供測試使用
+// 複製自 web/index.html（adaptState + pct）供測試使用
 // 若 index.html 修改，此處需同步更新
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * 複製自 web/index.html adaptV3 函式
- * 將 v3 DAG state 轉換為 v2 相容格式
+ * 複製自 web/index.html adaptState 函式
+ * 將 DAG state 轉換為 Dashboard 相容格式
  * （含 M-4 修正：isPipelineComplete + cancelled 欄位）
  */
-function adaptV3(raw) {
+function adaptState(raw) {
   if (!raw || !raw.dag) {
     return {
       ...raw,
@@ -155,7 +155,7 @@ function makeStage(status, opts = {}) {
   };
 }
 
-function makeV3State(opts = {}) {
+function makeDashboardTestState(opts = {}) {
   const stages = opts.stages || ['PLAN', 'DEV', 'REVIEW', 'TEST'];
   const dag = {};
   for (let i = 0; i < stages.length; i++) {
@@ -185,143 +185,143 @@ function makeV3State(opts = {}) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Section 1：adaptV3 — 正常轉換
+// Section 1：adaptState — 正常轉換
 // ═══════════════════════════════════════════════════════════════
 
-section('adaptV3：v3 state 正常轉換');
+section('adaptState：state 正常轉換');
 
 test('應該產出 expectedStages 為 DAG key 陣列', () => {
-  const raw = makeV3State({ stages: ['PLAN', 'DEV', 'TEST'] });
-  const result = adaptV3(raw);
+  const raw = makeDashboardTestState({ stages: ['PLAN', 'DEV', 'TEST'] });
+  const result = adaptState(raw);
   assert.deepStrictEqual(result.expectedStages, ['PLAN', 'DEV', 'TEST']);
 });
 
 test('應該產出 stageResults 物件', () => {
-  const raw = makeV3State();
-  const result = adaptV3(raw);
+  const raw = makeDashboardTestState();
+  const result = adaptState(raw);
   assert.ok(typeof result.stageResults === 'object', 'stageResults 應為物件');
 });
 
 test('應該產出 currentStage 欄位', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       DEV: makeStage('active'),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.currentStage, 'DEV');
 });
 
 test('應該產出 delegationActive 布林值 當有 active stage 時為 true', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: { DEV: makeStage('active') },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.delegationActive, true);
 });
 
 test('應該產出 delegationActive 為 false 當無 active stage', () => {
-  const raw = makeV3State();
-  const result = adaptV3(raw);
+  const raw = makeDashboardTestState();
+  const result = adaptState(raw);
   assert.strictEqual(result.delegationActive, false);
 });
 
 // ═══════════════════════════════════════════════════════════════
-// Section 2：adaptV3 — verdict 格式展平
+// Section 2：adaptState — verdict 格式展平
 // ═══════════════════════════════════════════════════════════════
 
-section('adaptV3：verdict 格式展平');
+section('adaptState：verdict 格式展平');
 
 test('應該展平 verdict 物件格式為 stageResults 條目', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', { verdict: { verdict: 'PASS', severity: 'LOW' } }),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.ok(result.stageResults.PLAN, 'PLAN 應在 stageResults');
   assert.strictEqual(result.stageResults.PLAN.verdict, 'PASS');
   assert.strictEqual(result.stageResults.PLAN.severity, 'LOW');
 });
 
 test('應該展平 verdict 字串格式 PASS 為 stageResults 條目', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', { verdict: 'PASS' }),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.ok(result.stageResults.PLAN, 'PLAN 應在 stageResults');
   assert.strictEqual(result.stageResults.PLAN.verdict, 'PASS');
 });
 
 test('應該展平 verdict 字串格式 FAIL 為 stageResults 條目', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       REVIEW: makeStage('failed', { verdict: 'FAIL' }),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.ok(result.stageResults.REVIEW, 'REVIEW 應在 stageResults');
   assert.strictEqual(result.stageResults.REVIEW.verdict, 'FAIL');
 });
 
 test('應該不在 stageResults 產出 verdict 為 null 的 stage', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', { verdict: null }),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.stageResults.PLAN, undefined, 'verdict null 的 stage 不應出現在 stageResults');
 });
 
 test('應該不在 stageResults 產出 pending stage', () => {
-  const raw = makeV3State();
-  const result = adaptV3(raw);
+  const raw = makeDashboardTestState();
+  const result = adaptState(raw);
   assert.strictEqual(result.stageResults.DEV, undefined, 'pending stage 不應出現在 stageResults');
 });
 
 test('應該不在 stageResults 產出 active stage', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: { DEV: makeStage('active') },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.stageResults.DEV, undefined, 'active stage 不應出現在 stageResults');
 });
 
 test('應該展平 verdict 物件的 FAIL + HIGH severity', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       REVIEW: makeStage('failed', { verdict: { verdict: 'FAIL', severity: 'HIGH' } }),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.stageResults.REVIEW.verdict, 'FAIL');
   assert.strictEqual(result.stageResults.REVIEW.severity, 'HIGH');
 });
 
 test('應該展平 verdict 物件時 severity undefined 若原始無 severity', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       TEST: makeStage('completed', { verdict: { verdict: 'PASS' } }),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.stageResults.TEST.verdict, 'PASS');
   assert.strictEqual(result.stageResults.TEST.severity, undefined);
 });
 
 // ═══════════════════════════════════════════════════════════════
-// Section 3：adaptV3 — duration 計算
+// Section 3：adaptState — duration 計算
 // ═══════════════════════════════════════════════════════════════
 
-section('adaptV3：duration 計算');
+section('adaptState：duration 計算');
 
 test('應該計算 duration（秒）當 startedAt 和 completedAt 都存在', () => {
   const startedAt = '2026-02-18T10:00:00.000Z';
   const completedAt = '2026-02-18T10:01:30.000Z'; // 90 秒後
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', {
         verdict: 'PASS',
@@ -330,13 +330,13 @@ test('應該計算 duration（秒）當 startedAt 和 completedAt 都存在', ()
       }),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.stageResults.PLAN.duration, 90);
 });
 
 test('應該計算 duration 為 0 當 startedAt 等於 completedAt', () => {
   const ts = '2026-02-18T10:00:00.000Z';
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', {
         verdict: 'PASS',
@@ -345,12 +345,12 @@ test('應該計算 duration 為 0 當 startedAt 等於 completedAt', () => {
       }),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.stageResults.PLAN.duration, 0);
 });
 
 test('應該 duration 為 undefined 當 startedAt 缺失', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', {
         verdict: 'PASS',
@@ -359,12 +359,12 @@ test('應該 duration 為 undefined 當 startedAt 缺失', () => {
       }),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.stageResults.PLAN.duration, undefined);
 });
 
 test('應該 duration 為 undefined 當 completedAt 缺失', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', {
         verdict: 'PASS',
@@ -373,41 +373,41 @@ test('應該 duration 為 undefined 當 completedAt 缺失', () => {
       }),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.stageResults.PLAN.duration, undefined);
 });
 
 test('應該 duration 為 undefined 當兩者都缺失', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', { verdict: 'PASS' }),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.stageResults.PLAN.duration, undefined);
 });
 
 // ═══════════════════════════════════════════════════════════════
-// Section 4：adaptV3 — 無 DAG fallback
+// Section 4：adaptState — 無 DAG fallback
 // ═══════════════════════════════════════════════════════════════
 
-section('adaptV3：無 DAG fallback');
+section('adaptState：無 DAG fallback');
 
 test('應該產出 expectedStages: [] 當 dag 為 null', () => {
   const raw = { version: 3, dag: null, stages: {}, classification: null, meta: {} };
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.deepStrictEqual(result.expectedStages, []);
 });
 
 test('應該產出 delegationActive: false 當 dag 為 null', () => {
   const raw = { version: 3, dag: null, stages: {} };
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.delegationActive, false);
 });
 
 test('應該產出 currentStage: null 當 dag 為 null', () => {
   const raw = { version: 3, dag: null, stages: {} };
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.currentStage, null);
 });
 
@@ -418,13 +418,13 @@ test('應該提取 taskType 從 classification 即使 dag 為 null', () => {
     stages: {},
     classification: { taskType: 'feature', pipelineId: 'standard' },
   };
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.taskType, 'feature');
   assert.strictEqual(result.pipelineId, 'standard');
 });
 
 test('應該處理 null input 回傳 fallback 物件', () => {
-  const result = adaptV3(null);
+  const result = adaptState(null);
   assert.deepStrictEqual(result.expectedStages, []);
   assert.deepStrictEqual(result.stageResults, {});
   assert.strictEqual(result.currentStage, null);
@@ -432,7 +432,7 @@ test('應該處理 null input 回傳 fallback 物件', () => {
 });
 
 test('應該處理 undefined input 回傳 fallback 物件', () => {
-  const result = adaptV3(undefined);
+  const result = adaptState(undefined);
   assert.deepStrictEqual(result.expectedStages, []);
   assert.deepStrictEqual(result.stageResults, {});
   assert.strictEqual(result.currentStage, null);
@@ -446,50 +446,50 @@ test('應該保留原始欄位當 dag 為 null（展開運算子）', () => {
     stages: {},
     customField: 'keep-me',
   };
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.sessionId, 'abc');
   assert.strictEqual(result.customField, 'keep-me');
 });
 
 // ═══════════════════════════════════════════════════════════════
-// Section 5：adaptV3 — completed agent 列表推導
+// Section 5：adaptState — completed agent 列表推導
 // ═══════════════════════════════════════════════════════════════
 
-section('adaptV3：completed agent 列表推導');
+section('adaptState：completed agent 列表推導');
 
 test('應該在 completed 包含已完成 stage 的 agent 名稱', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', { agent: 'vibe:planner', verdict: 'PASS' }),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.ok(result.completed.includes('vibe:planner'), 'completed 應包含 agent');
 });
 
 test('應該在 completed 排除 agent 為 null 的已完成 stage', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', { agent: null, verdict: 'PASS' }),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.completed.length, 0, 'agent 為 null 時 completed 應為空');
 });
 
 test('應該在 completed 不包含 skipped 或 pending stage', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('skipped'),
       DEV: makeStage('pending'),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.completed.length, 0);
 });
 
 test('應該正確推導多個已完成 stage 的 agents', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', { agent: 'vibe:planner', verdict: 'PASS' }),
       DEV: makeStage('completed', { agent: 'vibe:developer', verdict: 'PASS' }),
@@ -497,36 +497,36 @@ test('應該正確推導多個已完成 stage 的 agents', () => {
       TEST: makeStage('pending'),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.completed.length, 2);
   assert.ok(result.completed.includes('vibe:planner'));
   assert.ok(result.completed.includes('vibe:developer'));
 });
 
 // ═══════════════════════════════════════════════════════════════
-// Section 6：adaptV3 — skippedStages 推導
+// Section 6：adaptState — skippedStages 推導
 // ═══════════════════════════════════════════════════════════════
 
-section('adaptV3：skippedStages 推導');
+section('adaptState：skippedStages 推導');
 
 test('應該在 skippedStages 包含 status === skipped 的 stage', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       REVIEW: makeStage('skipped'),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.ok(result.skippedStages.includes('REVIEW'), 'REVIEW 應在 skippedStages');
 });
 
 test('應該 skippedStages 為空陣列 當無 skipped stage', () => {
-  const raw = makeV3State();
-  const result = adaptV3(raw);
+  const raw = makeDashboardTestState();
+  const result = adaptState(raw);
   assert.deepStrictEqual(result.skippedStages, []);
 });
 
 test('應該正確推導多個 skipped stages', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', { agent: 'vibe:planner', verdict: 'PASS' }),
       DEV: makeStage('skipped'),
@@ -534,65 +534,65 @@ test('應該正確推導多個 skipped stages', () => {
       TEST: makeStage('pending'),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.skippedStages.length, 2);
   assert.ok(result.skippedStages.includes('DEV'));
   assert.ok(result.skippedStages.includes('REVIEW'));
 });
 
 // ═══════════════════════════════════════════════════════════════
-// Section 7：adaptV3 — classification / meta 映射
+// Section 7：adaptState — classification / meta 映射
 // ═══════════════════════════════════════════════════════════════
 
-section('adaptV3：classification / meta 映射');
+section('adaptState：classification / meta 映射');
 
 test('應該映射 classification.taskType 到頂層 taskType', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     classification: { taskType: 'feature', pipelineId: 'standard', classifiedAt: '2026-02-18T09:00:00.000Z' },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.taskType, 'feature');
 });
 
 test('應該映射 classification.pipelineId 到頂層 pipelineId', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     classification: { pipelineId: 'quick-dev', taskType: 'bugfix', classifiedAt: '2026-02-18T09:00:00.000Z' },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.pipelineId, 'quick-dev');
 });
 
 test('應該映射 meta.lastTransition 到頂層 lastTransition', () => {
   const ts = '2026-02-18T10:30:00.000Z';
-  const raw = makeV3State({ meta: { lastTransition: ts } });
-  const result = adaptV3(raw);
+  const raw = makeDashboardTestState({ meta: { lastTransition: ts } });
+  const result = adaptState(raw);
   assert.strictEqual(result.lastTransition, ts);
 });
 
 test('應該映射 classification.classifiedAt 到頂層 startedAt', () => {
   const ts = '2026-02-18T08:00:00.000Z';
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     classification: { pipelineId: 'standard', classifiedAt: ts },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.startedAt, ts);
 });
 
 test('應該 taskType 為 null 當 classification 為 null 且有 DAG', () => {
-  const raw = makeV3State({ classification: null });
-  const result = adaptV3(raw);
+  const raw = makeDashboardTestState({ classification: null });
+  const result = adaptState(raw);
   assert.strictEqual(result.taskType, null);
 });
 
 test('應該保留 retries 物件', () => {
-  const raw = makeV3State({ retries: { REVIEW: 2, TEST: 1 } });
-  const result = adaptV3(raw);
+  const raw = makeDashboardTestState({ retries: { REVIEW: 2, TEST: 1 } });
+  const result = adaptState(raw);
   assert.deepStrictEqual(result.retries, { REVIEW: 2, TEST: 1 });
 });
 
 test('應該保留 environment 物件', () => {
-  const raw = makeV3State({ environment: { language: 'typescript', framework: { name: 'next' } } });
-  const result = adaptV3(raw);
+  const raw = makeDashboardTestState({ environment: { language: 'typescript', framework: { name: 'next' } } });
+  const result = adaptState(raw);
   assert.deepStrictEqual(result.environment.language, 'typescript');
 });
 
@@ -612,7 +612,7 @@ test('應該回傳 0 當 input 為 null', () => {
 });
 
 test('應該回傳 100 當所有 non-skipped stages 都是 PASS', () => {
-  const adapted = adaptV3(makeV3State({
+  const adapted = adaptState(makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', { verdict: 'PASS' }),
       DEV: makeStage('completed', { verdict: 'PASS' }),
@@ -624,7 +624,7 @@ test('應該回傳 100 當所有 non-skipped stages 都是 PASS', () => {
 });
 
 test('應該回傳 50 當一半 stages 為 PASS', () => {
-  const adapted = adaptV3(makeV3State({
+  const adapted = adaptState(makeDashboardTestState({
     stages: ['PLAN', 'DEV'],
     stageOverrides: {
       PLAN: makeStage('completed', { verdict: 'PASS' }),
@@ -637,7 +637,7 @@ test('應該回傳 50 當一半 stages 為 PASS', () => {
 test('應該排除 skippedStages 計算分母 使含 skipped stages 的 pipeline 能達到 100%', () => {
   // full pipeline：PLAN ARCH DESIGN DEV REVIEW TEST QA E2E DOCS
   // DESIGN 被跳過，其餘全 PASS → 應得 100%
-  const adapted = adaptV3(makeV3State({
+  const adapted = adaptState(makeDashboardTestState({
     stages: ['PLAN', 'DEV', 'REVIEW', 'TEST'],
     stageOverrides: {
       PLAN: makeStage('completed', { verdict: 'PASS' }),
@@ -652,7 +652,7 @@ test('應該排除 skippedStages 計算分母 使含 skipped stages 的 pipeline
 
 test('應該排除 skippedStages 正確計算部分完成的進度', () => {
   // 4 stages，1 skipped，2 pass，1 pending → 2/3 ≈ 67%
-  const adapted = adaptV3(makeV3State({
+  const adapted = adaptState(makeDashboardTestState({
     stages: ['PLAN', 'DEV', 'REVIEW', 'TEST'],
     stageOverrides: {
       PLAN: makeStage('completed', { verdict: 'PASS' }),
@@ -665,7 +665,7 @@ test('應該排除 skippedStages 正確計算部分完成的進度', () => {
 });
 
 test('應該回傳 0 當所有 stages 都被 skipped', () => {
-  const adapted = adaptV3(makeV3State({
+  const adapted = adaptState(makeDashboardTestState({
     stages: ['DEV'],
     stageOverrides: {
       DEV: makeStage('skipped'),
@@ -676,7 +676,7 @@ test('應該回傳 0 當所有 stages 都被 skipped', () => {
 });
 
 test('應該忽略 FAIL verdict 不計入 PASS 計數', () => {
-  const adapted = adaptV3(makeV3State({
+  const adapted = adaptState(makeDashboardTestState({
     stages: ['PLAN', 'DEV'],
     stageOverrides: {
       PLAN: makeStage('completed', { verdict: 'PASS' }),
@@ -687,10 +687,10 @@ test('應該忽略 FAIL verdict 不計入 PASS 計數', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// Section 9：bot.js handleStatus v3 邏輯萃取驗證
+// Section 9：bot.js handleStatus 邏輯萃取驗證
 // ═══════════════════════════════════════════════════════════════
 
-section('bot.js handleStatus：v3 欄位讀取邏輯');
+section('bot.js handleStatus：欄位讀取邏輯');
 
 /**
  * 萃取 handleStatus 的過濾 + 進度計算邏輯（不依賴 Telegram 發送）
@@ -789,13 +789,13 @@ test('應該計算進度 100% 當所有 stages 完成', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// Section 10：bot.js handleStages v3 邏輯萃取驗證
+// Section 10：bot.js handleStages 邏輯萃取驗證
 // ═══════════════════════════════════════════════════════════════
 
-section('bot.js handleStages：v3 欄位讀取邏輯');
+section('bot.js handleStages：欄位讀取邏輯');
 
 /**
- * 萃取 handleStages 的 v3 欄位讀取邏輯（不依賴 Telegram 發送）
+ * 萃取 handleStages 的欄位讀取邏輯（不依賴 Telegram 發送）
  */
 function simulateHandleStages(target) {
   // 複製自 bot.js handleStages 的核心邏輯
@@ -1008,12 +1008,12 @@ test('應該回傳空陣列當 dagStages 為空', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// Section 13：adaptV3 邊界案例
+// Section 13：adaptState 邊界案例
 // ═══════════════════════════════════════════════════════════════
 
-section('adaptV3：邊界案例');
+section('adaptState：邊界案例');
 
-test('應該處理 stages 為空物件的 v3 state', () => {
+test('應該處理 stages 為空物件的 state', () => {
   const raw = {
     version: 3,
     dag: { PLAN: { deps: [] } },
@@ -1021,7 +1021,7 @@ test('應該處理 stages 為空物件的 v3 state', () => {
     classification: null,
     meta: {},
   };
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.deepStrictEqual(result.expectedStages, ['PLAN']);
   assert.deepStrictEqual(result.stageResults, {});
   assert.strictEqual(result.currentStage, null);
@@ -1029,27 +1029,27 @@ test('應該處理 stages 為空物件的 v3 state', () => {
 });
 
 test('應該保留原始 raw 物件的所有頂層屬性', () => {
-  const raw = makeV3State({ environment: { language: 'go' } });
+  const raw = makeDashboardTestState({ environment: { language: 'go' } });
   raw.customProp = 'preserved';
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.customProp, 'preserved');
   assert.strictEqual(result.version, 3);
 });
 
 test('應該處理 verdict 物件無 verdict 欄位（v.verdict === undefined）', () => {
   // verdictStr = undefined → falsy → 不放入 stageResults
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', { verdict: { severity: 'HIGH' } }),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.stageResults.PLAN, undefined, 'verdict 物件無 verdict 欄位 → 不出現在 stageResults');
 });
 
 test('應該處理多個 active stage 時取第一個', () => {
   // 理論上不應發生，但防禦性測試
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stages: ['PLAN', 'DEV', 'REVIEW', 'TEST'],
     stageOverrides: {
       PLAN: makeStage('active'),
@@ -1058,7 +1058,7 @@ test('應該處理多個 active stage 時取第一個', () => {
       TEST: makeStage('pending'),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   // dagKeys.find 找到第一個 active = PLAN
   assert.strictEqual(result.currentStage, 'PLAN');
   assert.strictEqual(result.delegationActive, true);
@@ -1070,7 +1070,7 @@ test('應該 retries 預設為空物件當 raw.retries 未定義', () => {
     dag: { DEV: { deps: [] } },
     stages: { DEV: { status: 'pending' } },
   };
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.deepStrictEqual(result.retries, {});
 });
 
@@ -1080,18 +1080,18 @@ test('應該 environment 預設為空物件當 raw.environment 未定義', () =>
     dag: { DEV: { deps: [] } },
     stages: { DEV: { status: 'pending' } },
   };
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.deepStrictEqual(result.environment, {});
 });
 
 // ═══════════════════════════════════════════════════════════════
-// Section 14：adaptV3 — M-4 cancelled + isPipelineComplete 偵測
+// Section 14：adaptState — M-4 cancelled + isPipelineComplete 偵測
 // ═══════════════════════════════════════════════════════════════
 
-section('adaptV3 M-4：cancelled + isPipelineComplete 偵測');
+section('adaptState M-4：cancelled + isPipelineComplete 偵測');
 
 test('應該回傳 isPipelineComplete=true 當所有 stages 完成', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', { verdict: 'PASS' }),
       DEV: makeStage('completed', { verdict: 'PASS' }),
@@ -1099,12 +1099,12 @@ test('應該回傳 isPipelineComplete=true 當所有 stages 完成', () => {
       TEST: makeStage('completed', { verdict: 'PASS' }),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.isPipelineComplete, true);
 });
 
 test('應該回傳 isPipelineComplete=false 當有 pending stage', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', { verdict: 'PASS' }),
       DEV: makeStage('pending'),
@@ -1112,12 +1112,12 @@ test('應該回傳 isPipelineComplete=false 當有 pending stage', () => {
       TEST: makeStage('pending'),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.isPipelineComplete, false);
 });
 
 test('應該回傳 isPipelineComplete=true 當有 skipped 和 failed stage', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', { verdict: 'PASS' }),
       DEV: makeStage('skipped'),
@@ -1125,7 +1125,7 @@ test('應該回傳 isPipelineComplete=true 當有 skipped 和 failed stage', () 
       TEST: makeStage('completed', { verdict: 'PASS' }),
     },
   });
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.isPipelineComplete, true);
 });
 
@@ -1137,12 +1137,12 @@ test('應該回傳 isPipelineComplete=false 當 dag 為空', () => {
     classification: { pipelineId: 'standard', taskType: 'feature' },
     meta: {},
   };
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.isPipelineComplete, false);
 });
 
 test('應該回傳 cancelled=true 當 pipelineActive=false 且有分類且未完成且無 active', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', { verdict: 'PASS' }),
       DEV: makeStage('pending'),
@@ -1152,12 +1152,12 @@ test('應該回傳 cancelled=true 當 pipelineActive=false 且有分類且未完
     classification: { pipelineId: 'standard', taskType: 'feature' },
   });
   raw.pipelineActive = false; // 已取消
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.cancelled, true, '應偵測到 cancelled 狀態');
 });
 
 test('應該回傳 cancelled=false 當 pipelineActive=true（正常執行中）', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', { verdict: 'PASS' }),
       DEV: makeStage('active'),
@@ -1167,12 +1167,12 @@ test('應該回傳 cancelled=false 當 pipelineActive=true（正常執行中）'
     classification: { pipelineId: 'standard', taskType: 'feature' },
   });
   raw.pipelineActive = true;
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.cancelled, false, '正常執行中不應是 cancelled');
 });
 
 test('應該回傳 cancelled=false 當無 classification（未分類）', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     classification: null,
     stageOverrides: {
       PLAN: makeStage('pending'),
@@ -1182,13 +1182,13 @@ test('應該回傳 cancelled=false 當無 classification（未分類）', () => 
     },
   });
   raw.pipelineActive = false;
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   // hasActiveClassification = false → cancelled = false
   assert.strictEqual(result.cancelled, false, '未分類不應是 cancelled');
 });
 
 test('應該回傳 cancelled=false 當 isPipelineComplete=true（已完成不是取消）', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', { verdict: 'PASS' }),
       DEV: makeStage('completed', { verdict: 'PASS' }),
@@ -1198,13 +1198,13 @@ test('應該回傳 cancelled=false 當 isPipelineComplete=true（已完成不是
     classification: { pipelineId: 'standard', taskType: 'feature' },
   });
   raw.pipelineActive = false; // pipeline 完成後 pipelineActive 也是 false
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.cancelled, false, '已完成的 pipeline 不是 cancelled');
   assert.strictEqual(result.isPipelineComplete, true);
 });
 
 test('應該回傳 cancelled=false 當有 active stage（仍在執行）', () => {
-  const raw = makeV3State({
+  const raw = makeDashboardTestState({
     stageOverrides: {
       PLAN: makeStage('completed', { verdict: 'PASS' }),
       DEV: makeStage('active'),
@@ -1214,11 +1214,11 @@ test('應該回傳 cancelled=false 當有 active stage（仍在執行）', () =>
     classification: { pipelineId: 'standard', taskType: 'feature' },
   });
   raw.pipelineActive = false; // 即使 pipelineActive=false，有 active stage 不是 cancelled
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.cancelled, false, '有 active stage 不是 cancelled');
 });
 
-test('adaptV3 無 DAG fallback：cancelled 應為 false', () => {
+test('adaptState 無 DAG fallback：cancelled 應為 false', () => {
   const raw = {
     version: 3,
     dag: null,
@@ -1226,7 +1226,7 @@ test('adaptV3 無 DAG fallback：cancelled 應為 false', () => {
     classification: { pipelineId: 'standard' },
     pipelineActive: false,
   };
-  const result = adaptV3(raw);
+  const result = adaptState(raw);
   assert.strictEqual(result.cancelled, false, '無 DAG fallback 的 cancelled 應為 false');
   assert.strictEqual(result.isPipelineComplete, false, '無 DAG fallback 的 isPipelineComplete 應為 false');
 });
@@ -1235,5 +1235,5 @@ test('adaptV3 無 DAG fallback：cancelled 應為 false', () => {
 // 結果輸出
 // ═══════════════════════════════════════════════════════════════
 
-console.log(`\n=== v3-alignment.test.js: ${passed} passed, ${failed} failed ===`);
+console.log(`\n=== dashboard-adapter.test.js: ${passed} passed, ${failed} failed ===`);
 if (failed > 0) process.exit(1);

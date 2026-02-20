@@ -520,7 +520,7 @@ console.log('═'.repeat(55));
 // ═══════════════════════════════════════════════
 
 // v4 state 工廠
-function makeV4State(overrides = {}) {
+function makeGuardTestState(overrides = {}) {
   return {
     version: 4,
     classification: { pipelineId: 'standard', taskType: 'feature' },
@@ -545,14 +545,14 @@ function makeV4State(overrides = {}) {
 }
 
 test('v4：pipelineActive=false → allow（核心放行）', () => {
-  const state = makeV4State({ pipelineActive: false });
+  const state = makeGuardTestState({ pipelineActive: false });
   assert.strictEqual(evaluate('Write', { file_path: 'src/app.js' }, state).decision, 'allow');
   assert.strictEqual(evaluate('Edit', { file_path: 'src/app.ts' }, state).decision, 'allow');
   assert.strictEqual(evaluate('Bash', { command: 'npm test' }, state).decision, 'allow');
 });
 
 test('v4：pipelineActive=true + activeStages=[] → block（Relay 模式）', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   const r = evaluate('Write', { file_path: 'src/app.js' }, state);
   assert.strictEqual(r.decision, 'block');
   assert.strictEqual(r.reason, 'must-delegate');
@@ -560,20 +560,20 @@ test('v4：pipelineActive=true + activeStages=[] → block（Relay 模式）', (
 });
 
 test('v4：pipelineActive=true + activeStages=[DEV] → allow（委派中）', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: ['DEV'] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: ['DEV'] });
   assert.strictEqual(evaluate('Write', { file_path: 'src/app.js' }, state).decision, 'allow');
   assert.strictEqual(evaluate('Edit', { file_path: 'src/app.ts' }, state).decision, 'allow');
   assert.strictEqual(evaluate('Bash', { command: 'npm test' }, state).decision, 'allow');
 });
 
 test('v4：pipelineActive=true + Task → allow（委派工具放行）', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   assert.strictEqual(evaluate('Task', { subagent_type: 'vibe:developer' }, state).decision, 'allow');
   assert.strictEqual(evaluate('Skill', { name: '/vibe:review' }, state).decision, 'allow');
 });
 
 test('v4：pipelineActive=true + 唯讀工具 → allow', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   assert.strictEqual(evaluate('Read', { file_path: 'src/app.js' }, state).decision, 'allow');
   assert.strictEqual(evaluate('Grep', { pattern: 'TODO' }, state).decision, 'allow');
   assert.strictEqual(evaluate('Glob', { pattern: '**/*.js' }, state).decision, 'allow');
@@ -581,26 +581,26 @@ test('v4：pipelineActive=true + 唯讀工具 → allow', () => {
 });
 
 test('v4：EnterPlanMode → block（無論 pipelineActive）', () => {
-  assert.strictEqual(evaluate('EnterPlanMode', {}, makeV4State({ pipelineActive: false })).decision, 'block');
-  assert.strictEqual(evaluate('EnterPlanMode', {}, makeV4State({ pipelineActive: true })).decision, 'block');
+  assert.strictEqual(evaluate('EnterPlanMode', {}, makeGuardTestState({ pipelineActive: false })).decision, 'block');
+  assert.strictEqual(evaluate('EnterPlanMode', {}, makeGuardTestState({ pipelineActive: true })).decision, 'block');
   assert.strictEqual(evaluate('EnterPlanMode', {}, null).decision, 'block');
 });
 
 test('v4：Bash 危險指令 → block（無論 pipelineActive）', () => {
-  const safe = makeV4State({ pipelineActive: false });
+  const safe = makeGuardTestState({ pipelineActive: false });
   assert.strictEqual(evaluate('Bash', { command: 'rm -rf / ' }, safe).decision, 'block');
   assert.strictEqual(evaluate('Bash', { command: 'DROP TABLE x' }, safe).decision, 'block');
 });
 
 test('v4：AskUserQuestion + pipelineActive=true + activeStages=[] → allow（S1 白名單）', () => {
   // S1 任務 3.1：AskUserQuestion 加入 READ_ONLY_TOOLS，pipeline relay 模式下放行
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   const r = evaluate('AskUserQuestion', {}, state);
   assert.strictEqual(r.decision, 'allow');
 });
 
 test('v4：AskUserQuestion + activeStages=[PLAN]（PLAN 委派中）→ allow', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: ['PLAN'] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: ['PLAN'] });
   assert.strictEqual(evaluate('AskUserQuestion', {}, state).decision, 'allow');
 });
 
@@ -609,10 +609,10 @@ test('v4：state=null → allow', () => {
   assert.strictEqual(evaluate('Edit', { file_path: 'src/app.ts' }, null).decision, 'allow');
 });
 
-test('v4：pipelineActive 未定義（無欄位）→ 放行（hook 層面已透過 ensureV4 遷移）', () => {
-  // v4 guard-rules 直接評估 v3 state（無 pipelineActive）→ isActive()=false → allow
-  // 注意：真實場景中 pipeline-guard hook 的 loadState() 已透過 ensureV4 遷移，
-  // 所以 evaluate() 永遠收到 v4 state，此測試只驗證 v4 API 的邊界行為。
+test('v4：pipelineActive 未定義（無欄位）→ 放行（hook 層面已透過 ensureCurrentSchema 遷移）', () => {
+  // guard-rules 直接評估舊格式 state（無 pipelineActive）→ isActive()=false → allow
+  // 注意：真實場景中 pipeline-guard hook 的 loadState() 已透過 ensureCurrentSchema 驗證，
+  // 所以 evaluate() 永遠收到當前 schema state，此測試只驗證 API 的邊界行為。
   const v3state = {
     version: 3,
     classification: { pipelineId: 'standard', taskType: 'feature' },
@@ -635,7 +635,7 @@ console.log('═'.repeat(55));
 
 // 目標 2.1：pipelineActive=true + Bash + 寫入 .js 檔 → bash-write-bypass 攔截
 test('目標 2.1：pipelineActive=true + Bash 寫入 .js → bash-write-bypass', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   const r = evaluate('Bash', { command: "echo 'const x = 1;' > src/main.js" }, state);
   assert.strictEqual(r.decision, 'block', '應被攔截');
   assert.strictEqual(r.reason, 'bash-write-bypass', '攔截原因應為 bash-write-bypass');
@@ -644,7 +644,7 @@ test('目標 2.1：pipelineActive=true + Bash 寫入 .js → bash-write-bypass',
 
 // 目標 2.2：pipelineActive=true + Bash + 寫入 .md 檔 → must-delegate（非程式碼放行步驟 2.5，但仍被 must-delegate 攔截）
 test('目標 2.2：pipelineActive=true + Bash 寫入 .md → must-delegate（非程式碼不觸發 bash-write-bypass）', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   const r = evaluate('Bash', { command: 'echo "# Doc" > docs/README.md' }, state);
   assert.strictEqual(r.decision, 'block', '應被阻擋');
   // 非程式碼 → 步驟 2.5 不觸發 → 繼續到步驟 7 must-delegate
@@ -653,14 +653,14 @@ test('目標 2.2：pipelineActive=true + Bash 寫入 .md → must-delegate（非
 
 // 目標 2.3：pipelineActive=false + Bash + 寫入 .js 檔 → 放行（步驟 3 核心放行）
 test('目標 2.3：pipelineActive=false + Bash 寫入 .js → allow（步驟 3 放行）', () => {
-  const state = makeV4State({ pipelineActive: false });
+  const state = makeGuardTestState({ pipelineActive: false });
   const r = evaluate('Bash', { command: "echo 'export default fn;' > src/fn.js" }, state);
   assert.strictEqual(r.decision, 'allow', 'pipelineActive=false 時應放行');
 });
 
 // 目標 2.4：pipelineActive=true + Bash + 一般指令 ls → must-delegate 阻擋（非寫入 → 步驟 2.5 不觸發）
 test('目標 2.4：pipelineActive=true + Bash ls → must-delegate（一般指令不觸發 bash-write-bypass）', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   const r = evaluate('Bash', { command: 'ls -la' }, state);
   assert.strictEqual(r.decision, 'block', 'ls 應被 must-delegate 阻擋');
   assert.strictEqual(r.reason, 'must-delegate', '一般指令不觸發 bash-write-bypass');
@@ -668,7 +668,7 @@ test('目標 2.4：pipelineActive=true + Bash ls → must-delegate（一般指�
 
 // 額外邊界案例：pipelineActive=true + activeStages 有值 + Bash 寫入 .ts 檔 → bash-write-bypass（步驟 2.5 優先於步驟 4）
 test('步驟 2.5 在步驟 4（activeStages 放行）之前：委派中也攔截 Bash 寫 .ts', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: ['REVIEW'] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: ['REVIEW'] });
   const r = evaluate('Bash', { command: 'cat template.ts > src/component.ts' }, state);
   assert.strictEqual(r.decision, 'block', '即使委派中，Bash 寫入 .ts 也應被攔截');
   assert.strictEqual(r.reason, 'bash-write-bypass');
@@ -676,7 +676,7 @@ test('步驟 2.5 在步驟 4（activeStages 放行）之前：委派中也攔截
 
 // 邊界：pipelineActive=true + Bash + printf >> 寫入 .py → bash-write-bypass
 test('pipelineActive=true + printf >> .py → bash-write-bypass', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   const r = evaluate('Bash', { command: 'printf "def fn():\\n    pass\\n" >> src/utils.py' }, state);
   assert.strictEqual(r.decision, 'block');
   assert.strictEqual(r.reason, 'bash-write-bypass');
@@ -684,7 +684,7 @@ test('pipelineActive=true + printf >> .py → bash-write-bypass', () => {
 
 // 邊界：pipelineActive=true + Bash + tee 寫入 .go → bash-write-bypass
 test('pipelineActive=true + tee .go → bash-write-bypass', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   const r = evaluate('Bash', { command: 'go generate | tee pkg/gen.go' }, state);
   assert.strictEqual(r.decision, 'block');
   assert.strictEqual(r.reason, 'bash-write-bypass');
@@ -699,7 +699,7 @@ const os = require('os');
 
 // 目標 3.1：pipelineActive=true + Write pipeline-state-*.json → allow
 test('目標 3.1：Write pipeline-state-*.json → allow（cancel 逃生門）', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   const stateFilePath = path.join(os.homedir(), '.claude', 'pipeline-state-test-session.json');
   const r = evaluate('Write', { file_path: stateFilePath }, state);
   assert.strictEqual(r.decision, 'allow', 'pipeline state file 寫入應被放行');
@@ -707,7 +707,7 @@ test('目標 3.1：Write pipeline-state-*.json → allow（cancel 逃生門）',
 
 // 目標 3.2：pipelineActive=true + Edit pipeline-state-*.json → allow
 test('目標 3.2：Edit pipeline-state-*.json → allow（cancel 逃生門）', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   const stateFilePath = path.join(os.homedir(), '.claude', 'pipeline-state-abc123.json');
   const r = evaluate('Edit', { file_path: stateFilePath }, state);
   assert.strictEqual(r.decision, 'allow', 'pipeline state file 編輯應被放行');
@@ -715,14 +715,14 @@ test('目標 3.2：Edit pipeline-state-*.json → allow（cancel 逃生門）', 
 
 // 目標 3.3：pipelineActive=true + Write 其他 .json → block（非 state file）
 test('目標 3.3：Write 其他 .json 檔案 → block（非 pipeline state）', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   const r = evaluate('Write', { file_path: '/some/path/config.json' }, state);
   assert.strictEqual(r.decision, 'block', '非 pipeline state 的 JSON 應被阻擋');
 });
 
 // 目標 3.4：pipelineActive=true + Write pipeline-state 但路徑不在 ~/.claude/ → block
 test('目標 3.4：Write pipeline-state-*.json 但路徑不在 ~/.claude/ → block', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   const r = evaluate('Write', { file_path: '/tmp/pipeline-state-evil.json' }, state);
   assert.strictEqual(r.decision, 'block', '非 ~/.claude/ 路徑應被阻擋');
 });
@@ -734,7 +734,7 @@ console.log('═'.repeat(55));
 
 // 目標 3.5：Write classifier-corpus.jsonl → allow
 test('目標 3.5：Write classifier-corpus.jsonl → allow', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   const corpusPath = path.join(os.homedir(), '.claude', 'classifier-corpus.jsonl');
   const r = evaluate('Write', { file_path: corpusPath }, state);
   assert.strictEqual(r.decision, 'allow', 'classifier-corpus.jsonl 寫入應被放行');
@@ -742,7 +742,7 @@ test('目標 3.5：Write classifier-corpus.jsonl → allow', () => {
 
 // 目標 3.6：Write task-guard-state-*.json → allow
 test('目標 3.6：Write task-guard-state-*.json → allow', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   const taskGuardPath = path.join(os.homedir(), '.claude', 'task-guard-state-abc123.json');
   const r = evaluate('Write', { file_path: taskGuardPath }, state);
   assert.strictEqual(r.decision, 'allow', 'task-guard-state 寫入應被放行');
@@ -750,7 +750,7 @@ test('目標 3.6：Write task-guard-state-*.json → allow', () => {
 
 // 目標 3.7：Edit task-guard-state-*.json → allow
 test('目標 3.7：Edit task-guard-state-*.json → allow', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   const taskGuardPath = path.join(os.homedir(), '.claude', 'task-guard-state-session-xyz.json');
   const r = evaluate('Edit', { file_path: taskGuardPath }, state);
   assert.strictEqual(r.decision, 'allow', 'task-guard-state 編輯應被放行');
@@ -758,21 +758,21 @@ test('目標 3.7：Edit task-guard-state-*.json → allow', () => {
 
 // 目標 3.8：Write classifier-corpus.jsonl 但路徑不在 ~/.claude/ → block
 test('目標 3.8：Write classifier-corpus.jsonl 但路徑不在 ~/.claude/ → block', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   const r = evaluate('Write', { file_path: '/tmp/classifier-corpus.jsonl' }, state);
   assert.strictEqual(r.decision, 'block', '非 ~/.claude/ 路徑的 classifier-corpus 應被阻擋');
 });
 
 // 目標 3.9：Write task-guard-state-*.json 但路徑不在 ~/.claude/ → block
 test('目標 3.9：Write task-guard-state-*.json 但路徑不在 ~/.claude/ → block', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   const r = evaluate('Write', { file_path: '/var/tmp/task-guard-state-evil.json' }, state);
   assert.strictEqual(r.decision, 'block', '非 ~/.claude/ 路徑的 task-guard-state 應被阻擋');
 });
 
 // 目標 3.10：Write 其他 .jsonl 檔案 → block（防止白名單過寬）
 test('目標 3.10：Write 其他 .jsonl 檔案 → block（防止白名單過寬）', () => {
-  const state = makeV4State({ pipelineActive: true, activeStages: [] });
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
   const otherJsonlPath = path.join(os.homedir(), '.claude', 'timeline-session.jsonl');
   const r = evaluate('Write', { file_path: otherJsonlPath }, state);
   assert.strictEqual(r.decision, 'block', '非白名單的 .jsonl 檔案應被阻擋');

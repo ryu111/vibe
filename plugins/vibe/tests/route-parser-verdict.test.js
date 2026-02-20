@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * v4-verdict.test.js — PIPELINE_ROUTE 解析/驗證/fallback/enforcePolicy
+ * route-parser-verdict.test.js — PIPELINE_ROUTE 解析/驗證/fallback/enforcePolicy
  *
  * 場景：
  *   D03: PIPELINE_VERDICT fallback（v3 格式）
@@ -8,7 +8,7 @@
  *   D05: enforcePolicy Rule 1（PASS+DEV→NEXT）
  *   D06: enforcePolicy Rule 3（無 DEV → NEXT）
  *
- * 執行：node plugins/vibe/tests/v4-verdict.test.js
+ * 執行：node plugins/vibe/tests/route-parser-verdict.test.js
  */
 'use strict';
 
@@ -42,7 +42,7 @@ function test(name, fn) {
 
 // ─── 暫存 transcript 工具 ───────────────────────────────
 
-const TMP_DIR = path.join(os.tmpdir(), `v4-verdict-${process.pid}`);
+const TMP_DIR = path.join(os.tmpdir(), `route-parser-verdict-${process.pid}`);
 fs.mkdirSync(TMP_DIR, { recursive: true });
 
 function writeTranscript(filename, lines) {

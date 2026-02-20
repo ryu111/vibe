@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * v4-edge.test.js — 邊界與錯誤處理測試（J01-J04）
+ * state-validation-edge.test.js — 邊界與錯誤處理測試（J01-J04）
  *
  * 場景：
  *   J01: state 損壞（JSON 格式錯誤）→ readState 回 null
  *   J02: transcript 不存在 → parseRoute 回 source=none
- *   J03: v2→v4 遷移鏈（ensureV4 兩步遷移）
+ *   J03: v2/v3 state → ensureCurrentSchema 回傳 null（不支援舊格式）
  *   J04: 不合法 route（ABORT）→ validateRoute 自動修正為 DEV，走回退邏輯
  *
- * 執行：node plugins/vibe/tests/v4-edge.test.js
+ * 執行：node plugins/vibe/tests/state-validation-edge.test.js
  */
 'use strict';
 
@@ -23,7 +23,7 @@ const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const { cleanTestStateFiles, cleanSessionState } = require('./test-helpers');
 const ds = require(path.join(PLUGIN_ROOT, 'scripts/lib/flow/dag-state.js'));
 const { parseRoute } = require(path.join(PLUGIN_ROOT, 'scripts/lib/flow/route-parser.js'));
-const { ensureV4, detectVersion } = require(path.join(PLUGIN_ROOT, 'scripts/lib/flow/state-migrator.js'));
+const { ensureCurrentSchema, detectVersion } = require(path.join(PLUGIN_ROOT, 'scripts/lib/flow/state-migrator.js'));
 
 let passed = 0;
 let failed = 0;
@@ -106,7 +106,7 @@ test('J02c: transcript 路徑為空字串 → parseRoute source=none', () => {
 });
 
 // J03: v2 格式已不支援（v2→v3 遷移路徑已移除）
-test('J03: v2 state → ensureV4 回傳 null（v2 不再支援）', () => {
+test('J03: v2 state → ensureCurrentSchema 回傳 null（v2 不再支援）', () => {
   // 建立 v2 格式 state（phase + context.pipelineId 特徵）
   const v2State = {
     phase: 'DELEGATING',
@@ -133,13 +133,13 @@ test('J03: v2 state → ensureV4 回傳 null（v2 不再支援）', () => {
   const version = detectVersion(v2State);
   assert.strictEqual(version, 0, `v2 state 應被偵測為版本 0（不支援），實際：${version}`);
 
-  // ensureV4 對 v2 回傳 null
-  const v4State = ensureV4(v2State);
-  assert.strictEqual(v4State, null, 'v2 state 應無法遷移，ensureV4 應回傳 null');
+  // ensureCurrentSchema 對 v2 回傳 null
+  const v4State = ensureCurrentSchema(v2State);
+  assert.strictEqual(v4State, null, 'v2 state 應無法遷移，ensureCurrentSchema 應回傳 null');
 });
 
 // J03b: v3 state 不再支援（v3→v4 遷移已移除）
-test('J03b: v3 state → ensureV4 回傳 null（v3 不再支援）', () => {
+test('J03b: v3 state → ensureCurrentSchema 回傳 null（v3 不再支援）', () => {
   const v3State = {
     version: 3,
     sessionId: 'test-j03b',
@@ -172,13 +172,13 @@ test('J03b: v3 state → ensureV4 回傳 null（v3 不再支援）', () => {
   const version = detectVersion(v3State);
   assert.strictEqual(version, 0, 'v3 state 應被偵測為版本 0（不支援），與 v2 相同');
 
-  // ensureV4 對 v3 應回傳 null（v3→v4 遷移已移除）
-  const result = ensureV4(v3State);
-  assert.strictEqual(result, null, 'v3 state 不再支援遷移，ensureV4 應回傳 null');
+  // ensureCurrentSchema 對 v3 應回傳 null（v3→v4 遷移已移除）
+  const result = ensureCurrentSchema(v3State);
+  assert.strictEqual(result, null, 'v3 state 不再支援遷移，ensureCurrentSchema 應回傳 null');
 });
 
 // J03c: v4 state 直接通過（不重複遷移）
-test('J03c: v4 state 直接通過 ensureV4（無修改）', () => {
+test('J03c: v4 state 直接通過 ensureCurrentSchema（無修改）', () => {
   const v4State = {
     version: 4,
     pipelineActive: true,
@@ -187,7 +187,7 @@ test('J03c: v4 state 直接通過 ensureV4（無修改）', () => {
     crashes: {},
     classification: { pipelineId: 'standard' },
   };
-  const result = ensureV4(v4State);
+  const result = ensureCurrentSchema(v4State);
   assert.strictEqual(result, v4State, 'v4 state 應直接返回（無副本）');
   assert.strictEqual(result.version, 4);
 });

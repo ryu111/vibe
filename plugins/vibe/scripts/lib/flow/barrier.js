@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * barrier.js — Barrier 並行同步模組（v4 Phase 4）
+ * barrier.js — Barrier 並行同步模組
  *
  * 管理並行節點的同步計數器。
  * 原則：Barrier 是計數器，不要求兩個 stage 同時完成，只要求計數滿後才繼續。

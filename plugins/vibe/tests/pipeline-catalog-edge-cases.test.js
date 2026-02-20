@@ -185,14 +185,14 @@ asyncTest('只有空白字元的 prompt → 預設 none', async () => {
   assert.strictEqual(result.pipeline, 'none');
 });
 
-asyncTest('只有 emoji 的 prompt → none（被 system-feedback heuristic 攔截）', async () => {
-  // 注意：emoji 字元類 [⛔⚠️✅🔄📋➡️📌📄] 在 JS regex 中可能誤匹配其他 emoji
-  // 此行為由 P4 防禦性 emoji pattern 造成，確認 pipeline 為 none 即可
+asyncTest('只有 emoji 的 prompt → none（被 system-feedback 偵測）', async () => {
+  // v5 S1 清理：heuristic Layer 1.5 已刪除，emoji-only prompt 被 isSystemFeedback() 偵測為 system
+  // 確認 pipeline 為 none 即可，source 為 system（system-feedback 路徑）
   const result = await classifyWithConfidence('🚀🎉✨');
   assert.strictEqual(result.pipeline, 'none');
-  // source 可能是 heuristic（emoji pattern 誤匹配）或 main-agent
-  assert.ok(['heuristic', 'main-agent'].includes(result.source),
-    `source 應為 heuristic 或 main-agent，實際：${result.source}`);
+  // v5 後：source 可能是 system（emoji 被 isSystemFeedback 攔截）或 main-agent
+  assert.ok(['system', 'main-agent'].includes(result.source),
+    `source 應為 system 或 main-agent，實際：${result.source}`);
 });
 
 test('prompt 含特殊字元不影響 [pipeline:xxx] 解析', () => {

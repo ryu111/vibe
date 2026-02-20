@@ -62,7 +62,7 @@ function cleanTestStateFiles() {
 }
 
 /**
- * 建立 v4 Pipeline state（DAG 結構）
+ * 建立測試用 Pipeline state（DAG 結構）
  *
  * @param {string} sessionId
  * @param {Object} opts
@@ -80,9 +80,9 @@ function cleanTestStateFiles() {
  * @param {boolean} opts.cancelled
  * @param {Object} opts.pendingRetry
  * @param {Object} opts.retries
- * @returns {Object} v4 state
+ * @returns {Object} pipeline state
  */
-function createV4State(sessionId, opts = {}) {
+function createTestState(sessionId, opts = {}) {
   const stages = opts.stages || [];
 
   // 建立線性 DAG
@@ -153,10 +153,10 @@ function createV4State(sessionId, opts = {}) {
 }
 
 /**
- * 寫入 v4 state 到 state file
+ * 寫入 pipeline state 到 state file
  */
-function writeV4State(sessionId, opts = {}) {
-  const state = createV4State(sessionId, opts);
+function writeTestState(sessionId, opts = {}) {
+  const state = createTestState(sessionId, opts);
   const p = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
   fs.writeFileSync(p, JSON.stringify(state, null, 2));
   return p;
@@ -189,4 +189,4 @@ function cleanSessionState(sessionId) {
   } catch (_) {}
 }
 
-module.exports = { cleanTestStateFiles, createV4State, writeV4State, cleanSessionState, CLAUDE_DIR };
+module.exports = { cleanTestStateFiles, createTestState, writeTestState, cleanSessionState, CLAUDE_DIR };

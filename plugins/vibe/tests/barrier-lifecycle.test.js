@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * v4-barrier.test.js — Barrier 並行同步生命週期測試（F01-F04, F06）
+ * barrier-lifecycle.test.js — Barrier 並行同步生命週期測試（F01-F04, F06）
  *
  * 場景：
  *   F01: REVIEW+TEST 雙 PASS → 全 PASS
@@ -9,7 +9,7 @@
  *   F04: barrier 回退後刪除計數器（deleteBarrier on FAIL）
  *   F06: severity 合併（CRITICAL+HIGH=CRITICAL）
  *
- * 執行：node plugins/vibe/tests/v4-barrier.test.js
+ * 執行：node plugins/vibe/tests/barrier-lifecycle.test.js
  */
 'use strict';
 

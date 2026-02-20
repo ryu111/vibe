@@ -35,7 +35,7 @@ const os = require('os');
 const PLUGIN_ROOT = path.join(__dirname, '..');
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
-const { cleanTestStateFiles, cleanSessionState, writeV4State } = require('./test-helpers');
+const { cleanTestStateFiles, cleanSessionState, writeTestState } = require('./test-helpers');
 
 cleanTestStateFiles();
 

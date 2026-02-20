@@ -742,11 +742,11 @@
       DOCS:   { agent: 'doc-updater',   color: '#cba6f7', emoji: '📝', label: '文件', todos: ['分析變更', '更新文件', '同步 README'], skills: ['doc-sync'] },
     };
 
-    // --- v3 State 適配層 ---
-    // 將 v3 DAG state 轉換為 v2 相容格式，所有 UI 邏輯不需修改
-    function adaptV3(raw) {
+    // --- State 適配層 ---
+    // 將 DAG state 轉換為 UI 相容格式，所有 UI 邏輯不需修改
+    function adaptState(raw) {
       if (!raw || !raw.dag) {
-        // 無 DAG（未分類或無 pipeline）→ 最小化 fallback，保留 v2 欄位原值
+        // 無 DAG（未分類或無 pipeline）→ 最小化 fallback，保留 UI 相容欄位原值
         return {
           ...raw,
           expectedStages: raw?.expectedStages || [],
@@ -1547,7 +1547,7 @@
           ws.onmessage = e => {
             if (e.data === 'pong') return;
             const m = JSON.parse(e.data);
-            if (m.sessions) setSessions(Object.fromEntries(Object.entries(m.sessions).map(([k, v]) => [k, adaptV3(v)])));
+            if (m.sessions) setSessions(Object.fromEntries(Object.entries(m.sessions).map(([k, v]) => [k, adaptState(v)])));
             if (m.alive) setAlive(prev => ({ ...prev, ...m.alive }));
             // Timeline 事件推送（增量更新）
             if (m.type === 'timeline' && m.sessionId && m.event) {

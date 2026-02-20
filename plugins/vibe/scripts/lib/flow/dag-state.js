@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * dag-state.js — Pipeline v4 宣告式狀態管理
+ * dag-state.js — Pipeline 宣告式狀態管理
  *
  * 核心概念：
  * - pipelineActive: true  → pipeline 執行中（guard 啟動）
@@ -44,7 +44,7 @@ const STAGE_STATUS = {
 // ────────────────── 初始化 ──────────────────
 
 /**
- * 建立初始 state（v4 結構）
+ * 建立初始 state
  * @param {string} sessionId
  * @param {Object} options - { environment, openspecEnabled, pipelineRules }
  * @returns {Object}
@@ -66,7 +66,7 @@ function createInitialState(sessionId, options = {}) {
     dag: null,
     blueprint: null,
 
-    // v4 核心：pipeline 執行狀態（取代複雜的 5 phase 推導）
+    // pipeline 執行狀態（pipelineActive 布林值取代複雜的 5 phase 推導）
     pipelineActive: false,
 
     // 並行追蹤：目前 active 的 stages
@@ -79,10 +79,10 @@ function createInitialState(sessionId, options = {}) {
     retries: {},
     pendingRetry: null,
 
-    // v4 重試歷史（每個 stage 的每輪重試記錄）
+    // 重試歷史（每個 stage 的每輪重試記錄）
     retryHistory: {},
 
-    // v4 crash 計數器（Phase 4 barrier 用）
+    // crash 計數器（barrier 崩潰追蹤用）
     crashes: {},
 
     // Token 效率追蹤：累積品質 stage transcript 洩漏字元數
@@ -103,7 +103,7 @@ function createInitialState(sessionId, options = {}) {
 /**
  * 從 state 推導當前 phase（純函式）
  *
- * v4：使用 pipelineActive 布林值 + activeStages 陣列判斷。
+ * 使用 pipelineActive 布林值 + activeStages 陣列判斷。
  *
  * 暫態說明（H-3）：
  * 當 pipelineActive=true 且所有 stages 均已完成（allDone=true）時，
@@ -119,7 +119,7 @@ function createInitialState(sessionId, options = {}) {
 function derivePhase(state) {
   if (!state) return PHASES.IDLE;
 
-  // v4：pipelineActive=false → IDLE（或 COMPLETE，根據是否有已完成 stages 判斷）
+  // pipelineActive=false → IDLE（或 COMPLETE，根據是否有已完成 stages 判斷）
   if (!state.pipelineActive) {
     // 若有完成的 stages → COMPLETE，否則 IDLE
     if (state.dag) {
@@ -229,12 +229,11 @@ function getSkippedStages(state) {
     .map(([id]) => id);
 }
 
-// ────────────────── v4 核心查詢 ──────────────────
+// ────────────────── 核心查詢 ──────────────────
 
 /**
- * v4 核心：pipeline 是否活躍（guard 是否應該啟動）
+ * pipeline 是否活躍（guard 是否應該啟動）
  *
- * 取代 v3 複雜的 isEnforced() + derivePhase() 組合。
  * 只需一個布林值判斷是否需要 guard。
  *
  * @param {Object|null} state
@@ -249,25 +248,8 @@ function isActive(state) {
 function getPhase(state) { return derivePhase(state); }
 function isDelegating(state) { return derivePhase(state) === PHASES.DELEGATING; }
 
-/**
- * 判斷 pipeline 是否在強制模式（供 state-migrator v3→v4 遷移使用）
- * @deprecated 使用 isActive() 取代
- */
-function isEnforced(state) {
-  if (!state) return false;
-  const phase = derivePhase(state);
-  if (![PHASES.CLASSIFIED, PHASES.DELEGATING, PHASES.RETRYING].includes(phase)) return false;
-  // 安全網：有分類的非 trivial pipeline = enforced（即使 setDag 尚未執行）
-  const pid = state?.classification?.pipelineId;
-  return !!pid && pid !== 'none';
-}
 function isComplete(state) { return derivePhase(state) === PHASES.COMPLETE; }
 function isInitialized(state) { return !!state?.meta?.initialized; }
-
-/**
- * @deprecated 使用 !isActive() 取代
- */
-function isCancelled(state) { return !state?.pipelineActive && !!state?.dag; }
 function getPipelineId(state) { return state?.classification?.pipelineId || null; }
 function getTaskType(state) { return state?.classification?.taskType || null; }
 function getEnvironment(state) { return state?.environment || {}; }
@@ -287,8 +269,8 @@ function _touch(state) {
 
 /** 設定分類結果（升級時追蹤 reclassifications）
  *
- * v4：若分類為非 trivial pipeline（非 none），立即設 pipelineActive=true，
- * 確保 guard 在 DAG 建立前即啟動（v3 safety net 等價行為）。
+ * 若分類為非 trivial pipeline（非 none），立即設 pipelineActive=true，
+ * 確保 guard 在 DAG 建立前即啟動。
  */
 function classify(state, classification) {
   const reclassifications = [...(state.meta?.reclassifications || [])];
@@ -300,7 +282,7 @@ function classify(state, classification) {
     });
   }
 
-  // v4：非 none + 非 trivial pipeline → pipelineActive=true（DAG 尚未建立時也 guard）
+  // 非 none + 非 trivial pipeline → pipelineActive=true（DAG 尚未建立時也 guard）
   const pipelineId = classification.pipelineId;
   const shouldActivate = pipelineId && pipelineId !== 'none';
 
@@ -312,10 +294,7 @@ function classify(state, classification) {
   });
 }
 
-/** 設定 DAG + 初始化 stages
- *
- * v4：同步設定 pipelineActive = true，標記 pipeline 進入執行狀態。
- */
+/** 設定 DAG + 初始化 stages（同步設定 pipelineActive=true） */
 function setDag(state, dag, blueprint, _enforced) {
   const stages = {};
   for (const stageId of Object.keys(dag)) {
@@ -330,7 +309,7 @@ function setDag(state, dag, blueprint, _enforced) {
     ...state,
     dag,
     blueprint: blueprint || null,
-    pipelineActive: true,  // v4 核心：DAG 建立即啟動
+    pipelineActive: true,  // DAG 建立即啟動 guard
     stages,
   });
 }
@@ -453,14 +432,11 @@ function resetStageToPending(state, stageId) {
   });
 }
 
-/** 取消 pipeline
- *
- * v4：設定 pipelineActive = false（guard 放行）。
- */
+/** 取消 pipeline（設定 pipelineActive=false，guard 放行） */
 function cancelPipeline(state) {
   return _touch({
     ...state,
-    pipelineActive: false,  // v4 核心：取消即停止 guard
+    pipelineActive: false,  // 取消即停止 guard
   });
 }
 
@@ -549,16 +525,14 @@ module.exports = {
   getCompletedStages,
   getSkippedStages,
 
-  // v4 核心查詢
+  // 核心查詢
   isActive,
 
   // 衍生查詢
   getPhase,
   isDelegating,
-  isEnforced,  // @deprecated 使用 isActive() 取代
   isComplete,
   isInitialized,
-  isCancelled,  // @deprecated 使用 !isActive() 取代
   getPipelineId,
   getTaskType,
   getEnvironment,

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * v4-retry.test.js — 回退機制邊界測試（E04-E07）
+ * retry-edge.test.js — 回退機制邊界測試（E04-E07）
  *
  * 場景：
  *   E04: MAX_RETRIES 達上限（enforcePolicy Rule 2）
@@ -8,7 +8,7 @@
  *   E06: pendingRetry 跨 session 保留（readState 不遺失）
  *   E07: retryHistory 追加記錄（addRetryHistory）
  *
- * 執行：node plugins/vibe/tests/v4-retry.test.js
+ * 執行：node plugins/vibe/tests/retry-edge.test.js
  */
 'use strict';
 

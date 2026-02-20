@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * node-context.js — Node Context 動態生成（v4 Phase 2）
+ * node-context.js — Node Context 動態生成
  *
  * 每個 stage 委派時生成完整的 Node Context JSON，讓 agent 知道：
  * 1. 自己在 DAG 中的位置（prev/next/onFail/barrier）

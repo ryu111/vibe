@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 /**
- * route-parser.js — PIPELINE_ROUTE 協議解析器（v4）
+ * route-parser.js — PIPELINE_ROUTE 協議解析器
  *
  * 從 Sub-agent 的 transcript JSONL 解析結構化路由指令。
- * 取代 v3 的 PIPELINE_VERDICT regex 解析。
  *
  * 流程：
  * 1. parseRoute：從 transcript 解析 PIPELINE_ROUTE JSON
  *    - 掃描最後 30 行 assistant message（JSONL 格式）
- *    - 找不到 PIPELINE_ROUTE 時 fallback 到 v3 PIPELINE_VERDICT
+ *    - 找不到 PIPELINE_ROUTE 時 fallback 到 PIPELINE_VERDICT
  * 2. validateRoute：Schema Validation（必填欄位、合法值、補完缺漏）
  * 3. enforcePolicy：Policy Enforcement（防止邏輯矛盾、無限循環）
  *
@@ -37,7 +36,7 @@ const SCAN_LAST_LINES = 30;
  * - 每行嘗試 JSON.parse，提取 assistant message 的文字內容
  * - 用 PIPELINE_ROUTE_REGEX 從文字中提取 JSON
  * - 找到後立即 return（取最後一次出現）
- * - 找不到則 fallback 到 v3 PIPELINE_VERDICT
+ * - 找不到則 fallback 到 PIPELINE_VERDICT
  *
  * @param {string} transcriptPath - JSONL transcript 路徑
  * @returns {{ parsed: Object|null, source: 'route'|'verdict-fallback'|'none' }}
@@ -89,7 +88,7 @@ function parseRoute(transcriptPath) {
       }
     }
 
-    // 搜尋 v3 PIPELINE_VERDICT（fallback 用）
+    // 搜尋 PIPELINE_VERDICT（fallback 用）
     if (lastVerdictRaw === null) {
       const verdictMatch = text.match(VERDICT_REGEX);
       if (verdictMatch) {
@@ -338,9 +337,9 @@ function extractTextFromEntry(entry) {
 }
 
 /**
- * 將 v3 PIPELINE_VERDICT 字串轉換為 v4 ROUTE 格式
+ * 將 PIPELINE_VERDICT 字串轉換為 ROUTE 格式
  *
- * 回退相容性：保留 v3 shouldRetryStage 的 severity 規則：
+ * severity 規則：
  * - PASS → route='NEXT'
  * - FAIL:CRITICAL/HIGH → route='DEV'（觸發回退）
  * - FAIL:MEDIUM/LOW → route='NEXT'（不回退，只是警告）

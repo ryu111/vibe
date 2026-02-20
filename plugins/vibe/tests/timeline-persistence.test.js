@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * v4-timeline.test.js — Timeline JSONL 持久化驗證（I04）
+ * timeline-persistence.test.js — Timeline JSONL 持久化驗證（I04）
  *
  * 場景：
  *   I04: Timeline JSONL append-only，emit 後 query 可取得
  *
- * 執行：node plugins/vibe/tests/v4-timeline.test.js
+ * 執行：node plugins/vibe/tests/timeline-persistence.test.js
  */
 'use strict';
 

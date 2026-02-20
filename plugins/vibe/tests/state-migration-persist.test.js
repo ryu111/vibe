@@ -20,7 +20,7 @@ const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
 // 引入 dag-state 進行讀寫操作
 const ds = require('../scripts/lib/flow/dag-state.js');
-const { ensureV4 } = require('../scripts/lib/flow/state-migrator.js');
+const { ensureCurrentSchema } = require('../scripts/lib/flow/state-migrator.js');
 
 // loadState 是 pipeline-controller 的內部函式，不直接 export
 // 改為直接複製其邏輯進行測試（符合「複製不可 require 的模組」慣例）
@@ -29,8 +29,8 @@ const { ensureV4 } = require('../scripts/lib/flow/state-migrator.js');
 function loadState(sessionId) {
   const raw = ds.readState(sessionId);
   if (!raw) return null;
-  const state = ensureV4(raw);
-  // 遷移後持久化：確保磁碟上的 state 是 v4 格式
+  const state = ensureCurrentSchema(raw);
+  // 遷移後持久化：確保磁碟上的 state 是當前 schema 格式
   if (state && raw.version !== 4) {
     ds.writeState(sessionId, state);
   }

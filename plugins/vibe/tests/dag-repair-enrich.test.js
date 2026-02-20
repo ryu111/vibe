@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * v4-repair-enrich.test.js — repairDag + enrichCustomDag 測試
+ * dag-repair-enrich.test.js — repairDag + enrichCustomDag 測試
  *
  * 驗證 pipeline-architect 產出的格式偏差 DAG 能被自動修復，
  * 以及修復後的 DAG 能被正確注入 v4 metadata（barrier/onFail/next）。

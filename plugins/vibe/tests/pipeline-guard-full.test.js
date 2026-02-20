@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * v4-guard.test.js — Guard 防護完整測試（C01-C07）
+ * pipeline-guard-full.test.js — Guard 防護完整測試（C01-C07）
  *
  * 場景：
  *   C01: pipelineActive=false → allow
@@ -11,7 +11,7 @@
  *   C06: Bash rm -rf / → block（DANGER_PATTERNS）
  *   C07: Bash echo > src/foo.js → block（pipelineActive 寫檔偵測）
  *
- * 執行：node plugins/vibe/tests/v4-guard.test.js
+ * 執行：node plugins/vibe/tests/pipeline-guard-full.test.js
  */
 'use strict';
 

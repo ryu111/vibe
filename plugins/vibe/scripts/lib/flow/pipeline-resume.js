@@ -14,7 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { derivePhase, PHASES } = require('./dag-state.js');
-const { ensureV4 } = require('./state-migrator.js');
+const { ensureCurrentSchema } = require('./state-migrator.js');
 const { atomicWrite } = require('./atomic-write.js');
 
 const DEFAULT_CLAUDE_DIR = path.join(os.homedir(), '.claude');
@@ -108,8 +108,8 @@ function findIncompletePipelines(currentSessionId, options = {}) {
       continue;
     }
 
-    // 支援 v3/v4 state（自動遷移到 v4）
-    const migratedState = ensureV4(state);
+    // 驗證 schema（舊格式自動排除）
+    const migratedState = ensureCurrentSchema(state);
     if (!migratedState) continue;
     state = migratedState;
 
@@ -200,7 +200,7 @@ function resumePipeline(oldSessionId, newSessionId, options = {}) {
     // timeline 複製失敗不影響主要功能，忽略
   }
 
-  // 3. 複製 barrier-state（v4 Phase 4：並行同步狀態）
+  // 3. 複製 barrier-state（並行同步狀態）
   const oldBarrierPath = path.join(claudeDir, `barrier-state-${oldSessionId}.json`);
   const newBarrierPath = path.join(claudeDir, `barrier-state-${newSessionId}.json`);
   try {

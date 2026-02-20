@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * v4-context.test.js — Node Context 注入與 Reflexion Memory 測試（H01-H05）
+ * node-context-injection.test.js — Node Context 注入與 Reflexion Memory 測試（H01-H05）
  *
  * 場景：
  *   H01: buildNodeContext 基本注入（prev/next/onFail）
@@ -9,7 +9,7 @@
  *   H04: retryContext 有回退記錄（readReflection 非空）
  *   H05: Reflexion Memory PASS 後清除（cleanReflectionForStage）
  *
- * 執行：node plugins/vibe/tests/v4-context.test.js
+ * 執行：node plugins/vibe/tests/node-context-injection.test.js
  */
 'use strict';
 
