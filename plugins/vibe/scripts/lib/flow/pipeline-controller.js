@@ -42,8 +42,8 @@ const {
   KNOWLEDGE_SKILLS,
 } = require('../registry.js');
 
-// Classifier（Layer 1 explicit + Layer 2 Main Agent 自主判斷）
-const { classifyWithConfidence, buildPipelineCatalogHint } = require('./classifier.js');
+// Classifier（Layer 1 explicit + system-feedback + Layer 2 Main Agent 主動選擇）
+const { classifyWithConfidence } = require('./classifier.js');
 
 // v4 Phase 4：Barrier 並行同步
 const { createBarrierGroup, updateBarrier, mergeBarrierResults, mergeContextFiles, readBarrier, checkTimeout, deleteBarrier, sweepTimedOutGroups } = require('./barrier.js');
@@ -506,43 +506,29 @@ async function classify(sessionId, prompt, options = {}) {
     }
   }
 
-  // ACTIVE → 忽略非顯式分類（防止 stop hook feedback 覆寫進行中的 pipeline）
-  // stop hook decision:"block" 的 reason 成為新 prompt → classifier 重分類 → 幽靈 pipeline
-  // 例外：過時 pipeline（>10 分鐘無操作）允許重分類（使用者可能在開始新任務）
-  if (ds.isActive(state) && result.source !== 'explicit') {
-    const lastTransition = state.meta?.lastTransition;
-    const elapsedMs = lastTransition ? Date.now() - new Date(lastTransition).getTime() : Infinity;
-    if (elapsedMs < 10 * 60 * 1000) {
-      return { output: null };
-    }
-    // 過時 → 落入後續升降級邏輯處理
+  // system-feedback → 靜默忽略（hook 輸出 / 系統通知不觸發 pipeline）
+  if (result.source === 'system') {
+    return { output: null };
   }
 
-  // CANCELLED → 忽略所有非顯式分類（防止 stop hook feedback 循環）
-  // cancel 設 pipelineActive=false + meta.cancelled=true，但 stop hook 的
-  // block reason 成為新 prompt → classifier 重新分類 → pipelineActive=true → 循環
+  // ACTIVE → 忽略非顯式分類（防止 stop hook feedback 覆寫進行中的 pipeline）
+  if (ds.isActive(state) && result.source !== 'explicit') {
+    return { output: null };
+  }
+
+  // CANCELLED → 忽略非顯式分類（防止 cancel 後的 stop hook feedback 循環）
   if (state?.meta?.cancelled && result.source !== 'explicit') {
     return { output: null };
   }
 
   // COMPLETE → 允許新 pipeline
   if (state && ds.isComplete(state)) {
-    // 非顯式分類 + 30 秒冷卻期：忽略 stop hook feedback
-    // stop hook 的 decision:"block" 回饋會成為新 prompt，此時 pipeline 可能剛完成
-    // （crash recovery / barrier 合併等延遲完成）。若立即 reset，
-    // stop hook 的 reason 文字會被 classifier 當作新任務分類成 none，覆寫真正的 state。
-    if (result.source !== 'explicit') {
-      const lastTransition = state.meta?.lastTransition;
-      const elapsedMs = lastTransition ? Date.now() - new Date(lastTransition).getTime() : Infinity;
-      if (elapsedMs < 30000) {
-        return { output: null };
-      }
-      // 非顯式新任務：完全重設（不保留舊分類，避免降級檢查誤擋）
-      state = ds.reset(state);
-    } else {
+    if (result.source === 'explicit') {
       // 顯式 [pipeline:xxx]：保留前一個 classification 供 reclassification 追蹤
-      // （如 fix→quick-dev 升級，需要記錄 from→to）
       state = ds.resetKeepingClassification(state);
+    } else {
+      // 非顯式新任務：完全重設
+      state = ds.reset(state);
     }
     ds.writeState(sessionId, state);
   }
@@ -553,39 +539,16 @@ async function classify(sessionId, prompt, options = {}) {
     ds.writeState(sessionId, state);
   }
 
-  // 已取消（v4: pipelineActive=false + 有舊的非 trivial 分類 + DAG 殘留）→
-  // 只有顯式 [pipeline:xxx] 才能重新啟動
-  // 注意：none pipeline 的 pipelineActive=false 是正常狀態（非取消），不應抑制
-  const existingPid = state?.classification?.pipelineId;
-  const isCancelledState = !ds.isActive(state) &&
-    !!existingPid && existingPid !== 'none' &&
-    !!(state?.dag);  // v4：有 DAG 殘留 = 已取消
-  if (state && isCancelledState) {
-    if (result.source !== 'explicit') {
-      return { output: null }; // 非顯式分類被抑制
-    }
-    // 顯式指定 → 重設取消狀態，允許重新分類
-    state = ds.reset(state);
-    ds.writeState(sessionId, state);
-  }
-
   // 已分類 + 同一 pipeline → 不重複（none 除外：每次都需注入 systemMessage）
   const existingPipelineId = ds.getPipelineId(state);
   if (existingPipelineId === pipelineId && existingPipelineId && pipelineId !== 'none') {
-    return { output: null }; // 不輸出
+    return { output: null };
   }
 
-  // 升級判斷
-  if (existingPipelineId && existingPipelineId !== pipelineId) {
+  // 升級判斷：只允許升級，降級被忽略（使用者可用 [pipeline:xxx] 覆寫）
+  if (existingPipelineId && existingPipelineId !== pipelineId && result.source !== 'explicit') {
     const isUpgrade = (PIPELINE_PRIORITY[pipelineId] || 0) > (PIPELINE_PRIORITY[existingPipelineId] || 0);
-    if (!isUpgrade) {
-      // 降級：檢查 stale
-      const last = state.meta?.lastTransition ? new Date(state.meta.lastTransition).getTime() : 0;
-      const isStale = (Date.now() - last) > 10 * 60 * 1000;
-      if (!isStale) return { output: null };
-      // stale → reset + 重分類
-      state = ds.reset(state);
-    }
+    if (!isUpgrade) return { output: null };
   }
 
   // 設定分類
@@ -598,28 +561,33 @@ async function classify(sessionId, prompt, options = {}) {
   });
   ds.writeState(sessionId, state);
 
-  // 非顯式 → 注入分類指令（systemMessage 強制）+ pipeline 目錄（additionalContext 參考）
+  // Main Agent 主動選擇：注入 pipeline 選擇表（systemMessage 強制）
   if (stages.length === 0 || pipelineId === 'none') {
     const kh = buildKnowledgeHints(state);
-    const catalogHint = buildPipelineCatalogHint();
-    const refParts = [catalogHint];
-    if (kh) refParts.push(kh);
-    if (barrierWarnings.length > 0) refParts.push(barrierWarnings.join('\n'));
+    const contextParts = [];
+    if (kh) contextParts.push(kh);
+    if (barrierWarnings.length > 0) contextParts.push(barrierWarnings.join('\n'));
     return {
       output: {
         systemMessage:
-          'Pipeline 自主分類：根據任務性質選擇 pipeline 並呼叫 /vibe:pipeline。\n' +
-          '判斷規則（按順序檢查）：\n' +
-          '1. 純問答/研究/解釋/查詢 → 直接回答（不呼叫 pipeline）\n' +
-          '2. 一行修改/改常量/改設定/hotfix → [pipeline:fix]\n' +
-          '3. bugfix + 需要測試 → [pipeline:quick-dev]\n' +
-          '4. 純 UI/樣式調整 → [pipeline:ui-only]\n' +
-          '5. 安全修復/漏洞修補 → [pipeline:security]\n' +
-          '6. TDD/先寫測試 → [pipeline:test-first]\n' +
-          '7. 新功能（有 UI）→ [pipeline:full]\n' +
-          '8. 新功能（無 UI）/大型重構 → [pipeline:standard]\n' +
-          '不確定時偏向使用 pipeline。呼叫 /vibe:pipeline 並在 prompt 中加入 [pipeline:xxx] 語法。',
-        additionalContext: refParts.join('\n'),
+          '你是 Pipeline 路由器。分析使用者需求，選擇最合適的工作流。\n\n' +
+          '| Pipeline | 適用場景 | 使用方式 |\n' +
+          '|----------|---------|--------|\n' +
+          '| chat | 問答、研究、解釋、查詢、trivial | 直接回答，不呼叫 pipeline |\n' +
+          '| fix | hotfix、一行修改、改設定/常量 | /vibe:pipeline [pipeline:fix] |\n' +
+          '| quick-dev | bugfix + 補測試、小改動（2-5 檔案） | /vibe:pipeline [pipeline:quick-dev] |\n' +
+          '| standard | 新功能（無 UI）、大重構 | /vibe:pipeline [pipeline:standard] |\n' +
+          '| full | 新功能（含 UI） | /vibe:pipeline [pipeline:full] |\n' +
+          '| test-first | TDD 工作流 | /vibe:pipeline [pipeline:test-first] |\n' +
+          '| ui-only | 純 UI/樣式調整 | /vibe:pipeline [pipeline:ui-only] |\n' +
+          '| review-only | 程式碼審查 | /vibe:pipeline [pipeline:review-only] |\n' +
+          '| docs-only | 純文件更新 | /vibe:pipeline [pipeline:docs-only] |\n' +
+          '| security | 安全修復 | /vibe:pipeline [pipeline:security] |\n\n' +
+          '判斷原則：\n' +
+          '- 偏向使用 pipeline（寧可多走品質流程也不要漏）\n' +
+          '- 不確定時用 AskUserQuestion 問使用者選擇 pipeline\n' +
+          '- 複合任務：分解後依序執行（第一個完成 → 開始第二個）',
+        ...(contextParts.length > 0 ? { additionalContext: contextParts.join('\n') } : {}),
       },
     };
   }

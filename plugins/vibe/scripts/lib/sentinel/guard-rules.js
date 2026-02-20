@@ -25,10 +25,11 @@ const {
 } = require(path.join(__dirname, '..', 'flow', 'dag-state.js'));
 const { STAGES } = require(path.join(__dirname, '..', 'registry.js'));
 
-// 唯讀工具白名單（pipelineActive 但尚未委派時允許，不阻擋讀取）
+// 唯讀工具 + 互動查詢白名單（pipelineActive 但尚未委派時允許）
 const READ_ONLY_TOOLS = new Set([
   'Read', 'Grep', 'Glob', 'WebSearch', 'WebFetch',
   'TaskList', 'TaskGet',
+  'AskUserQuestion',  // S1: Main Agent 不確定 pipeline 時可詢問使用者
 ]);
 
 // 非程式碼檔案副檔名（允許直接編輯）

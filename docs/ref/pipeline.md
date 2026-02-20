@@ -1698,7 +1698,7 @@ UX 設計：
 | State 寫入損毀 | 低 | Atomic Write（`pid.timestamp.counter` 三因子唯一性 + renameSync） | ✅ 穩定 |
 | Self-Refine 降級不當 | 中 | CRITICAL 永不降級 + 降級建議寫入 context_file 供後續 stage 二次檢查 | ✅ 穩定 |
 | Reflexion Memory 累積過大 | 低 | 每輪 ≤ 500 chars，總計 ≤ 3000 chars + PASS 後自動清理 | ✅ 穩定 |
-| **系統通知誤分類** | 中 | background task 完成通知被 classifier heuristic 誤判為 bugfix；v2.0.13 擴充 system-feedback heuristic | ⚠️ 有殘留風險，見 pipeline-issues.md P4 |
+| **系統通知誤分類** | 中 | background task 完成通知由 classifier 的 `isSystemFeedback()` 函式偵測（SYSTEM_MARKER + emoji 前綴），確保不觸發意外 pipeline；v2.2.0 整合為核心 Layer 1 | ✅ 已解決 |
 | **Cancel skill 死鎖** | 中 | pipeline-guard 阻擋 cancel 寫入 state file，需透過委派 developer 繞過 | ⚠️ workaround 可運作，見 pipeline-issues.md P1 |
 | Context Window 壓縮 | 高 | Node Context 三層截斷策略（reflectionContent → 清空 → 只保留 hint） | ⚠️ 根因為 MCP 工具定義佔用，見 pipeline-issues.md P6 |
 
