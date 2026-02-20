@@ -169,6 +169,19 @@ Migration: {遷移指引}
 <!-- PIPELINE_ROUTE: { "verdict": "PASS", "route": "NEXT" } -->
 ```
 
+## 灰色地帶確認清單
+
+⛔ **在設計完成前，你必須在 design.md 中明確回答以下灰色地帶決策**：
+
+1. **API response 格式？**（JSON 結構、錯誤碼慣例、分頁格式）
+2. **錯誤處理策略？**（throw vs return error vs Result type）
+3. **日誌級別？**（debug/info/warn/error 的使用場景）
+4. **測試策略？**（unit only / + integration / + e2e）
+5. **狀態管理？**（local state / global store / server state）
+
+每個決策必須在 design.md 的「## 決策」section 中明確記錄，不可留待實作時臨場決定。
+未回答的灰色地帶會導致 DEV 階段的實作不一致。
+
 ## 規則
 
 1. **不寫程式碼**：只定義介面和結構，不實作
@@ -178,3 +191,4 @@ Migration: {遷移指引}
 5. **介面先行**：先定義模組間的介面，再處理內部結構
 6. **使用繁體中文**：所有產出使用繁體中文
 7. **寫入檔案**：design.md、specs/、tasks.md 必須寫入 change 目錄
+8. **灰色地帶必記錄**：design.md 的「決策」section 必須涵蓋灰色地帶確認清單中的所有 5 項決策

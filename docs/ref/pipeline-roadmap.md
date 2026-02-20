@@ -236,14 +236,14 @@ REVIEW agent 有時自己修改程式碼而不返回 DEV，根因：
 
 **Checklist**：
 
-- [ ] S2.1 — agents/pipeline-architect.md：新增結構化三問決策模板
-- [ ] S2.2 — agents/pipeline-architect.md：明確「優先使用 Catalog 模板」指令
-- [ ] S2.3 — agents/pipeline-architect.md：新增「最低品質保證」規則（有 DEV 必有 REVIEW+TEST）
-- [ ] S2.4 — agents/architect.md：新增灰色地帶確認清單（5 項 ⛔ 強制）
-- [ ] S2.5 — agents/architect.md：要求在 design.md 記錄決策
-- [ ] S2.6 — agents/code-reviewer.md：⛔ 禁止 Write/Edit 修改程式碼（只能寫 context_file 報告）
-- [ ] S2.7 — agents/security-reviewer.md：同 S2.6 約束
-- [ ] S2.8 — guard-rules.js：REVIEW/TEST stage 時阻擋對 src/ 的 Write/Edit（可選強化層）
+- [x] S2.1 — agents/pipeline-architect.md：新增結構化三問決策模板
+- [x] S2.2 — agents/pipeline-architect.md：明確「優先使用 Catalog 模板」指令
+- [x] S2.3 — agents/pipeline-architect.md：新增「最低品質保證」規則（有 DEV 必有 REVIEW+TEST）
+- [x] S2.4 — agents/architect.md：新增灰色地帶確認清單（5 項 ⛔ 強制）
+- [x] S2.5 — agents/architect.md：要求在 design.md 記錄決策
+- [x] S2.6 — agents/code-reviewer.md：⛔ 禁止 Write/Edit 修改程式碼（只能寫 context_file 報告）
+- [x] S2.7 — agents/security-reviewer.md：同 S2.6 約束
+- [x] S2.8 — guard-rules.js：REVIEW/TEST stage 時阻擋對 src/ 的 Write/Edit（含 TEST 測試檔案例外）
 - [ ] S2.9 — 驗證：用 3 個模糊 prompt 測試 pipeline-architect 產出品質
 - [ ] S2.10 — 驗證：測試 REVIEW agent 發現問題時確實返回 FAIL 而非自行修改
 
@@ -659,15 +659,15 @@ S1 ──→ S2 ──→ S3 ──→ S4 ──→ S5 ──→ S6 ──→ S7
 - [x] S1.14 — 文檔：CLAUDE.md 更新
 - [x] S1.15 — 文檔：MEMORY.md 更新
 
-### S2：Architect + REVIEW 防護 — 0/10
-- [ ] S2.1 — pipeline-architect.md 三問模板
-- [ ] S2.2 — pipeline-architect.md 優先 Catalog
-- [ ] S2.3 — pipeline-architect.md 品質保證規則
-- [ ] S2.4 — architect.md 灰色地帶清單
-- [ ] S2.5 — architect.md 決策記錄指令
-- [ ] S2.6 — code-reviewer.md ⛔ 禁止 Write/Edit
-- [ ] S2.7 — security-reviewer.md ⛔ 禁止 Write/Edit
-- [ ] S2.8 — guard-rules.js REVIEW/TEST 寫入阻擋（可選）
+### S2：Architect + REVIEW 防護 — 8/10 ✅
+- [x] S2.1 — pipeline-architect.md 三問模板
+- [x] S2.2 — pipeline-architect.md 優先 Catalog
+- [x] S2.3 — pipeline-architect.md 品質保證規則
+- [x] S2.4 — architect.md 灰色地帶清單
+- [x] S2.5 — architect.md 決策記錄指令
+- [x] S2.6 — code-reviewer.md ⛔ 禁止 Write/Edit
+- [x] S2.7 — security-reviewer.md ⛔ 禁止 Write/Edit
+- [x] S2.8 — guard-rules.js REVIEW/TEST 寫入阻擋（含 TEST 測試檔案例外）
 - [ ] S2.9 — pipeline-architect 驗證測試
 - [ ] S2.10 — REVIEW 越權修改驗證測試
 

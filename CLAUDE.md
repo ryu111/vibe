@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 2.2.0 | 全方位開發工作流 | 37 | 12 | 19 | 50 |
+| **vibe** | 2.2.1 | 全方位開發工作流 | 37 | 12 | 19 | 50 |
 
 ### vibe plugin 功能模組
 
@@ -117,7 +117,7 @@ v4 核心改變：集中式 DAG 控制 → 分散式節點自治。Main Agent �
 
 **v4 State Schema**：`dag`（含 barrier/onFail/next）+ `stages`（含 contextFile）+ `classification` + `pipelineActive`（布林值守衛）+ `activeStages`（並行追蹤）+ `retryHistory`（收斂分析）+ `retries` + `crashes`。Phase 由 `derivePhase(state)` 即時推導。
 
-**v4 Guard 簡化**：從 v3 的 5 phase 判斷簡化為 `pipelineActive` 布林值 — `true` = 阻擋 Main Agent 寫入，`false` = 放行。`activeStages.length > 0` 判斷子 agent 放行。
+**v4 Guard 簡化**：從 v3 的 5 phase 判斷簡化為 `pipelineActive` 布林值 — `true` = 阻擋 Main Agent 寫入，`false` = 放行。`activeStages.length > 0` 判斷子 agent 放行。**Rule 4.5 品質門防護**（S2）：REVIEW/TEST stage active 時阻擋程式碼檔案 Write/Edit（TEST 允許寫測試檔案，REVIEW 完全唯讀）。
 
 ### Pipeline Catalog（10 種參考模板）
 

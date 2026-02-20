@@ -9,7 +9,9 @@
  * 2. Bash DANGER_PATTERNS → 無條件 block
  * 2.5. Bash 寫檔偵測 → pipelineActive 時攔截寫入程式碼檔案
  * 3. !state?.pipelineActive → allow（v4 核心：不活躍即放行）
- * 4. activeStages.length > 0 → allow（sub-agent 委派中，放行）
+ * 4. activeStages.length > 0 → 基本放行（子 agent 委派中）
+ * 4.5. REVIEW active 且 Write/Edit 程式碼檔案 → block（品質門防護）
+ *      TEST active 且 Write/Edit 非測試程式碼檔案 → block（允許寫測試檔案）
  * 5. Task / Skill → allow（委派工具始終放行）
  * 6. READ_ONLY_TOOLS → allow（唯讀白名單）
  * 6.5. 特定 state file 寫入 → allow（cancel skill 逃生門：pipeline-state/task-guard-state/classifier-corpus）
@@ -31,6 +33,9 @@ const READ_ONLY_TOOLS = new Set([
   'TaskList', 'TaskGet',
   'AskUserQuestion',  // S1: Main Agent 不確定 pipeline 時可詢問使用者
 ]);
+
+// 品質門 stage — 這些 stage 執行中禁止寫入程式碼檔案（S2 越權防護）
+const QUALITY_GATE_STAGES = new Set(['REVIEW', 'TEST']);
 
 // 非程式碼檔案副檔名（允許直接編輯）
 const NON_CODE_EXTS = new Set([
@@ -88,6 +93,19 @@ function isNonCodeFile(filePath) {
   if (NON_CODE_DOTFILES.has(baseName)) return true;
   const ext = path.extname(filePath).toLowerCase();
   return NON_CODE_EXTS.has(ext);
+}
+
+// 測試檔案模式（TEST stage 允許寫入）
+const TEST_FILE_PATTERNS = ['.test.', '_test_', '.spec.', '_spec_'];
+
+/**
+ * 判斷檔案是否為測試檔案
+ * 規則與 Bun test runner 偵測邏輯一致（基於 basename 包含特定模式）
+ */
+function isTestFile(filePath) {
+  if (!filePath || typeof filePath !== 'string') return false;
+  const baseName = path.basename(filePath).toLowerCase();
+  return TEST_FILE_PATTERNS.some(p => baseName.includes(p));
 }
 
 // ────────────────── 毀滅性指令防護 ──────────────────
@@ -165,7 +183,9 @@ function detectBashWriteTarget(command) {
  * 2. Bash DANGER_PATTERNS → block（無條件）
  * 2.5. Bash 寫檔偵測 → pipelineActive 時攔截寫入程式碼檔案
  * 3. !pipelineActive → allow（v4 核心）
- * 4. activeStages.length > 0 → allow（子 agent 委派中）
+ * 4. activeStages.length > 0 → 基本放行（子 agent 委派中）
+ * 4.5. REVIEW active + Write/Edit 程式碼 → block（品質門防護）
+ *      TEST active + Write/Edit 非測試程式碼 → block（允許寫測試檔案）
  * 5. Task / Skill → allow（委派工具始終放行）
  * 6. READ_ONLY_TOOLS → allow（唯讀白名單）
  * 6.5. 特定 state file 寫入 → allow（cancel skill 逃生門：pipeline-state/task-guard-state/classifier-corpus）
@@ -206,10 +226,35 @@ function evaluate(toolName, toolInput, state) {
   // 涵蓋：未初始化、IDLE、COMPLETE、已取消、none pipeline 等所有非活躍狀態
   if (!pipelineActive) return { decision: 'allow' };
 
-  // ── 4. activeStages.length > 0 → allow（子 agent 委派中） ──
-  // Sub-agent 在 DELEGATING 狀態下需要自由使用工具
+  // ── 4. activeStages.length > 0 → 放行（子 agent 委派中） ──
+  // 但 REVIEW/TEST 品質門有寫入限制（Rule 4.5）
   const activeStagesArr = (state?.activeStages || []);
-  if (activeStagesArr.length > 0) return { decision: 'allow' };
+  if (activeStagesArr.length > 0) {
+    // ── 4.5. 品質門寫入阻擋（S2 越權防護） ──
+    // REVIEW：完全唯讀，連測試檔案也不能寫
+    // TEST：允許寫測試檔案（tester agent 需要建立/修改 *.test.js），阻擋生產程式碼
+    const hasQualityGateActive = activeStagesArr.some(s => QUALITY_GATE_STAGES.has(s.replace(/:.*$/, '')));
+    if (hasQualityGateActive && (toolName === 'Write' || toolName === 'Edit')) {
+      const filePath = typeof toolInput?.file_path === 'string' ? toolInput.file_path : '';
+      const homeDir = require('os').homedir();
+      const isContextFile = filePath.startsWith(path.join(homeDir, '.claude', 'pipeline-context-'));
+      // TEST stage 允許寫入測試檔案（tester agent 需要建立/修改 *.test.js）
+      const hasTestStageActive = activeStagesArr.some(s => s.replace(/:.*$/, '') === 'TEST');
+      const testFileAllowed = hasTestStageActive && isTestFile(filePath);
+      if (!isContextFile && !isNonCodeFile(filePath) && !testFileAllowed) {
+        return {
+          decision: 'block',
+          reason: 'quality-gate-no-write',
+          message:
+            `⛔ REVIEW/TEST 階段禁止修改程式碼檔案。\n` +
+            `偵測到寫入目標：${path.basename(filePath)}\n` +
+            `品質門（Quality Gate）只能寫入 context_file 報告，不能修改程式碼。\n` +
+            `如需修復問題，請使用 verdict: "FAIL", route: "DEV" 返回 DEV 階段。\n`,
+        };
+      }
+    }
+    return { decision: 'allow' };
+  }
 
   // ── 以下：pipelineActive=true 且無 activeStages（Relay 模式） ──
 
@@ -261,6 +306,7 @@ function evaluate(toolName, toolInput, state) {
 module.exports = {
   evaluate,
   isNonCodeFile,
+  isTestFile,
   evaluateBashDanger,
   detectBashWriteTarget,
   buildDelegateHint,
@@ -269,4 +315,6 @@ module.exports = {
   DANGER_PATTERNS,
   WRITE_PATTERNS,
   STAGE_SKILL_MAP,
+  QUALITY_GATE_STAGES,
+  TEST_FILE_PATTERNS,
 };
