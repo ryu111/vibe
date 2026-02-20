@@ -8,7 +8,9 @@
  *    - trigger=manual：使用者已提供 hint，只補充 pipeline 狀態
  */
 'use strict';
+const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { execSync } = require('child_process');
 const { reset } = require(path.join(__dirname, '..', 'lib', 'flow', 'counter.js'));
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
@@ -114,12 +116,13 @@ process.stdin.on('end', () => {
     const trigger = data.trigger || 'auto';
     const cwd = data.cwd || process.cwd();
 
-    // 1. Timeline 事件 + 計數器重設
+    // 1. Timeline 事件 + 計數器重設 + heartbeat（觸發 dashboard 刷新）
     emit(EVENT_TYPES.COMPACT_EXECUTED, sessionId, {
       sessionId,
       trigger,
     });
     reset(sessionId);
+    try { fs.writeFileSync(path.join(os.homedir(), '.claude', `heartbeat-${sessionId}`), ''); } catch (_) {}
 
     // 2. 智慧摘要注入
     const sections = [];

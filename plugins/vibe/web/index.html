@@ -713,7 +713,7 @@
           const activeCount = getActiveStages(state).length;
           if (activeCount > 0) return { status: 'delegating', label: '委派中', dur: null };
           if (state?.pipelineActive) return { status: 'running', label: '運行中', dur: null };
-          return { status: 'running', label: '運行中', dur: null };
+          return { status: 'idle', label: '—', dur: null };
         }
         // Pipeline stage agents — 同時檢查 DAG stages 和 activeStages
         if (agent.stage) {
@@ -844,7 +844,7 @@
       const transcriptSize = mt.transcriptSize || 0;
       const toolCallCount = mt.toolCallCount || 0;
       const compactCount = useMemo(() =>
-        events.filter(e => e.eventType === 'session.compact' || e.text?.includes('compact')).length,
+        events.filter(e => e.eventType === 'compact.executed').length,
         [events]
       );
       const guardCount = useMemo(() =>
@@ -859,11 +859,15 @@
         Object.values(state?.retries || {}).reduce((a, b) => a + (b || 0), 0),
         [state]
       );
-      const startedAt = state?.classification?.classifiedAt || state?.meta?.lastTransition;
+      const delegateCount = useMemo(() =>
+        events.filter(e => e.eventType === 'delegation.start').length,
+        [events]
+      );
+      const startedAt = state?.classification?.classifiedAt || state?.meta?.lastTransition || mt.sessionStartedAt;
       const sessionDur = startedAt ? fmtDuration(startedAt) : '—';
 
       const cards = [
-        { key: 'context', emoji: '📊', label: 'Context 使用率', value: contextPct + '%', sub: toolCallCount + ' / 60 tool calls',
+        { key: 'context', emoji: '📊', label: 'Context 使用率', value: contextPct + '%', sub: toolCallCount + ' / 100 tool calls',
           level: contextPct > 80 ? 'danger' : contextPct > 50 ? 'warn' : '',
           hint: contextPct > 80 ? '建議 /compact 壓縮' : contextPct > 50 ? 'context 偏高' : null,
           tip: 'Tool call 次數佔閾值比例，反映 context 使用程度' },
@@ -887,9 +891,9 @@
           level: retryCount > 3 ? 'warn' : '',
           hint: retryCount > 3 ? '品質門多次回退' : null,
           tip: '品質 stage FAIL 觸發 DEV 回退的次數' },
-        { key: 'tools', emoji: '🔧', label: 'Tool Calls', value: '' + toolCallCount, sub: 'compact 後呼叫數',
+        { key: 'delegate', emoji: '🤖', label: '委派次數', value: '' + delegateCount, sub: 'sub-agent 委派',
           level: '', hint: null,
-          tip: '自上次 compact 以來的 tool call 數量' },
+          tip: 'Sub-agent 委派的總次數，反映 pipeline 執行密度' },
         { key: 'duration', emoji: '⏱', label: 'Session 時長', value: sessionDur, sub: startedAt ? new Date(startedAt).toLocaleTimeString('zh-TW', { hour12: false }) : '未開始',
           level: '', hint: null,
           tip: '從 session 開始到現在的經過時間' },

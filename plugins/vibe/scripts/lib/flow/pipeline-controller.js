@@ -65,12 +65,15 @@ const { emit: tlEmit } = require('../timeline/index.js');
 const { EVENT_TYPES } = require('../timeline/schema.js');
 
 // Guard Rules（hoisted — canProceed 是 hot path，每次 PreToolUse 都呼叫）
-const { evaluate: guardEvaluate } = require('../sentinel/guard-rules.js');
+const { evaluate: guardEvaluate, isNonCodeFile: guardIsNonCodeFile } = require('../sentinel/guard-rules.js');
 
 // Hook Logger（hoisted — 避免 onStageComplete 中多處動態 require）
 const hookLogger = require('../hook-logger.js');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
+
+// none pipeline 程式碼寫入次數閾值（達到此數字觸發硬阻擋）
+const NONE_WRITE_LIMIT = 3;
 
 // 級聯跳過迴圈上限（pipeline 最多 9 階段，20 足夠任何 DAG）
 const MAX_SKIP_ITERATIONS = 20;
@@ -557,6 +560,9 @@ async function classify(sessionId, prompt, options = {}) {
   });
   ds.writeState(sessionId, state);
 
+  // 重設 none-writes 計數器（新分類開始，重新計數）
+  try { fs.unlinkSync(path.join(CLAUDE_DIR, `none-writes-${sessionId}.json`)); } catch (_) {}
+
   // Main Agent 主動選擇：注入 pipeline 選擇表（systemMessage 強制）
   if (stages.length === 0 || pipelineId === 'none') {
     const kh = buildKnowledgeHints(state);
@@ -668,10 +674,40 @@ async function classify(sessionId, prompt, options = {}) {
  * 統一入口：載入 state 後代理到 guard-rules.evaluate()。
  * 消除 canProceed/evaluate 邏輯重複（v1.0.56/57 根因）。
  *
+ * 在 guardEvaluate 之前額外檢查 none pipeline 寫入閾值防護：
+ * - 條件：pipelineId === 'none' 且非 active 且工具為 Write/Edit 且目標為程式碼檔案
+ * - 閾值：計數 >= NONE_WRITE_LIMIT → 硬阻擋（讀取計數器，不遞增）
+ *
  * @returns {{ decision: 'allow'|'block', message?: string, reason?: string }}
  */
 function canProceed(sessionId, toolName, toolInput) {
   const state = loadState(sessionId);
+
+  // none pipeline 寫入閾值防護（在 guard evaluate 之前）
+  if (state && state.classification?.pipelineId === 'none' && !ds.isActive(state)) {
+    if (toolName === 'Write' || toolName === 'Edit') {
+      const filePath = toolInput?.file_path || '';
+      if (filePath && !guardIsNonCodeFile(filePath)) {
+        const counterPath = path.join(CLAUDE_DIR, `none-writes-${sessionId}.json`);
+        let count = 0;
+        try {
+          const raw = fs.readFileSync(counterPath, 'utf8');
+          count = JSON.parse(raw).count || 0;
+        } catch (_) {}
+        if (count >= NONE_WRITE_LIMIT) {
+          return {
+            decision: 'block',
+            reason: 'none-pipeline-write-limit',
+            message:
+              `⛔ none pipeline 下已累計 ${count} 次程式碼寫入，超過閾值（${NONE_WRITE_LIMIT} 次）。\n` +
+              `請先使用 /vibe:pipeline 選擇適合的 pipeline（如 quick-dev 或 fix），` +
+              `啟用品質門後再繼續修改。\n`,
+          };
+        }
+      }
+    }
+  }
+
   return guardEvaluate(toolName, toolInput, state);
 }
 

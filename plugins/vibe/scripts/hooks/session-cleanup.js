@@ -61,6 +61,8 @@ process.stdin.on('end', () => {
     cleanStaleFiles('pipeline-status-*.md', results);
     // barrier-state 檔案（barrier 並行同步）
     cleanStaleFiles('barrier-state-*.json', results);
+    // none-writes 計數器（none pipeline 寫入次數追蹤）
+    cleanStaleFiles('none-writes-*.json', results);
     // 提前清理：COMPLETE pipeline 或超過 48h 的 pipeline state
     cleanCompletedPipelineStates(sessionId, results);
 
@@ -223,6 +225,9 @@ function cleanStaleFiles(pattern, results) {
       }
       if (pattern === 'pipeline-status-*.md') {
         return f.startsWith('pipeline-status-') && f.endsWith('.md');
+      }
+      if (pattern === 'none-writes-*.json') {
+        return f.startsWith('none-writes-') && f.endsWith('.json');
       }
       return false;
     });

@@ -6,11 +6,13 @@
  * - evaluate() 的所有決策分支
  * - isNonCodeFile() 的邊界案例
  * - ORCHESTRATOR_TOOLS / NON_CODE_EXTS 常數
+ * - none pipeline 寫入防護（canProceed 硬阻擋）
  *
  * 執行：node plugins/vibe/tests/guard-rules.test.js
  */
 'use strict';
 const assert = require('assert');
+const fs = require('fs');
 const path = require('path');
 
 const {
@@ -884,6 +886,166 @@ test('S8 Case 8：Relay 模式 Edit pipeline-state-*.json → allow（Edit 也�
   const filePath = path.join(os.homedir(), '.claude', 'pipeline-state-session456.json');
   const r = evaluate('Edit', { file_path: filePath }, state);
   assert.strictEqual(r.decision, 'allow', 'Edit pipeline-state 也應被白名單放行');
+});
+
+// ═══════════════════════════════════════════════
+console.log('\n🔒 none pipeline 寫入防護測試（canProceed）');
+console.log('═'.repeat(55));
+// ═══════════════════════════════════════════════
+
+// 測試用 canProceed（從 pipeline-controller 導入）
+const { canProceed } = require(path.join(__dirname, '..', 'scripts', 'lib', 'flow', 'pipeline-controller.js'));
+
+// 建構 none pipeline state（pipelineActive=false，pipelineId='none'）
+function makeNoneState(sessionId) {
+  return {
+    version: 4,
+    sessionId,
+    classification: { taskType: 'chat', pipelineId: 'none', source: 'test' },
+    dag: {},
+    dagStages: [],
+    stages: {},
+    pipelineActive: false,
+    activeStages: [],
+    retries: {},
+    retryHistory: {},
+    crashes: {},
+    meta: { initialized: true },
+  };
+}
+
+// 建構 quick-dev pipeline state（pipelineActive=true）
+function makeQuickDevState(sessionId) {
+  return {
+    version: 4,
+    sessionId,
+    classification: { taskType: 'quickfix', pipelineId: 'quick-dev', source: 'test' },
+    dag: {
+      DEV: { deps: [] },
+      REVIEW: { deps: ['DEV'] },
+      TEST: { deps: ['DEV'] },
+    },
+    dagStages: ['DEV', 'REVIEW', 'TEST'],
+    stages: {
+      DEV: { status: 'pending', agent: null, verdict: null },
+      REVIEW: { status: 'pending', agent: null, verdict: null },
+      TEST: { status: 'pending', agent: null, verdict: null },
+    },
+    pipelineActive: true,
+    activeStages: [],
+    retries: {},
+    retryHistory: {},
+    crashes: {},
+    meta: { initialized: true },
+  };
+}
+
+// 測試用 Session ID（避免汙染真實 session）
+const NONE_TEST_SESSION = `test-none-writes-${Date.now()}`;
+const CLAUDE_DIR = path.join(os.homedir(), '.claude');
+const counterPath = path.join(CLAUDE_DIR, `none-writes-${NONE_TEST_SESSION}.json`);
+const stateFilePath = path.join(CLAUDE_DIR, `pipeline-state-${NONE_TEST_SESSION}.json`);
+
+// 寫入測試用 state 和計數器（測試前準備）
+function setupNoneTest(count) {
+  // 寫入 none pipeline state
+  const state = makeNoneState(NONE_TEST_SESSION);
+  fs.writeFileSync(stateFilePath, JSON.stringify(state, null, 2), 'utf8');
+  // 寫入計數器
+  if (count !== undefined) {
+    fs.writeFileSync(counterPath, JSON.stringify({ count }), 'utf8');
+  } else {
+    // 確保計數器不存在
+    try { fs.unlinkSync(counterPath); } catch (_) {}
+  }
+}
+
+// 清理測試用暫存檔
+function teardownNoneTest() {
+  try { fs.unlinkSync(counterPath); } catch (_) {}
+  try { fs.unlinkSync(stateFilePath); } catch (_) {}
+}
+
+test('none pipeline + 程式碼檔案 + count >= 3 → block', () => {
+  setupNoneTest(3);
+  try {
+    const r = canProceed(NONE_TEST_SESSION, 'Write', { file_path: '/Users/test/src/app.js' });
+    assert.strictEqual(r.decision, 'block', 'count=3 應被硬阻擋');
+    assert.strictEqual(r.reason, 'none-pipeline-write-limit');
+    assert.ok(r.message.includes('3 次'), `message 應包含次數：${r.message}`);
+    assert.ok(r.message.includes('/vibe:pipeline'), `message 應提及 /vibe:pipeline：${r.message}`);
+  } finally {
+    teardownNoneTest();
+  }
+});
+
+test('none pipeline + 程式碼檔案 + count = 5 → block（超過閾值）', () => {
+  setupNoneTest(5);
+  try {
+    const r = canProceed(NONE_TEST_SESSION, 'Write', { file_path: '/Users/test/src/index.ts' });
+    assert.strictEqual(r.decision, 'block', 'count=5 應被硬阻擋');
+    assert.strictEqual(r.reason, 'none-pipeline-write-limit');
+    assert.ok(r.message.includes('5 次'), `message 應包含次數：${r.message}`);
+  } finally {
+    teardownNoneTest();
+  }
+});
+
+test('none pipeline + 程式碼檔案 + count < 3 → allow（不觸發閾值）', () => {
+  setupNoneTest(2);
+  try {
+    const r = canProceed(NONE_TEST_SESSION, 'Write', { file_path: '/Users/test/src/app.js' });
+    assert.strictEqual(r.decision, 'allow', 'count=2 < 3 應放行');
+  } finally {
+    teardownNoneTest();
+  }
+});
+
+test('none pipeline + 程式碼檔案 + 無計數器 → allow（計數器不存在視為 0）', () => {
+  setupNoneTest(); // 無 count，不寫計數器
+  try {
+    const r = canProceed(NONE_TEST_SESSION, 'Write', { file_path: '/Users/test/src/app.js' });
+    assert.strictEqual(r.decision, 'allow', '無計數器（count=0）應放行');
+  } finally {
+    teardownNoneTest();
+  }
+});
+
+test('none pipeline + 非程式碼檔案 + count >= 3 → allow（非程式碼不阻擋）', () => {
+  setupNoneTest(3);
+  try {
+    const r = canProceed(NONE_TEST_SESSION, 'Write', { file_path: '/Users/test/README.md' });
+    assert.strictEqual(r.decision, 'allow', '非程式碼檔案不受 none 防護影響');
+  } finally {
+    teardownNoneTest();
+  }
+});
+
+test('none pipeline + 程式碼檔案 + Edit 工具 + count >= 3 → block', () => {
+  setupNoneTest(3);
+  try {
+    const r = canProceed(NONE_TEST_SESSION, 'Edit', { file_path: '/Users/test/src/utils.py' });
+    assert.strictEqual(r.decision, 'block', 'Edit 工具也應被 none 防護阻擋');
+    assert.strictEqual(r.reason, 'none-pipeline-write-limit');
+  } finally {
+    teardownNoneTest();
+  }
+});
+
+test('quick-dev pipeline + 程式碼檔案 → 不受 none 防護影響（走正常 guard）', () => {
+  // quick-dev pipeline 有 pipelineActive=true，走 guardEvaluate
+  // 在 pipelineActive=true 但 activeStages=[] 時，Write 應被 must-delegate 阻擋（非 none 防護）
+  const QDEV_SESSION = `test-qdev-${Date.now()}`;
+  const qdevStatePath = path.join(CLAUDE_DIR, `pipeline-state-${QDEV_SESSION}.json`);
+  const state = makeQuickDevState(QDEV_SESSION);
+  fs.writeFileSync(qdevStatePath, JSON.stringify(state, null, 2), 'utf8');
+  try {
+    const r = canProceed(QDEV_SESSION, 'Write', { file_path: '/Users/test/src/app.js' });
+    // quick-dev pipeline 應走正常 guard（must-delegate），reason 不應是 none-pipeline-write-limit
+    assert.notStrictEqual(r.reason, 'none-pipeline-write-limit', 'quick-dev 不應觸發 none 防護');
+  } finally {
+    try { fs.unlinkSync(qdevStatePath); } catch (_) {}
+  }
 });
 
 // ═══════════════════════════════════════════════

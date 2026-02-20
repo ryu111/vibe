@@ -2,19 +2,24 @@
 /**
  * post-edit.js — PostToolUse hook（matcher: Write|Edit）
  *
- * 合併 auto-lint + auto-format + test-check 三步驟。
- * 順序執行 lint → format → test-check，合併 systemMessage 輸出。
+ * 合併 none-pipeline 寫入提醒 + auto-lint + auto-format + test-check 四步驟。
+ * 順序執行：Step 0 none 提醒 → lint → format → test-check，合併 systemMessage 輸出。
  * 減少 2 次 Node.js 啟動。
  */
 'use strict';
 
+const fs = require('fs');
 const { execSync } = require('child_process');
 const path = require('path');
+const os = require('os');
 
 const langMap = require(path.join(__dirname, '..', 'lib', 'sentinel', 'lang-map.js'));
 const toolDetector = require(path.join(__dirname, '..', 'lib', 'sentinel', 'tool-detector.js'));
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
 const { emit, EVENT_TYPES } = require(path.join(__dirname, '..', 'lib', 'timeline'));
+const ds = require(path.join(__dirname, '..', 'lib', 'flow', 'dag-state.js'));
+const { isNonCodeFile } = require(path.join(__dirname, '..', 'lib', 'sentinel', 'guard-rules.js'));
+const { atomicWrite } = require(path.join(__dirname, '..', 'lib', 'flow', 'atomic-write.js'));
 
 // ─── test-check 判斷邏輯 ─────────────
 
@@ -147,11 +152,48 @@ function runTestCheckStep(filePath, sessionId) {
   return `\u63D0\u9192\uFF1A${basename} \u5DF2\u4FEE\u6539\uFF0C\u8A18\u5F97\u57F7\u884C\u76F8\u95DC\u6E2C\u8A66\u78BA\u8A8D\u7121\u8FF4\u6B78\u3002`;
 }
 
+// ─── Step 0: none pipeline 寫入提醒 ─────────────
+
+/**
+ * 檢查是否在 none pipeline 下修改程式碼檔案，若是則遞增計數並回傳提醒訊息。
+ *
+ * @param {string} sessionId - Session ID
+ * @param {string} filePath - 被修改的檔案路徑
+ * @returns {string|null} 提醒訊息，若不需要提醒則為 null
+ */
+function runNonePipelineCheck(sessionId, filePath) {
+  if (!filePath || !sessionId) return null;
+
+  // 非程式碼檔案不計入
+  if (isNonCodeFile(filePath)) return null;
+
+  // 讀取 pipeline state
+  const pState = ds.readState(sessionId);
+  if (!pState || pState.classification?.pipelineId !== 'none') return null;
+
+  // 讀取現有計數
+  const counterPath = path.join(os.homedir(), '.claude', `none-writes-${sessionId}.json`);
+  let noneWriteCount = 0;
+  try {
+    const raw = fs.readFileSync(counterPath, 'utf8');
+    noneWriteCount = JSON.parse(raw).count || 0;
+  } catch (_) {}
+
+  // 遞增計數並原子寫入
+  noneWriteCount++;
+  atomicWrite(counterPath, { count: noneWriteCount });
+
+  return (
+    `⚠️ 偵測到 none pipeline 下的程式碼修改（已累計 ${noneWriteCount} 次）。` +
+    `建議使用 /vibe:pipeline 選擇適合的 pipeline（如 quick-dev 或 fix）以啟用品質門。`
+  );
+}
+
 // ─── 測試用 exports ─────────────
 
 if (typeof module !== 'undefined') {
   module.exports = {
-    shouldSkip, runLintStep, runFormatStep, runTestCheckStep,
+    shouldSkip, runLintStep, runFormatStep, runTestCheckStep, runNonePipelineCheck,
     SKIP_EXTENSIONS, SKIP_PATH_PATTERNS, SKIP_FILENAMES,
   };
 }
@@ -179,6 +221,10 @@ if (require.main === module) {
       }
 
       const messages = [];
+
+      // Step 0: none pipeline 寫入提醒
+      const noneMsg = runNonePipelineCheck(sessionId, filePath);
+      if (noneMsg) messages.push(noneMsg);
 
       // Step 1: Auto-lint
       const lintMsg = runLintStep(filePath, sessionId, toolName);

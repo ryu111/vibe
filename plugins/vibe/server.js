@@ -84,17 +84,22 @@ function getAliveMap() {
 /** 取得 session 的指標數據（counter + transcript 大小） */
 function getSessionMetrics(sid) {
   if (!UUID_RE.test(sid)) return null;
-  const m = { toolCallCount: 0, contextPct: 0, transcriptSize: 0 };
+  const m = { toolCallCount: 0, contextPct: 0, transcriptSize: 0, sessionStartedAt: null };
   try {
     const d = JSON.parse(readFileSync(join(CLAUDE_DIR, `flow-counter-${sid}.json`), 'utf8'));
     m.toolCallCount = d.count || 0;
-    m.contextPct = Math.min(100, Math.round((d.count || 0) / 60 * 100));
+    m.contextPct = Math.min(100, Math.round((d.count || 0) / 100 * 100));
   } catch {}
   try {
     const pd = join(CLAUDE_DIR, 'projects');
     for (const p of readdirSync(pd)) {
       const fp = join(pd, p, `${sid}.jsonl`);
-      try { m.transcriptSize = statSync(fp).size; break; } catch {}
+      try {
+        const st = statSync(fp);
+        m.transcriptSize = st.size;
+        m.sessionStartedAt = st.birthtime?.toISOString() || null;
+        break;
+      } catch {}
     }
   } catch {}
   return m;
@@ -394,7 +399,7 @@ Bun.serve({
 
     // REST API
     if (url.pathname === '/api/sessions') {
-      return Response.json(sessions);
+      return Response.json(getMergedSessions());
     }
 
     // Task 1.1：registry 端點，提供 stages/pipelines/agents metadata 給前端
@@ -485,8 +490,8 @@ Bun.serve({
     open(ws) {
       clients.add(ws);
       ws.send(JSON.stringify({ type: 'init', sessions: getMergedSessions(), alive: getAliveMap(), metrics: getAllSessionMetrics() }));
-      // 新連線重播所有 session 的歷史 timeline 事件
-      for (const sid of Object.keys(sessions)) {
+      // 新連線重播所有 session 的歷史 timeline 事件（含 heartbeat-only sessions）
+      for (const sid of Object.keys(getMergedSessions())) {
         try {
           const events = query(sid);
           for (const event of events) {

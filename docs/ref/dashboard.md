@@ -11,6 +11,7 @@
 Vibe Dashboard 是 Pipeline v4/v5 的即時視覺監控系統，提供 Pipeline 執行狀態的全程視覺化——從 task-classifier 分類完成到最後一個 stage 結束。
 
 **v5.0.5 重設計重點**：
+
 - Tab 2 Pipeline 改為 SVG+HTML DAG 流程圖（取代 Snake Grid + Pixel Office）
 - Tab 1 Dashboard 新增 StatsCards 統計卡片 + 動態 Pipeline 進度條
 - Sidebar 自動排序（活躍優先 → 最近活動，移除排序下拉）
@@ -20,13 +21,14 @@ Vibe Dashboard 是 Pipeline v4/v5 的即時視覺監控系統，提供 Pipeline 
 
 ### 1.2 系統架構
 
-| 系統 | 路徑 | 技術 | 用途 |
-|------|------|------|------|
+| 系統                 | 路徑                                                     | 技術                              | 用途                      |
+| -------------------- | -------------------------------------------------------- | --------------------------------- | ------------------------- |
 | **Runtime 即時監控** | `plugins/vibe/web/index.html` + `plugins/vibe/server.js` | Preact + HTM + Bun HTTP/WebSocket | 即時追蹤執行中的 pipeline |
 
 注意：Build-time 靜態報告系統（`dashboard/`）已廢棄，`dashboard/config.json` 已移除。
 
 **自動啟動流程**：
+
 ```
 SessionStart hook
   → dashboard-autostart.js
@@ -39,6 +41,7 @@ SessionStart hook
 ### 1.3 技術棧
 
 **Runtime SPA（`web/index.html`）**：
+
 - Preact 10.25.4（ESM via `esm.sh`）+ HTM 3.1.1（tagged template literal JSX）
 - 單檔 SPA（~1320 行，CSS + JS 全內嵌，零建置步驟）
 - 字體：SF Mono / Cascadia Code / Fira Code（系統等寬，移除 Press Start 2P 像素字體）
@@ -46,6 +49,7 @@ SessionStart hook
 - 資料層：`/api/registry` 取代前端硬編碼的 SM/TYPE_LABELS/AGENT_ROSTER
 
 **後端（`server.js`）**：
+
 - Bun HTTP + WebSocket Server（`Bun.serve()`）
 - Port：`--port=` CLI 參數 > `VIBE_DASHBOARD_PORT` 環境變數 > 預設 3800
 - PID 管理：`~/.claude/dashboard-server.pid`（JSON 格式：pid + port + startedAt）
@@ -63,9 +67,19 @@ Pipeline state 儲存於 `~/.claude/pipeline-state-{sessionId}.json`，格式：
 {
   "version": 4,
   "dag": {
-    "DEV":    { "deps": [], "barrier": null, "onFail": "DEV", "next": "REVIEW" },
-    "REVIEW": { "deps": ["DEV"], "barrier": "post-dev", "onFail": "DEV", "next": null },
-    "TEST":   { "deps": ["DEV"], "barrier": "post-dev", "onFail": "DEV", "next": null }
+    "DEV": { "deps": [], "barrier": null, "onFail": "DEV", "next": "REVIEW" },
+    "REVIEW": {
+      "deps": ["DEV"],
+      "barrier": "post-dev",
+      "onFail": "DEV",
+      "next": null
+    },
+    "TEST": {
+      "deps": ["DEV"],
+      "barrier": "post-dev",
+      "onFail": "DEV",
+      "next": null
+    }
   },
   "stages": {
     "DEV": {
@@ -101,6 +115,7 @@ Pipeline state 儲存於 `~/.claude/pipeline-state-{sessionId}.json`，格式：
 定義於 `scripts/lib/timeline/schema.js`，儲存格式為 `~/.claude/timeline-{sessionId}.jsonl`（append-only，後端上限 2000 筆）。
 
 **Envelope 格式**：
+
 ```json
 {
   "id": "uuid",
@@ -113,15 +128,15 @@ Pipeline state 儲存於 `~/.claude/pipeline-state-{sessionId}.json`，格式：
 
 **7 大分類與事件類型**：
 
-| 分類 | 事件類型 |
-|------|---------|
-| `session` | `session.start` |
-| `task` | `task.classified`, `prompt.received`, `delegation.start`, `task.incomplete` |
-| `agent` | `tool.used`, `delegation.start` |
+| 分類       | 事件類型                                                                                                                                                                                                                                                   |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `session`  | `session.start`                                                                                                                                                                                                                                            |
+| `task`     | `task.classified`, `prompt.received`, `delegation.start`, `task.incomplete`                                                                                                                                                                                |
+| `agent`    | `tool.used`, `delegation.start`                                                                                                                                                                                                                            |
 | `pipeline` | `stage.start`, `stage.complete`, `stage.retry`, `pipeline.complete`, `pipeline.incomplete`, `route.fallback`, `retry.exhausted`, `barrier.waiting`, `barrier.resolved`, `agent.crash`, `pipeline.cancelled`, `barrier.crash-guard`, `stage.crash-recovery` |
-| `quality` | `tool.blocked`, `tool.guarded`, `quality.lint`, `quality.format`, `quality.test-needed` |
-| `remote` | `ask.question`, `ask.answered`, `turn.summary`, `say.sent`, `say.completed`, `compact.suggested`, `compact.executed` |
-| `safety` | `agent.crash`, `safety.transcript-leak`, `barrier.crash-guard`, `stage.crash-recovery` |
+| `quality`  | `tool.blocked`, `tool.guarded`, `quality.lint`, `quality.format`, `quality.test-needed`                                                                                                                                                                    |
+| `remote`   | `ask.question`, `ask.answered`, `turn.summary`, `say.sent`, `say.completed`, `compact.suggested`, `compact.executed`                                                                                                                                       |
+| `safety`   | `agent.crash`, `safety.transcript-leak`, `barrier.crash-guard`, `stage.crash-recovery`                                                                                                                                                                     |
 
 注意：`delegation.start` 同屬 `task` + `agent` 兩類；`agent.crash` 同屬 `pipeline` + `safety` 兩類。
 
@@ -148,6 +163,7 @@ Pipeline state 儲存於 `~/.claude/pipeline-state-{sessionId}.json`，格式：
 ```
 
 **Barrier 生命週期**：
+
 1. `createBarrierGroup`：stage-transition 委派 barrier sibling 時建立
 2. `updateBarrier`（冪等）：每個 sibling 完成時更新 `completed` + `results`
 3. `mergeBarrierResults`：所有 sibling 完成 → Worst-Case-Wins 合併（FAIL 優先）
@@ -188,32 +204,32 @@ Pipeline state 儲存於 `~/.claude/pipeline-state-{sessionId}.json`，格式：
 
 **Server → Client 訊息類型**：
 
-| 類型 | 觸發時機 | Payload |
-|------|---------|---------|
-| `init` | 新連線建立 | `{ type, sessions, alive }` — 全量初始化 + 所有歷史 timeline 事件 replay |
-| `update` | pipeline-state 檔案變化（80ms 防抖） | `{ type, sessions }` — 全量 sessions 物件 |
-| `heartbeat` | heartbeat 檔案變化（500ms 防抖） | `{ type, alive }` — sessionId → boolean 映射 |
-| `timeline` | Timeline consumer 接收新事件 | `{ type, sessionId, event }` — 格式化後的單一事件 |
-| `barrier` | barrier-state 檔案變化（80ms 防抖） | `{ type, sessionId, barrierState }` — 完整 barrier state 或 null |
-| `pong` | 收到 `ping` | 字串 `'pong'` |
+| 類型        | 觸發時機                             | Payload                                                                  |
+| ----------- | ------------------------------------ | ------------------------------------------------------------------------ |
+| `init`      | 新連線建立                           | `{ type, sessions, alive }` — 全量初始化 + 所有歷史 timeline 事件 replay |
+| `update`    | pipeline-state 檔案變化（80ms 防抖） | `{ type, sessions }` — 全量 sessions 物件                                |
+| `heartbeat` | heartbeat 檔案變化（500ms 防抖）     | `{ type, alive }` — sessionId → boolean 映射                             |
+| `timeline`  | Timeline consumer 接收新事件         | `{ type, sessionId, event }` — 格式化後的單一事件                        |
+| `barrier`   | barrier-state 檔案變化（80ms 防抖）  | `{ type, sessionId, barrierState }` — 完整 barrier state 或 null         |
+| `pong`      | 收到 `ping`                          | 字串 `'pong'`                                                            |
 
 **Client → Server**：
 
-| 訊息 | 說明 |
-|------|------|
+| 訊息   | 說明                 |
+| ------ | -------------------- |
 | `ping` | 保活心跳（每 25 秒） |
 
 **WebSocket 重連策略**：指數退避，間隔 `300 * 2^retries`ms，上限 5000ms。
 
 ### 3.2 REST API
 
-| 方法 | 路徑 | 說明 | 回應 |
-|------|------|------|------|
-| `GET` | `/api/sessions` | 取得所有 sessions 物件 | `{ [sid]: state }` |
-| `GET` | `/api/clients` | 查詢 WebSocket 連線數 | `{ count: number }` |
-| `POST` | `/api/sessions/cleanup` | 批次清理（100% 完成 + stale 超 1 小時） | `{ ok, cleaned }` |
-| `DELETE` | `/api/sessions/{id}` | 刪除指定 session state 檔案 | `{ ok, deleted }` |
-| `GET` | `/*` | 靜態檔案（`web/` 目錄，路徑遍歷防護） | 對應 MIME 類型 |
+| 方法     | 路徑                    | 說明                                    | 回應                |
+| -------- | ----------------------- | --------------------------------------- | ------------------- |
+| `GET`    | `/api/sessions`         | 取得所有 sessions 物件                  | `{ [sid]: state }`  |
+| `GET`    | `/api/clients`          | 查詢 WebSocket 連線數                   | `{ count: number }` |
+| `POST`   | `/api/sessions/cleanup` | 批次清理（100% 完成 + stale 超 1 小時） | `{ ok, cleaned }`   |
+| `DELETE` | `/api/sessions/{id}`    | 刪除指定 session state 檔案             | `{ ok, deleted }`   |
+| `GET`    | `/*`                    | 靜態檔案（`web/` 目錄，路徑遍歷防護）   | 對應 MIME 類型      |
 
 **安全**：DELETE 端點驗證 UUID 格式（`UUID_RE`），靜態檔案路徑必須在 `WEB_DIR` 內。
 
@@ -221,15 +237,16 @@ Pipeline state 儲存於 `~/.claude/pipeline-state-{sessionId}.json`，格式：
 
 `fs.watch(CLAUDE_DIR)` 監聽 `~/.claude/` 目錄所有檔案變化：
 
-| 檔案模式 | 防抖 | 處理 |
-|---------|------|------|
-| `pipeline-state-*.json` | 80ms | 解析並廣播 `update`；新 session 啟動 Timeline consumer |
-| `barrier-state-*.json` | 80ms | 解析並廣播 `barrier` |
-| `heartbeat-*` | 500ms | 廣播 `heartbeat`（`alive` 映射）|
+| 檔案模式                | 防抖  | 處理                                                   |
+| ----------------------- | ----- | ------------------------------------------------------ |
+| `pipeline-state-*.json` | 80ms  | 解析並廣播 `update`；新 session 啟動 Timeline consumer |
+| `barrier-state-*.json`  | 80ms  | 解析並廣播 `barrier`                                   |
+| `heartbeat-*`           | 500ms | 廣播 `heartbeat`（`alive` 映射）                       |
 
 **Session 過濾**：UUID_RE 正規表達式過濾測試產生的非 UUID session ID。
 
 **isDisplayWorthy 判斷**：
+
 - 有 DAG（`dag` 物件有 key）→ 顯示
 - 有非 `none` 的 pipelineId → 顯示
 - v2 相容：有 `expectedStages` → 顯示
@@ -243,28 +260,30 @@ Pipeline state 儲存於 `~/.claude/pipeline-state-{sessionId}.json`，格式：
 ### 4.1 Sidebar — Session 管理
 
 **整體佈局**：
+
 - 預設寬 230px，收合時 52px（切換按鈕：`◀/▶`）
 - `grid-template-columns: var(--sidebar-w, 230px) 1fr`，過渡 0.3s
 
 **Session Card（`.sc`）欄位**：
 
-| 欄位 | 說明 |
-|------|------|
-| 標題行 | Live 綠點（`livePulse` 動畫） + Pipeline 類型標籤 |
-| 副標題 | Session ID 前 8 碼 + elapsed time |
-| Meta 行 | 當前 stage emoji + 名稱 + 進度百分比 |
-| 進度條 | 3px 高，`blue→green` 漸層，完成時純 `green` |
-| 刪除鈕 | hover 才顯示，點擊呼叫 `DELETE /api/sessions/{id}` |
+| 欄位    | 說明                                               |
+| ------- | -------------------------------------------------- |
+| 標題行  | Live 綠點（`livePulse` 動畫） + Pipeline 類型標籤  |
+| 副標題  | Session ID 前 8 碼 + elapsed time                  |
+| Meta 行 | 當前 stage emoji + 名稱 + 進度百分比               |
+| 進度條  | 3px 高，`blue→green` 漸層，完成時純 `green`        |
+| 刪除鈕  | hover 才顯示，點擊呼叫 `DELETE /api/sessions/{id}` |
 
 **3 個 Session 群組**：
 
-| 群組 CSS | 判斷條件 | 透明度 |
-|---------|---------|--------|
-| `live`（進行中） | `_alive || delegationActive` | 100%，綠色邊框 |
-| `active`（已完成，進度 = 100%） | `pct >= 100 && hasPipeline` | 55%（`.done`） |
-| `stale`（30 分鐘以上無活動） | `age > 1800s` | 40%（`.stale`），預設折疊 |
+| 群組 CSS                        | 判斷條件                    | 透明度                    |
+| ------------------------------- | --------------------------- | ------------------------- | ----------------- | -------------- |
+| `live`（進行中）                | `\_alive                    |                           | delegationActive` | 100%，綠色邊框 |
+| `active`（已完成，進度 = 100%） | `pct >= 100 && hasPipeline` | 55%（`.done`）            |
+| `stale`（30 分鐘以上無活動）    | `age > 1800s`               | 40%（`.stale`），預設折疊 |
 
 **排序選項**（排序 `<select>`）：
+
 - `recent`：最近活動時間（`lastTransition` DESC）
 - `progress`：完成進度（`pct` DESC）
 - `type`：Pipeline 類型（字母排序）
@@ -272,10 +291,12 @@ Pipeline state 儲存於 `~/.claude/pipeline-state-{sessionId}.json`，格式：
 排序規則：alive session 永遠排在最上面（`aliveFirst` 優先）。
 
 **收合模式**（`.collapsed`）：
+
 - 隱藏標題、副標題、Meta、進度條、分組標頭
 - `.sc::before { content: attr(data-pct) }` 顯示進度百分比
 
 **操作按鈕**：
+
 - 已完成群組：「清理」按鈕（批次刪除）
 - 過期群組：可展開 + 「清理」按鈕（呼叫 `POST /api/sessions/cleanup`）
 
@@ -289,30 +310,31 @@ Pipeline state 儲存於 `~/.claude/pipeline-state-{sessionId}.json`，格式：
 
 14 個 agents，分 3 群組（系統 3 + Pipeline 9 + 輔助 2）：
 
-| 群組 | Agents |
-|------|--------|
-| 系統 | Main Agent（🎯），Explore（🔭），Plan（📐）|
+| 群組     | Agents                                                                                      |
+| -------- | ------------------------------------------------------------------------------------------- |
+| 系統     | Main Agent（🎯），Explore（🔭），Plan（📐）                                                 |
 | PIPELINE | planner, architect, designer, developer, code-reviewer, tester, qa, e2e-runner, doc-updater |
-| 輔助 | security-reviewer（🛡️），build-error-resolver（🔧） |
+| 輔助     | security-reviewer（🛡️），build-error-resolver（🔧）                                         |
 
 Grid 7 欄（`.agent-row`）：`16px 140px 68px 54px 64px 1fr 44px`（燈號 + 名稱 + 職責 + model + 狀態 + chips + 時長）
 
 **8 種燈號狀態（`.al`）**：
 
-| 狀態 | CSS 類別 | 視覺 |
-|------|---------|------|
-| `running` | `.al.running` | green 脈衝（`alPulse 1.5s`） |
-| `completed` | `.al.completed` | green 靜態 |
-| `error` | `.al.error` | red 脈衝 |
-| `delegating` | `.al.delegating` | purple 脈衝 |
-| `waiting` | `.al.waiting` | yellow 脈衝 |
-| `standby` | `.al.standby` | blue 空心圓（`border: 2px solid var(--blue)`） |
-| `pending` | `.al.pending` | surface2 慢脈衝（`3s`） |
-| `idle` | `.al.idle` | surface2 半透明（`opacity: 0.5`） |
+| 狀態         | CSS 類別         | 視覺                                           |
+| ------------ | ---------------- | ---------------------------------------------- |
+| `running`    | `.al.running`    | green 脈衝（`alPulse 1.5s`）                   |
+| `completed`  | `.al.completed`  | green 靜態                                     |
+| `error`      | `.al.error`      | red 脈衝                                       |
+| `delegating` | `.al.delegating` | purple 脈衝                                    |
+| `waiting`    | `.al.waiting`    | yellow 脈衝                                    |
+| `standby`    | `.al.standby`    | blue 空心圓（`border: 2px solid var(--blue)`） |
+| `pending`    | `.al.pending`    | surface2 慢脈衝（`3s`）                        |
+| `idle`       | `.al.idle`       | surface2 半透明（`opacity: 0.5`）              |
 
 **統計列**：活躍數 / 完成數 / 總耗時 / 總 agents 數
 
 **技術細節（`getAgentInfo`）**：
+
 - Main Agent：依 `alive`（heartbeat）+ `delegationActive` 判斷
 - Sub-agents：從 `delegation.start` timeline 事件偵測當前運行狀態
 - Pipeline agents：從 `stageResults` 取得 completed/failed 結果
@@ -321,34 +343,48 @@ Grid 7 欄（`.agent-row`）：`16px 140px 68px 54px 64px 1fr 44px`（燈號 + �
 #### 4.2.2 MCP 統計面板（`MCPStats`）
 
 從 timeline `tool.used` 事件解析 `server:method` 格式，按 server 分組顯示：
+
 - Server 名稱（cyan）+ 呼叫次數 + 比例條（相對最大值）+ 前 4 個方法名稱
 - 無 MCP 呼叫時不渲染
 
 #### 4.2.3 Pipeline 進度面板
 
 條件顯示（有 pipeline 且未完成）：
+
 - 每個 stage 一行：燈號 + emoji + stage ID + 中文標籤 + verdict 文字
 - 燈號顏色：pass=green, fail/active=red, skipped=surface2
 
 #### 4.2.4 完成摘要（雙 Card）
 
 條件顯示（`isComplete && hasPipeline`）：
+
 - 左 Card：Pipeline 類型、階段總數、總重試次數、已跳過階段、經過時間
 - 右 Card：每個 stage 的耗時（秒）+ 工具呼叫次數
 
 **右欄（`.dash-right`）**：里程碑事件流（「最近事件」）
 
 只顯示以下事件類型（過濾 `tool.used` 噪音）：
+
 ```js
 const MILESTONE_TYPES = [
-  'delegation.start', 'delegation.end',
-  'stage.start', 'stage.complete', 'stage.retry',
-  'pipeline.init', 'pipeline.classified', 'pipeline.complete', 'pipeline.cancelled',
-  'block.prevented', 'ask.question', 'ask.answered', 'session.start'
+  "delegation.start",
+  "delegation.end",
+  "stage.start",
+  "stage.complete",
+  "stage.retry",
+  "pipeline.init",
+  "pipeline.classified",
+  "pipeline.complete",
+  "pipeline.cancelled",
+  "block.prevented",
+  "ask.question",
+  "ask.answered",
+  "session.start",
 ];
 ```
 
 > ⚠️ **已知問題**：`MILESTONE_TYPES` 包含 4 個在 `schema.js` 中不存在的事件類型，屬於歷史殘留（dead filter 條目）：
+>
 > - `delegation.end`（schema.js 只有 `delegation.start`，無 end 事件）
 > - `pipeline.init`（schema.js 中不存在，分類事件為 `task.classified`）
 > - `pipeline.classified`（schema.js 中不存在，應為 `task.classified`）
@@ -363,22 +399,24 @@ const MILESTONE_TYPES = [
 #### 4.3.1 DAG 流程圖（`DagView`）
 
 **DAG 佈局演算法（`computeDagLayout`）**：
+
 - 拓撲排序：計算各 stage 最長路徑深度（`depth`），同深度垂直排列
 - 節點尺寸：88×72px，水平間距 40px，垂直間距 20px
 - SVG 貝茲曲線（`buildEdges`）：連接各 stage（`M x1,y1 C cx,y1 cx,y2 x2,y2`）
 
 **DAG 節點狀態（`.dag-node`）**：
 
-| 狀態 | CSS 類別 | 視覺 |
-|------|---------|------|
-| `completed` | `.dag-node.completed` | green 邊框 |
-| `active` | `.dag-node.active` | blue 邊框 + `dagPulse` 動畫 |
-| `failed` | `.dag-node.failed` | red 邊框 + `dagShake` 動畫 |
-| `skipped` | `.dag-node.skipped` | 半透明 dashed 邊框 |
-| `pending` | `.dag-node.pending` | opacity 0.5 |
-| selected | `.dag-node.selected` | yellow 邊框 |
+| 狀態        | CSS 類別              | 視覺                        |
+| ----------- | --------------------- | --------------------------- |
+| `completed` | `.dag-node.completed` | green 邊框                  |
+| `active`    | `.dag-node.active`    | blue 邊框 + `dagPulse` 動畫 |
+| `failed`    | `.dag-node.failed`    | red 邊框 + `dagShake` 動畫  |
+| `skipped`   | `.dag-node.skipped`   | 半透明 dashed 邊框          |
+| `pending`   | `.dag-node.pending`   | opacity 0.5                 |
+| selected    | `.dag-node.selected`  | yellow 邊框                 |
 
 **邊連線狀態（`.dag-edge`）**：
+
 - `completed`：green 實線
 - `active`：blue 虛線 + `dashFlow` 流動動畫
 - `pending`：surface2 虛線
@@ -388,6 +426,7 @@ const MILESTONE_TYPES = [
 **節點點擊展開詳情（`.dag-detail`）**：verdict/耗時/重試次數/crash 數/重試歷史。
 
 **Barrier 並行進度條（`BarrierDisplay`）**（條件顯示）：
+
 - 每個 group：group ID + 完成計數（X/N）+ sibling stage 圖示（✅/❌/⏳）+ next stage 或「完成」標籤
 - 未解決時「等待中...」黃色閃爍
 
@@ -395,17 +434,18 @@ const MILESTONE_TYPES = [
 
 **分類 Tab（`.tl-tab`）**：
 
-| Tab | 值 | 說明 |
-|-----|-----|------|
-| 全部 | `all` | 所有事件 |
-| 工具 | `agent` | `cat === 'agent'`（`tool.used`、`delegation.start`） |
-| Pipeline | `pipeline` | `cat === 'pipeline'`（stage/pipeline/barrier 事件） |
-| 品質 | `quality` | `cat === 'quality'`（lint/format/blocked/guarded） |
-| 任務 | `task` | `cat === 'task'`（ask/compact/say/turn.summary） |
+| Tab      | 值         | 說明                                                 |
+| -------- | ---------- | ---------------------------------------------------- |
+| 全部     | `all`      | 所有事件                                             |
+| 工具     | `agent`    | `cat === 'agent'`（`tool.used`、`delegation.start`） |
+| Pipeline | `pipeline` | `cat === 'pipeline'`（stage/pipeline/barrier 事件）  |
+| 品質     | `quality`  | `cat === 'quality'`（lint/format/blocked/guarded）   |
+| 任務     | `task`     | `cat === 'task'`（ask/compact/say/turn.summary）     |
 
 **時間 Chip（`.tl-chip`）**：全部 / 10m / 30m / 1h（時間窗篩選）
 
 **事件列格式（`.tl-item`）**：
+
 - 時間戳（`hh:mm:ss`，9px，`var(--overlay0)`）
 - emoji + 事件描述文字（`formatEventText` 統一格式化）
 - 色彩：pass=green, fail=red, active=blue（預設）
@@ -420,22 +460,23 @@ const MILESTONE_TYPES = [
 
 在 `window.addEventListener('keydown')` 處理（input/select 元素內不觸發，`metaKey/ctrlKey` 不觸發）：
 
-| 快捷鍵 | 動作 |
-|--------|------|
-| `↑` / `k` | 選取上一個 session |
-| `↓` / `j` | 選取下一個 session |
-| `s` / `S` | 切換側邊欄展開/收合 |
-| `f` / `F` | 切換全螢幕模式 |
-| `t` / `T` | 切換至 Timeline Tab |
-| `p` / `P` | 切換 default/pixel 主題 |
-| `c` / `C` | 切換卡片聚焦模式 |
-| `1` | 切換至 Dashboard Tab |
-| `2` | 切換至 Pipeline Tab |
-| `3` | 切換至 Timeline Tab |
-| `e` / `E` | 導出當前 session 報告（Markdown）|
-| `?` | 顯示快捷鍵提示 Toast（注意：提示內容不完整，缺少部分快捷鍵說明）|
+| 快捷鍵    | 動作                                                             |
+| --------- | ---------------------------------------------------------------- |
+| `↑` / `k` | 選取上一個 session                                               |
+| `↓` / `j` | 選取下一個 session                                               |
+| `s` / `S` | 切換側邊欄展開/收合                                              |
+| `f` / `F` | 切換全螢幕模式                                                   |
+| `t` / `T` | 切換至 Timeline Tab                                              |
+| `p` / `P` | 切換 default/pixel 主題                                          |
+| `c` / `C` | 切換卡片聚焦模式                                                 |
+| `1`       | 切換至 Dashboard Tab                                             |
+| `2`       | 切換至 Pipeline Tab                                              |
+| `3`       | 切換至 Timeline Tab                                              |
+| `e` / `E` | 導出當前 session 報告（Markdown）                                |
+| `?`       | 顯示快捷鍵提示 Toast（注意：提示內容不完整，缺少部分快捷鍵說明） |
 
 縮放快捷鍵（攔截避免影響 VSCode）：
+
 - `⌘+` / `⌘=`：放大 10%（上限 200%）
 - `⌘-`：縮小 10%（下限 50%）
 - `⌘0`：重設 100%
@@ -443,6 +484,7 @@ const MILESTONE_TYPES = [
 ### 5.2 Session 自動跟隨
 
 `useEffect` 監聽 `mergedSessions` + `liveSessions` 變化：
+
 1. 找到 `_alive || delegationActive` 的 live session
 2. 若該 session 不是當前選取的 → 自動切換
 3. 若當前 active 消失 → 選最近的（live > done > 任意）
@@ -457,9 +499,9 @@ Dashboard 固定使用 Catppuccin Mocha 色彩系統（`:root` CSS 變數），�
 
 **`exportReport(s, active, events, format)`**：
 
-| 格式 | 檔名 | 內容 |
-|------|------|------|
-| `md` | `pipeline-{id8}.md` | Markdown 表格（stages）+ 前 30 筆 timeline |
+| 格式   | 檔名                  | 內容                                                              |
+| ------ | --------------------- | ----------------------------------------------------------------- |
+| `md`   | `pipeline-{id8}.md`   | Markdown 表格（stages）+ 前 30 筆 timeline                        |
 | `json` | `pipeline-{id8}.json` | JSON（sessionId/pipelineId/progress/environment/stages/timeline） |
 
 Blob URL 觸發下載（`a.click()`）。
@@ -487,55 +529,56 @@ Blob URL 觸發下載（`a.click()`）。
 
 `:root` 16 個 CSS 變數：
 
-| 變數 | Hex | 用途 |
-|------|-----|------|
-| `--bg` | `#1e1e2e` | 主背景 |
-| `--surface0` | `#313244` | 卡片/面板背景 |
-| `--surface1` | `#45475a` | 邊框/分隔線 |
-| `--surface2` | `#585b70` | 禁用態/次要邊框 |
-| `--overlay0` | `#6c7086` | 更次要文字/時間戳 |
-| `--text` | `#cdd6f4` | 主要文字 |
-| `--subtext0` | `#a6adc8` | 次要標籤 |
-| `--subtext1` | `#bac2de` | 次要文字 |
-| `--blue` | `#89b4fa` | 連結/active 狀態/Tab 選取 |
-| `--green` | `#a6e3a1` | PASS/完成/連線 |
-| `--red` | `#f38ba8` | FAIL/錯誤/危險 |
-| `--yellow` | `#f9e2af` | 等待/開發階段 |
-| `--purple` | `#cba6f7` | planner/doc-updater/委派 |
-| `--cyan` | `#89dceb` | architect/MCP server |
-| `--pink` | `#f5c2e7` | tester |
-| `--orange` | `#fab387` | retry/build-error-resolver |
+| 變數         | Hex       | 用途                       |
+| ------------ | --------- | -------------------------- |
+| `--bg`       | `#1e1e2e` | 主背景                     |
+| `--surface0` | `#313244` | 卡片/面板背景              |
+| `--surface1` | `#45475a` | 邊框/分隔線                |
+| `--surface2` | `#585b70` | 禁用態/次要邊框            |
+| `--overlay0` | `#6c7086` | 更次要文字/時間戳          |
+| `--text`     | `#cdd6f4` | 主要文字                   |
+| `--subtext0` | `#a6adc8` | 次要標籤                   |
+| `--subtext1` | `#bac2de` | 次要文字                   |
+| `--blue`     | `#89b4fa` | 連結/active 狀態/Tab 選取  |
+| `--green`    | `#a6e3a1` | PASS/完成/連線             |
+| `--red`      | `#f38ba8` | FAIL/錯誤/危險             |
+| `--yellow`   | `#f9e2af` | 等待/開發階段              |
+| `--purple`   | `#cba6f7` | planner/doc-updater/委派   |
+| `--cyan`     | `#89dceb` | architect/MCP server       |
+| `--pink`     | `#f5c2e7` | tester                     |
+| `--orange`   | `#fab387` | retry/build-error-resolver |
 
 ### 6.2 動畫系統
 
 前端定義 18+ CSS keyframe 動畫：
 
-| 動畫名稱 | 用途 | 參數 |
-|---------|------|------|
-| `cardPulse` | AgentCard active 狀態脈衝 | 2s ease-in-out infinite |
-| `livePulse` | Session card live 綠點 | 2s ease infinite |
-| `alPulse` | Agent 燈號脈衝（running/error/delegating/waiting/pending） | 1.5~3s ease infinite |
-| `arrowFlowR/L` | 連接箭頭流動 | 1.2s ease-in-out infinite |
-| `turnFlow` | 轉角 ↓ 流動 | 1.2s ease-in-out infinite |
-| `bounce` | AgentCard active emoji 跳動 | 1s ease infinite |
-| `todoPulse` | Todo 項目 active 點脈衝 | 1.5s ease infinite |
-| `shimmer` | 完成進度條光澤 | 2s linear infinite |
-| `slideIn` | Timeline 事件進場 | 0.3s ease（一次性）|
-| `cardEnter` | AgentCard 入場 | 0.5s ease-out backwards（交錯 delay）|
-| `pixelPulse` | 像素模式 active 邊框閃爍 | 1s steps(2) infinite |
-| `wsTyping` | 像素工位打字搖動 | 0.3s steps(2) infinite |
-| `wsCelebrate` | 像素工位完成跳動 | 0.8s steps(2) infinite |
-| `wsFrustrated` | 像素工位失敗搖晃 | 0.3s steps(2) infinite |
-| `wsParty` | 全部完成歡呼 | 1.2s ease-in-out infinite |
-| `confettiFall` | 彩紙下落 | 2.5-4.5s ease-out forwards |
-| `maWalk` | Main Agent 行走 | 0.4s steps(2) infinite |
-| `wsIdle` | Main Agent / next 工位呼吸 | 2s steps(2) infinite |
+| 動畫名稱       | 用途                                                       | 參數                                  |
+| -------------- | ---------------------------------------------------------- | ------------------------------------- |
+| `cardPulse`    | AgentCard active 狀態脈衝                                  | 2s ease-in-out infinite               |
+| `livePulse`    | Session card live 綠點                                     | 2s ease infinite                      |
+| `alPulse`      | Agent 燈號脈衝（running/error/delegating/waiting/pending） | 1.5~3s ease infinite                  |
+| `arrowFlowR/L` | 連接箭頭流動                                               | 1.2s ease-in-out infinite             |
+| `turnFlow`     | 轉角 ↓ 流動                                                | 1.2s ease-in-out infinite             |
+| `bounce`       | AgentCard active emoji 跳動                                | 1s ease infinite                      |
+| `todoPulse`    | Todo 項目 active 點脈衝                                    | 1.5s ease infinite                    |
+| `shimmer`      | 完成進度條光澤                                             | 2s linear infinite                    |
+| `slideIn`      | Timeline 事件進場                                          | 0.3s ease（一次性）                   |
+| `cardEnter`    | AgentCard 入場                                             | 0.5s ease-out backwards（交錯 delay） |
+| `pixelPulse`   | 像素模式 active 邊框閃爍                                   | 1s steps(2) infinite                  |
+| `wsTyping`     | 像素工位打字搖動                                           | 0.3s steps(2) infinite                |
+| `wsCelebrate`  | 像素工位完成跳動                                           | 0.8s steps(2) infinite                |
+| `wsFrustrated` | 像素工位失敗搖晃                                           | 0.3s steps(2) infinite                |
+| `wsParty`      | 全部完成歡呼                                               | 1.2s ease-in-out infinite             |
+| `confettiFall` | 彩紙下落                                                   | 2.5-4.5s ease-out forwards            |
+| `maWalk`       | Main Agent 行走                                            | 0.4s steps(2) infinite                |
+| `wsIdle`       | Main Agent / next 工位呼吸                                 | 2s steps(2) infinite                  |
 
 ### 6.3 像素角色系統
 
 8 個 pipeline agent 各有獨立像素網格（`CHARS`，7×10 字元網格），透過 `charShadow()` 函式轉換為 CSS `box-shadow` 多值。
 
 字元映射：
+
 - `S` = 膚色（`SK = '#ffd8b4'`）
 - `E` = 眼睛（`EY = '#222'`，可被 EXPR_PAL 覆蓋）
 - `M` = 嘴巴（`MO = '#c47a5a'`，可被 EXPR_PAL 覆蓋）
@@ -545,6 +588,7 @@ Blob URL 觸發下載（`a.click()`）。
 - `P/H/X/G/C/O/W` = 各角色特色配件
 
 表情覆蓋（`EXPR_PAL`）依狀態改變 E（眼睛）和 M（嘴巴）顏色：
+
 - `active`：正常眼 `#222` + 嘴 `#c47a5a`
 - `pass`：眼 `#ffd8b4`（瞇眼）+ 嘴 `#e88a6a`
 - `fail`：眼 `#ff4444`（紅眼）+ 嘴 `#333`
@@ -554,12 +598,12 @@ Blob URL 觸發下載（`a.click()`）。
 
 ### 6.4 響應式斷點
 
-| 寬度 | 佈局變化 |
-|------|---------|
+| 寬度       | 佈局變化                                                                      |
+| ---------- | ----------------------------------------------------------------------------- |
 | `≤ 1100px` | Agent Grid 縮減欄寬；Snake Grid 改為 3 欄；隱藏箭頭；像素辦公室 ws 縮窄 100px |
-| `≤ 960px` | Dashboard 雙欄改單欄（`.dash-grid`）|
-| `≤ 800px` | Agent Grid 隱藏 extra chips（`agent-extra`）|
-| `≤ 700px` | 整體單欄佈局，Sidebar 改橫向滾動，Snake Grid 改 1 欄，像素辦公室箭頭隱藏 |
+| `≤ 960px`  | Dashboard 雙欄改單欄（`.dash-grid`）                                          |
+| `≤ 800px`  | Agent Grid 隱藏 extra chips（`agent-extra`）                                  |
+| `≤ 700px`  | 整體單欄佈局，Sidebar 改橫向滾動，Snake Grid 改 1 欄，像素辦公室箭頭隱藏      |
 
 ---
 
@@ -612,15 +656,15 @@ App
 
 ### 8.1 效能設計
 
-| 機制 | 參數 | 說明 |
-|------|------|------|
-| File Watcher 防抖 | pipeline/barrier: 80ms，heartbeat: 500ms | 避免高頻寫入觸發過多廣播 |
-| Timeline 前端上限 | 200 筆 | 新事件插前端，`slice(0, 200)` 截斷 |
-| Timeline 後端上限 | 2000 筆（`MAX_EVENTS`） | JSONL 檔案大小控制 |
-| WebSocket 重連 | 指數退避，上限 5s | 避免伺服器重啟後大量重連 |
-| 每秒 tick | `setInterval(1s)` | 驅動 elapsed 更新 + timeline 時間篩選重算 |
-| MCP 統計快取 | `useMemo([events])` | 避免每 tick 重算 |
-| Session 合併 | `useMemo([sessions, alive])` | 合併 heartbeat 狀態 |
+| 機制              | 參數                                     | 說明                                      |
+| ----------------- | ---------------------------------------- | ----------------------------------------- |
+| File Watcher 防抖 | pipeline/barrier: 80ms，heartbeat: 500ms | 避免高頻寫入觸發過多廣播                  |
+| Timeline 前端上限 | 200 筆                                   | 新事件插前端，`slice(0, 200)` 截斷        |
+| Timeline 後端上限 | 2000 筆（`MAX_EVENTS`）                  | JSONL 檔案大小控制                        |
+| WebSocket 重連    | 指數退避，上限 5s                        | 避免伺服器重啟後大量重連                  |
+| 每秒 tick         | `setInterval(1s)`                        | 驅動 elapsed 更新 + timeline 時間篩選重算 |
+| MCP 統計快取      | `useMemo([events])`                      | 避免每 tick 重算                          |
+| Session 合併      | `useMemo([sessions, alive])`             | 合併 heartbeat 狀態                       |
 
 ### 8.2 已知限制
 
