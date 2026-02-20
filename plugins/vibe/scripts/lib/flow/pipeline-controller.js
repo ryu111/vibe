@@ -608,10 +608,17 @@ async function classify(sessionId, prompt, options = {}) {
     return {
       output: {
         systemMessage:
-          'Pipeline 自主分類：收到任務後，判斷是否需要 pipeline。\n' +
-          '• 涉及寫碼/修改/建立/重構/UI/優化 → 呼叫 /vibe:pipeline 啟動工作流\n' +
-          '• 純問答/研究/解釋 → 直接回答\n' +
-          '不確定時偏向使用 pipeline。參考 additionalContext 中的 pipeline 目錄選擇。',
+          'Pipeline 自主分類：根據任務性質選擇 pipeline 並呼叫 /vibe:pipeline。\n' +
+          '判斷規則（按順序檢查）：\n' +
+          '1. 純問答/研究/解釋/查詢 → 直接回答（不呼叫 pipeline）\n' +
+          '2. 一行修改/改常量/改設定/hotfix → [pipeline:fix]\n' +
+          '3. bugfix + 需要測試 → [pipeline:quick-dev]\n' +
+          '4. 純 UI/樣式調整 → [pipeline:ui-only]\n' +
+          '5. 安全修復/漏洞修補 → [pipeline:security]\n' +
+          '6. TDD/先寫測試 → [pipeline:test-first]\n' +
+          '7. 新功能（有 UI）→ [pipeline:full]\n' +
+          '8. 新功能（無 UI）/大型重構 → [pipeline:standard]\n' +
+          '不確定時偏向使用 pipeline。呼叫 /vibe:pipeline 並在 prompt 中加入 [pipeline:xxx] 語法。',
         additionalContext: refParts.join('\n'),
       },
     };
@@ -752,7 +759,7 @@ function onDelegate(sessionId, agentType, toolInput) {
  *
  * @returns {{ systemMessage: string, continue?: boolean }}
  */
-function onStageComplete(sessionId, agentType, transcriptPath) {
+function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMessage = '') {
   const pipeline = discoverPipeline();
   const shortAgent = extractShortAgent(agentType);
 
@@ -776,6 +783,9 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
 
   // ── v4：解析 PIPELINE_ROUTE（fallback 到 v3 PIPELINE_VERDICT）──
   const { parsed: routeParsed, source: routeSource } = parseRoute(transcriptPath);
+
+  // 洩漏感知 compact 建議（在 systemMessage 末尾附加）
+  let leakCompactHint = '';
 
   // Timeline emit：記錄 fallback 事件
   let routeResult = null;
@@ -1184,10 +1194,11 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
     state = { ...state, activeStages: state.activeStages.filter(s => s !== currentStage) };
   }
 
-  // Token 效率：品質 stage 完成時偵測 transcript 回應長度
+  // Token 效率：品質 stage 完成時偵測回應長度
+  // 優先使用 last_assistant_message（ECC SubagentStop 直接提供），fallback 到 transcript 解析
   // > 500 chars → emit TRANSCRIPT_LEAK_WARNING，累加 leakAccumulated
-  if (isQualityStage && transcriptPath) {
-    const responseLen = getLastAssistantResponseLength(transcriptPath);
+  if (isQualityStage) {
+    const responseLen = lastAssistantMessage.length || getLastAssistantResponseLength(transcriptPath);
     const LEAK_THRESHOLD = 500;
     if (responseLen > LEAK_THRESHOLD) {
       try {
@@ -1198,7 +1209,13 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
         });
       } catch (_) {}
       const prevLeak = state.leakAccumulated || 0;
-      state = { ...state, leakAccumulated: prevLeak + responseLen };
+      const newLeak = prevLeak + responseLen;
+      state = { ...state, leakAccumulated: newLeak };
+
+      // 單次洩漏 > 1000 chars 或累積 > 1500 chars：在 systemMessage 注入 compact 建議
+      if (responseLen > 1000 || newLeak > 1500) {
+        leakCompactHint = `\n⚠️ 品質 Agent 回應過長（本次 ${responseLen} 字元，累積 ${newLeak} 字元）。建議在下次委派前執行 /compact 回收 context。`;
+      }
     }
   }
 
@@ -1269,10 +1286,10 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
     // 沒有 ready stages 但也沒完成 → 等待其他 active stages
     const active = ds.getActiveStages(state);
     if (active.length > 0) {
-      return { systemMessage: `✅ ${currentStage} 完成。等待 ${active.join(', ')} 完成...` };
+      return { systemMessage: (`✅ ${currentStage} 完成。等待 ${active.join(', ')} 完成...` + leakCompactHint) || null };
     }
     // 理論上不該發生
-    return { systemMessage: `✅ ${currentStage} 完成。` };
+    return { systemMessage: (`✅ ${currentStage} 完成。` + leakCompactHint) || null };
   }
 
   // 有 ready stages → 發出委派指令
@@ -1305,10 +1322,12 @@ function onStageComplete(sessionId, agentType, transcriptPath) {
     } catch (_) {}
   }
 
+  const mainMsg =
+    `✅ ${currentStage} 完成 → 立即呼叫 ${label}\n` +
+    `⛔ 你必須立即呼叫以下 Skill，不要輸出文字：${hints.join(' + ')}${stageContext}${qualityWarning}${routeReminder}${nodeContextStr}`;
+
   return {
-    systemMessage:
-      `✅ ${currentStage} 完成 → 立即呼叫 ${label}\n` +
-      `⛔ 你必須立即呼叫以下 Skill，不要輸出文字：${hints.join(' + ')}${stageContext}${qualityWarning}${routeReminder}${nodeContextStr}`,
+    systemMessage: (mainMsg + leakCompactHint) || null,
   };
 }
 

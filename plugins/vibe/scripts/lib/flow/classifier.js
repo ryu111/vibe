@@ -97,8 +97,10 @@ const HEURISTIC_RULES = [
     }},
 
   // none: 純問答（最先匹配，避免誤分類）
+  // 負面排除：含有明確開發意圖的問句（如「能幫我重構 XXX 嗎？」）應落入 Layer 2 讓 Main Agent 判斷
   { id: 'question', pipeline: 'none',
-    test: (p) => QUESTION_PATTERNS.some(r => r.test(p)) && !FILE_PATH_PATTERN.test(p) },
+    test: (p) => QUESTION_PATTERNS.some(r => r.test(p)) && !FILE_PATH_PATTERN.test(p) &&
+                 !/(重構|refactor|實作|implement|建立|新增|修[改復正]|fix|寫[入出]|刪除|移除|deploy|部署)/i.test(p) },
 
   // review-only: 程式碼審查（1 階段）
   // 正面：review/審查/code review 等審查意圖

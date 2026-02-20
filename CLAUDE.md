@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 2.1.7 | 全方位開發工作流 | 37 | 12 | 19 | 50 |
+| **vibe** | 2.1.9 | 全方位開發工作流 | 37 | 12 | 19 | 50 |
 
 ### vibe plugin 功能模組
 
@@ -222,7 +222,7 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 | pink | tester | sonnet |
 | orange | build-error-resolver | haiku |
 | green | e2e-runner | sonnet |
-| purple | pipeline-architect | haiku |
+| purple | pipeline-architect | sonnet |
 
 合法色彩值：`red` / `blue` / `green` / `yellow` / `purple` / `orange` / `pink` / `cyan`
 

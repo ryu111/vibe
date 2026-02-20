@@ -161,10 +161,10 @@ asyncTest('classifyWithConfidence: 一般 prompt → none/main-agent', async () 
   assert.strictEqual(result.source, 'main-agent');
 });
 
-asyncTest('classifyWithConfidence: 疑問句 → none/main-agent', async () => {
+asyncTest('classifyWithConfidence: 疑問句 → none/heuristic', async () => {
   const result = await classifyWithConfidence('什麼是 pipeline?');
   assert.strictEqual(result.pipeline, 'none');
-  assert.strictEqual(result.source, 'main-agent');
+  assert.strictEqual(result.source, 'heuristic');
 });
 
 asyncTest('classifyWithConfidence: 空字串 → none, 0, fallback, empty', async () => {

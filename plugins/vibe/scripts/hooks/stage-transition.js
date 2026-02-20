@@ -22,7 +22,8 @@ safeRun('stage-transition', (data) => {
 
   if (!agentType) process.exit(0);
 
-  const result = ctrl.onStageComplete(sessionId, agentType, transcriptPath);
+  const lastMessage = data.last_assistant_message || '';
+  const result = ctrl.onStageComplete(sessionId, agentType, transcriptPath, lastMessage);
 
   if (!result.systemMessage) process.exit(0);
 

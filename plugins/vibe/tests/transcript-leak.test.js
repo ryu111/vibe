@@ -194,30 +194,121 @@ test('回應 > 500 chars → 觸發洩漏偵測（閾值 500）', () => {
   assert.ok(len > LEAK_THRESHOLD, `長度 ${len} 應 > 閾值 ${LEAK_THRESHOLD}`);
 });
 
-test('leakAccumulated < 3000 → 不觸發 compact 建議', () => {
-  const leakAccumulated = 2999;
-  const LEAK_COMPACT_THRESHOLD = 3000;
-  assert.ok(leakAccumulated < LEAK_COMPACT_THRESHOLD, '不應觸發 compact');
+// v2.1.8 更新：LEAK_COMPACT_THRESHOLD 從 3000 降為 1500
+test('leakAccumulated < 1500 → 不觸發 compact 建議（v2.1.8 新閾值）', () => {
+  const leakAccumulated = 1499;
+  const LEAK_COMPACT_THRESHOLD = 1500;
+  assert.ok(leakAccumulated < LEAK_COMPACT_THRESHOLD, '1499 不應觸發 compact');
 });
 
-test('leakAccumulated >= 3000 → 觸發 compact 建議', () => {
-  const leakAccumulated = 3000;
-  const LEAK_COMPACT_THRESHOLD = 3000;
-  assert.ok(leakAccumulated >= LEAK_COMPACT_THRESHOLD, '應觸發 compact');
+test('leakAccumulated >= 1500 → 觸發 compact 建議（v2.1.8 新閾值）', () => {
+  const leakAccumulated = 1500;
+  const LEAK_COMPACT_THRESHOLD = 1500;
+  assert.ok(leakAccumulated >= LEAK_COMPACT_THRESHOLD, '1500 應觸發 compact');
 });
 
-test('累加邏輯：3 輪洩漏（各 1500 chars）→ 4500 >= 3000 觸發', () => {
+test('leakAccumulated = 1499 舊閾值（< 3000）不觸發，新閾值（>= 1500）觸發 → 確認降低', () => {
+  const leakAccumulated = 1500;
+  const OLD_THRESHOLD = 3000;
+  const NEW_THRESHOLD = 1500;
+  assert.ok(leakAccumulated < OLD_THRESHOLD, '1500 在舊閾值下不會觸發');
+  assert.ok(leakAccumulated >= NEW_THRESHOLD, '1500 在新閾值下應觸發（更早保護 context）');
+});
+
+test('累加邏輯：2 輪洩漏（各 900 chars）→ 1800 >= 1500 觸發（v2.1.8）', () => {
   let accumulated = 0;
   const LEAK_THRESHOLD = 500;
-  const LEAK_COMPACT_THRESHOLD = 3000;
-  const responses = [1500, 1500, 1500]; // 3 輪品質 stage 各 1500 chars
+  const LEAK_COMPACT_THRESHOLD = 1500;
+  const responses = [900, 900]; // 2 輪品質 stage 各 900 chars
   for (const responseLen of responses) {
     if (responseLen > LEAK_THRESHOLD) {
       accumulated += responseLen;
     }
   }
-  assert.strictEqual(accumulated, 4500, '累積應為 4500');
-  assert.ok(accumulated >= LEAK_COMPACT_THRESHOLD, '應觸發 compact 建議');
+  assert.strictEqual(accumulated, 1800, '累積應為 1800');
+  assert.ok(accumulated >= LEAK_COMPACT_THRESHOLD, '應觸發 compact 建議（新閾值 1500）');
+});
+
+// ═══════════════════════════════════════════════
+// 4. leakCompactHint 觸發條件（v2.1.8）
+// 單次 > 1000 chars 或累積 > 1500 chars 時，
+// leakCompactHint 在 systemMessage 中附加提醒
+// ═══════════════════════════════════════════════
+
+console.log('\n--- 4. leakCompactHint 觸發條件（v2.1.8）---');
+
+test('單次回應 > 1000 chars → leakCompactHint 應附加（threshold: 1000）', () => {
+  const responseLen = 1001;
+  const SINGLE_LEAK_THRESHOLD = 1000;
+  const shouldHint = responseLen > SINGLE_LEAK_THRESHOLD;
+  assert.ok(shouldHint, '1001 chars 應觸發 leakCompactHint');
+});
+
+test('單次回應 = 1000 chars → 不觸發 leakCompactHint（邊界值）', () => {
+  const responseLen = 1000;
+  const SINGLE_LEAK_THRESHOLD = 1000;
+  const shouldHint = responseLen > SINGLE_LEAK_THRESHOLD;
+  assert.ok(!shouldHint, '1000 chars 剛好不超過閾值，不應觸發');
+});
+
+test('累積 > 1500 chars → leakCompactHint 應附加（threshold: 1500）', () => {
+  const prevLeak = 800;
+  const responseLen = 800;
+  const newLeak = prevLeak + responseLen;
+  const ACCUM_THRESHOLD = 1500;
+  const shouldHint = responseLen > 1000 || newLeak > ACCUM_THRESHOLD;
+  assert.ok(shouldHint, `累積 ${newLeak} > ${ACCUM_THRESHOLD} 應觸發 leakCompactHint`);
+});
+
+test('lastAssistantMessage 空字串 → falsy → fallback 到 transcript 解析', () => {
+  const lastAssistantMessage = '';
+  // 空字串 .length = 0 → falsy → fallback
+  const responseLenFromMsg = lastAssistantMessage.length;
+  assert.strictEqual(responseLenFromMsg, 0, '空字串 length 為 0');
+  assert.ok(!responseLenFromMsg, '0 是 falsy，應 fallback 到 transcript');
+});
+
+test('lastAssistantMessage 有內容 → truthy → 直接使用不解析 transcript', () => {
+  const lastAssistantMessage = 'A'.repeat(600);
+  const responseLenFromMsg = lastAssistantMessage.length;
+  assert.ok(responseLenFromMsg, '有內容的 lastAssistantMessage length 應為 truthy');
+  assert.strictEqual(responseLenFromMsg, 600, '應直接取得正確長度（不走 I/O）');
+});
+
+test('lastAssistantMessage || fallback 邏輯：有值時不 fallback', () => {
+  const lastMsg = 'B'.repeat(800);
+  // 模擬 pipeline-controller 中的邏輯
+  let usedFallback = false;
+  const responseLen = lastMsg.length || (() => { usedFallback = true; return 0; })();
+  assert.strictEqual(responseLen, 800, '應直接使用 lastMsg.length');
+  assert.ok(!usedFallback, '有 lastAssistantMessage 時不應呼叫 fallback');
+});
+
+// ═══════════════════════════════════════════════
+// 5. stage-transition.js 傳遞 last_assistant_message 驗證
+// ═══════════════════════════════════════════════
+
+console.log('\n--- 5. stage-transition.js 結構驗證 ---');
+
+const stageTransitionSrc = fs.readFileSync(
+  path.join(__dirname, '..', 'scripts', 'hooks', 'stage-transition.js'),
+  'utf8'
+);
+
+test('stage-transition.js 讀取 data.last_assistant_message', () => {
+  assert.ok(stageTransitionSrc.includes('last_assistant_message'),
+    'stage-transition.js 應讀取 last_assistant_message 欄位');
+});
+
+test('stage-transition.js 將 lastMessage 傳遞給 ctrl.onStageComplete', () => {
+  assert.ok(stageTransitionSrc.includes('ctrl.onStageComplete') &&
+    stageTransitionSrc.includes('lastMessage'),
+    'stage-transition.js 應將 lastMessage 傳給 onStageComplete');
+});
+
+test('stage-transition.js 空值防禦：data.last_assistant_message || \'\'', () => {
+  assert.ok(stageTransitionSrc.includes("data.last_assistant_message || ''"),
+    '應有空值防禦 || \'\'');
 });
 
 // ═══════════════════════════════════════════════

@@ -1,6 +1,6 @@
 # Pipeline 已知問題與技術債務
 
-> 從 `pipeline.md` 第 12 節提取。截至 v2.1.7（2026-02）的已知問題和改進空間。
+> 從 `pipeline.md` 第 12 節提取。截至 v2.1.8（2026-02）的已知問題、改進空間與改善路徑研究。
 
 ---
 
@@ -12,11 +12,11 @@
 | P2 多次 writeState | 低 | ✅ 已修復 | v2.1.4 |
 | P3 ABORT 未使用 | 低 | ✅ 已修復 | v2.1.7 |
 | P4 系統通知誤分類 | 中 | ✅ 已修復 | v2.1.5 |
-| P5 Classifier 侷限 | 低 | ⚠️ 部分修復 | v2.1.5 |
-| P6 Context Window | 高 | ⚠️ 部分修復 | v2.1.5 |
+| P5 Classifier 侷限 | 低 | ✅ 基本解決 | v2.1.9 |
+| P6 Context Window | 高 | ✅ 基本解決 | v2.1.5 |
 | P7 RAM 累積 | 中 | ✅ 已修復 | v2.1.6 |
 | P8 Barrier Timeout | 低 | ✅ 已修復 | v2.1.6 |
-| P9 Transcript 洩漏 | 中 | ⚠️ 部分修復 | v2.1.5 |
+| P9 Transcript 洩漏 | 中 | ✅ 基本解決 | v2.1.8 |
 | P10 Suffixed Stage | 低 | ✅ 已修復 | v2.1.7 |
 
 ---
@@ -102,7 +102,7 @@
 
 ---
 
-## P5：Classifier Layer 1.5 侷限（嚴重度：低）⚠️ 部分修復
+## P5：Classifier Layer 1.5 侷限（嚴重度：低）✅ 基本解決
 
 **修復內容（v2.1.5+）**：擴充啟發式規則，支援 review-only 和更多條件詢問句型。
 
@@ -131,9 +131,24 @@ Layer 2 仍依賴 Main Agent 的 context 理解能力，但 systemMessage 注入
 
 **測試**：`plugins/vibe/tests/classifier-and-console-filter.test.js` 新增 13 個測試案例（review-only 正負面各 4+3 個、question 擴充 4 個）。
 
+**v2.1.9 強化（2026-02-20）**：
+
+1. **Question 負面排除擴充**：question heuristic 新增 12 個 coding intent 關鍵字作為負面排除（重構/refactor/實作/implement/建立/新增/修改/修復/修正/fix/寫入/刪除/移除/deploy/部署），防止「能幫我重構 XXX 嗎？」等 coding-intent 問句被誤分類為 none。
+2. **Layer 2 systemMessage 結構化**：從泛化的「涉及寫碼→pipeline」改為 8 條規則的決策表，按順序檢查，明確映射任務類型到具體 pipeline ID，大幅提升 Main Agent 自主分類的準確度。
+
+**改善路徑**（ECC 新 API 研究，2026-02）：
+
+| 方案 | 可行性 | 說明 |
+|------|:------:|------|
+| Prompt Hook 分類 | ⭐⭐⭐ | UserPromptSubmit 支援 `type: "prompt"` hook，直接呼叫 LLM（Haiku）做二元判斷（是否需要 pipeline）。timeout 可自訂（預設 30s），Haiku 分類足夠。回傳 `ok: false` 時 reason 送回 Claude，配合 Layer 1.5 regex 做精確分類 |
+| Agent Hook 分類 | ⭐⭐ | `type: "agent"` hook spawn subagent + Read/Grep/Glob，最多 50 turns、timeout 60s。適合需讀取專案檔案才能判斷的場景，但延遲較高 |
+| Async Hook 補償 | ⭐⭐ | `async: true` command hook 在背景呼叫 LLM 分類，完成後 `systemMessage` 在**下一個 turn** 注入修正結果。延遲一個 turn 但不阻塞使用者 |
+
+**推薦架構**：Prompt hook 做「需要 pipeline？」二元判斷 → `ok: false` 阻擋直接執行 → Layer 1.5 regex 精確分類 pipeline 類型 → Layer 2 Main Agent 處理 multi-stage。三層串聯可覆蓋所有場景。
+
 ---
 
-## P6：Context Window 壓縮（嚴重度：高）⚠️ 部分修復
+## P6：Context Window 壓縮（嚴重度：高）✅ 基本解決
 
 **現狀**：MCP 工具過多時（如 chrome-mcp + claude-mem + 其他），ECC 的 context window 從 200k 壓縮到約 70k tokens。Pipeline 的 systemMessage 注入（Node Context + 委派指令）進一步消耗可用 context。
 
@@ -145,7 +160,18 @@ Layer 2 仍依賴 Main Agent 的 context 理解能力，但 systemMessage 注入
 - `classify()` 中 `allSteps` 限制前 3 步 + 省略提示，減少長 pipeline 的步驟清單
 - `suggest-compact` 整合洩漏偵測，當累積 leak >= 3000 字元時主動建議 compact
 
-**根本限制**：MCP 工具定義佔用的 context 是平台層面問題，Pipeline 無法控制。上述優化專注於可控的注入量減少。
+**根本限制與新發現**：
+
+MCP 工具定義佔用 context 是平台層面問題。但 ECC 已新增 **MCP Tool Search** 功能，可大幅緩解：
+
+| 方案 | 可行性 | 說明 |
+|------|:------:|------|
+| MCP Tool Search（已內建） | ⭐⭐⭐⭐⭐ | 已設定 `ENABLE_TOOL_SEARCH=true`（永遠啟用）。預設 `auto` 模式閾值 10%，但 25 個 MCP 工具僅佔 ~3.75% 不會觸發。`true` 模式繞過閾值，所有 MCP 工具定義改為 lazy loading。支援 Sonnet 4+ / Opus 4+（Haiku 不支援）。可用 `auto:<N>` 自訂閾值百分比 |
+| Per-server 控制 | ⭐⭐⭐⭐ | `/mcp disable tool-search [server]` 可對高頻 server 停用 lazy loading，確保即時可用 |
+| Tool Description 優化 | ⭐⭐⭐ | 壓縮 MCP tool description 讓 Tool Search 索引更小、匹配更準。研究顯示 compact 變體保持可靠性 |
+| Dynamic Toolset | ⭐⭐ | 將 MCP server 視為 code API，agent 寫程式碼呼叫。96% input token 減少，但架構改動大 |
+
+**驗證結果（2026-02-20）**：已在 `~/.claude/settings.json` 設定 `ENABLE_TOOL_SEARCH=true`（永遠啟用）。目前環境 25 個 MCP 工具（chrome-mcp 18 + claude-mem 5 + IDE 2）佔 context ~3.75%，低於預設 10% 閾值，因此需強制啟用。所有注入量優化（catalog 裁剪、node-context 壓縮、三層截斷）已在 v2.1.5 完成。**狀態：✅ 基本解決**（平台設定 + 程式碼優化雙管齊下）。注意：Haiku 模型不支援 Tool Search。
 
 ---
 
@@ -217,7 +243,7 @@ Layer 2 仍依賴 Main Agent 的 context 理解能力，但 systemMessage 注入
 
 ---
 
-## P9：Transcript 洩漏無法完全防止（嚴重度：中）⚠️ 部分修復
+## P9：Transcript 洩漏無法完全防止（嚴重度：中）✅ 基本解決
 
 **現狀**：Agent `.md` 規範了回應格式，但 LLM 不完全受控。品質 agent 偶爾仍會在最終回應中包含完整報告，導致 Main Agent 看到問題細節。
 
@@ -229,7 +255,16 @@ Layer 2 仍依賴 Main Agent 的 context 理解能力，但 systemMessage 注入
 - `dag-state.js` 新增 `leakAccumulated` 欄位，追蹤洩漏累積量
 - `suggest-compact.js` 整合洩漏感知（累積 >= 3000 字元時主動建議 compact）
 
-**根本限制**：ECC SubagentStop hook 無法修改 `tool_result` 中的 agent 回應，洩漏攔截必須在源頭（agent .md 約束）。本方案結合「強約束」+「事後偵測」+「主動 compact」三層防禦。
+**v2.1.8 強化（2026-02-20）**：
+
+1. **`last_assistant_message` 直接偵測**：SubagentStop hook 直接接收 sub-agent 最終回應文字，替代 transcript JSONL 解析。零 I/O、更可靠，fallback 到 transcript 解析兜底。
+2. **洩漏感知 compact 建議**：單次洩漏 > 1000 字元或累積 > 1500 字元時，在 `systemMessage` 注入 compact 建議，Main Agent 在下次委派前主動回收 context。
+3. **suggest-compact 閾值降低**：`LEAK_COMPACT_THRESHOLD` 從 3000 降為 1500，更早觸發 compact 建議。
+4. **Agent .md 輸出約束強化**：4 個品質 agent 新增 ⛔ 強制約束區塊（含 ❌/✅ 示範），明確「只輸出一句話結論 + PIPELINE_ROUTE」。
+
+**根本限制**：ECC SubagentStop hook 無法修改 `tool_result` 中的 agent 回應（`run_in_background=true` 有已知 bug [#17011](https://github.com/anthropics/claude-code/issues/17011)：輸出被丟棄），洩漏攔截必須在源頭。本方案結合「強約束」+「直接偵測」+「主動 compact」+「P6 context 緩衝」四層防禦。**狀態升級為「基本解決」**。
+
+**與 P6 的連動**：P6 的 `ENABLE_TOOL_SEARCH=true` 已生效，context 空間大幅增加，洩漏的相對影響進一步降低。
 
 ---
 

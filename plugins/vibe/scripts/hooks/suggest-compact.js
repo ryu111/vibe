@@ -110,8 +110,8 @@ process.stdin.on('end', () => {
 
     // 2b. Transcript 洩漏感知 compact 建議
     // 品質 stage（REVIEW/TEST/QA/E2E）回應過長時，leakAccumulated 會累加
-    // 超過 3000 chars（約 3+ 次洩漏）→ 建議 compact 以減少 context 消耗
-    const LEAK_COMPACT_THRESHOLD = 3000;
+    // 超過 1500 chars（約 2 次洩漏）→ 建議 compact 以減少 context 消耗
+    const LEAK_COMPACT_THRESHOLD = 1500;
     try {
       const leakAccumulated = cachedState?.leakAccumulated || 0;
       if (leakAccumulated >= LEAK_COMPACT_THRESHOLD) {
