@@ -466,15 +466,15 @@ node-context.js (下一個 stage 委派時)
 
 **Checklist**：
 
-- [ ] S5.1 — 新增 `plugins/vibe/scripts/lib/flow/status-writer.js`（generate/update/read）
-- [ ] S5.2 — status-writer.js：從 pipeline state 產生 Markdown 狀態摘要
-- [ ] S5.3 — status-writer.js：包含已完成 stage 摘要 + 進行中 + 決策記錄（從 wisdom 提取）
-- [ ] S5.4 — pipeline-controller.js：onStageComplete() PASS 後呼叫 status-writer.update()
-- [ ] S5.5 — pipeline-init.js：resume/compact 時讀取 status file 注入 additionalContext
-- [ ] S5.6 — pipeline-controller.js：onSessionStop() crash recovery 優先讀取 status file
-- [ ] S5.7 — session-cleanup.js：清理 `pipeline-status-*.md` 殘留檔案
-- [ ] S5.8 — 測試：status file 生成 + resume 恢復 + crash recovery 整合
-- [ ] S5.9 — 文檔：更新 CLAUDE.md State 與命名慣例
+- [x] S5.1 — 新增 `plugins/vibe/scripts/lib/flow/status-writer.js`（generate/update/read）
+- [x] S5.2 — status-writer.js：從 pipeline state 產生 Markdown 狀態摘要
+- [x] S5.3 — status-writer.js：包含已完成 stage 摘要 + 進行中 + 決策記錄（從 wisdom 提取）
+- [x] S5.4 — pipeline-controller.js：onStageComplete() PASS 後呼叫 status-writer.update()
+- [x] S5.5 — pipeline-init.js：resume/compact 時讀取 status file 注入 additionalContext
+- [x] S5.6 — pipeline-controller.js：onSessionStop() crash recovery 優先讀取 status file
+- [x] S5.7 — session-cleanup.js：清理 `pipeline-status-*.md` 殘留檔案
+- [x] S5.8 — 測試：status file 生成 + resume 恢復 + crash recovery 整合
+- [x] S5.9 — 文檔：更新 CLAUDE.md State 與命名慣例
 
 **影響範圍**：
 - 新增 `plugins/vibe/scripts/lib/flow/status-writer.js`
@@ -565,39 +565,112 @@ constraints:
 
 ---
 
+### 🟡 S8：Cancel 白名單（Guard 修復）
+
+**問題本質**：`/vibe:cancel` 需要寫入 state file 將 `pipelineActive` 設為 false，但 pipeline-guard 阻擋所有寫入工具。目前 workaround 是透過委派 developer agent 觸發 delegation-tracker 加入 activeStages，使 Rule 4 放行。
+
+**解法**：在 guard-rules.js 新增 cancel 專用白名單路徑 — 偵測到 cancel skill 呼叫時，放行對 pipeline state file 的寫入。
+
+**Checklist**：
+
+- [ ] S8.1 — guard-rules.js：新增 cancel 工具偵測（Skill tool + `vibe:cancel` 識別）
+- [ ] S8.2 — guard-rules.js：cancel 模式下放行 state file 寫入（限定路徑 `~/.claude/pipeline-state-*.json`）
+- [ ] S8.3 — cancel skill：移除 developer agent workaround，改為直接寫入
+- [ ] S8.4 — 測試：cancel 在 pipeline active 時成功執行
+- [ ] S8.5 — 測試：非 cancel 情境下 state file 寫入仍被阻擋
+
+**影響範圍**：
+- `plugins/vibe/scripts/lib/sentinel/guard-rules.js`
+- `plugins/vibe/skills/cancel/SKILL.md`
+
+---
+
+### 🟡 S9：Pipeline 歷史分析
+
+**問題本質**：每次 pipeline 完成後，結果（耗時、retry 次數、FAIL 原因）隨 session 消失。無法回顧哪些 pipeline 模板效果好、哪些 stage 經常 FAIL。
+
+**解法**：pipeline COMPLETE 時，將摘要追加到持久化的 `~/.claude/pipeline-history.jsonl`（JSONL 格式，每行一次 pipeline 執行記錄）。
+
+**Checklist**：
+
+- [ ] S9.1 — 新增 `plugins/vibe/scripts/lib/flow/history-writer.js`（recordPipeline/queryHistory）
+- [ ] S9.2 — pipeline-controller.js：COMPLETE 時呼叫 recordPipeline()
+- [ ] S9.3 — 記錄欄位：pipelineId、sessionId、stages 摘要、總 retry 次數、耗時、最終結果
+- [ ] S9.4 — 新增 `/vibe:history` skill 查詢近期 pipeline 執行記錄
+- [ ] S9.5 — 測試：歷史記錄寫入 + 查詢
+
+**影響範圍**：
+- 新增 `plugins/vibe/scripts/lib/flow/history-writer.js`
+- `plugins/vibe/scripts/lib/flow/pipeline-controller.js`
+- 新增 `plugins/vibe/skills/history/SKILL.md`
+
+---
+
+### 🟢 S10：Smart Retry（自適應重試策略）
+
+**問題本質**：目前 retry-policy 只做趨勢分析（improving/worsening/stable），不根據趨勢調整策略。maxRetries 是靜態值，不論 FAIL 是 CRITICAL 還是 LOW 都重試相同次數。
+
+**解法**：根據 retryHistory 趨勢動態調整重試行為：
+- severity 持續惡化（worsening） → 提早放棄（maxRetries - 1）
+- severity 穩定改善（improving） → 允許額外一輪
+- 同一 hint 重複出現 → 注入更強的 Reflexion Memory 提示
+
+**Checklist**：
+
+- [ ] S10.1 — retry-policy.js：新增 `adaptiveRetryLimit()` 根據趨勢動態調整 maxRetries
+- [ ] S10.2 — retry-policy.js：新增重複 hint 偵測（連續 2 輪相同 hint → 升級提示）
+- [ ] S10.3 — pipeline-controller.js：enforcePolicy 整合 adaptive limit
+- [ ] S10.4 — node-context.js：重複 hint 時注入強調提示到 Reflexion Memory
+- [ ] S10.5 — 測試：趨勢分析 + 動態 limit + 重複偵測
+
+**影響範圍**：
+- `plugins/vibe/scripts/lib/flow/retry-policy.js`
+- `plugins/vibe/scripts/lib/flow/pipeline-controller.js`
+- `plugins/vibe/scripts/lib/flow/node-context.js`
+
+---
+
 ## 三、實作順序與依賴
 
 ```
-S1 ──→ S2 ──→ S3 ──→ S4 ──→ S5 ──→ S6 ──→ S7
+S1 ──→ S2 ──→ S3 ──→ S4 ──→ S5 ──→ S6 ──→ S7      （已完成核心）
 架構    Agent   Phase   Wisdom  FIC    三信號  Goal
 基礎    約束    D-R-T   累積    壓縮    驗證    物件
+
+S8（Cancel 白名單）── 獨立，可隨時做
+S9（歷史分析）── 依賴 S1（COMPLETE 路徑）
+S10（Smart Retry）── 依賴 S4+S6（wisdom + signals 基礎）
 ```
 
-| 順序 | 項目 | 依賴 | 重點 |
-|:----:|------|------|------|
-| **S1** | Always-Pipeline 架構 | 無 | 刪 regex + Opus 主動選擇 + AskUserQuestion |
-| **S2** | Architect + REVIEW 防護 | S1 | Agent ⛔ 約束 + tasks.md 格式基礎 |
-| **S3** | Phase-Level D-R-T | S1 + S2 | 細粒度循環 + TodoList 可視化 |
-| **S4** | Wisdom Accumulation | S1 | 跨 stage 知識傳遞 |
-| **S5** | FIC 壓縮 | S1 + S4 | 狀態摘要 + crash recovery |
-| **S6** | 三信號驗證 | S4 | lint/test signal 注入 REVIEW |
-| **S7** | Goal Objects | 無 | 成功標準量化 |
+| 順序 | 項目 | 依賴 | 重點 | 狀態 |
+|:----:|------|------|------|:----:|
+| **S1** | Always-Pipeline 架構 | 無 | 刪 regex + Opus 主動選擇 + AskUserQuestion | 14/15 |
+| **S2** | Architect + REVIEW 防護 | S1 | Agent ⛔ 約束 + tasks.md 格式基礎 | 8/10 |
+| **S3** | Phase-Level D-R-T | S1 + S2 | 細粒度循環 + TodoList 可視化 | 14/15 |
+| **S4** | Wisdom Accumulation | S1 | 跨 stage 知識傳遞 | ✅ |
+| **S5** | FIC 壓縮 | S1 + S4 | 狀態摘要 + crash recovery | ✅ |
+| **S6** | 三信號驗證 | S4 | lint/test signal 注入 REVIEW | ✅ |
+| **S7** | Goal Objects | 無 | 成功標準量化 | ✅ |
+| **S8** | Cancel 白名單 | 無 | 消除 cancel workaround | 待實作 |
+| **S9** | Pipeline 歷史分析 | S1 | 執行記錄持久化 + 查詢 | 待實作 |
+| **S10** | Smart Retry | S4 + S6 | 自適應重試策略 | 待實作 |
 
 ---
 
 ## 四、預期效果
 
-| 指標 | 現狀 | S1 後 | S1-S3 後 | S1-S5 後 | 全部完成 |
-|------|:----:|:-----:|:--------:|:--------:|:-------:|
-| 分類準確度 | ~70% | ~90% | ~90% | ~90% | ~90% |
-| 死鎖機率 | 中 | 極低 | 極低 | 極低 | 極低 |
-| REVIEW 越權修改率 | ~20% | ~20% | ~0% | ~0% | ~0% |
-| DEV 返工範圍 | 全部 task | 全部 task | 僅失敗 phase | 僅失敗 phase | 僅失敗 phase |
-| DEV 返工次數 | ~1.5 | ~1.5 | ~0.4 | ~0.3 | ~0.3 |
-| REVIEW 重複問題率 | ~30% | ~30% | ~15% | ~5% | ~3% |
-| 使用者進度可見性 | 無 | 無 | TaskList 即時 | TaskList 即時 | TaskList 即時 |
-| Crash Recovery 準確度 | ~80% | ~80% | ~80% | ~95% | ~95% |
-| REVIEW 誤判率 | ~15% | ~15% | ~10% | ~10% | ~5% |
+| 指標 | v2.1.9 基線 | S1-S7 現狀 | + S8-S10 後 |
+|------|:----------:|:----------:|:-----------:|
+| 分類準確度 | ~70% | ~90% | ~90% |
+| 死鎖機率 | 中 | 極低 | 極低 |
+| REVIEW 越權修改率 | ~20% | ~0% | ~0% |
+| DEV 返工範圍 | 全部 task | 僅失敗 phase | 僅失敗 phase |
+| DEV 返工次數 | ~1.5 | ~0.3 | ~0.2（smart retry） |
+| REVIEW 重複問題率 | ~30% | ~5% | ~3% |
+| 使用者進度可見性 | 無 | TaskList 即時 | + 歷史統計 |
+| Crash Recovery 準確度 | ~80% | ~95% | ~95% |
+| REVIEW 誤判率 | ~15% | ~5% | ~5% |
+| Cancel 可靠度 | workaround | workaround | 原生支援 |
 
 ---
 
@@ -637,6 +710,9 @@ S1 ──→ S2 ──→ S3 ──→ S4 ──→ S5 ──→ S6 ──→ S7
 | S3 suffixed stage 追蹤複雜度 | 中 | 已有 resolveSuffixedStage 機制（v2.0.10）；擴展而非重寫 |
 | S4 wisdom 累積過大佔 context | 低 | 每 stage ≤ 200 chars + 整體上限 500 chars + 三層截斷 |
 | S5 status file 與 state file 不同步 | 中 | status file 由 state file 衍生（唯讀快照），不反向更新 |
+| S8 cancel 白名單過度放行 | 低 | 限定路徑（只允許 `pipeline-state-*.json`）+ 限定觸發條件（Skill + vibe:cancel） |
+| S9 history JSONL 無限增長 | 低 | 定期截斷（保留最近 100 筆）；JSONL 格式利於 tail 讀取 |
+| S10 adaptive limit 判斷錯誤 | 低 | 只調整 ±1 輪；原始 maxRetries 作為硬上限不可突破 |
 
 ---
 
@@ -701,7 +777,7 @@ S1 ──→ S2 ──→ S3 ──→ S4 ──→ S5 ──→ S6 ──→ S7
 - [x] S4.10 — 測試
 - [x] S4.11 — 文檔更新
 
-### S5：FIC 狀態壓縮 — 9/9
+### S5：FIC 狀態壓縮 — 9/9 ✅
 - [x] S5.1 — 新增 status-writer.js
 - [x] S5.2 — Markdown 摘要生成
 - [x] S5.3 — 決策記錄整合 wisdom
@@ -712,7 +788,7 @@ S1 ──→ S2 ──→ S3 ──→ S4 ──→ S5 ──→ S6 ──→ S7
 - [x] S5.8 — 測試
 - [x] S5.9 — 文檔更新
 
-### S6：三信號驗證 — 7/7
+### S6：三信號驗證 — 7/7 ✅
 - [x] S6.1 — collectSignals() 實作
 - [x] S6.2 — buildNodeContext() signals 欄位
 - [x] S6.3 — formatNodeContext() signals 輸出
@@ -727,4 +803,25 @@ S1 ──→ S2 ──→ S3 ──→ S4 ──→ S5 ──→ S6 ──→ S7
 - [x] S7.3 — tester.md 推導測試
 - [x] S7.4 — 文檔更新
 
-**總計：67/71 項**
+### S8：Cancel 白名單 — 0/5
+- [ ] S8.1 — guard-rules.js cancel 工具偵測
+- [ ] S8.2 — cancel 模式下 state file 寫入放行
+- [ ] S8.3 — cancel skill 移除 workaround
+- [ ] S8.4 — 測試：cancel 成功執行
+- [ ] S8.5 — 測試：非 cancel 仍阻擋
+
+### S9：Pipeline 歷史分析 — 0/5
+- [ ] S9.1 — 新增 history-writer.js
+- [ ] S9.2 — COMPLETE 時記錄
+- [ ] S9.3 — 記錄欄位定義
+- [ ] S9.4 — /vibe:history skill
+- [ ] S9.5 — 測試
+
+### S10：Smart Retry — 0/5
+- [ ] S10.1 — adaptiveRetryLimit() 實作
+- [ ] S10.2 — 重複 hint 偵測
+- [ ] S10.3 — enforcePolicy 整合
+- [ ] S10.4 — 強調提示注入
+- [ ] S10.5 — 測試
+
+**總計：67/86 項**（S1-S7: 67/71, S8-S10: 0/15）
