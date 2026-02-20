@@ -12,7 +12,7 @@ const os = require('os');
 const { atomicWrite } = require('./atomic-write.js');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
-const THRESHOLD = 100;
+const THRESHOLD = 200;
 const REMIND_INTERVAL = 40;
 
 /**

@@ -288,18 +288,18 @@ test('應該 counter.increment 正確遞增計數', () => {
   counter.cleanup(sid);
 });
 
-test('應該 counter.increment 在超過 THRESHOLD(60) 後每 REMIND_INTERVAL(40) 次提醒', () => {
+test('應該 counter.increment 在超過 THRESHOLD(200) 後每 REMIND_INTERVAL(40) 次提醒', () => {
   const sid = 'test-dc-counter-777';
   counter.reset(sid);
-  // 推進到 60 次
-  for (let i = 0; i < 59; i++) counter.increment(sid);
-  const at60 = counter.increment(sid); // 第 60 次
-  assert.strictEqual(at60.shouldRemind, true, '第 60 次應提醒');
-  assert.ok(at60.message !== null, '應有提醒訊息');
-  // 推進到 100 次（+40）
+  // 推進到 200 次
+  for (let i = 0; i < 199; i++) counter.increment(sid);
+  const at200 = counter.increment(sid); // 第 200 次
+  assert.strictEqual(at200.shouldRemind, true, '第 200 次應提醒');
+  assert.ok(at200.message !== null, '應有提醒訊息');
+  // 推進到 240 次（+40）
   for (let i = 0; i < 39; i++) counter.increment(sid);
-  const at100 = counter.increment(sid); // 第 100 次
-  assert.strictEqual(at100.shouldRemind, true, '第 100 次應提醒（60+40）');
+  const at240 = counter.increment(sid); // 第 240 次
+  assert.strictEqual(at240.shouldRemind, true, '第 240 次應提醒（200+40）');
   counter.cleanup(sid);
 });
 

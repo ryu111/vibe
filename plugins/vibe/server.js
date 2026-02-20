@@ -81,14 +81,14 @@ function getAliveMap() {
   return map;
 }
 
-/** 取得 session 的指標數據（counter + transcript 大小） */
+/** 取得 session 的指標數據（counter + transcript 大小 + compact 次數） */
 function getSessionMetrics(sid) {
   if (!UUID_RE.test(sid)) return null;
-  const m = { toolCallCount: 0, contextPct: 0, transcriptSize: 0, sessionStartedAt: null };
+  const m = { toolCallCount: 0, contextPct: 0, transcriptSize: 0, sessionStartedAt: null, compactCount: 0 };
   try {
     const d = JSON.parse(readFileSync(join(CLAUDE_DIR, `flow-counter-${sid}.json`), 'utf8'));
     m.toolCallCount = d.count || 0;
-    m.contextPct = Math.min(100, Math.round((d.count || 0) / 100 * 100));
+    m.contextPct = Math.min(100, Math.round((d.count || 0) / 200 * 100));
   } catch {}
   try {
     const pd = join(CLAUDE_DIR, 'projects');
@@ -101,6 +101,11 @@ function getSessionMetrics(sid) {
         break;
       } catch {}
     }
+  } catch {}
+  // 從 timeline JSONL 直接讀取 compact.executed 事件數（WS replay 保證一致）
+  try {
+    const events = query(sid, { types: ['compact.executed'] });
+    m.compactCount = events.length;
   } catch {}
   return m;
 }

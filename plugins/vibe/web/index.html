@@ -103,12 +103,14 @@
     .al.error { background: var(--red); box-shadow: 0 0 6px var(--red); animation: alPulse 1.5s ease infinite; }
     .al.delegating { background: var(--purple); box-shadow: 0 0 8px var(--purple); animation: alPulse 1.5s ease infinite; }
     .al.idle { background: var(--surface2); opacity: 0.5; }
+    .al.pass { background: var(--green); opacity: 0.8; }
     @keyframes alPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
     .agent-name { font-weight: 600; display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .agent-status-text { font-size: 10px; color: var(--subtext0); white-space: nowrap; }
     .agent-status-text.running { color: var(--green); }
     .agent-status-text.error { color: var(--red); }
     .agent-status-text.delegating { color: var(--purple); }
+    .agent-status-text.pass { color: var(--green); }
     .agent-dur { font-size: 10px; color: var(--subtext0); text-align: right; font-variant-numeric: tabular-nums; }
     .agent-group-label { font-size: 9px; color: var(--overlay0); text-transform: uppercase; letter-spacing: 1.2px; padding: 6px 4px 2px; }
     .agent-sep { border-top: 1px dashed rgba(69,71,90,0.3); margin: 4px 0; }
@@ -712,7 +714,7 @@
           if (alive === false) return { status: 'idle', label: '—', dur: null };
           const activeCount = getActiveStages(state).length;
           if (activeCount > 0) return { status: 'delegating', label: '委派中', dur: null };
-          if (state?.pipelineActive) return { status: 'running', label: '運行中', dur: null };
+          if (state?.pipelineActive) return { status: 'running', label: '執行中', dur: null };
           return { status: 'idle', label: '—', dur: null };
         }
         // Pipeline stage agents — 同時檢查 DAG stages 和 activeStages
@@ -734,7 +736,7 @@
             const verdict = getStageVerdict(last, state);
             const dur = getStageDuration(last, state);
             if (verdict === 'FAIL') return { status: 'error', label: getStageSeverity(last, state) || 'FAIL', dur };
-            return { status: 'idle', label: verdict || 'PASS', dur };
+            return { status: 'pass', label: verdict || 'PASS', dur };
           }
           // 在 DAG 中但還沒開始 → 等待；不在 DAG 中 → 閒置
           if (matchedStages.length > 0) return { status: 'idle', label: '等待', dur: null };
@@ -748,7 +750,21 @@
         return { status: 'idle', label: '—', dur: null };
       }
 
-      const enriched = allAgents.map(a => ({ ...a, ...getAgentStatus(a) }));
+      const enriched = allAgents.map(a => {
+        const s = getAgentStatus(a);
+        // running 狀態時，從 timeline events 取最新 delegation.start 描述作為 label
+        if (s.status === 'running' && events?.length) {
+          const lastActivity = [...events].reverse().find(e =>
+            e.eventType === 'delegation.start' &&
+            e.text?.toLowerCase().includes(a.id)
+          );
+          if (lastActivity?.text) {
+            const t = lastActivity.text;
+            s.label = t.length > 20 ? t.slice(0, 20) + '…' : t;
+          }
+        }
+        return { ...a, ...s };
+      });
       // 同步計時器
       enriched.forEach(a => {
         if (a.status === 'running' && !timers.current[a.id]) timers.current[a.id] = Date.now();
@@ -773,8 +789,8 @@
         }
         return html`
           <div key=${a.id + (a.stage || '')} class="agent-row">
-            <span class="al ${a.status === 'running' || a.status === 'delegating' ? a.status : a.status === 'completed' ? 'completed' : a.status === 'error' ? 'error' : 'idle'}"></span>
-            <span class="agent-name" style="${(a.status === 'running' || a.status === 'delegating') && a.color ? 'color:' + a.color : ''}">${a.emoji} ${a.name}</span>
+            <span class="al ${a.status === 'running' || a.status === 'delegating' ? a.status : a.status === 'completed' ? 'completed' : a.status === 'error' ? 'error' : a.status === 'pass' ? 'pass' : 'idle'}"></span>
+            <span class="agent-name" style="${(a.status === 'running' || a.status === 'delegating') && a.color ? 'color:' + a.color : a.status === 'pass' ? 'color:var(--green)' : a.status === 'error' ? 'color:var(--red)' : ''}">${a.emoji} ${a.name}</span>
             <span class="agent-status-text ${a.status}">${a.label}</span>
             <span class="agent-dur">${durText}</span>
           </div>
@@ -843,10 +859,14 @@
       const contextPct = mt.contextPct || 0;
       const transcriptSize = mt.transcriptSize || 0;
       const toolCallCount = mt.toolCallCount || 0;
-      const compactCount = useMemo(() =>
+      // 從 events 計算 compact 次數（與 server metrics 互補，取較大值確保不漏計）
+      const compactCountFromEvents = useMemo(() =>
         events.filter(e => e.eventType === 'compact.executed').length,
         [events]
       );
+      // 優先使用 server 端直接從 timeline JSONL 計算的 compactCount（WS replay 後較準確），
+      // 取兩者較大值以防止計數歸零
+      const compactCount = Math.max(mt.compactCount || 0, compactCountFromEvents);
       const guardCount = useMemo(() =>
         events.filter(e => e.eventType === 'tool.blocked').length,
         [events]
@@ -867,7 +887,7 @@
       const sessionDur = startedAt ? fmtDuration(startedAt) : '—';
 
       const cards = [
-        { key: 'context', emoji: '📊', label: 'Context 使用率', value: contextPct + '%', sub: toolCallCount + ' / 100 tool calls',
+        { key: 'context', emoji: '📊', label: 'Context 使用率', value: contextPct + '%', sub: toolCallCount + ' / 200 tool calls',
           level: contextPct > 80 ? 'danger' : contextPct > 50 ? 'warn' : '',
           hint: contextPct > 80 ? '建議 /compact 壓縮' : contextPct > 50 ? 'context 偏高' : null,
           tip: 'Tool call 次數佔閾值比例，反映 context 使用程度' },
