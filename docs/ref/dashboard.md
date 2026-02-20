@@ -146,9 +146,9 @@ Pipeline state 儲存於 `~/.claude/pipeline-state-{sessionId}.json`，格式：
 4. `deleteBarrier`：FAIL 時清理 group
 5. timeout force-unlock：absent sibling → 視為 FAIL
 
-### 2.4 adaptV3() 適配層
+### 2.4 adaptState() 適配層
 
-`adaptV3(raw)` 函式（定義於 `web/index.html`）將 v4 DAG state 轉換為前端 UI 使用的 v2 相容扁平格式：
+`adaptState(raw)` 函式（定義於 `web/index.html`）將 v4 DAG state 轉換為前端 UI 使用的 v2 相容扁平格式：
 
 ```js
 // 輸入：v4 DAG state（含 dag + stages + classification）

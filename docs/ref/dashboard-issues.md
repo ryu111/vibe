@@ -29,8 +29,8 @@
 - [ ] **前端 `SM` 物件與 `registry.js` 不同步**：`index.html` 的 `SM` 硬編碼 9 個 stage 的 agent 名稱、emoji、color、todos、skills，與 `registry.js` STAGES 獨立維護，新增/修改 stage 需同步兩處
 - [ ] **前端 `TYPE_LABELS` 與 `registry.js` 重複**：`index.html` 的 `TYPE_LABELS` 映射 10 個 pipeline ID → 中文標籤，與 `registry.js` REFERENCE_PIPELINES 的 `label` 欄位重複
 - [ ] **`config.json` taskRoutes 與 `registry.js` REFERENCE_PIPELINES 重複**：`dashboard/config.json` 的 `taskRoutes` 陣列定義了 10 個 pipeline 的 label/stages/color，與 `registry.js` 定義重複
-- [ ] **`adaptV3()` 適配層長期應移除**：v4 已穩定，前端應直接讀取 `dag`/`stages` 欄位，不需要透過 `adaptV3()` 轉換為 v2 扁平格式；適配層增加閱讀複雜度且不易除錯
-- [ ] **`adaptV3()` 的 `environment` 欄位說明不精確**：`adaptV3()` 輸出的 `environment` 欄位直接使用 `raw.environment || {}`，但 v4 state schema 本身不保證 `environment` 存在（該欄位是 pipeline-architect agent 自行填入的選填欄位），`node-context.js` 注入給 sub-agent 的環境快照欄位名為 `env`（精簡版），兩者語意不同
+- [ ] **`adaptState()` 適配層長期應移除**：v4 已穩定，前端應直接讀取 `dag`/`stages` 欄位，不需要透過 `adaptState()` 轉換為 v2 扁平格式；適配層增加閱讀複雜度且不易除錯
+- [ ] **`adaptState()` 的 `environment` 欄位說明不精確**：`adaptState()` 輸出的 `environment` 欄位直接使用 `raw.environment || {}`，但 v4 state schema 本身不保證 `environment` 存在（該欄位是 pipeline-architect agent 自行填入的選填欄位），`node-context.js` 注入給 sub-agent 的環境快照欄位名為 `env`（精簡版），兩者語意不同
 - [ ] **`AGENT_ROSTER` 中 `main`、`explore`、`plan` 三個系統 agent 無真實對應**：這三個 agent 是前端 UI 概念（從 pipeline agent 推斷 Main Agent 狀態），但顯示方式（detect `delegation.start` 事件）不夠精確，可能誤報
 - [ ] **eventCat 分類邏輯在 `server.js` 和 `schema.js` 各定義一份**：`server.js` 的 `eventCat()` 用字串前綴判斷分類，但 `schema.js` 的 `CATEGORIES` 才是 SoT，兩者可能不同步
 - [ ] **Timeline 事件的 `agent name` 無獨立欄位**：`formatEvent()` 把 emoji + text 合成一個字串，前端無法獨立取得 agent 名稱做進一步篩選或群組
@@ -63,7 +63,7 @@
 | 中 | `stale` 判斷閾值不一致（30min vs 1h） | `index.html` + `server.js` | 邏輯矛盾，使用者預期行為不符 |
 | 中 | `server.js` AGENT_EMOJI 與 `registry.js` 重複 | `server.js` L126-133 | 維護風險，新增 agent 容易漏更新 |
 | 中 | 前端 `SM` 與 `registry.js` 不同步 | `index.html` SM 物件 | 維護風險，新增/修改 stage 需雙重維護 |
-| 中 | `adaptV3()` 適配層長期應移除 | `index.html` adaptV3() | 技術債，增加除錯複雜度 |
+| 中 | `adaptState()` 適配層長期應移除 | `index.html` adaptState() | 技術債，增加除錯複雜度 |
 | 低 | `eventCat` 在 server.js 和 schema.js 各一份 | `server.js` eventCat() | 技術債，低風險重複 |
 | 低 | Session 資源指標 CSS 已定義但未渲染 | `index.html` Session Card | 功能缺席，非阻斷性 |
 | 低 | Timeline 事件缺 `agent` 獨立欄位 | `server.js` formatEvent() | 改進項目，影響未來可擴充性 |
@@ -74,7 +74,7 @@
 
 | 檔案 | 路徑 | 主要問題 |
 |------|------|---------|
-| Runtime SPA | `plugins/vibe/web/index.html` | MILESTONE_TYPES dead filter、SM/TYPE_LABELS 重複、CHARS/MA_POS/DESK_OBJ 缺 designer/DESIGN、adaptV3 適配層 |
+| Runtime SPA | `plugins/vibe/web/index.html` | MILESTONE_TYPES dead filter、SM/TYPE_LABELS 重複、CHARS/MA_POS/DESK_OBJ 缺 designer/DESIGN、adaptState 適配層 |
 | Dashboard Server | `plugins/vibe/server.js` | AGENT_EMOJI 重複、eventCat 重複、stale 閾值 |
 | Stage Registry | `plugins/vibe/scripts/lib/registry.js` | 應為 SoT，但多處未被 Dashboard 引用 |
 | Timeline Schema | `plugins/vibe/scripts/lib/timeline/schema.js` | CATEGORIES 是 SoT 但 server.js eventCat 未使用 |
