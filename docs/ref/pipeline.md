@@ -1784,13 +1784,13 @@ UX 設計：
 | `TRANSCRIPT_LEAK_WARNING` | Sub-agent 回應超過長度閾值（可能含報告） | `{ stage, responseLength }` | E12 |
 | `RETRY_EXHAUSTED` | shouldStop 條件 (2) 觸發 FORCE_NEXT | `{ stage, retryCount, reason }` | E5 |
 
-### 向下相容移除（v2.2.9+）
+### 向下相容移除（v5.0.0+）
 
 **v3 Pipeline State 遷移支援已移除**：
 
 從 v2.0.9 到 v2.2.8，系統提供自動遷移機制（`state-migrator.js`），將 v3 舊格式的 pipeline state（及更早版本）升級為 v4 結構。
 
-**自 v2.2.9 起，此遷移機制已刪除**：
+**自 v5.0.0 起，此遷移機制已刪除**：
 
 - `state-migrator.js` 中的 `migrateStateVersion()` 函式已移除
 - 不再識別並轉換 v3 格式的 `pipeline-state-{sid}.json`
@@ -1798,7 +1798,7 @@ UX 設計：
 
 **影響**：
 
-- **新 session**（v2.2.9 之後啟動）：無影響，直接建立 v4 state
+- **新 session**（v5.0.0 之後啟動）：無影響，直接建立 v4 state
 - **恢復舊 session**（v2.2.8 或更早的 session ID）：
   - 若 `~/.claude/pipeline-state-{sessionId}.json` 格式為 v3 → 被忽略
   - Pipeline 重新初始化為新 v4 state（狀態丟失）
@@ -1806,7 +1806,7 @@ UX 設計：
 
 **遷移建議**：
 
-如果使用者有進行中的 v2.2.8 pipeline session，應在升級至 v2.2.9 前完成。升級後無法恢復舊 session 的 pipeline 狀態。
+如果使用者有進行中的 v2.2.8 pipeline session，應在升級至 v5.0.0 前完成。升級後無法恢復舊 session 的 pipeline 狀態。
 
 ---
 
