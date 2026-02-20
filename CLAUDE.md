@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 2.2.6 | 全方位開發工作流 | 37 | 12 | 19 | 53 |
+| **vibe** | 2.2.8 | 全方位開發工作流 | 37 | 12 | 19 | 53 |
 
 ### vibe plugin 功能模組
 
@@ -63,6 +63,8 @@ deps: [Phase 1]
 - [ ] task 描述
 ```
 觸發條件：≥ 2 個 phase → 啟用 phase-level D-R-T；1 個 phase 或無 phase → 退化為標準單 D-R-T。
+
+**Goal Objects**（S7）：proposal.md 中的 `## Goal` 區塊定義量化成功標準（success_criteria + constraints），讓 code-reviewer 驗證達成度、tester 推導測試案例。
 
 ## 設計哲學
 

@@ -876,12 +876,19 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
       devNodeContextStr = '\n' + formatNodeContext(devNodeCtx);
     } catch (_) {}
 
+    // 低信心升級（S6 三信號驗證）：REVIEW FAIL + uncertain=true → 建議 Main Agent 確認
+    // 讓 Main Agent 可使用 AskUserQuestion 向使用者確認是否需要回退修復
+    const uncertainHint = (getBaseStage(currentStage) === 'REVIEW' && routeResult?.uncertain === true)
+      ? '\n⚠️ REVIEW 信心不足（uncertain），建議使用 AskUserQuestion 確認是否需要回退修復。'
+      : '';
+
     return {
       systemMessage:
         `🔄 ${currentStage} FAIL（${retryCount + 1}/${MAX_RETRIES}）\n` +
         `➡️ ${devHint}` +
         (contextHint ? `\n${contextHint}` : '') +
-        devNodeContextStr,
+        devNodeContextStr +
+        uncertainHint,
     };
   }
 

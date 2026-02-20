@@ -862,13 +862,13 @@ test('sweepTimedOutGroups：所有現有 stages 為 PASS，缺席 stage 填入 F
 
 section('版號驗證');
 
-test('plugin.json 版號為 2.2.6', () => {
+test('plugin.json 版號為 2.2.8', () => {
   const pluginJson = JSON.parse(fs.readFileSync(
     path.join(PLUGIN_ROOT, '.claude-plugin/plugin.json'),
     'utf8'
   ));
-  assert.strictEqual(pluginJson.version, '2.2.6',
-    `plugin.json 版號應為 2.2.6，實際：${pluginJson.version}`);
+  assert.strictEqual(pluginJson.version, '2.2.8',
+    `plugin.json 版號應為 2.2.8，實際：${pluginJson.version}`);
 });
 
 test('CLAUDE.md 版號同步標記', () => {

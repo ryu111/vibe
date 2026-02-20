@@ -507,13 +507,13 @@ Signal 3: 低信心升級（可選）
 
 **Checklist**：
 
-- [ ] S6.1 — node-context.js：新增 `collectSignals()` 收集 lint/test 最新結果
-- [ ] S6.2 — node-context.js：buildNodeContext() 為 REVIEW/TEST stage 注入 signals 欄位
-- [ ] S6.3 — node-context.js：formatNodeContext() 新增 `signals=lint:0err,test:42pass` 輸出
-- [ ] S6.4 — agents/code-reviewer.md：指引參考 signals 做判斷（lint 0 error → 跳過 lint 檢查）
-- [ ] S6.5 — pipeline-controller.js：REVIEW verdict 含 uncertain + FAIL → 低信心升級邏輯
-- [ ] S6.6 — 測試：signals 收集 + Node Context 注入 + 低信心升級
-- [ ] S6.7 — 文檔：更新 pipeline.md 品質機制描述
+- [x] S6.1 — node-context.js：新增 `collectSignals()` 收集 lint/test 最新結果
+- [x] S6.2 — node-context.js：buildNodeContext() 為 REVIEW/TEST stage 注入 signals 欄位
+- [x] S6.3 — node-context.js：formatNodeContext() 新增 `signals=lint:0err,test:42pass` 輸出
+- [x] S6.4 — agents/code-reviewer.md：指引參考 signals 做判斷（lint 0 error → 跳過 lint 檢查）
+- [x] S6.5 — pipeline-controller.js：REVIEW verdict 含 uncertain + FAIL → 低信心升級邏輯
+- [x] S6.6 — 測試：signals 收集 + Node Context 注入 + 低信心升級
+- [x] S6.7 — 文檔：更新 pipeline.md 品質機制描述
 
 **影響範圍**：
 - `plugins/vibe/scripts/lib/flow/node-context.js`
@@ -551,10 +551,10 @@ constraints:
 
 **Checklist**：
 
-- [ ] S7.1 — agents/planner.md：指引在 proposal.md 產出 Goal 結構
-- [ ] S7.2 — agents/code-reviewer.md：參照 Goal success_criteria 做驗證
-- [ ] S7.3 — agents/tester.md：從 success_criteria 推導測試案例
-- [ ] S7.4 — 文檔：更新 OpenSpec 規格管理描述
+- [x] S7.1 — agents/planner.md：指引在 proposal.md 產出 Goal 結構
+- [x] S7.2 — agents/code-reviewer.md：參照 Goal success_criteria 做驗證
+- [x] S7.3 — agents/tester.md：從 success_criteria 推導測試案例
+- [x] S7.4 — 文檔：更新 OpenSpec 規格管理描述
 
 **影響範圍**：
 - `plugins/vibe/agents/planner.md`
@@ -712,19 +712,19 @@ S1 ──→ S2 ──→ S3 ──→ S4 ──→ S5 ──→ S6 ──→ S7
 - [x] S5.8 — 測試
 - [x] S5.9 — 文檔更新
 
-### S6：三信號驗證 — 0/7
-- [ ] S6.1 — collectSignals() 實作
-- [ ] S6.2 — buildNodeContext() signals 欄位
-- [ ] S6.3 — formatNodeContext() signals 輸出
-- [ ] S6.4 — code-reviewer.md 指引
-- [ ] S6.5 — 低信心升級邏輯
-- [ ] S6.6 — 測試
-- [ ] S6.7 — 文檔更新
+### S6：三信號驗證 — 7/7
+- [x] S6.1 — collectSignals() 實作
+- [x] S6.2 — buildNodeContext() signals 欄位
+- [x] S6.3 — formatNodeContext() signals 輸出
+- [x] S6.4 — code-reviewer.md 指引
+- [x] S6.5 — 低信心升級邏輯
+- [x] S6.6 — 測試
+- [x] S6.7 — 文檔更新
 
-### S7：Goal Objects — 0/4
-- [ ] S7.1 — planner.md Goal 結構
-- [ ] S7.2 — code-reviewer.md 參照 Goal
-- [ ] S7.3 — tester.md 推導測試
-- [ ] S7.4 — 文檔更新
+### S7：Goal Objects — 4/4 ✅
+- [x] S7.1 — planner.md Goal 結構
+- [x] S7.2 — code-reviewer.md 參照 Goal
+- [x] S7.3 — tester.md 推導測試
+- [x] S7.4 — 文檔更新
 
-**總計：56/71 項**
+**總計：67/71 項**
