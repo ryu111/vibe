@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 2.2.4 | 全方位開發工作流 | 37 | 12 | 19 | 51 |
+| **vibe** | 2.2.5 | 全方位開發工作流 | 37 | 12 | 19 | 52 |
 
 ### vibe plugin 功能模組
 
@@ -96,7 +96,7 @@ plugins/vibe/
 │       ├── hook-logger.js   # Hook 錯誤日誌（~/.claude/hook-errors.log）
 │       ├── hook-utils.js    # safeRun() JSON stdin 安全解析
 │       ├── task-parser.js   # Transcript JSONL 解析
-│       ├── flow/            # ★ dag-state, dag-utils, pipeline-controller, route-parser, barrier, node-context, reflection, atomic-write, skip-predicates, state-migrator, classifier, retry-policy, pipeline-resume, env-detector, counter, uiux-resolver, pipeline-discovery, phase-parser
+│       ├── flow/            # ★ dag-state, dag-utils, pipeline-controller, route-parser, barrier, node-context, reflection, atomic-write, skip-predicates, state-migrator, classifier, retry-policy, pipeline-resume, env-detector, counter, uiux-resolver, pipeline-discovery, phase-parser, wisdom
 │       ├── sentinel/        # lang-map, tool-detector, guard-rules
 │       ├── dashboard/       # server-manager
 │       ├── remote/          # telegram, transcript, bot-manager
@@ -216,6 +216,7 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
   - 例：`pipeline-state-{sessionId}.json`、`barrier-state-{sessionId}.json`、`compact-counter-{sessionId}.json`
 - **context_file**：`~/.claude/pipeline-context-{sessionId}-{stage}.md`（Sub-agent 品質報告，Main Agent 不可見）
 - **Reflexion Memory**：`~/.claude/reflection-memory-{sessionId}-{stage}.md`（跨迭代反思記憶）
+- **Wisdom Memory**：`~/.claude/pipeline-wisdom-{sessionId}.md`（跨 Stage 知識累積，品質 stage PASS 後自動提取）
 - **全域共享 daemon**：`~/.claude/dashboard-server.pid`、`~/.claude/remote-bot.pid`
 - **Hook 錯誤日誌**：`~/.claude/hook-errors.log`（自動截斷 500 行，`/hook-diag` 查看）
 - **認證檔案**：`~/.claude/remote.env`（`KEY=VALUE` 格式，環境變數優先）
@@ -277,7 +278,7 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 
 | 路徑 | 內容 | 維護方式 |
 |------|------|---------|
-| `docs/ref/` | plugin 設計文件 + `index.md` + `vibe.md` + `pipeline.md`（實作規格）+ `pipeline-issues.md`（技術債務）+ `dashboard.md`（UI/UX 規格）+ `dashboard-issues.md`（Dashboard 問題）+ `collab.md` | index.md + vibe.md 自動生成 |
+| `docs/ref/` | plugin 設計文件 + `index.md` + `vibe.md` + `pipeline.md`（實作規格）+ `dashboard.md`（UI/UX 規格）+ `dashboard-issues.md`（Dashboard 問題）+ `collab.md` | index.md + vibe.md 自動生成 |
 | `docs/plugin-specs.json` | 組件數量 Single Source of Truth | 手動 |
 | `docs/ECC研究報告.md` | ECC 平台深度分析 | 手動 |
 | `dashboard/` | Build-time 靜態生成系統（HTML + index.md） | Stop hook 自動觸發 |

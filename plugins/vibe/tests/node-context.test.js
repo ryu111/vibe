@@ -484,6 +484,129 @@ test('formatNodeContext: key-value 可完整嵌入 systemMessage', () => {
 });
 
 // ============================================================
+// 9. wisdom 欄位整合（S4 Wisdom Accumulation）
+// ============================================================
+
+console.log('\n--- 9. wisdom 欄位整合 ---');
+
+const { writeWisdom, getWisdomPath } = require('../scripts/lib/flow/wisdom.js');
+
+function cleanupTestWisdom(sid) {
+  const fp = getWisdomPath(sid);
+  if (fs.existsSync(fp)) fs.unlinkSync(fp);
+}
+
+test('buildNodeContext: 無 wisdom 檔案時 wisdom 欄位為 null', () => {
+  const sid = SESSION_ID + '-no-wisdom';
+  cleanupTestWisdom(sid);
+  const dag = makeLinearDag(['DEV', 'REVIEW', 'TEST']);
+  const state = makeState(dag);
+
+  const ctx = buildNodeContext(dag, state, 'TEST', sid);
+
+  assert.strictEqual(ctx.wisdom, null, 'wisdom 應為 null（檔案不存在）');
+  cleanupTestWisdom(sid);
+});
+
+test('buildNodeContext: wisdom 檔案存在時注入 wisdom 欄位', () => {
+  const sid = SESSION_ID + '-with-wisdom';
+  cleanupTestWisdom(sid);
+
+  // 先寫入 wisdom
+  writeWisdom(sid, 'REVIEW', '- null 邊界需處理\n- async 函式加 try-catch');
+
+  const dag = makeLinearDag(['DEV', 'REVIEW', 'TEST']);
+  const state = makeState(dag);
+  const ctx = buildNodeContext(dag, state, 'TEST', sid);
+
+  assert.ok(ctx.wisdom, 'wisdom 應有值');
+  assert.ok(typeof ctx.wisdom === 'string', 'wisdom 應為字串');
+  assert.ok(ctx.wisdom.includes('## REVIEW'), 'wisdom 應含 REVIEW 段落');
+  cleanupTestWisdom(sid);
+});
+
+test('buildNodeContext: sessionId 為 null 時 wisdom 為 null', () => {
+  const dag = makeLinearDag(['DEV', 'REVIEW']);
+  const state = makeState(dag);
+
+  const ctx = buildNodeContext(dag, state, 'REVIEW', null);
+
+  assert.strictEqual(ctx.wisdom, null, 'sessionId=null 時 wisdom 應為 null');
+});
+
+test('formatNodeContext: wisdom 有值時輸出 wisdom=... 段', () => {
+  const ctx = {
+    node: { stage: 'DEV', prev: [], next: ['REVIEW'], onFail: null, barrier: null },
+    context_files: [],
+    env: {},
+    retryContext: null,
+    wisdom: '## REVIEW\n- null 邊界需處理',
+  };
+
+  const formatted = formatNodeContext(ctx);
+
+  assert.ok(formatted.includes('wisdom='), `應含 wisdom= 欄位，實際: ${formatted}`);
+});
+
+test('formatNodeContext: wisdom 為 null 時省略 wisdom 欄位', () => {
+  const ctx = {
+    node: { stage: 'DEV', prev: [], next: ['REVIEW'], onFail: null, barrier: null },
+    context_files: [],
+    env: {},
+    retryContext: null,
+    wisdom: null,
+  };
+
+  const formatted = formatNodeContext(ctx);
+
+  assert.ok(!formatted.includes('wisdom='), `wisdom=null 時應省略，實際: ${formatted}`);
+});
+
+test('formatNodeContext: wisdom 超長時截斷到 100 字元', () => {
+  const longWisdom = '- ' + '很長的要點 '.repeat(50); // 純單行，避免換行影響 regex
+  const ctx = {
+    node: { stage: 'DEV', prev: [], next: ['REVIEW'], onFail: null, barrier: null },
+    context_files: [],
+    env: {},
+    retryContext: null,
+    wisdom: longWisdom,
+  };
+
+  const formatted = formatNodeContext(ctx);
+
+  // 從 wisdom= 後截取值（至 | 或 --> 之前）
+  // wisdom 值以 slice(0, 100) 截斷，確認輸出中 wisdom= 欄位值 <= 100 字元
+  const wisdomPrefix = 'wisdom=';
+  const wisdomIdx = formatted.indexOf(wisdomPrefix);
+  assert.ok(wisdomIdx !== -1, 'wisdom= 欄位應存在');
+
+  // wisdom= 後面的值（slice(0,100) 截斷，原始值不含換行）
+  const afterWisdom = formatted.slice(wisdomIdx + wisdomPrefix.length);
+  // 找第一個 | 或 --> 作為值結束點
+  const endIdx = afterWisdom.search(/\s*\|\s*|\s*-->/);;
+  const wisdomValue = endIdx !== -1 ? afterWisdom.slice(0, endIdx) : afterWisdom;
+  assert.ok(wisdomValue.length <= 100, `wisdom 值長度 ${wisdomValue.length} 應 <= 100`);
+});
+
+test('buildNodeContext: wisdom 內容計入 MAX_NODE_CONTEXT_CHARS 限制', () => {
+  const sid = SESSION_ID + '-wisdom-size';
+  cleanupTestWisdom(sid);
+
+  // 寫入接近上限的 wisdom
+  const maxWisdom = '- ' + 'w'.repeat(480);
+  writeWisdom(sid, 'REVIEW', maxWisdom);
+
+  const dag = makeLinearDag(['DEV', 'REVIEW', 'TEST']);
+  const state = makeState(dag);
+  const ctx = buildNodeContext(dag, state, 'TEST', sid);
+  const json = JSON.stringify(ctx);
+
+  assert.ok(json.length <= MAX_NODE_CONTEXT_CHARS,
+    `含 wisdom 的 JSON 長度 ${json.length} 應 <= ${MAX_NODE_CONTEXT_CHARS}`);
+  cleanupTestWisdom(sid);
+});
+
+// ============================================================
 // 清理
 // ============================================================
 

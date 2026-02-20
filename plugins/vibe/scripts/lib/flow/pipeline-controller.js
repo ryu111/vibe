@@ -48,6 +48,9 @@ const { classifyWithConfidence } = require('./classifier.js');
 // Phase Parser（S3：phase-level D-R-T 循環）
 const { parsePhasesFromTasks, generatePhaseDag } = require('./phase-parser.js');
 
+// Wisdom Accumulation（S4：跨 Stage 知識傳遞）
+const { extractWisdom, writeWisdom } = require('./wisdom.js');
+
 // v4 Phase 4：Barrier 並行同步
 const { createBarrierGroup, updateBarrier, mergeBarrierResults, mergeContextFiles, readBarrier, checkTimeout, deleteBarrier, sweepTimedOutGroups } = require('./barrier.js');
 
@@ -1181,6 +1184,27 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
   // Phase 2（soft 引入）：從 activeStages 移除已完成的 stage
   if (state.activeStages) {
     state = { ...state, activeStages: state.activeStages.filter(s => s !== currentStage) };
+  }
+
+  // ── Wisdom Accumulation（S4）──
+  // 品質 stage PASS 時，從 context_file 提取學習筆記並追加到 pipeline-wisdom-{sid}.md
+  // FAIL 不提取（避免寫入不正確的建議）
+  const WISDOM_STAGES = new Set(['REVIEW', 'TEST', 'QA', 'E2E', 'SECURITY']);
+  if (WISDOM_STAGES.has(getBaseStage(currentStage))) {
+    const contextFile = state.stages?.[currentStage]?.contextFile;
+    if (contextFile) {
+      try {
+        const contextContent = fs.existsSync(contextFile)
+          ? fs.readFileSync(contextFile, 'utf8')
+          : null;
+        if (contextContent) {
+          const wisdom = extractWisdom(currentStage, contextContent);
+          if (wisdom) writeWisdom(sessionId, currentStage, wisdom.summary);
+        }
+      } catch (_) {
+        // 非關鍵路徑，靜默忽略
+      }
+    }
   }
 
   // Token 效率：品質 stage 完成時偵測回應長度

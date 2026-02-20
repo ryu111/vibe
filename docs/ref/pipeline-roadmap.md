@@ -416,17 +416,17 @@ node-context.js (下一個 stage 委派時)
 
 **Checklist**：
 
-- [ ] S4.1 — 新增 `plugins/vibe/scripts/lib/flow/wisdom.js`（readWisdom/writeWisdom/extractWisdom）
-- [ ] S4.2 — wisdom.js：extractWisdom() 從 context_file 內容提取結構化摘要（≤ 200 chars）
-- [ ] S4.3 — wisdom.js：writeWisdom() 追加到 `~/.claude/pipeline-wisdom-{sid}.md`
-- [ ] S4.4 — wisdom.js：readWisdom() 讀取並截斷（MAX_WISDOM_CHARS = 500）
-- [ ] S4.5 — pipeline-controller.js：onStageComplete() 分支 C（PASS）後呼叫 extractWisdom + writeWisdom
-- [ ] S4.6 — node-context.js：buildNodeContext() 新增 wisdom 欄位（讀取 pipeline-wisdom）
-- [ ] S4.7 — node-context.js：formatNodeContext() 新增 `wisdom=...` 輸出段
-- [ ] S4.8 — node-context.js：MAX_NODE_CONTEXT_CHARS 從 2000 調整為 2500
-- [ ] S4.9 — session-cleanup.js：清理 `pipeline-wisdom-*.md` 殘留檔案
-- [ ] S4.10 — 測試：wisdom 讀寫 + 截斷 + Node Context 整合測試
-- [ ] S4.11 — 文檔：更新 CLAUDE.md State 與命名慣例 + MEMORY.md
+- [x] S4.1 — 新增 `plugins/vibe/scripts/lib/flow/wisdom.js`（readWisdom/writeWisdom/extractWisdom）
+- [x] S4.2 — wisdom.js：extractWisdom() 從 context_file 內容提取結構化摘要（≤ 200 chars）
+- [x] S4.3 — wisdom.js：writeWisdom() 追加到 `~/.claude/pipeline-wisdom-{sid}.md`
+- [x] S4.4 — wisdom.js：readWisdom() 讀取並截斷（MAX_WISDOM_CHARS = 500）
+- [x] S4.5 — pipeline-controller.js：onStageComplete() 分支 C（PASS）後呼叫 extractWisdom + writeWisdom
+- [x] S4.6 — node-context.js：buildNodeContext() 新增 wisdom 欄位（讀取 pipeline-wisdom）
+- [x] S4.7 — node-context.js：formatNodeContext() 新增 `wisdom=...` 輸出段
+- [x] S4.8 — node-context.js：MAX_NODE_CONTEXT_CHARS 從 2000 調整為 2500
+- [x] S4.9 — session-cleanup.js：清理 `pipeline-wisdom-*.md` 殘留檔案
+- [x] S4.10 — 測試：wisdom 讀寫 + 截斷 + Node Context 整合測試
+- [x] S4.11 — 文檔：更新 CLAUDE.md State 與命名慣例 + MEMORY.md
 
 **影響範圍**：
 - 新增 `plugins/vibe/scripts/lib/flow/wisdom.js`
@@ -688,18 +688,18 @@ S1 ──→ S2 ──→ S3 ──→ S4 ──→ S5 ──→ S6 ──→ S7
 - [x] S3.14 — 文檔更新
 - [ ] S3.15 — Roadmap checkbox 完成條件自動化（pipeline 閉環才勾選）
 
-### S4：Wisdom Accumulation — 0/11
-- [ ] S4.1 — 新增 wisdom.js
-- [ ] S4.2 — extractWisdom() 實作
-- [ ] S4.3 — writeWisdom() 實作
-- [ ] S4.4 — readWisdom() + 截斷
-- [ ] S4.5 — onStageComplete() 整合
-- [ ] S4.6 — buildNodeContext() wisdom 欄位
-- [ ] S4.7 — formatNodeContext() wisdom 輸出
-- [ ] S4.8 — MAX_NODE_CONTEXT_CHARS 調整
-- [ ] S4.9 — session-cleanup 清理
-- [ ] S4.10 — 測試
-- [ ] S4.11 — 文檔更新
+### S4：Wisdom Accumulation — 11/11 ✅
+- [x] S4.1 — 新增 wisdom.js
+- [x] S4.2 — extractWisdom() 實作
+- [x] S4.3 — writeWisdom() 實作
+- [x] S4.4 — readWisdom() + 截斷
+- [x] S4.5 — onStageComplete() 整合
+- [x] S4.6 — buildNodeContext() wisdom 欄位
+- [x] S4.7 — formatNodeContext() wisdom 輸出
+- [x] S4.8 — MAX_NODE_CONTEXT_CHARS 調整
+- [x] S4.9 — session-cleanup 清理
+- [x] S4.10 — 測試
+- [x] S4.11 — 文檔更新
 
 ### S5：FIC 狀態壓縮 — 0/9
 - [ ] S5.1 — 新增 status-writer.js
@@ -727,4 +727,4 @@ S1 ──→ S2 ──→ S3 ──→ S4 ──→ S5 ──→ S6 ──→ S7
 - [ ] S7.3 — tester.md 推導測試
 - [ ] S7.4 — 文檔更新
 
-**總計：0/70 項**
+**總計：47/70 項**

@@ -19,11 +19,12 @@ const os = require('os');
 
 const { readReflection, getReflectionPath } = require('./reflection.js');
 const { getBaseStage } = require('./dag-utils.js');
+const { readWisdom } = require('./wisdom.js');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
-// Node Context 最大字元上限（約 500 tokens）
-const MAX_NODE_CONTEXT_CHARS = 2000;
+// Node Context 最大字元上限（約 500 tokens，S4 調整為 2500 容納 wisdom 欄位）
+const MAX_NODE_CONTEXT_CHARS = 2500;
 
 // Phase 任務範圍最大字元上限（注入到 systemMessage）
 const MAX_PHASE_SCOPE_CHARS = 500;
@@ -131,6 +132,9 @@ function buildNodeContext(dag, state, stage, sessionId) {
   // 環境資訊精簡版（只取 language/framework/frontend）
   const env = buildEnvSnapshot(state);
 
+  // 讀取跨 stage 知識（S4 Wisdom Accumulation）
+  const wisdom = sessionId ? readWisdom(sessionId) : null;
+
   // 組裝 Node Context
   const context = {
     node: {
@@ -143,6 +147,7 @@ function buildNodeContext(dag, state, stage, sessionId) {
     context_files: prevContextFiles,
     env,
     retryContext: getRetryContext(sessionId, stage, state),
+    wisdom: wisdom || null,
   };
 
   // 確保 JSON 不超過 MAX_NODE_CONTEXT_CHARS
@@ -267,6 +272,12 @@ function formatNodeContext(nodeContext) {
     if (retry.hint) {
       parts.push(`hint=${retry.hint.slice(0, 60)}`);
     }
+  }
+
+  // wisdom（之前 stage 的學習筆記，null 時省略；截斷到 100 字元避免格式行過長）
+  if (nodeContext.wisdom) {
+    const wisdomSnippet = nodeContext.wisdom.slice(0, 100);
+    parts.push(`wisdom=${wisdomSnippet}`);
   }
 
   return `<!-- NODE_CONTEXT: ${parts.join(' | ')} -->`;
