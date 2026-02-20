@@ -118,11 +118,17 @@
 
     /* 統計卡片 */
     .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-    .stat-card { background: var(--surface0); border-radius: 10px; padding: 12px 14px; border: 1px solid var(--surface1); display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .stat-card { background: var(--surface0); border-radius: 10px; padding: 12px 14px; border: 1px solid var(--surface1); display: flex; flex-direction: column; gap: 4px; min-width: 0; position: relative; cursor: default; transition: border-color 0.2s, background 0.2s; }
     .stat-card:hover { border-color: var(--surface2); }
     .stat-card .stat-label { font-size: 9px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .stat-card .stat-value { font-size: 20px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .stat-card .stat-sub { font-size: 9px; color: var(--overlay0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .stat-card.warn { border-left: 3px solid var(--yellow); background: rgba(249,226,175,0.04); }
+    .stat-card.danger { border-left: 3px solid var(--red); background: rgba(243,139,168,0.04); }
+    .stat-hint { font-size: 8px; font-weight: 500; line-height: 1.2; }
+    .stat-hint.warn { color: var(--yellow); }
+    .stat-hint.danger { color: var(--red); }
+    .stat-card[data-tip]:hover::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 0; background: var(--surface1); color: var(--subtext1); padding: 6px 10px; border-radius: 6px; font-size: 9px; white-space: normal; max-width: 220px; line-height: 1.4; z-index: 100; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.4); border: 1px solid var(--surface2); }
     @media (max-width: 1100px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
     @media (max-width: 700px) { .stats-grid { grid-template-columns: 1fr; } }
 
@@ -356,6 +362,12 @@
       const secs = Math.round((Date.now() - new Date(startedAt).getTime()) / 1000);
       return fmtSec(secs);
     }
+    function fmtSize(bytes) {
+      if (!bytes) return '—';
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
     async function deleteSession(id) {
       try { await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }); } catch {}
     }
@@ -418,9 +430,9 @@
     function sessionName(s, registry) {
       if (s?._heartbeatOnly) return '對話中';
       const pid = s?.classification?.pipelineId;
-      if (pid && registry?.pipelines?.[pid]) return registry.pipelines[pid].label;
-      if (pid) return pid;
-      return '研究模式';
+      if (!pid || pid === 'none') return '對話中';
+      if (registry?.pipelines?.[pid]) return registry.pipelines[pid].label;
+      return pid;
     }
     function currentStageName(s, registry) {
       const active = getActiveStages(s);
@@ -697,11 +709,11 @@
 
         // 主 agent
         if (agent.id === 'main') {
-          if (alive === false) return { status: 'idle', label: '閒置', dur: null };
+          if (alive === false) return { status: 'idle', label: '—', dur: null };
           const activeCount = getActiveStages(state).length;
           if (activeCount > 0) return { status: 'delegating', label: '委派中', dur: null };
           if (state?.pipelineActive) return { status: 'running', label: '運行中', dur: null };
-          return { status: 'idle', label: '閒置', dur: null };
+          return { status: 'running', label: '運行中', dur: null };
         }
         // Pipeline stage agents — 同時檢查 DAG stages 和 activeStages
         if (agent.stage) {
@@ -769,17 +781,12 @@
         `;
       };
 
-      // 記憶體格式化（MB）
-      const heapMB = memory ? Math.round(memory.heapUsed / 1024 / 1024) : null;
-
       return html`
         <div class="agent-panel">
           <div class="agent-panel-hdr">
             <h3>🤖 Agents 當前狀態</h3>
             <div class="agent-panel-stats">
               <span class="agent-panel-stat">活躍 <span class="num">${activeCount}</span></span>
-              <span class="agent-panel-stat">完成 <span class="num">${completedCount}</span></span>
-              ${heapMB !== null && html`<span class="agent-panel-stat" title="Server heap 用量">堆 <span class="num">${heapMB}MB</span></span>`}
             </div>
           </div>
           ${groups.map((g, gi) => g.agents.length > 0 && html`
@@ -830,49 +837,74 @@
       `;
     }
 
-    // --- 統計卡片（4 張）---
-    function StatsCards({ state, events, tick }) {
-      // 統計1：Compact 次數（從 timeline 事件計算）
+    // --- 統計卡片（8 張）---
+    function StatsCards({ state, events, tick, metrics }) {
+      const mt = metrics || {};
+      const contextPct = mt.contextPct || 0;
+      const transcriptSize = mt.transcriptSize || 0;
+      const toolCallCount = mt.toolCallCount || 0;
       const compactCount = useMemo(() =>
         events.filter(e => e.eventType === 'session.compact' || e.text?.includes('compact')).length,
         [events]
       );
-      // 統計2：Guard 攔截次數
       const guardCount = useMemo(() =>
         events.filter(e => e.eventType === 'tool.blocked').length,
         [events]
       );
-      // 統計3：Retry 回退次數（從 state.retries 求和）
+      const crashCount = useMemo(() =>
+        Object.values(state?.crashes || {}).reduce((a, b) => a + (b || 0), 0),
+        [state]
+      );
       const retryCount = useMemo(() =>
         Object.values(state?.retries || {}).reduce((a, b) => a + (b || 0), 0),
         [state]
       );
-      // 統計4：Session 時長（從 classifiedAt 計算）
-      const startedAt = state?.classification?.classifiedAt;
+      const startedAt = state?.classification?.classifiedAt || state?.meta?.lastTransition;
       const sessionDur = startedAt ? fmtDuration(startedAt) : '—';
+
+      const cards = [
+        { key: 'context', emoji: '📊', label: 'Context 使用率', value: contextPct + '%', sub: toolCallCount + ' / 60 tool calls',
+          level: contextPct > 80 ? 'danger' : contextPct > 50 ? 'warn' : '',
+          hint: contextPct > 80 ? '建議 /compact 壓縮' : contextPct > 50 ? 'context 偏高' : null,
+          tip: 'Tool call 次數佔閾值比例，反映 context 使用程度' },
+        { key: 'filesize', emoji: '💾', label: 'Session 大小', value: fmtSize(transcriptSize), sub: 'transcript 檔案',
+          level: transcriptSize > 50*1024*1024 ? 'danger' : transcriptSize > 20*1024*1024 ? 'warn' : '',
+          hint: transcriptSize > 50*1024*1024 ? '建議重開 session' : transcriptSize > 20*1024*1024 ? 'session 較大' : null,
+          tip: 'Session 對話記錄檔案大小，過大時建議開新 session' },
+        { key: 'crash', emoji: '💥', label: 'Crash', value: '' + crashCount, sub: 'agent crash 次數',
+          level: crashCount > 2 ? 'danger' : crashCount > 0 ? 'warn' : '',
+          hint: crashCount > 2 ? '頻繁 crash，檢查穩定性' : null,
+          tip: 'Agent 非正常中斷的次數，系統會自動回收重試' },
+        { key: 'guard', emoji: '🛡️', label: 'Guard 攔截', value: '' + guardCount, sub: 'pipeline-guard 阻擋',
+          level: guardCount > 10 ? 'warn' : '',
+          hint: guardCount > 10 ? '提示詞可能需要優化' : null,
+          tip: 'Pipeline 模式下寫入被攔截次數，過多代表提示詞引導不足' },
+        { key: 'compact', emoji: '📦', label: 'Compact', value: '' + compactCount, sub: 'context 壓縮次數',
+          level: compactCount > 5 ? 'warn' : '',
+          hint: compactCount > 5 ? '頻繁壓縮，考慮重開' : null,
+          tip: '壓縮 context window 的次數，每次壓縮會遺失部分上下文' },
+        { key: 'retry', emoji: '🔁', label: 'Retry 回退', value: '' + retryCount, sub: '各 stage 重試總和',
+          level: retryCount > 3 ? 'warn' : '',
+          hint: retryCount > 3 ? '品質門多次回退' : null,
+          tip: '品質 stage FAIL 觸發 DEV 回退的次數' },
+        { key: 'tools', emoji: '🔧', label: 'Tool Calls', value: '' + toolCallCount, sub: 'compact 後呼叫數',
+          level: '', hint: null,
+          tip: '自上次 compact 以來的 tool call 數量' },
+        { key: 'duration', emoji: '⏱', label: 'Session 時長', value: sessionDur, sub: startedAt ? new Date(startedAt).toLocaleTimeString('zh-TW', { hour12: false }) : '未開始',
+          level: '', hint: null,
+          tip: '從 session 開始到現在的經過時間' },
+      ];
 
       return html`
         <div class="stats-grid">
-          <div class="stat-card">
-            <span class="stat-label">📦 Compact</span>
-            <span class="stat-value">${compactCount}</span>
-            <span class="stat-sub">context 壓縮次數</span>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">🛡️ Guard 攔截</span>
-            <span class="stat-value">${guardCount}</span>
-            <span class="stat-sub">pipeline-guard 阻擋</span>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">🔁 Retry 回退</span>
-            <span class="stat-value">${retryCount}</span>
-            <span class="stat-sub">各 stage 重試總和</span>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">⏱ Session 時長</span>
-            <span class="stat-value" style="font-size:16px">${sessionDur}</span>
-            <span class="stat-sub">${startedAt ? new Date(startedAt).toLocaleTimeString('zh-TW', { hour12: false }) : '未開始'}</span>
-          </div>
+          ${cards.map(c => html`
+            <div key=${c.key} class="stat-card ${c.level}" data-tip=${c.tip}>
+              <span class="stat-label">${c.emoji} ${c.label}</span>
+              <span class="stat-value">${c.value}</span>
+              <span class="stat-sub">${c.sub}</span>
+              ${c.hint && html`<span class="stat-hint ${c.level}">${c.hint}</span>`}
+            </div>
+          `)}
         </div>
       `;
     }
@@ -966,6 +998,7 @@
       const [tlTab, setTlTab] = useState('all');
       const [mainTab, setMainTab] = useState('dashboard');
       const [registry, setRegistry] = useState(null);
+      const [sessionMetrics, setSessionMetrics] = useState({});
       const [showStale, setShowStale] = useState(false);
       const confettiShown = useRef(new Set());
 
@@ -1059,6 +1092,7 @@
             if (m.sessions) setSessions(m.sessions);
             if (m.alive) setAlive(prev => ({ ...prev, ...m.alive }));
             if (m.memory) setMemory(m.memory);
+            if (m.metrics) setSessionMetrics(prev => ({ ...prev, ...m.metrics }));
             if (m.type === 'timeline' && m.sessionId && m.event) {
               setTimelineEvents(prev => {
                 const list = prev[m.sessionId] || [];
@@ -1138,7 +1172,6 @@
           <div class="sidebar">
             <div class="sb-top">
               <button class="sb-toggle" onClick=${() => setSideOpen(!sideOpen)}>${sideOpen ? '◀' : '▶'}</button>
-              ${sideOpen && html`<div class="conn"><span class="dot ${conn ? 'on' : 'off'}"></span><span>${conn ? '已連線' : '連線中…'}</span></div>`}
             </div>
             <div class="sb-body">
               ${liveSessions.length > 0 && html`
@@ -1228,7 +1261,7 @@
                 <div class="dash-left">
                   <${AgentStatus} state=${s} tick=${tick} events=${tlAll} registry=${registry} alive=${active ? !!alive[active] : false} memory=${memory} />
                   <${MCPStats} events=${tlAll} />
-                  <${StatsCards} state=${s} events=${tlAll} tick=${tick} />
+                  <${StatsCards} state=${s} events=${tlAll} tick=${tick} metrics=${active ? sessionMetrics[active] : null} />
                   <${PipelineProgressBar} state=${s} registry=${registry} />
                   ${isComplete && html`
                     <div class="cards">

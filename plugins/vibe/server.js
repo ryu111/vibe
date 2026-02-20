@@ -81,6 +81,50 @@ function getAliveMap() {
   return map;
 }
 
+/** 取得 session 的指標數據（counter + transcript 大小） */
+function getSessionMetrics(sid) {
+  if (!UUID_RE.test(sid)) return null;
+  const m = { toolCallCount: 0, contextPct: 0, transcriptSize: 0 };
+  try {
+    const d = JSON.parse(readFileSync(join(CLAUDE_DIR, `flow-counter-${sid}.json`), 'utf8'));
+    m.toolCallCount = d.count || 0;
+    m.contextPct = Math.min(100, Math.round((d.count || 0) / 60 * 100));
+  } catch {}
+  try {
+    const pd = join(CLAUDE_DIR, 'projects');
+    for (const p of readdirSync(pd)) {
+      const fp = join(pd, p, `${sid}.jsonl`);
+      try { m.transcriptSize = statSync(fp).size; break; } catch {}
+    }
+  } catch {}
+  return m;
+}
+
+/** 批次取得所有 session 的指標（含 heartbeat-only sessions） */
+function getAllSessionMetrics() {
+  const out = {};
+  const aliveMap = getAliveMap();
+  const allSids = new Set([...Object.keys(sessions), ...Object.keys(aliveMap)]);
+  for (const sid of allSids) {
+    out[sid] = getSessionMetrics(sid);
+  }
+  return out;
+}
+
+/** 合併 alive sessions 的 pipeline state（heartbeat-only 也需要完整 state） */
+function getMergedSessions() {
+  const out = { ...sessions };
+  const aliveMap = getAliveMap();
+  for (const sid of Object.keys(aliveMap)) {
+    if (!aliveMap[sid] || out[sid]) continue;
+    try {
+      const fp = join(CLAUDE_DIR, `pipeline-state-${sid}.json`);
+      if (existsSync(fp)) out[sid] = JSON.parse(readFileSync(fp, 'utf8'));
+    } catch {}
+  }
+  return out;
+}
+
 /** 判斷 session 是否值得顯示在 Dashboard */
 function isDisplayWorthy(state) {
   if (!state) return false;
@@ -134,7 +178,7 @@ function autoCleanup() {
       }
     } catch { /* 忽略 */ }
   }
-  if (changed) broadcast({ type: 'update', sessions });
+  if (changed) broadcast({ type: 'update', sessions: getMergedSessions(), metrics: getAllSessionMetrics() });
 }
 
 function broadcast(msg) {
@@ -249,6 +293,7 @@ if (existsSync(CLAUDE_DIR)) {
           type: 'heartbeat',
           alive: getAliveMap(),
           memory: { rss: mem.rss, heapUsed: mem.heapUsed, heapTotal: mem.heapTotal },
+          metrics: getAllSessionMetrics(),
         });
       }, 500);
       return;
@@ -293,7 +338,7 @@ if (existsSync(CLAUDE_DIR)) {
           stopTimelineConsumer(sid);
         }
       } catch { /* 忽略 */ }
-      broadcast({ type: 'update', sessions });
+      broadcast({ type: 'update', sessions: getMergedSessions(), metrics: getAllSessionMetrics() });
     }, 80);
   });
 }
@@ -395,7 +440,7 @@ Bun.serve({
           cleaned++;
         }
       }
-      if (cleaned > 0) broadcast({ type: 'update', sessions });
+      if (cleaned > 0) broadcast({ type: 'update', sessions: getMergedSessions(), metrics: getAllSessionMetrics() });
       return Response.json({ ok: true, cleaned });
     }
 
@@ -413,7 +458,7 @@ Bun.serve({
         // 無論檔案是否存在，都清除記憶體中的 session
         if (sessions[sid]) {
           delete sessions[sid];
-          broadcast({ type: 'update', sessions });
+          broadcast({ type: 'update', sessions: getMergedSessions(), metrics: getAllSessionMetrics() });
         }
         return Response.json({ ok: true, deleted: sid });
       } catch (e) {
@@ -439,7 +484,7 @@ Bun.serve({
   websocket: {
     open(ws) {
       clients.add(ws);
-      ws.send(JSON.stringify({ type: 'init', sessions, alive: getAliveMap() }));
+      ws.send(JSON.stringify({ type: 'init', sessions: getMergedSessions(), alive: getAliveMap(), metrics: getAllSessionMetrics() }));
       // 新連線重播所有 session 的歷史 timeline 事件
       for (const sid of Object.keys(sessions)) {
         try {
