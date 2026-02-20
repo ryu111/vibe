@@ -34,11 +34,11 @@ const { discoverPipeline } = require('./pipeline-discovery.js');
 
 // Registry
 const {
-  STAGES, AGENT_TO_STAGE, NAMESPACED_AGENT_TO_STAGE,
+  STAGES, AGENT_TO_STAGE,
   PIPELINES, PIPELINE_PRIORITY, PIPELINE_TO_TASKTYPE,
   MAX_RETRIES, QUALITY_STAGES,
   STAGE_CONTEXT, POST_STAGE_HINTS, OPENSPEC_CONTEXT,
-  FRONTEND_FRAMEWORKS, API_ONLY_FRAMEWORKS,
+  API_ONLY_FRAMEWORKS,
   KNOWLEDGE_SKILLS,
 } = require('../registry.js');
 
@@ -55,16 +55,25 @@ const { extractWisdom, writeWisdom } = require('./wisdom.js');
 const { updateStatus: updatePipelineStatus } = require('./status-writer.js');
 
 // v4 Phase 4：Barrier 並行同步
-const { createBarrierGroup, updateBarrier, mergeBarrierResults, mergeContextFiles, readBarrier, checkTimeout, deleteBarrier, sweepTimedOutGroups } = require('./barrier.js');
+const { createBarrierGroup, updateBarrier, mergeContextFiles, readBarrier, checkTimeout, deleteBarrier, sweepTimedOutGroups } = require('./barrier.js');
 
 // Timeline（hoisted — 避免 20+ 處 inline require）
 const { emit: tlEmit } = require('../timeline/index.js');
 const { EVENT_TYPES } = require('../timeline/schema.js');
 
+// Guard Rules（hoisted — canProceed 是 hot path，每次 PreToolUse 都呼叫）
+const { evaluate: guardEvaluate } = require('../sentinel/guard-rules.js');
+
+// Hook Logger（hoisted — 避免 onStageComplete 中多處動態 require）
+const hookLogger = require('../hook-logger.js');
+
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
 // 級聯跳過迴圈上限（pipeline 最多 9 階段，20 足夠任何 DAG）
 const MAX_SKIP_ITERATIONS = 20;
+
+// Wisdom 提取的品質 stage 集合（避免在 onStageComplete hot path 中重複建立 Set）
+const WISDOM_STAGES = new Set(['REVIEW', 'TEST', 'QA', 'E2E', 'SECURITY']);
 
 // ────────────────── 工具函式 ──────────────────
 
@@ -115,22 +124,25 @@ function resolveSuffixedStage(state, baseStage) {
 }
 
 /**
- * 讀取 transcript 最後一條 assistant 訊息的字元長度。
+ * 掃描 transcript 中最後的 assistant 訊息，一次 I/O 同時取得有無訊息及其長度。
  *
  * 設計原則：
  * - 逆序掃描 JSONL（最後 20 行），找最後一條 assistant 訊息
- * - 計算其 content 的文字長度（字串 + 物件都支援）
+ * - 一次讀取檔案，同時回傳 hasMessage（CRASH 判斷）和 lastLength（洩漏偵測）
  * - 效能上限：品質 stage transcript 通常 < 1MB，掃描 20 行 < 1ms
  *
  * @param {string} transcriptPath - JSONL 格式的 transcript 路徑
- * @returns {number} 最後 assistant 回應的字元長度（讀取失敗或無 assistant 訊息時回 0）
+ * @returns {{ hasMessage: boolean, lastLength: number }}
+ *   hasMessage：是否存在任何 assistant 訊息（true = agent 確實執行過）
+ *   lastLength：最後一條 assistant 訊息的字元長度（無 assistant 訊息時為 0）
  */
-function getLastAssistantResponseLength(transcriptPath) {
-  if (!transcriptPath || !fs.existsSync(transcriptPath)) return 0;
+function scanTranscriptForAssistantMessage(transcriptPath) {
+  const empty = { hasMessage: false, lastLength: 0 };
+  if (!transcriptPath || !fs.existsSync(transcriptPath)) return empty;
   try {
     const content = fs.readFileSync(transcriptPath, 'utf8');
     const lines = content.trim().split('\n');
-    // 逆序掃描最後 20 行（避免全文遍歷）
+    // 逆序掃描最後 20 行（最後 assistant 訊息通常在末段）
     const scanLines = lines.slice(-20);
     for (let i = scanLines.length - 1; i >= 0; i--) {
       if (!scanLines[i].trim()) continue;
@@ -139,45 +151,24 @@ function getLastAssistantResponseLength(transcriptPath) {
         if (entry.role !== 'assistant' && entry.type !== 'assistant') continue;
         // 計算 content 長度
         const msgContent = entry.message?.content || entry.content || '';
-        if (typeof msgContent === 'string') return msgContent.length;
-        if (Array.isArray(msgContent)) {
+        let lastLength;
+        if (typeof msgContent === 'string') {
+          lastLength = msgContent.length;
+        } else if (Array.isArray(msgContent)) {
           // 陣列型 content：累加所有 text block
-          return msgContent.reduce((acc, block) => {
+          lastLength = msgContent.reduce((acc, block) => {
             const txt = block?.text || block?.content || '';
             return acc + (typeof txt === 'string' ? txt.length : 0);
           }, 0);
+        } else {
+          lastLength = String(msgContent).length;
         }
-        return String(msgContent).length;
+        return { hasMessage: true, lastLength };
       } catch (_) {}
     }
-    return 0;
+    return empty;
   } catch (_) {
-    return 0;
-  }
-}
-
-/**
- * 檢查 transcript 是否有 assistant 訊息（表示 agent 確實執行過）
- * CRASH 判斷必須先確認 agent 有實際輸出，才能視為「輸出缺失」
- * @param {string} transcriptPath
- * @returns {boolean}
- */
-function transcriptHasAssistantMessage(transcriptPath) {
-  if (!transcriptPath || !fs.existsSync(transcriptPath)) return false;
-  try {
-    const content = fs.readFileSync(transcriptPath, 'utf8');
-    const lines = content.trim().split('\n');
-    // 逆序掃描：assistant 訊息通常在末段，大型 transcript 不需全文遍歷
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (!lines[i].trim()) continue;
-      try {
-        const entry = JSON.parse(lines[i]);
-        if (entry.role === 'assistant' || entry.type === 'assistant') return true;
-      } catch (_) {}
-    }
-    return false;
-  } catch (_) {
-    return false;
+    return empty;
   }
 }
 
@@ -438,7 +429,6 @@ function ensureQualityStagesIfDev(dag) {
   }
 
   try {
-    const hookLogger = require('../hook-logger.js');
     const added = [];
     if (!hasReview) added.push('REVIEW');
     if (!hasTest) added.push('TEST');
@@ -673,9 +663,8 @@ async function classify(sessionId, prompt, options = {}) {
  * @returns {{ decision: 'allow'|'block', message?: string, reason?: string }}
  */
 function canProceed(sessionId, toolName, toolInput) {
-  const { evaluate } = require('../sentinel/guard-rules.js');
   const state = loadState(sessionId);
-  return evaluate(toolName, toolInput, state);
+  return guardEvaluate(toolName, toolInput, state);
 }
 
 // ────────────────── 3. onDelegate ──────────────────
@@ -770,7 +759,6 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
   // Schema Validation
   const { route: validatedRoute, warnings: routeWarnings } = validateRoute(routeParsed);
   if (routeWarnings.length > 0) {
-    const hookLogger = require('../hook-logger.js');
     hookLogger.error('route-parser', new Error(`route warnings: ${routeWarnings.join('; ')}`));
   }
 
@@ -789,7 +777,6 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
   routeResult = enforcedRoute;
 
   if (policyReason) {
-    const hookLogger = require('../hook-logger.js');
     hookLogger.error('route-parser', new Error(`policy enforced: ${policyReason}`));
   }
 
@@ -1128,14 +1115,18 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
   // IMPL stages（PLAN/ARCH/DEV/DOCS）無 PIPELINE_ROUTE 時一律視為 PASS 正常前進
   //
   // M-6 補充：對極早期崩潰（agent 幾乎無輸出）的偵測
-  // transcriptHasAssistantMessage=false 時不觸發 CRASH（進分支 C 視為正常 PASS）
+  // hasMessage=false 時不觸發 CRASH（進分支 C 視為正常 PASS）
   // 但仍需記錄 warning，方便診斷非預期完成
+  //
+  // 效能：一次 I/O 取得 hasMessage 和 lastLength，品質 stage 兩者都需要
   const isQualityStage = QUALITY_STAGES.includes(getBaseStage(currentStage));
-  const hasAssistantMsg = transcriptHasAssistantMessage(transcriptPath);
+  const transcriptScan = isQualityStage
+    ? scanTranscriptForAssistantMessage(transcriptPath)
+    : { hasMessage: false, lastLength: 0 };
+  const hasAssistantMsg = transcriptScan.hasMessage;
   if (isQualityStage && !validatedRoute && routeSource === 'none' && !hasAssistantMsg) {
     // 極早期崩潰（無 assistant 訊息）：記錄 warning，繼續進分支 C
     try {
-      const hookLogger = require('../hook-logger.js');
       hookLogger.error('pipeline-controller', new Error(
         `${currentStage} quality stage 無 PIPELINE_ROUTE 且 transcript 無 assistant 訊息，` +
         `視為正常完成（極早期崩潰或測試場景）。transcriptPath: ${transcriptPath || 'N/A'}`
@@ -1203,7 +1194,6 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
   // ── Wisdom Accumulation（S4）──
   // 品質 stage PASS 時，從 context_file 提取學習筆記並追加到 pipeline-wisdom-{sid}.md
   // FAIL 不提取（避免寫入不正確的建議）
-  const WISDOM_STAGES = new Set(['REVIEW', 'TEST', 'QA', 'E2E', 'SECURITY']);
   if (WISDOM_STAGES.has(getBaseStage(currentStage))) {
     const contextFile = state.stages?.[currentStage]?.contextFile;
     if (contextFile) {
@@ -1230,10 +1220,11 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
   }
 
   // Token 效率：品質 stage 完成時偵測回應長度
-  // 優先使用 last_assistant_message（ECC SubagentStop 直接提供），fallback 到 transcript 解析
+  // 優先使用 last_assistant_message（ECC SubagentStop 直接提供），fallback 到 transcriptScan.lastLength
+  // transcriptScan 已在 CRASH 判斷時讀取，此處複用（避免重複 I/O）
   // > 500 chars → emit TRANSCRIPT_LEAK_WARNING，累加 leakAccumulated
   if (isQualityStage) {
-    const responseLen = lastAssistantMessage.length || getLastAssistantResponseLength(transcriptPath);
+    const responseLen = lastAssistantMessage.length || transcriptScan.lastLength;
     const LEAK_THRESHOLD = 500;
     if (responseLen > LEAK_THRESHOLD) {
       try {
@@ -1286,7 +1277,6 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
     }
   }
   if (skipIter <= 0 && readyStages.length > 0) {
-    const hookLogger = require('../hook-logger.js');
     hookLogger.error('pipeline-controller', new Error(
       `級聯跳過迴圈超過 ${MAX_SKIP_ITERATIONS} 次上限，剩餘 ready: ${readyStages.join(',')}`
     ));
@@ -1430,7 +1420,6 @@ function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline) {
           validation = revalidation;
           rationale += (rationale ? ' | ' : '') + `DAG 自動修復：${repair.fixes.join('; ')}`;
           try {
-            const hookLogger = require('../hook-logger.js');
             hookLogger.error('pipeline-controller', new Error(
               `pipeline-architect DAG 自動修復成功：${repair.fixes.join('; ')}`
             ));

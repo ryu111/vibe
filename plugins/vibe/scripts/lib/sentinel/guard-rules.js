@@ -22,10 +22,15 @@
 'use strict';
 
 const path = require('path');
+const os = require('os');
 const {
   isActive, getReadyStages, getCurrentStage,
 } = require(path.join(__dirname, '..', 'flow', 'dag-state.js'));
 const { STAGES } = require(path.join(__dirname, '..', 'registry.js'));
+
+// 模組頂層快取：避免在 hot path 中重複呼叫 os.homedir()
+const HOME_DIR = os.homedir();
+const CLAUDE_STATE_DIR = path.join(HOME_DIR, '.claude');
 
 // 唯讀工具 + 互動查詢白名單（pipelineActive 但尚未委派時允許）
 const READ_ONLY_TOOLS = new Set([
@@ -236,8 +241,7 @@ function evaluate(toolName, toolInput, state) {
     const hasQualityGateActive = activeStagesArr.some(s => QUALITY_GATE_STAGES.has(s.replace(/:.*$/, '')));
     if (hasQualityGateActive && (toolName === 'Write' || toolName === 'Edit')) {
       const filePath = typeof toolInput?.file_path === 'string' ? toolInput.file_path : '';
-      const homeDir = require('os').homedir();
-      const isContextFile = filePath.startsWith(path.join(homeDir, '.claude', 'pipeline-context-'));
+      const isContextFile = filePath.startsWith(path.join(CLAUDE_STATE_DIR, 'pipeline-context-'));
       // TEST stage 允許寫入測試檔案（tester agent 需要建立/修改 *.test.js）
       const hasTestStageActive = activeStagesArr.some(s => s.replace(/:.*$/, '') === 'TEST');
       const testFileAllowed = hasTestStageActive && isTestFile(filePath);
@@ -278,8 +282,7 @@ function evaluate(toolName, toolInput, state) {
     const filePath = typeof toolInput?.file_path === 'string' ? toolInput.file_path : '';
     const baseName = path.basename(filePath);
     const dirName = path.dirname(filePath);
-    const homeDir = require('os').homedir();
-    const isClaudeDir = dirName === path.join(homeDir, '.claude');
+    const isClaudeDir = dirName === CLAUDE_STATE_DIR;
     if (isClaudeDir) {
       if (
         (baseName.startsWith('pipeline-state-') && baseName.endsWith('.json')) ||

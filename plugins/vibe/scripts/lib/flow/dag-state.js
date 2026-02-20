@@ -245,15 +245,8 @@ function isActive(state) {
 
 // ────────────────── 衍生查詢 ──────────────────
 
-function getPhase(state) { return derivePhase(state); }
-function isDelegating(state) { return derivePhase(state) === PHASES.DELEGATING; }
-
 function isComplete(state) { return derivePhase(state) === PHASES.COMPLETE; }
-function isInitialized(state) { return !!state?.meta?.initialized; }
 function getPipelineId(state) { return state?.classification?.pipelineId || null; }
-function getTaskType(state) { return state?.classification?.taskType || null; }
-function getEnvironment(state) { return state?.environment || {}; }
-function isOpenSpecEnabled(state) { return !!state?.openspecEnabled; }
 function getRetries(state) { return state?.retries || {}; }
 function getPendingRetry(state) { return state?.pendingRetry || null; }
 function getCurrentStage(state) {
@@ -529,14 +522,8 @@ module.exports = {
   isActive,
 
   // 衍生查詢
-  getPhase,
-  isDelegating,
   isComplete,
-  isInitialized,
   getPipelineId,
-  getTaskType,
-  getEnvironment,
-  isOpenSpecEnabled,
   getRetries,
   getPendingRetry,
   getCurrentStage,

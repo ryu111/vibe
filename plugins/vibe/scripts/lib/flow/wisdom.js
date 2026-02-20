@@ -26,6 +26,9 @@ const MAX_WISDOM_CHARS = 500;
 // 單一 stage wisdom 截斷上限
 const MAX_STAGE_WISDOM_CHARS = 200;
 
+// 無要點時的 fallback 截斷字元數（避免 wisdom 過長）
+const MAX_FALLBACK_SUMMARY_CHARS = 150;
+
 // ────────────────── getWisdomPath ──────────────────
 
 /**
@@ -74,7 +77,7 @@ function extractWisdom(stageId, contextContent) {
       ? combined.slice(0, MAX_STAGE_WISDOM_CHARS - 3) + '...'
       : combined;
   } else {
-    // 無要點：取前 150 chars 的非空行
+    // 無要點：取前 MAX_FALLBACK_SUMMARY_CHARS chars 的非空行
     const firstLines = trimmed
       .split('\n')
       .map(l => l.trim())
@@ -82,7 +85,9 @@ function extractWisdom(stageId, contextContent) {
       .slice(0, 3)
       .join(' ');
 
-    const raw = firstLines.length > 150 ? firstLines.slice(0, 147) + '...' : firstLines;
+    const raw = firstLines.length > MAX_FALLBACK_SUMMARY_CHARS
+      ? firstLines.slice(0, MAX_FALLBACK_SUMMARY_CHARS - 3) + '...'
+      : firstLines;
     summary = raw.length > MAX_STAGE_WISDOM_CHARS
       ? raw.slice(0, MAX_STAGE_WISDOM_CHARS - 3) + '...'
       : raw;
@@ -162,4 +167,5 @@ module.exports = {
   getWisdomPath,
   MAX_WISDOM_CHARS,
   MAX_STAGE_WISDOM_CHARS,
+  MAX_FALLBACK_SUMMARY_CHARS,
 };

@@ -354,6 +354,76 @@ test('_formatRelativeTime: 無效日期不顯示時間標記', () => {
   assert.ok(result.includes('[x] DEV'), `stage 仍應列出，實際:\n${result}`);
 });
 
+// ── 9. DEV:3 回歸測試 — sessionId 讀取位置修復 ──
+
+test('generateStatus: sessionId 從 state 頂層讀取（非 state.meta）', () => {
+  // DEV:3 修復：sessionId 儲存在 state 頂層，與 createInitialState 一致
+  const state = {
+    sessionId: 'abcdef12345678',          // ← 頂層（正確位置）
+    classification: { pipelineId: 'fix' },
+    stages: { DEV: { status: 'completed', verdict: 'PASS' } },
+    dag: { DEV: { deps: [] } },
+  };
+  const result = generateStatus(state);
+  // 短 ID 取前 8 字元 = 'abcdef12'
+  assert.ok(result.includes('abcdef12'), `應含 sessionId 前 8 碼，實際:\n${result}`);
+});
+
+test('generateStatus: 只有 state.meta.sessionId（無頂層）時顯示 unknown', () => {
+  // DEV:3 修復前舊路徑 state.meta?.sessionId 已不被讀取
+  const state = {
+    // 無頂層 sessionId
+    meta: { sessionId: 'should-not-appear' },
+    classification: { pipelineId: 'fix' },
+    stages: { DEV: { status: 'completed', verdict: 'PASS' } },
+    dag: { DEV: { deps: [] } },
+  };
+  const result = generateStatus(state);
+  // 修復後：頂層無 sessionId → shortId = 'unknown'
+  assert.ok(result.includes('unknown'), `無頂層 sessionId 應顯示 unknown，實際:\n${result}`);
+  assert.ok(!result.includes('should-not-appear'), `meta.sessionId 不應被讀取，實際:\n${result}`);
+});
+
+// ── 10. DEV:3 回歸測試 — 時間計算常數邏輯等價驗證 ──
+
+test('_formatRelativeTime: MS_PER_MINUTE=60000 計算等價（59 秒顯示剛剛）', () => {
+  // MS_PER_MINUTE = 60 * 1000 = 60000，59 秒 < 1 分鐘 → 剛剛
+  const fiftyNineSecsAgo = new Date(Date.now() - 59000).toISOString();
+  const state = {
+    classification: { pipelineId: 'fix' },
+    stages: { DEV: { status: 'completed', verdict: 'PASS', completedAt: fiftyNineSecsAgo } },
+    dag: { DEV: { deps: [] } },
+  };
+  const result = generateStatus(state);
+  assert.ok(result.includes('剛剛'), `59 秒前應顯示剛剛，實際:\n${result}`);
+});
+
+test('_formatRelativeTime: MINUTES_PER_HOUR=60 計算等價（59 分鐘不顯示小時）', () => {
+  // MINUTES_PER_HOUR = 60，59 分鐘 < 60 → 分鐘前（非小時前）
+  const fiftyNineMinAgo = new Date(Date.now() - 59 * 60000).toISOString();
+  const state = {
+    classification: { pipelineId: 'fix' },
+    stages: { DEV: { status: 'completed', verdict: 'PASS', completedAt: fiftyNineMinAgo } },
+    dag: { DEV: { deps: [] } },
+  };
+  const result = generateStatus(state);
+  assert.ok(result.includes('分鐘前'), `59 分鐘前應顯示分鐘前，實際:\n${result}`);
+  assert.ok(!result.includes('小時前'), `59 分鐘前不應顯示小時前，實際:\n${result}`);
+});
+
+test('_formatRelativeTime: HOURS_PER_DAY=24 計算等價（23 小時不顯示天）', () => {
+  // HOURS_PER_DAY = 24，23 小時 < 24 → 小時前（非天前）
+  const twentyThreeHoursAgo = new Date(Date.now() - 23 * 3600000).toISOString();
+  const state = {
+    classification: { pipelineId: 'fix' },
+    stages: { DEV: { status: 'completed', verdict: 'PASS', completedAt: twentyThreeHoursAgo } },
+    dag: { DEV: { deps: [] } },
+  };
+  const result = generateStatus(state);
+  assert.ok(result.includes('小時前'), `23 小時前應顯示小時前，實際:\n${result}`);
+  assert.ok(!result.includes('天前'), `23 小時前不應顯示天前，實際:\n${result}`);
+});
+
 // ── 清理暫存目錄 ──
 
 cleanupStatus();

@@ -82,4 +82,4 @@ function cleanup(sessionId) {
   try { fs.unlinkSync(getStatePath(sessionId)); } catch (_) {}
 }
 
-module.exports = { read, increment, reset, cleanup, THRESHOLD, REMIND_INTERVAL };
+module.exports = { read, increment, reset, cleanup };

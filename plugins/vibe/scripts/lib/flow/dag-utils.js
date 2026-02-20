@@ -530,7 +530,6 @@ module.exports = {
   getBaseStage,
   deduplicateStages,
   resolveAgent,
-  topologicalSort,
   validateDag,
   repairDag,
   enrichCustomDag,

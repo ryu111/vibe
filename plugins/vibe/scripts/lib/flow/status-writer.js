@@ -22,6 +22,11 @@ const { readWisdom } = require('./wisdom.js');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
+// 時間計算常數
+const MS_PER_MINUTE = 60 * 1000;
+const MINUTES_PER_HOUR = 60;
+const HOURS_PER_DAY = 24;
+
 // ────────────────── getStatusPath ──────────────────
 
 /**
@@ -62,7 +67,8 @@ function generateStatus(state, wisdomContent) {
   if (!state || typeof state !== 'object') return '';
 
   const pipelineId = state.classification?.pipelineId || 'unknown';
-  const sessionId = state.meta?.sessionId || '';
+  // sessionId 儲存在 state 頂層（非 state.meta），與 createInitialState 一致
+  const sessionId = state.sessionId || '';
   const shortId = sessionId ? sessionId.slice(0, 8) : 'unknown';
 
   const stages = state.stages || {};
@@ -220,12 +226,12 @@ function _formatRelativeTime(isoTimestamp) {
     const elapsed = Date.now() - new Date(isoTimestamp).getTime();
     if (isNaN(elapsed) || elapsed < 0) return '';
 
-    const minutes = Math.floor(elapsed / 60000);
+    const minutes = Math.floor(elapsed / MS_PER_MINUTE);
     if (minutes < 1) return '剛剛';
-    if (minutes < 60) return `${minutes} 分鐘前`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours} 小時前`;
-    const days = Math.floor(hours / 24);
+    if (minutes < MINUTES_PER_HOUR) return `${minutes} 分鐘前`;
+    const hours = Math.floor(minutes / MINUTES_PER_HOUR);
+    if (hours < HOURS_PER_DAY) return `${hours} 小時前`;
+    const days = Math.floor(hours / HOURS_PER_DAY);
     return `${days} 天前`;
   } catch (_) {
     return '';

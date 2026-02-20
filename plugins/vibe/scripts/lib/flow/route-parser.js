@@ -26,6 +26,47 @@ const VALID_SEVERITIES = new Set(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
 // 掃描最後幾行 transcript（PIPELINE_ROUTE 通常在最後）
 const SCAN_LAST_LINES = 30;
 
+// 弱 PASS 信號：agent 輸出超過此字元數且無 FAIL 信號，視為 PASS
+const MIN_CONTENT_CHARS_FOR_WEAK_PASS = 200;
+
+// hint 最大允許長度（超過則截斷）
+const MAX_HINT_CHARS = 200;
+
+// ────────────────── 預編譯正則（模組頂層常數，避免每次呼叫重建）──────────────────
+
+// PASS 信號正則（inferRouteFromContent 用）
+const PASS_PATTERNS = [
+  /0\s*(?:個\s*)?CRITICAL/i,
+  /CRITICAL\s*[:：]\s*0/i,
+  /0\s*(?:個\s*)?HIGH/i,
+  /HIGH\s*[:：]\s*0/i,
+  /全部通過/,
+  /all\s+pass/i,
+  /測試通過/,
+  /\d+\/\d+\s*(?:測試)?通過/,
+  /整體評估\s*[:：]\s*(?:良好|通過|合格|無|沒有)/,
+  /無\s*(?:嚴重|重大)\s*問題/,
+  /(?:審查|review)\s*完成/i,
+  /tester\s*測試撰寫完成/i,
+  /code\s*reviewer\s*審查完成/i,
+];
+
+// FAIL 信號正則（hasFAILSignal 用）
+const FAIL_PATTERNS = [
+  /\bCRITICAL\b/i,
+  /\bfail(?:ed|ure|s|ing)?\b/i,
+  /測試失敗/,
+  /嚴重問題/,
+  /安全漏洞/,
+];
+
+// CRITICAL 0 排除正則（FAIL 信號的 false-positive 過濾）
+const CRITICAL_ZERO_RE = /0\s*(?:個\s*)?CRITICAL/i;
+const CRITICAL_ZERO_COLON_RE = /CRITICAL\s*[:：]\s*0/i;
+
+// FAIL 類 false-positive 排除正則（onFail、failover、failsafe）
+const FAIL_FALSE_POSITIVE_RE = /\bonFail\b|\bfailover\b|\bfailsafe\b/gi;
+
 // ────────────────── 1. parseRoute ──────────────────
 
 /**
@@ -188,24 +229,8 @@ function inferRouteFromContent(recentLines) {
     };
   }
 
-  // ── 強 PASS 信號 ──
-  const passPatterns = [
-    /0\s*(?:個\s*)?CRITICAL/i,
-    /CRITICAL\s*[:：]\s*0/i,
-    /0\s*(?:個\s*)?HIGH/i,
-    /HIGH\s*[:：]\s*0/i,
-    /全部通過/,
-    /all\s+pass/i,
-    /測試通過/,
-    /\d+\/\d+\s*(?:測試)?通過/,  // "20/20 通過" / "20/20 測試通過"
-    /整體評估\s*[:：]\s*(?:良好|通過|合格|無|沒有)/,
-    /無\s*(?:嚴重|重大)\s*問題/,
-    /(?:審查|review)\s*完成/i,
-    /tester\s*測試撰寫完成/i,
-    /code\s*reviewer\s*審查完成/i,
-  ];
-
-  for (const pat of passPatterns) {
+  // ── 強 PASS 信號（使用模組頂層預編譯 PASS_PATTERNS）──
+  for (const pat of PASS_PATTERNS) {
     if (pat.test(combined)) {
       return {
         verdict: 'PASS',
@@ -216,8 +241,8 @@ function inferRouteFromContent(recentLines) {
   }
 
   // ── 弱 PASS 信號：agent 有大量輸出但無 FAIL 信號 ──
-  // 200 字元以上的 assistant 輸出 + 無 CRITICAL/HIGH 關鍵字 → 推斷為 PASS
-  if (combined.length > 200 && !hasFAILSignal(combined)) {
+  // 超過 MIN_CONTENT_CHARS_FOR_WEAK_PASS 字元的 assistant 輸出 + 無 CRITICAL/HIGH 關鍵字 → 推斷為 PASS
+  if (combined.length > MIN_CONTENT_CHARS_FOR_WEAK_PASS && !hasFAILSignal(combined)) {
     return {
       verdict: 'PASS',
       route: 'NEXT',
@@ -262,35 +287,22 @@ function extractIssueCount(text, severity) {
 
 /**
  * 檢查文字中是否有 FAIL 語意信號（用於弱 PASS 判斷的排除條件）
+ *
+ * 使用模組頂層預編譯的 FAIL_PATTERNS，避免每次呼叫重建陣列。
  */
 function hasFAILSignal(text) {
-  const failPatterns = [
-    /\bCRITICAL\b/i,     // 任何 CRITICAL 提及（不含 "0 CRITICAL"）
-    /\bfail(?:ed|ure|s|ing)?\b/i, // "fail" / "failed" / "failure"（排除 onFail 等駝峰式）
-    /測試失敗/,
-    /嚴重問題/,
-    /安全漏洞/,
-  ];
-
-  // 排除 false-positive 的上下文模式（欄位名、設定值）
-  const falsePositives = [
-    /\bonFail\b/,         // DAG 設定欄位名
-    /\bfailover\b/i,      // 常見架構術語
-    /\bfailsafe\b/i,      // 常見設計模式
-  ];
-
-  for (const pat of failPatterns) {
+  for (const pat of FAIL_PATTERNS) {
     if (pat.test(text)) {
       // 排除 "0 CRITICAL" / "CRITICAL: 0" 的 false positive
       if (/CRITICAL/i.test(pat.source)) {
-        if (/0\s*(?:個\s*)?CRITICAL/i.test(text) || /CRITICAL\s*[:：]\s*0/i.test(text)) {
+        if (CRITICAL_ZERO_RE.test(text) || CRITICAL_ZERO_COLON_RE.test(text)) {
           continue;
         }
       }
       // 排除 /fail/ 模式的 false positive（onFail、failover 等）
       if (/fail/i.test(pat.source)) {
         // 確認不是只因為 false-positive 模式才匹配
-        const cleaned = text.replace(/\bonFail\b/g, '').replace(/\bfailover\b/gi, '').replace(/\bfailsafe\b/gi, '');
+        const cleaned = text.replace(FAIL_FALSE_POSITIVE_RE, '');
         if (!pat.test(cleaned)) continue;
       }
       return true;
@@ -420,10 +432,10 @@ function validateRoute(parsed) {
     route.barrierGroup = 'default';
   }
 
-  // hint 長度限制（截斷超過 200 字的 hint）
-  if (route.hint && typeof route.hint === 'string' && route.hint.length > 200) {
-    route.hint = route.hint.slice(0, 200);
-    warnings.push('hint truncated to 200 chars');
+  // hint 長度限制（截斷超過 MAX_HINT_CHARS 字的 hint）
+  if (route.hint && typeof route.hint === 'string' && route.hint.length > MAX_HINT_CHARS) {
+    route.hint = route.hint.slice(0, MAX_HINT_CHARS);
+    warnings.push(`hint truncated to ${MAX_HINT_CHARS} chars`);
   }
 
   // M-1 修正：sanitize hint 中的 `-->` 序列
@@ -540,4 +552,8 @@ module.exports = {
   extractTextFromEntry,
   extractIssueCount,
   hasFAILSignal,
+  // 常數（供測試用）
+  SCAN_LAST_LINES,
+  MIN_CONTENT_CHARS_FOR_WEAK_PASS,
+  MAX_HINT_CHARS,
 };

@@ -28,6 +28,7 @@ const {
   getWisdomPath,
   MAX_WISDOM_CHARS,
   MAX_STAGE_WISDOM_CHARS,
+  MAX_FALLBACK_SUMMARY_CHARS,
 } = require('../scripts/lib/flow/wisdom.js');
 
 let passed = 0;
@@ -273,6 +274,54 @@ test('getWisdomPath: sessionId 含數字和連字號格式正確', () => {
   const p = getWisdomPath('session-20250101-42');
   assert.ok(p.includes('pipeline-wisdom-session-20250101-42.md'), `路徑格式不正確: ${p}`);
   assert.ok(path.isAbsolute(p), '應為絕對路徑');
+});
+
+// ── 6. DEV:3 回歸測試 — MAX_FALLBACK_SUMMARY_CHARS 常數提取 ──
+
+test('MAX_FALLBACK_SUMMARY_CHARS: 常數值為 150 且已匯出', () => {
+  // DEV:3 將魔術數字 150 提取為常數並匯出
+  assert.strictEqual(MAX_FALLBACK_SUMMARY_CHARS, 150,
+    'MAX_FALLBACK_SUMMARY_CHARS 應為 150');
+});
+
+test('extractWisdom: fallback 截斷邏輯使用 MAX_FALLBACK_SUMMARY_CHARS=150', () => {
+  // 無要點時的 fallback 路徑，截斷邏輯應使用 150 而非硬編碼數值
+  // 構造超過 150 字元的無要點內容
+  const longText = '這是一段很長的說明文字，沒有要點格式，'.repeat(20); // 遠超 150
+  const result = extractWisdom('TEST', longText);
+  assert.ok(result, '應有回傳值');
+  // fallback 截斷後加 ...，截斷點 = MAX_FALLBACK_SUMMARY_CHARS - 3 = 147
+  // 最終長度 = 147 + 3 = 150（加上 ...）
+  assert.ok(result.summary.length <= MAX_STAGE_WISDOM_CHARS,
+    `摘要長度 ${result.summary.length} 不應超過 MAX_STAGE_WISDOM_CHARS(${MAX_STAGE_WISDOM_CHARS})`);
+});
+
+test('extractWisdom: fallback 截斷後以 ... 結尾', () => {
+  // 驗證截斷結尾格式一致性（DEV:3 修正從 147 改為 MAX_FALLBACK_SUMMARY_CHARS-3）
+  const longText = '無要點文字：'.repeat(30); // 超過 150
+  const result = extractWisdom('REVIEW', longText);
+  assert.ok(result, '應有回傳值');
+  assert.ok(result.summary.endsWith('...'),
+    `截斷後應以 ... 結尾，實際結尾: ${result.summary.slice(-10)}`);
+});
+
+test('extractWisdom: fallback 邊界 — 剛好 150 字不截斷', () => {
+  // 剛好 150 字元（不加 ...）
+  const exactText = 'a'.repeat(MAX_FALLBACK_SUMMARY_CHARS);
+  const result = extractWisdom('QA', exactText);
+  assert.ok(result, '應有回傳值');
+  // 150 <= MAX_FALLBACK_SUMMARY_CHARS，不截斷，不以 ... 結尾
+  assert.ok(!result.summary.endsWith('...'),
+    `剛好 150 字不應截斷，實際: ${result.summary.slice(-5)}`);
+});
+
+test('extractWisdom: fallback 邊界 — 151 字截斷', () => {
+  // 151 字元 > MAX_FALLBACK_SUMMARY_CHARS → 截斷
+  const overText = 'b'.repeat(MAX_FALLBACK_SUMMARY_CHARS + 1);
+  const result = extractWisdom('E2E', overText);
+  assert.ok(result, '應有回傳值');
+  assert.ok(result.summary.endsWith('...'),
+    `超過 150 字應截斷，結尾: ${result.summary.slice(-5)}`);
 });
 
 // ── 清理暫存目錄 ──

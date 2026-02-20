@@ -3,9 +3,12 @@
  * transcript-leak.test.js — Transcript 洩漏偵測單元測試
  *
  * 測試範圍：
- * 1. getLastAssistantResponseLength：正常讀取、逆序掃描、異常防禦
+ * 1. getLastAssistantResponseLength（白箱邏輯）：正常讀取、逆序掃描、異常防禦
  * 2. leakAccumulated 欄位初始化（createInitialState）
  * 3. suggest-compact.js 洩漏感知 compact 建議（leakAccumulated >= 3000）
+ * 4. leakCompactHint 觸發條件（v2.1.8）
+ * 5. stage-transition.js 結構驗證
+ * 6. scanTranscriptForAssistantMessage（DEV:5 合併函式）：回傳物件 {hasMessage, lastLength}
  *
  * 執行：node plugins/vibe/tests/transcript-leak.test.js
  */
@@ -309,6 +312,163 @@ test('stage-transition.js 將 lastMessage 傳遞給 ctrl.onStageComplete', () =>
 test('stage-transition.js 空值防禦：data.last_assistant_message || \'\'', () => {
   assert.ok(stageTransitionSrc.includes("data.last_assistant_message || ''"),
     '應有空值防禦 || \'\'');
+});
+
+// ═══════════════════════════════════════════════
+// 6. scanTranscriptForAssistantMessage（DEV:5 合併函式）
+//    回歸測試：確認合併後行為與舊版本一致
+//    函式回傳 {hasMessage: boolean, lastLength: number}
+// ═══════════════════════════════════════════════
+
+console.log('\n--- 6. scanTranscriptForAssistantMessage（DEV:5 合併函式）---');
+
+// 直接複製 pipeline-controller 中的實作進行白箱驗證
+// 目的：確認合併函式同時回傳 hasMessage 和 lastLength
+function scanTranscriptForAssistantMessage(transcriptPath) {
+  const empty = { hasMessage: false, lastLength: 0 };
+  if (!transcriptPath || !fs.existsSync(transcriptPath)) return empty;
+  try {
+    const content = fs.readFileSync(transcriptPath, 'utf8');
+    const lines = content.trim().split('\n');
+    const scanLines = lines.slice(-20);
+    for (let i = scanLines.length - 1; i >= 0; i--) {
+      if (!scanLines[i].trim()) continue;
+      try {
+        const entry = JSON.parse(scanLines[i]);
+        if (entry.role !== 'assistant' && entry.type !== 'assistant') continue;
+        const msgContent = entry.message?.content || entry.content || '';
+        let lastLength;
+        if (typeof msgContent === 'string') {
+          lastLength = msgContent.length;
+        } else if (Array.isArray(msgContent)) {
+          lastLength = msgContent.reduce((acc, block) => {
+            const txt = block?.text || block?.content || '';
+            return acc + (typeof txt === 'string' ? txt.length : 0);
+          }, 0);
+        } else {
+          lastLength = String(msgContent).length;
+        }
+        return { hasMessage: true, lastLength };
+      } catch (_) {}
+    }
+    return empty;
+  } catch (_) {
+    return empty;
+  }
+}
+
+test('DEV:5 回歸：不存在路徑 → {hasMessage: false, lastLength: 0}', () => {
+  const result = scanTranscriptForAssistantMessage('/tmp/nonexistent-scan.jsonl');
+  assert.strictEqual(result.hasMessage, false, 'hasMessage 應為 false');
+  assert.strictEqual(result.lastLength, 0, 'lastLength 應為 0');
+});
+
+test('DEV:5 回歸：null 路徑 → {hasMessage: false, lastLength: 0}', () => {
+  const result = scanTranscriptForAssistantMessage(null);
+  assert.deepStrictEqual(result, { hasMessage: false, lastLength: 0 });
+});
+
+test('DEV:5 回歸：undefined 路徑 → {hasMessage: false, lastLength: 0}', () => {
+  const result = scanTranscriptForAssistantMessage(undefined);
+  assert.deepStrictEqual(result, { hasMessage: false, lastLength: 0 });
+});
+
+test('DEV:5 回歸：空 transcript → {hasMessage: false, lastLength: 0}', () => {
+  const p = createTranscript([]);
+  const result = scanTranscriptForAssistantMessage(p);
+  assert.strictEqual(result.hasMessage, false, '空 transcript 應無 assistant 訊息');
+  assert.strictEqual(result.lastLength, 0, '空 transcript lastLength 應為 0');
+});
+
+test('DEV:5 回歸：只有 user 訊息 → hasMessage=false', () => {
+  const p = createTranscript([
+    { role: 'user', content: '請幫我審查程式碼' },
+  ]);
+  const result = scanTranscriptForAssistantMessage(p);
+  assert.strictEqual(result.hasMessage, false, '無 assistant 訊息 → hasMessage=false');
+  assert.strictEqual(result.lastLength, 0, '無 assistant 訊息 → lastLength=0');
+});
+
+test('DEV:5 回歸：string content → hasMessage=true, lastLength 正確', () => {
+  const content = '這是一段審查結論，共 20 個字符。';
+  const p = createTranscript([
+    { role: 'user', content: '審查請求' },
+    { role: 'assistant', content },
+  ]);
+  const result = scanTranscriptForAssistantMessage(p);
+  assert.strictEqual(result.hasMessage, true, '有 assistant 訊息 → hasMessage=true');
+  assert.strictEqual(result.lastLength, content.length, 'lastLength 應與舊版 getLastAssistantResponseLength 一致');
+});
+
+test('DEV:5 回歸：message.content 巢狀 → hasMessage=true, lastLength 正確', () => {
+  const contentStr = '巢狀格式的審查結論文字';
+  const p = createTranscript([
+    { role: 'assistant', message: { content: contentStr } },
+  ]);
+  const result = scanTranscriptForAssistantMessage(p);
+  assert.strictEqual(result.hasMessage, true);
+  assert.strictEqual(result.lastLength, contentStr.length);
+});
+
+test('DEV:5 回歸：陣列型 content → hasMessage=true, lastLength 累加', () => {
+  const block1 = { type: 'text', text: '第一段落：審查結論。' };
+  const block2 = { type: 'text', text: '第二段落：建議修復。' };
+  const p = createTranscript([
+    { role: 'assistant', message: { content: [block1, block2] } },
+  ]);
+  const result = scanTranscriptForAssistantMessage(p);
+  assert.strictEqual(result.hasMessage, true);
+  assert.strictEqual(result.lastLength, block1.text.length + block2.text.length);
+});
+
+test('DEV:5 回歸：逆序掃描取最後 assistant 訊息', () => {
+  const shortContent = '短摘要';
+  const longContent = 'A'.repeat(600);
+  const p = createTranscript([
+    { role: 'user', content: '請求' },
+    { role: 'assistant', content: longContent }, // 早期長回應
+    { role: 'user', content: '確認' },
+    { role: 'assistant', content: shortContent }, // 最後短摘要（應取這個）
+  ]);
+  const result = scanTranscriptForAssistantMessage(p);
+  assert.strictEqual(result.hasMessage, true);
+  assert.strictEqual(result.lastLength, shortContent.length, '應取最後一條 assistant 訊息');
+});
+
+test('DEV:5 回歸：type=assistant（非 role 欄位）→ hasMessage=true', () => {
+  const content = '類型為 assistant 的訊息';
+  const p = createTranscript([
+    { type: 'assistant', content },
+  ]);
+  const result = scanTranscriptForAssistantMessage(p);
+  assert.strictEqual(result.hasMessage, true);
+  assert.strictEqual(result.lastLength, content.length);
+});
+
+test('DEV:5 回歸：hasMessage 與 lastLength 同時回傳（物件結構確認）', () => {
+  const content = 'test content';
+  const p = createTranscript([{ role: 'assistant', content }]);
+  const result = scanTranscriptForAssistantMessage(p);
+  // 確認回傳物件結構（DEV:5 合併的核心變更）
+  assert.ok('hasMessage' in result, '應有 hasMessage 欄位');
+  assert.ok('lastLength' in result, '應有 lastLength 欄位');
+  assert.strictEqual(typeof result.hasMessage, 'boolean', 'hasMessage 應為 boolean');
+  assert.strictEqual(typeof result.lastLength, 'number', 'lastLength 應為 number');
+});
+
+test('DEV:5 回歸：CRASH 偵測（hasMessage）與洩漏偵測（lastLength）可獨立使用', () => {
+  // hasMessage → 判斷是否為真正的 crash（agent 有執行）
+  // lastLength → 計算洩漏累積量
+  const content = 'A'.repeat(800);
+  const p = createTranscript([{ role: 'assistant', content }]);
+  const { hasMessage, lastLength } = scanTranscriptForAssistantMessage(p);
+
+  // CRASH 判斷：hasMessage=true → agent 有執行，若無 PIPELINE_ROUTE → 真正 crash
+  assert.strictEqual(hasMessage, true, 'CRASH 判斷：hasMessage 應為 true');
+
+  // 洩漏判斷：lastLength > 500 → 觸發累積
+  const LEAK_THRESHOLD = 500;
+  assert.ok(lastLength > LEAK_THRESHOLD, `洩漏判斷：${lastLength} 應 > ${LEAK_THRESHOLD}`);
 });
 
 // ═══════════════════════════════════════════════

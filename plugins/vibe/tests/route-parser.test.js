@@ -337,6 +337,84 @@ test('enforcePolicy: state = null → 不崩潰', () => {
   assert.ok(r); // 不崩潰
 });
 
+// ────────────── DEV:3 回歸測試 — 常數提取等價驗證 ──────────────
+
+const {
+  MIN_CONTENT_CHARS_FOR_WEAK_PASS,
+  MAX_HINT_CHARS,
+  inferRouteFromContent,
+  hasFAILSignal,
+} = require('../scripts/lib/flow/route-parser.js');
+
+test('MIN_CONTENT_CHARS_FOR_WEAK_PASS: 常數值為 200', () => {
+  assert.strictEqual(MIN_CONTENT_CHARS_FOR_WEAK_PASS, 200,
+    'MIN_CONTENT_CHARS_FOR_WEAK_PASS 應為 200');
+});
+
+test('MAX_HINT_CHARS: 常數值為 200', () => {
+  assert.strictEqual(MAX_HINT_CHARS, 200,
+    'MAX_HINT_CHARS 應為 200');
+});
+
+test('弱 PASS 邊界：剛好 200 字元不觸發弱 PASS（需 > 200）', () => {
+  // 弱 PASS 條件：combined.length > MIN_CONTENT_CHARS_FOR_WEAK_PASS（嚴格大於）
+  const exactContent = 'a'.repeat(200);
+  const lines = [JSON.stringify({
+    type: 'assistant',
+    message: { content: [{ type: 'text', text: exactContent }] },
+  })];
+  const result = inferRouteFromContent(lines);
+  // 200 字元剛好等於邊界，不觸發弱 PASS（需 > 200）
+  assert.strictEqual(result, null, `剛好 200 字元不應觸發弱 PASS，實際: ${JSON.stringify(result)}`);
+});
+
+test('弱 PASS 邊界：201 字元觸發弱 PASS', () => {
+  const overContent = 'a'.repeat(201);
+  const lines = [JSON.stringify({
+    type: 'assistant',
+    message: { content: [{ type: 'text', text: overContent }] },
+  })];
+  const result = inferRouteFromContent(lines);
+  assert.ok(result, '201 字元應觸發弱 PASS');
+  assert.strictEqual(result.verdict, 'PASS', '應為 PASS');
+  assert.strictEqual(result._inferred, true, '應標記為推斷');
+});
+
+test('PASS_PATTERNS（模組頂層）與舊 local 陣列行為等價：全部通過', () => {
+  // 驗證預編譯常數遷移後，PASS 推斷仍正常
+  const lines = [JSON.stringify({
+    type: 'assistant',
+    message: { content: [{ type: 'text', text: '審查完成，全部通過。' }] },
+  })];
+  const result = inferRouteFromContent(lines);
+  assert.ok(result, '「全部通過」應觸發 PASS 推斷');
+  assert.strictEqual(result.verdict, 'PASS');
+});
+
+test('PASS_PATTERNS（模組頂層）與舊 local 陣列行為等價：tester 測試撰寫完成', () => {
+  const lines = [JSON.stringify({
+    type: 'assistant',
+    message: { content: [{ type: 'text', text: 'tester 測試撰寫完成，共 25 個測試。' }] },
+  })];
+  const result = inferRouteFromContent(lines);
+  assert.ok(result, '「tester 測試撰寫完成」應觸發 PASS 推斷');
+  assert.strictEqual(result.verdict, 'PASS');
+});
+
+test('FAIL_PATTERNS（模組頂層）與舊 local 陣列行為等價：onFail 不誤判為 FAIL', () => {
+  // FAIL_FALSE_POSITIVE_RE 排除 onFail/failover/failsafe
+  const text = '請注意 onFail 欄位設定，failover 機制已啟用，failsafe 已確認。'.repeat(5) + '這是詳細說明。';
+  const result = hasFAILSignal(text);
+  assert.strictEqual(result, false, 'onFail/failover/failsafe 應被排除，不視為 FAIL 信號');
+});
+
+test('hasFAILSignal: CRITICAL 0 排除 false-positive（預編譯正則等價）', () => {
+  // CRITICAL_ZERO_RE 和 CRITICAL_ZERO_COLON_RE 遷移到模組頂層
+  const text = '0 個 CRITICAL 問題，CRITICAL: 0，代碼品質良好。';
+  const result = hasFAILSignal(text);
+  assert.strictEqual(result, false, '「0 CRITICAL」應排除 false-positive');
+});
+
 // ────────────── 清理暫存檔 ──────────────
 
 cleanup();

@@ -248,4 +248,4 @@ function detectFrontendSignals(cwd, pkg) {
   return { detected, signals, confidence };
 }
 
-module.exports = { detect, detectFrontendSignals };
+module.exports = { detect };
