@@ -276,22 +276,25 @@ console.log('\n🧪 Part 3: buildKnowledgeHints — 知識 skills 自動注入')
 // ═══════════════════════════════════════════════
 
 /**
- * 建立含 environment 的 v3 state（IDLE，無分類）
+ * 建立含 environment 的 v4 state（IDLE，無分類）
  * classify() 讀到此 state 後會保留 environment 並進行分類
  */
 function createEnvState(sessionId, environment) {
   return {
-    version: 3,
+    version: 4,
     sessionId,
     classification: null,
     environment,
     openspecEnabled: false,
     needsDesign: false,
     dag: null,
-    enforced: false,
+    pipelineActive: false,
+    activeStages: [],
     blueprint: null,
     stages: {},
     retries: {},
+    retryHistory: {},
+    crashes: {},
     pendingRetry: null,
     meta: {
       initialized: true,

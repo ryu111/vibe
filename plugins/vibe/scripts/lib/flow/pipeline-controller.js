@@ -73,17 +73,11 @@ function extractShortAgent(agentType) {
   return agentType.includes(':') ? agentType.split(':')[1] : agentType;
 }
 
-/** 讀取 state（自動遷移 v3 → v4，v2 或未知格式回傳 null；遷移後持久化） */
+/** 讀取 state（只接受 v4 格式；v3 或未知格式回傳 null，不再遷移） */
 function loadState(sessionId) {
   const raw = ds.readState(sessionId);
   if (!raw) return null;
-  const state = ensureV4(raw);
-  // 遷移後持久化：確保磁碟上的 state 是 v4 格式
-  // （classify 的 early-return 路徑不會寫回，導致下游讀到 v3 格式）
-  if (state && raw.version !== 4) {
-    ds.writeState(sessionId, state);
-  }
-  return state;
+  return ensureV4(raw);
 }
 
 /**

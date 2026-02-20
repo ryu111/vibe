@@ -18,6 +18,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+const { readWisdom } = require('./wisdom.js');
+
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
 // ────────────────── getStatusPath ──────────────────
@@ -148,7 +150,6 @@ function updateStatus(sessionId, state) {
     // 嘗試讀取 wisdom 作為決策記錄
     let wisdomContent = null;
     try {
-      const { readWisdom } = require('./wisdom.js');
       wisdomContent = readWisdom(sessionId);
     } catch (_) {
       // wisdom 讀取失敗不影響狀態摘要

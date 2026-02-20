@@ -40,14 +40,18 @@ function test(name, fn) {
 
 // ─── 輔助函式 ─────────────────────────────
 
-function makeV3State(sessionId, { pipelineId = 'standard', phase = 'CLASSIFIED', completedStages = [] } = {}) {
-  // 建立 v3 dag + stages
+/**
+ * 建立 v4 pipeline state（替代已移除的 makeV3State）
+ * findIncompletePipelines 的 ensureV4() 只接受 version=4 的 state
+ */
+function makeV4State(sessionId, { pipelineId = 'standard', phase = 'CLASSIFIED', completedStages = [], lastTransition } = {}) {
+  // 建立 v4 dag + stages
   const stageList = ['DEV', 'REVIEW', 'TEST'];
   const dag = {};
   const stages = {};
   stageList.forEach((s, i) => {
     dag[s] = { deps: i === 0 ? [] : [stageList[i - 1]] };
-    stages[s] = { status: 'pending', agent: null, verdict: null };
+    stages[s] = { status: 'pending', agent: null, verdict: null, contextFile: null, startedAt: null, completedAt: null };
   });
 
   // 根據 completedStages 標記
@@ -56,10 +60,13 @@ function makeV3State(sessionId, { pipelineId = 'standard', phase = 'CLASSIFIED',
   }
 
   // 設定 DELEGATING 時需要有 active stage
+  let activeStages = [];
   if (phase === 'DELEGATING') {
-    // 找第一個 pending 改為 active
     const firstPending = stageList.find(s => stages[s].status === 'pending');
-    if (firstPending) stages[firstPending].status = 'active';
+    if (firstPending) {
+      stages[firstPending].status = 'active';
+      activeStages = [firstPending];
+    }
   }
 
   // 設定 COMPLETE
@@ -67,22 +74,35 @@ function makeV3State(sessionId, { pipelineId = 'standard', phase = 'CLASSIFIED',
     stageList.forEach(s => { stages[s].status = 'completed'; });
   }
 
+  // pipelineActive：COMPLETE 或 DELEGATING 完成後為 false；CLASSIFIED/DELEGATING 為 true
+  const allDone = stageList.every(s => stages[s]?.status === 'completed' || stages[s]?.status === 'skipped');
+  const pipelineActive = !allDone;
+
   return {
-    version: 3,
+    version: 4,
     sessionId,
-    classification: { pipelineId, taskType: 'feature' },
+    classification: { pipelineId, taskType: 'feature', source: 'test', classifiedAt: new Date().toISOString() },
     dag,
     stages,
-    enforced: true,
-    pendingRetry: null,
+    pipelineActive,
+    activeStages,
     retries: {},
+    retryHistory: {},
+    crashes: {},
+    pendingRetry: null,
     meta: {
       initialized: true,
       cancelled: false,
-      lastTransition: new Date().toISOString(),
+      lastTransition: lastTransition || new Date().toISOString(),
       reclassifications: [],
     },
   };
+}
+
+// 保留 makeV3State 別名供「非 v3 state → 排除」測試使用（版本 < 4 的 state）
+function makeV3State(sessionId, opts = {}) {
+  // 建立 v3 state（已不被 ensureV4 支援，用於驗證「排除非 v4」行為）
+  return { version: 3, sessionId, classification: { pipelineId: opts.pipelineId || 'standard' } };
 }
 
 function writeState(sessionId, state) {
@@ -110,7 +130,7 @@ test('空目錄 → 回傳空陣列', () => {
 
 test('只有自己的 state → 排除自己，回傳空陣列', () => {
   cleanup();
-  const state = makeV3State('my-session', { phase: 'CLASSIFIED' });
+  const state = makeV4State('my-session', { phase: 'CLASSIFIED' });
   writeState('my-session', state);
   const result = findIncompletePipelines('my-session', { claudeDir: tmpDir });
   assert.strictEqual(result.length, 0);
@@ -118,7 +138,7 @@ test('只有自己的 state → 排除自己，回傳空陣列', () => {
 
 test('COMPLETE state → 排除（不需接續）', () => {
   cleanup();
-  const state = makeV3State('old-session', { phase: 'COMPLETE' });
+  const state = makeV4State('old-session', { phase: 'COMPLETE' });
   writeState('old-session', state);
   const result = findIncompletePipelines('current-session', { claudeDir: tmpDir });
   assert.strictEqual(result.length, 0);
@@ -126,7 +146,7 @@ test('COMPLETE state → 排除（不需接續）', () => {
 
 test('IDLE state（無 dag）→ 排除', () => {
   cleanup();
-  const state = makeV3State('old-session', { phase: 'CLASSIFIED' });
+  const state = makeV4State('old-session', { phase: 'CLASSIFIED' });
   delete state.dag; // 無 dag = IDLE
   writeState('old-session', state);
   const result = findIncompletePipelines('current-session', { claudeDir: tmpDir });
@@ -135,7 +155,7 @@ test('IDLE state（無 dag）→ 排除', () => {
 
 test('CLASSIFIED state → 回傳', () => {
   cleanup();
-  const state = makeV3State('old-session', { phase: 'CLASSIFIED', pipelineId: 'standard' });
+  const state = makeV4State('old-session', { phase: 'CLASSIFIED', pipelineId: 'standard' });
   writeState('old-session', state);
   const result = findIncompletePipelines('current-session', { claudeDir: tmpDir });
   assert.strictEqual(result.length, 1);
@@ -148,7 +168,7 @@ test('CLASSIFIED state → 回傳', () => {
 
 test('DELEGATING state → 回傳', () => {
   cleanup();
-  const state = makeV3State('old-session', { phase: 'DELEGATING', pipelineId: 'quick-dev' });
+  const state = makeV4State('old-session', { phase: 'DELEGATING', pipelineId: 'quick-dev' });
   writeState('old-session', state);
   const result = findIncompletePipelines('current-session', { claudeDir: tmpDir });
   assert.strictEqual(result.length, 1);
@@ -157,7 +177,7 @@ test('DELEGATING state → 回傳', () => {
 
 test('部分完成的 pipeline → completedCount 正確', () => {
   cleanup();
-  const state = makeV3State('old-session', {
+  const state = makeV4State('old-session', {
     phase: 'CLASSIFIED',
     completedStages: ['DEV'],
   });
@@ -170,7 +190,7 @@ test('部分完成的 pipeline → completedCount 正確', () => {
 
 test('maxAgeMs=0 → 所有檔案都過期，回傳空陣列', () => {
   cleanup();
-  const state = makeV3State('old-session', { phase: 'CLASSIFIED' });
+  const state = makeV4State('old-session', { phase: 'CLASSIFIED' });
   writeState('old-session', state);
   const result = findIncompletePipelines('current-session', { claudeDir: tmpDir, maxAgeMs: 0 });
   assert.strictEqual(result.length, 0);
@@ -179,13 +199,17 @@ test('maxAgeMs=0 → 所有檔案都過期，回傳空陣列', () => {
 test('多個 incomplete pipelines → 依最後活動時間降序排列', () => {
   cleanup();
   // 較舊的
-  const older = makeV3State('old-session-1', { phase: 'CLASSIFIED' });
-  older.meta.lastTransition = new Date(Date.now() - 3600000).toISOString(); // 1 小時前
+  const older = makeV4State('old-session-1', {
+    phase: 'CLASSIFIED',
+    lastTransition: new Date(Date.now() - 3600000).toISOString(), // 1 小時前
+  });
   writeState('old-session-1', older);
 
   // 較新的
-  const newer = makeV3State('old-session-2', { phase: 'DELEGATING' });
-  newer.meta.lastTransition = new Date(Date.now() - 600000).toISOString(); // 10 分鐘前
+  const newer = makeV4State('old-session-2', {
+    phase: 'DELEGATING',
+    lastTransition: new Date(Date.now() - 600000).toISOString(), // 10 分鐘前
+  });
   writeState('old-session-2', newer);
 
   const result = findIncompletePipelines('current-session', { claudeDir: tmpDir });
@@ -195,8 +219,9 @@ test('多個 incomplete pipelines → 依最後活動時間降序排列', () => 
   assert.strictEqual(result[1].sessionId, 'old-session-1');
 });
 
-test('非 v3 state → 排除', () => {
+test('非 v4 state → 排除', () => {
   cleanup();
+  // v3 和 v2 state 都不被 ensureV4 接受
   const state = { version: 2, pipelineId: 'standard' };
   writeState('old-session', state);
   const result = findIncompletePipelines('current-session', { claudeDir: tmpDir });

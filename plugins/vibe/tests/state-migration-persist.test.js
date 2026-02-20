@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * state-migration-persist.test.js — loadState 遷移持久化測試
+ * state-migration-persist.test.js — loadState 版本驗證測試
  *
- * 目標：驗證 pipeline-controller.js 的 loadState() 自動遷移持久化行為：
- * 1. 寫入 v3 state → loadState 讀取 → 磁碟上應為 v4 格式（含 pipelineActive）
+ * 目標：驗證 pipeline-controller.js 的 loadState() 版本驗證行為：
+ * 1. 寫入 v3 state → loadState 讀取 → 回傳 null（v3 不再支援）
  * 2. v4 state → loadState 讀取 → 不應重新寫入（效能：版本相同不觸發持久化）
- * 3. 遷移保留所有原有進度（無損遷移）
+ * 3. v3 state（部分完成）→ loadState 回傳 null（v3 不再支援，不保留進度）
  * 4. null state → loadState 回傳 null（無 state 情況）
  * 5. v2 格式（舊 phase/context）→ loadState 回傳 null（不再支援）
  */
@@ -74,14 +74,14 @@ function readDisk(sessionId) {
 }
 
 // ════════════════════════════════════════════════
-console.log('\n📦 loadState 遷移持久化測試');
+console.log('\n📦 loadState 版本驗證測試');
 console.log('═'.repeat(55));
 // ════════════════════════════════════════════════
 
-// ── 1. v3 state → loadState → 磁碟應為 v4 ──────────────
+// ── 1. v3 state → loadState → 回傳 null（v3 不再支援）──────────────
 
-test('1：寫入 v3 state → loadState → 磁碟上為 v4 格式（含 pipelineActive）', () => {
-  const sid = makeSessionId('v3-to-v4');
+test('1：寫入 v3 state → loadState → 回傳 null（v3 不再支援）', () => {
+  const sid = makeSessionId('v3-unsupported');
 
   const v3State = {
     version: 3,
@@ -120,23 +120,19 @@ test('1：寫入 v3 state → loadState → 磁碟上為 v4 格式（含 pipelin
   const beforeLoad = readDisk(sid);
   assert.strictEqual(beforeLoad?.version, 3, '寫入後磁碟上應為 v3');
 
-  // loadState 觸發遷移
+  // loadState 應回傳 null（v3 不再支援）
   const loaded = loadState(sid);
+  assert.strictEqual(loaded, null, 'v3 state 不再支援，loadState 應回傳 null');
 
-  // 回傳值應為 v4
-  assert.strictEqual(loaded?.version, 4, 'loadState 回傳應為 v4');
-  assert.ok(typeof loaded.pipelineActive === 'boolean', 'v4 應有 pipelineActive 布林欄位');
-
-  // 磁碟上應已持久化為 v4
+  // 磁碟上應保持 v3（未被覆寫，因為 state=null 不觸發持久化）
   const afterLoad = readDisk(sid);
-  assert.strictEqual(afterLoad?.version, 4, '遷移後磁碟上應為 v4');
-  assert.ok(typeof afterLoad.pipelineActive === 'boolean', '磁碟 v4 應有 pipelineActive');
+  assert.strictEqual(afterLoad?.version, 3, '磁碟上應保持原本的 v3（未被覆寫）');
 
   cleanup(sid);
 });
 
-test('1b：v3 state 有 DAG + 有分類 → 遷移後 pipelineActive=true', () => {
-  const sid = makeSessionId('v3-active');
+test('1b：v3 state 有 DAG + 有分類 → loadState 回傳 null（v3 不再支援）', () => {
+  const sid = makeSessionId('v3-dag-null');
 
   const v3State = {
     version: 3,
@@ -157,16 +153,13 @@ test('1b：v3 state 有 DAG + 有分類 → 遷移後 pipelineActive=true', () =
   ds.writeState(sid, v3State);
 
   const loaded = loadState(sid);
-  assert.strictEqual(loaded?.pipelineActive, true, '未完成的 quick-dev pipeline 應為 pipelineActive=true');
-
-  const disk = readDisk(sid);
-  assert.strictEqual(disk?.pipelineActive, true, '磁碟上 pipelineActive 應為 true');
+  assert.strictEqual(loaded, null, 'v3 state 不再支援，應回傳 null');
 
   cleanup(sid);
 });
 
-test('1c：v3 state 全部 stage 完成 → 遷移後 pipelineActive=false', () => {
-  const sid = makeSessionId('v3-complete');
+test('1c：v3 state 全部 stage 完成 → loadState 回傳 null（v3 不再支援）', () => {
+  const sid = makeSessionId('v3-complete-null');
 
   const v3State = {
     version: 3,
@@ -184,7 +177,7 @@ test('1c：v3 state 全部 stage 完成 → 遷移後 pipelineActive=false', () 
   ds.writeState(sid, v3State);
 
   const loaded = loadState(sid);
-  assert.strictEqual(loaded?.pipelineActive, false, '全部完成的 pipeline 應為 pipelineActive=false');
+  assert.strictEqual(loaded, null, 'v3 state 不再支援，全部完成的 pipeline 應回傳 null');
 
   cleanup(sid);
 });
@@ -232,10 +225,10 @@ test('2：v4 state → loadState → 不應重新寫入（版本相同）', () =
   cleanup(sid);
 });
 
-// ── 3. 遷移保留已完成進度（無損遷移）──────────────
+// ── 3. v3 state（部分完成）→ loadState 回傳 null（v3 不再支援）──────────────
 
-test('3：v3 state 有部分完成進度 → loadState → v4 保留所有 stage 狀態', () => {
-  const sid = makeSessionId('v3-preserve');
+test('3：v3 state 有部分完成進度 → loadState 回傳 null（v3 不再支援）', () => {
+  const sid = makeSessionId('v3-partial-null');
 
   const v3State = {
     version: 3,
@@ -268,17 +261,7 @@ test('3：v3 state 有部分完成進度 → loadState → v4 保留所有 stage
   ds.writeState(sid, v3State);
 
   const loaded = loadState(sid);
-
-  assert.strictEqual(loaded?.stages?.PLAN?.status, 'completed', 'PLAN 狀態應保留 completed');
-  assert.strictEqual(loaded?.stages?.ARCH?.status, 'completed', 'ARCH 狀態應保留 completed');
-  assert.strictEqual(loaded?.stages?.DEV?.status, 'active', 'DEV 狀態應保留 active');
-  assert.strictEqual(loaded?.stages?.REVIEW?.status, 'pending', 'REVIEW 狀態應保留 pending');
-
-  assert.strictEqual(loaded?.classification?.pipelineId, 'full', '分類應保留');
-
-  assert.ok(typeof loaded?.pipelineActive === 'boolean', '應有 pipelineActive');
-  assert.ok(Array.isArray(loaded?.activeStages), '應有 activeStages 陣列');
-  assert.ok(loaded?.activeStages?.includes('DEV'), 'activeStages 應包含 active 的 DEV');
+  assert.strictEqual(loaded, null, 'v3 state 不再支援，部分完成的 pipeline 應回傳 null');
 
   cleanup(sid);
 });
@@ -322,10 +305,10 @@ test('5：v2 格式（舊 phase/context）→ loadState 回傳 null（不再支�
   cleanup(sid);
 });
 
-// ── 6. v3 cancelled → pipelineActive=false ──────────────
+// ── 6. v3 cancelled → loadState 回傳 null（v3 不再支援）──────────────
 
-test('6：v3 cancelled=true → loadState → pipelineActive=false', () => {
-  const sid = makeSessionId('v3-cancelled');
+test('6：v3 cancelled=true → loadState 回傳 null（v3 不再支援）', () => {
+  const sid = makeSessionId('v3-cancelled-null');
 
   const v3State = {
     version: 3,
@@ -346,18 +329,18 @@ test('6：v3 cancelled=true → loadState → pipelineActive=false', () => {
   ds.writeState(sid, v3State);
 
   const loaded = loadState(sid);
-  assert.strictEqual(loaded?.pipelineActive, false, '已取消的 pipeline 應為 pipelineActive=false');
+  assert.strictEqual(loaded, null, 'v3 state 不再支援，已取消的 pipeline 應回傳 null');
 
   cleanup(sid);
 });
 
-// ── 7. v4 state 持久化後磁碟格式完整性 ──────────────
+// ── 7. v4 state 直接通過，磁碟格式完整性 ──────────────
 
-test('7：v3 遷移到 v4 後，磁碟 state 包含 retryHistory 和 crashes 欄位', () => {
+test('7：v4 state 直接通過 loadState，磁碟 state 包含 pipelineActive、retryHistory 和 crashes 欄位', () => {
   const sid = makeSessionId('v4-fields');
 
-  const v3State = {
-    version: 3,
+  const v4State = {
+    version: 4,
     sessionId: sid,
     classification: { pipelineId: 'fix', taskType: 'bugfix', source: 'test' },
     environment: {},
@@ -365,13 +348,18 @@ test('7：v3 遷移到 v4 後，磁碟 state 包含 retryHistory 和 crashes 欄
     needsDesign: false,
     dag: { DEV: { deps: [] } },
     stages: { DEV: { status: 'pending', agent: null, verdict: null } },
+    pipelineActive: true,
+    activeStages: [],
     retries: { DEV: 1 },
     pendingRetry: null,
+    retryHistory: {},
+    crashes: {},
     meta: { initialized: true, cancelled: false, lastTransition: new Date().toISOString(), reclassifications: [] },
   };
-  ds.writeState(sid, v3State);
+  ds.writeState(sid, v4State);
 
-  loadState(sid);
+  const loaded = loadState(sid);
+  assert.strictEqual(loaded?.version, 4, 'v4 state 應直接通過，版本為 4');
 
   const disk = readDisk(sid);
   assert.ok(typeof disk?.pipelineActive === 'boolean', '磁碟 v4 應有 pipelineActive');

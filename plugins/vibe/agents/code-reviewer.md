@@ -202,3 +202,7 @@ context_file 寫入完成後，最終回應**只輸出**：
      ```
    - **hint 欄位**：用一句話描述最主要的問題類型（如「安全性漏洞：未驗證使用者輸入」），讓 developer 快速了解修復方向。
    - **barrierGroup 欄位**：從 Node Context 的 `node.barrier.group` 取得。
+   - **uncertain 欄位**（可選）：當審查結果信心不足時（如：線索不充分、無法確定問題嚴重度），可加入 `"uncertain": true`。系統會在回退時提示 Main Agent 向使用者確認是否需要修復，而非直接強制回退。
+     ```
+     <!-- PIPELINE_ROUTE: { "verdict": "FAIL", "route": "DEV", "severity": "MEDIUM", "uncertain": true, "hint": "無法確定是否為問題，建議人工確認" } -->
+     ```

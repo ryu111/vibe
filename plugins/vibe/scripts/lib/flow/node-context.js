@@ -16,6 +16,7 @@
 
 const path = require('path');
 const os = require('os');
+const { execSync } = require('child_process');
 
 const { readReflection, getReflectionPath } = require('./reflection.js');
 const { getBaseStage } = require('./dag-utils.js');
@@ -52,8 +53,6 @@ function collectSignals(env) {
   if (env?.tools?.linter) {
     const linter = env.tools.linter;
     try {
-      const { execSync } = require('child_process');
-
       if (linter === 'eslint') {
         // eslint JSON 格式輸出，--quiet 只計 errors（但 warningCount 仍在 JSON 內）
         const result = execSync('npx eslint . --format json 2>/dev/null || true', {
@@ -254,11 +253,24 @@ function buildNodeContext(dag, state, stage, sessionId) {
       json = JSON.stringify(context);
     }
 
-    // 最後防線：若還是超過，移除整個 retryContext 只保留最小 hint
+    // 第三層防線：若還是超過，移除整個 retryContext 只保留最小 hint
     if (json.length > MAX_NODE_CONTEXT_CHARS && context.retryContext) {
       context.retryContext = context.retryContext.hint
         ? { hint: context.retryContext.hint.slice(0, 100) }
         : null;
+      json = JSON.stringify(context);
+    }
+
+    // 第四層：截斷 wisdom（跨 stage 知識，次要資訊）
+    if (json.length > MAX_NODE_CONTEXT_CHARS && context.wisdom) {
+      context.wisdom = null;
+      json = JSON.stringify(context);
+    }
+
+    // 第五層：截斷 signals（確定性信號，品質 stage 可重新收集）
+    if (json.length > MAX_NODE_CONTEXT_CHARS && context.signals) {
+      context.signals = null;
+      json = JSON.stringify(context);
     }
   }
 

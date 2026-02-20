@@ -350,17 +350,20 @@ test('放行 — cancel 後（meta.cancelled=true）', () => {
 test('放行 — 未初始化（meta.initialized=false）', () => {
   const sessionId = 'test-pg-8';
   try {
-    // 手動寫一個 meta.initialized=false 的 state
+    // v4 state：pipelineActive=false + 無 DAG → 放行
     const statePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
     fs.writeFileSync(statePath, JSON.stringify({
-      version: 3,
+      version: 4,
       sessionId,
       classification: null,
       environment: {},
       dag: null,
-      enforced: false,
+      pipelineActive: false,
+      activeStages: [],
       stages: {},
       retries: {},
+      retryHistory: {},
+      crashes: {},
       pendingRetry: null,
       meta: { initialized: false, cancelled: false },
     }, null, 2));
@@ -618,31 +621,15 @@ test('v4 cancel：activeStages 清空後 guard 放行', () => {
   }
 });
 
-test('v4 cancel：pipelineActive 欄位存在 vs 不存在（向後相容）', () => {
+test('v4 cancel：無 state file 時 guard 放行（IDLE 狀態）', () => {
   const sessionId = 'test-v4-compat-1';
-  try {
-    // v3 state：有 enforced 但無 pipelineActive
-    const statePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
-    fs.writeFileSync(statePath, JSON.stringify({
-      version: 3,
-      sessionId,
-      classification: { pipelineId: 'fix', taskType: 'bugfix', source: 'test' },
-      dag: { DEV: { deps: [] } },
-      stages: { DEV: { status: 'pending' } },
-      enforced: true,
-      retries: {},
-      pendingRetry: null,
-      meta: { initialized: true, cancelled: false },
-    }, null, 2));
+  cleanState(sessionId); // 確保無 state file
 
-    // v3 fallback：isEnforced=true + CLASSIFIED → 阻擋
-    const result = runHook(PIPELINE_GUARD_SCRIPT, {
-      session_id: sessionId, tool_name: 'Write', tool_input: { file_path: 'src/app.js' },
-    });
-    assert.strictEqual(result.exitCode, 2, 'v3 fallback 應阻擋');
-  } finally {
-    cleanState(sessionId);
-  }
+  // 無 state file → guard 放行
+  const result = runHook(PIPELINE_GUARD_SCRIPT, {
+    session_id: sessionId, tool_name: 'Write', tool_input: { file_path: 'src/app.js' },
+  });
+  assert.strictEqual(result.exitCode, 0, '無 state file 應放行');
 });
 
 // ═══════════════════════════════════════════════
