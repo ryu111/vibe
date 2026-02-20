@@ -13,7 +13,7 @@
  * 4.5. REVIEW active 且 Write/Edit 程式碼檔案 → block（品質門防護）
  *      TEST active 且 Write/Edit 非測試程式碼檔案 → block（允許寫測試檔案）
  * 5. Task / Skill → allow（委派工具始終放行）
- * 6. READ_ONLY_TOOLS → allow（唯讀白名單）
+ * 6. READ_ONLY_TOOLS → allow（唯讀 + 進度追蹤白名單）
  * 6.5. 特定 state file 寫入 → allow（cancel skill 逃生門：pipeline-state/task-guard-state/classifier-corpus）
  * 7. 其他 → block（Relay 模式阻擋）
  *
@@ -32,10 +32,11 @@ const { STAGES } = require(path.join(__dirname, '..', 'registry.js'));
 const HOME_DIR = os.homedir();
 const CLAUDE_STATE_DIR = path.join(HOME_DIR, '.claude');
 
-// 唯讀工具 + 互動查詢白名單（pipelineActive 但尚未委派時允許）
+// 唯讀工具 + 互動查詢 + 進度追蹤白名單（pipelineActive 但尚未委派時允許）
 const READ_ONLY_TOOLS = new Set([
   'Read', 'Grep', 'Glob', 'WebSearch', 'WebFetch',
   'TaskList', 'TaskGet',
+  'TaskCreate', 'TaskUpdate',  // Pipeline 進度追蹤（Main Agent 建立/更新 TaskList 條目）
   'AskUserQuestion',  // S1: Main Agent 不確定 pipeline 時可詢問使用者
 ]);
 
@@ -192,7 +193,7 @@ function detectBashWriteTarget(command) {
  * 4.5. REVIEW active + Write/Edit 程式碼 → block（品質門防護）
  *      TEST active + Write/Edit 非測試程式碼 → block（允許寫測試檔案）
  * 5. Task / Skill → allow（委派工具始終放行）
- * 6. READ_ONLY_TOOLS → allow（唯讀白名單）
+ * 6. READ_ONLY_TOOLS → allow（唯讀 + 進度追蹤白名單）
  * 6.5. 特定 state file 寫入 → allow（cancel skill 逃生門：pipeline-state/task-guard-state/classifier-corpus）
  * 7. 其他 → block（Main Agent 作為 Relay，不直接執行）
  *
@@ -267,7 +268,7 @@ function evaluate(toolName, toolInput, state) {
     return { decision: 'allow' };
   }
 
-  // ── 6. READ_ONLY_TOOLS → allow（唯讀白名單） ──
+  // ── 6. READ_ONLY_TOOLS → allow（唯讀 + 進度追蹤白名單） ──
   if (READ_ONLY_TOOLS.has(toolName)) {
     return { decision: 'allow' };
   }

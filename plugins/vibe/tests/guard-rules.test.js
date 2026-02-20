@@ -604,6 +604,33 @@ test('v4：AskUserQuestion + activeStages=[PLAN]（PLAN 委派中）→ allow', 
   assert.strictEqual(evaluate('AskUserQuestion', {}, state).decision, 'allow');
 });
 
+test('v4：TaskCreate → allow（Pipeline 進度追蹤白名單）', () => {
+  // TaskCreate 加入 READ_ONLY_TOOLS，Main Agent 可在 relay 模式下建立進度條目
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
+  const r = evaluate('TaskCreate', {}, state);
+  assert.strictEqual(r.decision, 'allow', 'TaskCreate 應在白名單中');
+});
+
+test('v4：TaskUpdate → allow（Pipeline 進度追蹤白名單）', () => {
+  // TaskUpdate 加入 READ_ONLY_TOOLS，Main Agent 可在委派時更新進度
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
+  const r = evaluate('TaskUpdate', {}, state);
+  assert.strictEqual(r.decision, 'allow', 'TaskUpdate 應在白名單中');
+});
+
+test('v4：TaskCreate + activeStages=[DEV]（委派中）→ allow', () => {
+  // 委派中（activeStages 有值）時 TaskCreate 應放行（Rule 4 + Rule 4.5 品質門不適用）
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: ['DEV'] });
+  const r = evaluate('TaskCreate', {}, state);
+  assert.strictEqual(r.decision, 'allow', 'TaskCreate 委派中應放行');
+});
+
+test('v4：TaskUpdate + pipelineActive=false → allow（不活躍時放行）', () => {
+  const state = makeGuardTestState({ pipelineActive: false });
+  const r = evaluate('TaskUpdate', {}, state);
+  assert.strictEqual(r.decision, 'allow', 'pipelineActive=false 時 TaskUpdate 應放行');
+});
+
 test('v4：state=null → allow', () => {
   assert.strictEqual(evaluate('Write', { file_path: 'src/app.js' }, null).decision, 'allow');
   assert.strictEqual(evaluate('Edit', { file_path: 'src/app.ts' }, null).decision, 'allow');

@@ -413,6 +413,24 @@ Sub-agent 完成
 
 Main Agent **只看 systemMessage**，不看 sub-agent 的回應內容（回應被 §2.3 約束為一行結論）。
 
+**進度追蹤（多階段 Pipeline）**：在多階段 pipeline 中（≥2 個 phase），systemMessage 會建議 Main Agent 使用 TaskCreate/TaskUpdate 建立進度追蹤：
+
+```javascript
+// 建議用法
+TaskCreate({
+  title: 'Phase 1: 核心功能實作',
+  description: '實作資料模型 + API'
+});
+
+// 委派時更新狀態
+TaskUpdate(taskId, { state: 'in_progress' });
+
+// 完成時標記為完成
+TaskUpdate(taskId, { state: 'completed' });
+```
+
+這讓使用者對 pipeline 進度有即時的視覺反饋，同時 TaskList 本身作為進度紀錄被保留。進度追蹤是可選的（Main Agent 可選擇不用），但在長流程中能顯著提升用戶體驗。
+
 **自動 COMPLETE 規則**：當 Node 輸出 `route: NEXT` 但 DAG 中該 stage 的 `next` 為空陣列時，stage-transition 自動將其視為 `route: COMPLETE`。Node 不需要知道自己是否是最後一個 stage — stage-transition 統一處理。這簡化了 agent .md 的邏輯（所有 IMPL stage 都只需輸出 PASS/NEXT）。
 
 ### 3.3 PIPELINE_ROUTE 解析路徑（4 層 Fallback）

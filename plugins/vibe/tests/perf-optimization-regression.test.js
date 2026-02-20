@@ -460,9 +460,9 @@ test('Rule 5：Task 始終放行（Relay 模式）', () => {
   assert.strictEqual(result.decision, 'allow');
 });
 
-test('Rule 6：READ_ONLY_TOOLS 放行（Read/Grep/Glob/WebSearch）', () => {
+test('Rule 6：READ_ONLY_TOOLS 放行（Read/Grep/Glob/WebSearch + 進度追蹤）', () => {
   const relayState = makeV4State({ pipelineActive: true, activeStages: [] });
-  for (const tool of ['Read', 'Grep', 'Glob', 'WebSearch', 'WebFetch', 'TaskList', 'AskUserQuestion']) {
+  for (const tool of ['Read', 'Grep', 'Glob', 'WebSearch', 'WebFetch', 'TaskList', 'TaskGet', 'TaskCreate', 'TaskUpdate', 'AskUserQuestion']) {
     const result = evaluate(tool, {}, relayState);
     assert.strictEqual(result.decision, 'allow', `${tool} 應在唯讀白名單中`);
   }

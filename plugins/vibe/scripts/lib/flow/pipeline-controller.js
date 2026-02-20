@@ -624,6 +624,11 @@ async function classify(sessionId, prompt, options = {}) {
       ? `\n⚠️ 禁止中途停止。你必須按順序完成所有 ${stages.length} 個階段。\n${allSteps}\n先從第一步開始：`
       : '';
 
+    // 多階段 pipeline 建議用 TaskCreate 追蹤進度（單階段如 fix 無需）
+    const taskListHint = stages.length >= 2
+      ? '\n📌 用 TaskCreate 為每個主要階段建立進度追蹤（如「Phase 1: xxx」），委派時 TaskUpdate 設 in_progress，完成時設 completed。'
+      : '';
+
     const kh = buildKnowledgeHints(state);
     const contextParts = [];
     if (kh) contextParts.push(kh);
@@ -632,7 +637,7 @@ async function classify(sessionId, prompt, options = {}) {
       output: {
         systemMessage:
           `⛔ Pipeline ${sourceLabel}（${stageStr}）已建立。${multiStageWarning}\n` +
-          `➡️ ${firstHint}`,
+          `➡️ ${firstHint}${taskListHint}`,
         ...(contextParts.length > 0 ? { additionalContext: contextParts.join('\n') } : {}),
       },
     };
@@ -1701,6 +1706,10 @@ function buildPhaseProgressSummary(state, dag) {
       .join(' ');
 
     lines.push(` ${phaseName}: ${stageStatus}`);
+  }
+
+  if (devStages.length > 0) {
+    lines.push('📌 建議用 TaskCreate 為每個 Phase 建立進度追蹤，完成時用 TaskUpdate 標記。');
   }
 
   return lines.join('\n') + '\n';

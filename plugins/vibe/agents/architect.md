@@ -155,6 +155,15 @@ deps: [Phase 1]
 - `- [ ] 任務描述` — 待完成任務
 - `- [x] 任務描述` — 已完成任務
 
+**Phase 分組準則**：
+- **功能內聚**：同一模組或同一功能路徑的 checkbox 放同一 phase
+- **依賴鏈分離**：若 checkbox A 的實作依賴 checkbox B 的產出，B 在前驅 phase
+- **大小平衡**：每個 phase 包含 2-5 個 checkbox（太少無意義，太多難追蹤）
+- **phase 總數**：建議 3-7 個（超過 7 個考慮合併相近功能）
+- **邊界情況**：
+  - 所有 checkbox 屬同一模組 → 使用 1 個 phase（退化為標準 D-R-T）
+  - 獨立的橫切關注（如測試、文件）→ 與依賴它的功能放同 phase，不獨立成 phase
+
 **觸發條件**：
 - ≥ 2 個 phase → 自動啟用 phase-level D-R-T 循環（DEV:1 → REVIEW:1+TEST:1 → DEV:2 → ...）
 - 1 個 phase 或無 phase → 退化為標準單 D-R-T 循環

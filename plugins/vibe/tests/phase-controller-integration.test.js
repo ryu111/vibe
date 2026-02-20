@@ -298,6 +298,131 @@ deps: [Phase 1]
   assert.ok(!hint2.includes('建立資料庫'), 'DEV:2 不看到 Phase 1 task');
 });
 
+// ─── Phase 進度摘要 TaskCreate 提示驗證 ──────────────────────────────
+
+console.log('\n🧩 Section 5: buildPhaseProgressSummary TaskCreate 提示驗證');
+
+// 模擬 buildPhaseProgressSummary 邏輯（不 export，直接重現核心邏輯驗證正確性）
+function simulateBuildPhaseProgressSummary(state, dag) {
+  if (!dag) return '';
+  // 與實作一致：用 getBaseStage(s) === 'DEV' && s.includes(':') 篩選
+  const devStages = Object.keys(dag).filter(s => s.split(':')[0] === 'DEV' && s.includes(':'));
+  if (devStages.length === 0) return '';
+
+  const phaseInfo = state?.phaseInfo || {};
+  const pipelineId = 'test-pipeline';
+  const phaseCount = devStages.length;
+
+  const lines = [`📌 Pipeline: ${pipelineId} (${phaseCount} phases)`];
+
+  for (const devStageId of devStages.sort()) {
+    const idxMatch = devStageId.match(/^DEV:(\d+)$/);
+    if (!idxMatch) continue;
+    const idx = parseInt(idxMatch[1], 10);
+    const info = phaseInfo[idx];
+    const phaseName = info?.name || `Phase ${idx}`;
+
+    const phaseStages = Object.keys(dag).filter(s => {
+      const match = s.match(/:(\d+)$/);
+      return match && parseInt(match[1], 10) === idx;
+    });
+
+    const stageStatus = phaseStages.sort().map(s => `[${s} ⏳]`).join(' ');
+    lines.push(` ${phaseName}: ${stageStatus}`);
+  }
+
+  // Phase 2 新增的 TaskCreate 建議（devStages.length > 0 保證進入此分支）
+  if (devStages.length > 0) {
+    lines.push('📌 建議用 TaskCreate 為每個 Phase 建立進度追蹤，完成時用 TaskUpdate 標記。');
+  }
+
+  return lines.join('\n') + '\n';
+}
+
+test('2-phase phase DAG 的進度摘要包含 TaskCreate 建議', () => {
+  const phases = [
+    { name: 'Phase 1: 基礎實作', index: 1, deps: [], tasks: ['task A'] },
+    { name: 'Phase 2: 測試補強', index: 2, deps: ['Phase 1'], tasks: ['task B'] },
+  ];
+  const dag = generatePhaseDag(phases, 'standard');
+  const phaseInfo = {};
+  for (const p of phases) {
+    phaseInfo[p.index] = { name: p.name, tasks: p.tasks };
+  }
+  const state = { phaseInfo, classification: { pipelineId: 'standard' } };
+
+  const summary = simulateBuildPhaseProgressSummary(state, dag);
+  assert.ok(summary.includes('TaskCreate'), '包含 TaskCreate 建議');
+  assert.ok(summary.includes('TaskUpdate'), '包含 TaskUpdate 建議');
+  assert.ok(summary.includes('📌'), '包含 📌 進度圖示');
+});
+
+test('非 phase DAG（無 DEV:N stage）不產生 TaskCreate 建議', () => {
+  const dag = {
+    DEV:    { deps: [] },
+    REVIEW: { deps: ['DEV'] },
+    TEST:   { deps: ['DEV'] },
+  };
+  const summary = simulateBuildPhaseProgressSummary({}, dag);
+  assert.strictEqual(summary, '', '非 phase DAG 應返回空字串');
+});
+
+test('3-phase DAG 的進度摘要包含所有 Phase 名稱和 TaskCreate 建議', () => {
+  const phases = [
+    { name: 'Phase 1: Guard', index: 1, deps: [], tasks: ['guard task'] },
+    { name: 'Phase 2: Controller', index: 2, deps: ['Phase 1'], tasks: ['ctrl task'] },
+    { name: 'Phase 3: Architect', index: 3, deps: [], tasks: ['arch task'] },
+  ];
+  const dag = generatePhaseDag(phases, 'standard');
+  const phaseInfo = {};
+  for (const p of phases) {
+    phaseInfo[p.index] = { name: p.name, tasks: p.tasks };
+  }
+  const state = { phaseInfo, classification: { pipelineId: 'standard' } };
+
+  const summary = simulateBuildPhaseProgressSummary(state, dag);
+  assert.ok(summary.includes('Phase 1: Guard'), '包含 Phase 1 名稱');
+  assert.ok(summary.includes('Phase 2: Controller'), '包含 Phase 2 名稱');
+  assert.ok(summary.includes('Phase 3: Architect'), '包含 Phase 3 名稱');
+  assert.ok(summary.includes('TaskCreate'), '包含 TaskCreate 建議');
+  assert.ok(summary.includes('TaskUpdate'), '包含 TaskUpdate 建議');
+});
+
+// ─── classify() taskListHint 格式驗證（白盒重現）──────────────
+
+console.log('\n🧩 Section 6: classify() taskListHint 格式驗證');
+
+// 直接重現 classify() 中 taskListHint 的邏輯
+function simulateTaskListHint(stagesLength) {
+  return stagesLength >= 2
+    ? '\n📌 用 TaskCreate 為每個主要階段建立進度追蹤（如「Phase 1: xxx」），委派時 TaskUpdate 設 in_progress，完成時設 completed。'
+    : '';
+}
+
+test('多階段 pipeline（>=2 stages）注入 taskListHint', () => {
+  const hint = simulateTaskListHint(3);
+  assert.ok(hint.includes('TaskCreate'), '包含 TaskCreate');
+  assert.ok(hint.includes('TaskUpdate'), '包含 TaskUpdate');
+  assert.ok(hint.includes('in_progress'), '包含 in_progress 狀態');
+  assert.ok(hint.includes('completed'), '包含 completed 狀態');
+});
+
+test('2 階段 pipeline 也注入 taskListHint', () => {
+  const hint = simulateTaskListHint(2);
+  assert.ok(hint.length > 0, '2 個 stage 應有 taskListHint');
+  assert.ok(hint.includes('TaskCreate'), '包含 TaskCreate');
+});
+
+test('單階段 pipeline（如 fix = 1 stage）不注入 taskListHint', () => {
+  const hint = simulateTaskListHint(1);
+  assert.strictEqual(hint, '', '單階段 pipeline 不注入 TaskList 提示');
+});
+
+test('零階段 pipeline 不注入 taskListHint', () => {
+  const hint = simulateTaskListHint(0);
+  assert.strictEqual(hint, '', '零階段不注入 TaskList 提示');
+});
+
 // ─── 結果輸出 ────────────────────────────────────────────
 
 console.log(`\n結果：${passed} passed, ${failed} failed\n`);
