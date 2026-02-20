@@ -344,20 +344,20 @@ stage-transition 在 PASS/FAIL 時透過 pipeline-controller 同步 TaskUpdate�
 
 **Checklist**：
 
-- [ ] S3.1 — agents/planner.md：指引在 proposal.md 中按 phase 分組需求
-- [ ] S3.2 — agents/architect.md：指引在 tasks.md 中使用 phase 格式（含 deps 標記）
-- [ ] S3.3 — 新增 `plugins/vibe/scripts/lib/flow/phase-parser.js`（解析 tasks.md phase 結構）
-- [ ] S3.4 — phase-parser.js：parsePhasesFromTasks() 提取 phase 名稱、deps、task 列表
-- [ ] S3.5 — phase-parser.js：generatePhaseDag() 從 phase 結構產出 suffixed stage DAG
-- [ ] S3.6 — phase-parser.js：處理 phase 間依賴（deps → DAG edges）+ 獨立 phase 並行
-- [ ] S3.7 — pipeline-controller.js：handlePipelineArchitectComplete() 整合 phase DAG 生成
-- [ ] S3.8 — pipeline-controller.js：DAG 建立後用 TaskCreate 建立 phase-level todos
-- [ ] S3.9 — pipeline-controller.js：onStageComplete() 同步 TaskUpdate（phase 進度）
-- [ ] S3.10 — agents/developer.md：⛔ 新增自檢指令「每完成一個 task 先 self-review 再繼續」
-- [ ] S3.11 — node-context.js：suffixed stage 的 Node Context 注入 phase 範圍限定（只給該 phase 的 task）
-- [ ] S3.12 — 測試：phase 解析 + DAG 生成 + TodoList 同步整合測試
-- [ ] S3.13 — 測試：2-phase 和 3-phase 場景的 E2E 驗證
-- [ ] S3.14 — 文檔：更新 CLAUDE.md Pipeline 委派架構 + OpenSpec tasks.md 格式
+- [x] S3.1 — agents/planner.md：指引在 proposal.md 中按 phase 分組需求
+- [x] S3.2 — agents/architect.md：指引在 tasks.md 中使用 phase 格式（含 deps 標記）
+- [x] S3.3 — 新增 `plugins/vibe/scripts/lib/flow/phase-parser.js`（解析 tasks.md phase 結構）
+- [x] S3.4 — phase-parser.js：parsePhasesFromTasks() 提取 phase 名稱、deps、task 列表
+- [x] S3.5 — phase-parser.js：generatePhaseDag() 從 phase 結構產出 suffixed stage DAG
+- [x] S3.6 — phase-parser.js：處理 phase 間依賴（deps → DAG edges）+ 獨立 phase 並行
+- [x] S3.7 — pipeline-controller.js：handlePipelineArchitectComplete() 整合 phase DAG 生成
+- [x] S3.8 — pipeline-controller.js：DAG 建立後用 TaskCreate 建立 phase-level todos
+- [x] S3.9 — pipeline-controller.js：onStageComplete() 同步 TaskUpdate（phase 進度）
+- [x] S3.10 — agents/developer.md：⛔ 新增自檢指令「每完成一個 task 先 self-review 再繼續」
+- [x] S3.11 — node-context.js：suffixed stage 的 Node Context 注入 phase 範圍限定（只給該 phase 的 task）
+- [x] S3.12 — 測試：phase 解析 + DAG 生成 + TodoList 同步整合測試
+- [x] S3.13 — 測試：2-phase 和 3-phase 場景的 E2E 驗證
+- [x] S3.14 — 文檔：更新 CLAUDE.md Pipeline 委派架構 + OpenSpec tasks.md 格式
 - [ ] S3.15 — 流程：Roadmap checkbox 完成條件自動化（pipeline 完整閉環 DEV+REVIEW+TEST+DOCS 全 PASS 才能勾選，DEV 完成只是中間狀態）
 
 **影響範圍**：
@@ -671,21 +671,21 @@ S1 ──→ S2 ──→ S3 ──→ S4 ──→ S5 ──→ S6 ──→ S7
 - [ ] S2.9 — pipeline-architect 驗證測試
 - [ ] S2.10 — REVIEW 越權修改驗證測試
 
-### S3：Phase-Level D-R-T — 0/15
-- [ ] S3.1 — planner.md phase 分組指引
-- [ ] S3.2 — architect.md tasks.md phase 格式
-- [ ] S3.3 — 新增 phase-parser.js
-- [ ] S3.4 — parsePhasesFromTasks() 實作
-- [ ] S3.5 — generatePhaseDag() 實作
-- [ ] S3.6 — phase 依賴 → DAG edges + 並行
-- [ ] S3.7 — handlePipelineArchitectComplete() 整合
-- [ ] S3.8 — DAG 建立後 TaskCreate 同步
-- [ ] S3.9 — onStageComplete() TaskUpdate 同步
-- [ ] S3.10 — developer.md 自檢指令
-- [ ] S3.11 — Node Context phase 範圍限定
-- [ ] S3.12 — phase 解析 + DAG 生成測試
-- [ ] S3.13 — 2-3 phase E2E 驗證
-- [ ] S3.14 — 文檔更新
+### S3：Phase-Level D-R-T — 14/15 ✅
+- [x] S3.1 — planner.md phase 分組指引
+- [x] S3.2 — architect.md tasks.md phase 格式
+- [x] S3.3 — 新增 phase-parser.js
+- [x] S3.4 — parsePhasesFromTasks() 實作
+- [x] S3.5 — generatePhaseDag() 實作
+- [x] S3.6 — phase 依賴 → DAG edges + 並行
+- [x] S3.7 — handlePipelineArchitectComplete() 整合
+- [x] S3.8 — DAG 建立後 TaskCreate 同步
+- [x] S3.9 — onStageComplete() TaskUpdate 同步
+- [x] S3.10 — developer.md 自檢指令
+- [x] S3.11 — Node Context phase 範圍限定
+- [x] S3.12 — phase 解析 + DAG 生成測試
+- [x] S3.13 — 2-3 phase E2E 驗證
+- [x] S3.14 — 文檔更新
 - [ ] S3.15 — Roadmap checkbox 完成條件自動化（pipeline 閉環才勾選）
 
 ### S4：Wisdom Accumulation — 0/11

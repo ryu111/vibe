@@ -25,6 +25,9 @@ const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 // Node Context 最大字元上限（約 500 tokens）
 const MAX_NODE_CONTEXT_CHARS = 2000;
 
+// Phase 任務範圍最大字元上限（注入到 systemMessage）
+const MAX_PHASE_SCOPE_CHARS = 500;
+
 // ────────────────── getRetryContext ──────────────────
 
 /**
@@ -269,6 +272,44 @@ function formatNodeContext(nodeContext) {
   return `<!-- NODE_CONTEXT: ${parts.join(' | ')} -->`;
 }
 
+// ────────────────── buildPhaseScopeHint ──────────────────
+
+/**
+ * 為 suffixed stage（如 DEV:2）從 pipeline state 的 phaseInfo 提取 phase 任務範圍。
+ *
+ * 設計原則：
+ * - 只在 suffixed stage（stageId 含 `:N`）時觸發
+ * - 從 state.phaseInfo[N] 讀取該 phase 的 task 列表
+ * - 總長度超過 MAX_PHASE_SCOPE_CHARS 時截斷
+ * - 非 suffixed stage 或無 phaseInfo → 返回空字串
+ *
+ * @param {string} stageId - stage ID（如 'DEV:2'）
+ * @param {Object} state - pipeline state（含 phaseInfo）
+ * @returns {string} phase 任務範圍字串，空或截斷後返回
+ */
+function buildPhaseScopeHint(stageId, state) {
+  // 只處理 suffixed stage（DEV:N, REVIEW:N, TEST:N）
+  const suffixMatch = stageId && stageId.match(/^([A-Z]+):(\d+)$/);
+  if (!suffixMatch) return '';
+
+  const phaseIdx = parseInt(suffixMatch[2], 10);
+  const phaseInfo = state?.phaseInfo;
+  if (!phaseInfo || !phaseInfo[phaseIdx]) return '';
+
+  const info = phaseInfo[phaseIdx];
+  if (!info.tasks || info.tasks.length === 0) return '';
+
+  const phaseName = info.name || `Phase ${phaseIdx}`;
+  const taskLines = info.tasks.map(t => `- [ ] ${t}`).join('\n');
+  const hint = `## ${phaseName} 任務範圍\n${taskLines}`;
+
+  // 截斷保護
+  if (hint.length > MAX_PHASE_SCOPE_CHARS) {
+    return hint.slice(0, MAX_PHASE_SCOPE_CHARS - 3) + '...';
+  }
+  return hint;
+}
+
 // ────────────────── Exports ──────────────────
 
 module.exports = {
@@ -276,5 +317,7 @@ module.exports = {
   getRetryContext,
   buildEnvSnapshot,
   formatNodeContext,
+  buildPhaseScopeHint,
   MAX_NODE_CONTEXT_CHARS,
+  MAX_PHASE_SCOPE_CHARS,
 };
