@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Vibe Pipeline Dashboard</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
@@ -79,77 +77,6 @@
     .main h1 { font-size: 15px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .task-badge { font-size: 10px; padding: 2px 8px; border-radius: 6px; background: var(--surface1); color: var(--subtext0); font-weight: 500; }
 
-    /* === S/U Snake Grid === */
-    .snake { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px 32px; padding: 8px 0; position: relative; }
-    .snake-row2 { display: contents; }
-    /* 轉角連接器 */
-    .snake-turn { grid-column: 5; display: flex; align-items: center; justify-content: center; color: var(--overlay0); font-size: 20px; font-weight: 700; transition: all 0.4s; }
-    .snake-turn.done { color: var(--green); text-shadow: 0 0 8px rgba(166,227,161,0.4); }
-    .snake-turn.flowing { color: var(--green); animation: turnFlow 1.2s ease-in-out infinite; }
-    @keyframes turnFlow { 0%,100% { transform: translateY(0); opacity: 0.5; text-shadow: none; } 50% { transform: translateY(3px); opacity: 1; text-shadow: 0 0 12px rgba(166,227,161,0.6); } }
-
-    /* Agent Card */
-    .ac { border-radius: 10px; background: var(--surface0); border: 2px solid var(--surface1); padding: 14px; display: flex; flex-direction: column; gap: 8px; transition: all 0.4s cubic-bezier(0.4,0,0.2,1); position: relative; min-height: 170px; }
-    .ac-top { display: flex; align-items: center; gap: 8px; }
-    .ac-emoji { font-size: 22px; line-height: 1; transition: transform 0.3s; }
-    .ac-info { flex: 1; min-width: 0; }
-    .ac-name { font-size: 13px; font-weight: 700; letter-spacing: 0.5px; display: flex; align-items: baseline; gap: 6px; }
-    .ac-name .agent-abbr { font-size: 9px; font-weight: 400; color: var(--subtext0); letter-spacing: 0; }
-    .ac-badge { font-size: 9px; font-weight: 600; padding: 2px 8px; border-radius: 4px; transition: all 0.3s; flex-shrink: 0; }
-    .ac-retry { position: absolute; top: -6px; right: -6px; background: var(--orange); color: var(--bg); font-size: 9px; font-weight: 700; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; animation: popIn 0.3s cubic-bezier(0.175,0.885,0.32,1.275); }
-
-    /* Card Todo Items */
-    .ac-todos { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; }
-    .ac-todo { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--subtext0); padding: 3px 0; transition: all 0.3s; }
-    .ac-todo-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; transition: all 0.3s; }
-    .ac-todo.done .ac-todo-dot { background: var(--green); box-shadow: 0 0 4px var(--green); }
-    .ac-todo.done { color: var(--text); }
-    .ac-todo.fail .ac-todo-dot { background: var(--red); box-shadow: 0 0 4px var(--red); }
-    .ac-todo.fail { color: var(--red); }
-    .ac-todo.active .ac-todo-dot { background: var(--blue); box-shadow: 0 0 4px var(--blue); animation: todoPulse 1.5s ease infinite; }
-    .ac-todo.active { color: var(--blue); }
-    .ac-todo.pending .ac-todo-dot { background: var(--surface2); }
-    .ac-todo.skip .ac-todo-dot { background: var(--surface2); opacity: 0.4; }
-    .ac-todo.skip { opacity: 0.4; }
-    @keyframes todoPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-
-    /* Card 連接箭頭（文字字元，與 ↓ 同風格） */
-    .ac::after { display: none; }
-    .ac::before { content: '→'; position: absolute; top: 50%; left: calc(100% + 16px); transform: translate(-50%, -50%); font-size: 18px; font-weight: 700; color: var(--surface2); z-index: 2; transition: all 0.4s; }
-    .ac.pass::before { color: var(--green); text-shadow: 0 0 8px rgba(166,227,161,0.4); }
-    .ac.skipped::before { color: var(--green); opacity: 0.4; }
-    .ac.fail::before { color: var(--red); }
-    .ac.active::before { color: var(--sc, var(--blue)); animation: arrowFlowR 1.2s ease-in-out infinite; }
-    .snake > .ac:nth-child(5)::before { display: none; }
-    /* 第二排箭頭（左向） */
-    .snake-row2 .ac::before { content: '←'; left: -16px; }
-    .snake-row2 .ac.pass::before { color: var(--green); }
-    .snake-row2 .ac.fail::before { color: var(--red); }
-    .snake-row2 .ac.active::before { color: var(--sc, var(--blue)); animation-name: arrowFlowL; }
-    .snake-row2 .ac:nth-child(1)::before { display: none; }
-    @keyframes arrowFlowR { 0%,100% { transform: translate(-50%, -50%); text-shadow: none; } 50% { transform: translate(-50%, -50%) translateX(2px); text-shadow: 0 0 12px currentColor; } }
-    @keyframes arrowFlowL { 0%,100% { transform: translate(-50%, -50%); text-shadow: none; } 50% { transform: translate(-50%, -50%) translateX(-2px); text-shadow: 0 0 12px currentColor; } }
-
-    /* Card States */
-    .ac.pass { border-color: var(--green); background: rgba(166,227,161,0.05); }
-    .ac.pass .ac-badge { background: rgba(166,227,161,0.15); color: var(--green); }
-    .ac.pass .ac-emoji { transform: scale(1.05); }
-    .ac.fail { border-color: var(--red); background: rgba(243,139,168,0.05); }
-    .ac.fail .ac-badge { background: rgba(243,139,168,0.15); color: var(--red); }
-    .ac.active { border-color: var(--sc, var(--blue)); animation: cardPulse 2s ease-in-out infinite; background: color-mix(in srgb, var(--sc, var(--blue)) 5%, transparent); }
-    .ac.active .ac-badge { background: color-mix(in srgb, var(--sc, var(--blue)) 15%, transparent); color: var(--sc, var(--blue)); }
-    .ac.active .ac-emoji { animation: bounce 1s ease infinite; }
-    .ac.skipped { opacity: 0.25; border-style: dashed; filter: grayscale(1); }
-    .ac.pending { opacity: 0.45; filter: grayscale(0.6); }
-    .ac.next { border-color: color-mix(in srgb, var(--sc, var(--yellow)) 50%, transparent); opacity: 0.7; }
-
-    @keyframes cardPulse {
-      0%,100% { box-shadow: 0 0 8px color-mix(in srgb, var(--sc, var(--blue)) 20%, transparent); }
-      50% { box-shadow: 0 0 20px color-mix(in srgb, var(--sc, var(--blue)) 40%, transparent); }
-    }
-    @keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
-    @keyframes popIn { 0% { transform: scale(0); } 100% { transform: scale(1); } }
-
     /* Progress */
     .progress-bar { height: 5px; background: var(--surface1); border-radius: 3px; overflow: hidden; }
     .progress-fill { height: 100%; background: linear-gradient(90deg, var(--blue), var(--green)); border-radius: 3px; transition: width 0.8s cubic-bezier(0.4,0,0.2,1); }
@@ -159,28 +86,15 @@
     @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     @keyframes celebratePop { 0% { transform: translateY(-50%) scale(0); } 100% { transform: translateY(-50%) scale(1); } }
 
-    /* 燈號摘要面板 */
-    .summary { background: var(--surface0); border-radius: 10px; padding: 14px 16px; border: 1px solid var(--surface1); }
-    .summary h3 { font-size: 11px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
-    .light-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid rgba(69,71,90,0.3); }
-    .light-row:last-child { border-bottom: none; }
-    .light { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    .light.pass { background: var(--green); box-shadow: 0 0 6px var(--green); }
-    .light.fail { background: var(--red); box-shadow: 0 0 6px var(--red); }
-    .light.skip { background: var(--surface2); }
-    .light-stage { font-weight: 600; min-width: 56px; }
-    .light-label { color: var(--subtext0); flex: 1; }
-    .light-verdict { font-weight: 600; }
-
-    /* Agent 狀態面板 */
+    /* Agent 狀態面板（簡化版） */
     .agent-panel { background: var(--surface0); border-radius: 10px; padding: 14px 16px; border: 1px solid var(--surface1); }
     .agent-panel-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
     .agent-panel-hdr h3 { font-size: 11px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin: 0; }
     .agent-panel-stats { display: flex; gap: 12px; }
     .agent-panel-stat { font-size: 10px; color: var(--subtext0); }
     .agent-panel-stat .num { font-weight: 700; color: var(--text); }
-    /* Grid 對齊：[燈] [名稱] [職責] [model] [狀態] [chips] [時長] */
-    .agent-row { display: grid; grid-template-columns: 16px 140px 68px 54px 64px 1fr 44px; column-gap: 6px; align-items: center; padding: 4px 4px; font-size: 11px; border-bottom: 1px solid rgba(69,71,90,0.15); transition: background 0.15s; }
+    /* 簡化三欄：[燈] [名稱] [狀態] [耗時] */
+    .agent-row { display: grid; grid-template-columns: 16px 1fr auto 48px; column-gap: 8px; align-items: center; padding: 5px 4px; font-size: 11px; border-bottom: 1px solid rgba(69,71,90,0.15); transition: background 0.15s; }
     .agent-row:last-child { border-bottom: none; }
     .agent-row:hover { background: rgba(69,71,90,0.1); border-radius: 4px; }
     .al { width: 8px; height: 8px; border-radius: 50%; justify-self: center; }
@@ -188,30 +102,91 @@
     .al.completed { background: var(--green); }
     .al.error { background: var(--red); box-shadow: 0 0 6px var(--red); animation: alPulse 1.5s ease infinite; }
     .al.delegating { background: var(--purple); box-shadow: 0 0 8px var(--purple); animation: alPulse 1.5s ease infinite; }
-    .al.waiting { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); animation: alPulse 1.5s ease infinite; }
-    .al.standby { background: transparent; border: 2px solid var(--blue); opacity: 0.8; }
-    .al.pending { background: var(--surface2); animation: alPulse 3s ease infinite; }
     .al.idle { background: var(--surface2); opacity: 0.5; }
-    .al.skipped { background: var(--surface2); opacity: 0.3; }
     @keyframes alPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-    .agent-name { font-weight: 600; display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .ac-chip { font-size: 9px; padding: 2px 7px; border-radius: 4px; background: var(--surface1); color: var(--subtext0); white-space: nowrap; text-align: center; }
-    .ac-chip.model { background: rgba(137,180,250,0.12); color: var(--blue); }
-    .ac-chip.st-running { background: rgba(166,227,161,0.15); color: var(--green); font-weight: 600; }
-    .ac-chip.st-completed { background: rgba(166,227,161,0.1); color: var(--green); }
-    .ac-chip.st-error { background: rgba(243,139,168,0.15); color: var(--red); font-weight: 600; }
-    .ac-chip.st-delegating { background: rgba(203,166,247,0.15); color: var(--purple); }
-    .ac-chip.st-waiting { background: rgba(249,226,175,0.15); color: var(--yellow); }
-    .ac-chip.st-standby { color: var(--blue); border: 1px solid var(--blue); background: transparent; }
-    .ac-chip.st-skipped { color: var(--overlay0); text-decoration: line-through; }
-    .ac-chip.st-idle { color: var(--overlay0); }
-    .agent-extra { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; }
-    .ac-chip.skill { font-size: 9px; padding: 2px 6px; opacity: 0.4; transition: opacity 0.3s, background 0.3s; border: 1px solid rgba(69,71,90,0.2); }
-    .ac-chip.skill-on { opacity: 1; background: rgba(166,227,161,0.15); color: var(--green); font-weight: 600; border-color: rgba(166,227,161,0.3); }
+    .agent-name { font-weight: 600; display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .agent-status-text { font-size: 10px; color: var(--subtext0); white-space: nowrap; }
+    .agent-status-text.running { color: var(--green); }
+    .agent-status-text.error { color: var(--red); }
+    .agent-status-text.delegating { color: var(--purple); }
     .agent-dur { font-size: 10px; color: var(--subtext0); text-align: right; font-variant-numeric: tabular-nums; }
     .agent-group-label { font-size: 9px; color: var(--overlay0); text-transform: uppercase; letter-spacing: 1.2px; padding: 6px 4px 2px; }
     .agent-sep { border-top: 1px dashed rgba(69,71,90,0.3); margin: 4px 0; }
-    .ac-chip.retry-chip { background: rgba(250,179,135,0.15); color: var(--orange); font-weight: 700; font-size: 9px; }
+    @media (max-width: 1100px) {
+      .agent-row { font-size: 10px; }
+    }
+
+    /* 統計卡片 */
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .stat-card { background: var(--surface0); border-radius: 10px; padding: 12px 14px; border: 1px solid var(--surface1); display: flex; flex-direction: column; gap: 4px; }
+    .stat-card:hover { border-color: var(--surface2); }
+    .stat-card .stat-label { font-size: 9px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; }
+    .stat-card .stat-value { font-size: 22px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+    .stat-card .stat-sub { font-size: 9px; color: var(--overlay0); }
+    @media (max-width: 1100px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 700px) { .stats-grid { grid-template-columns: 1fr; } }
+
+    /* 動態 Pipeline 進度條 */
+    .pipeline-progress { background: var(--surface0); border-radius: 10px; padding: 14px 16px; border: 1px solid var(--surface1); }
+    .pipeline-progress h3 { font-size: 11px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+    .pipeline-stages-bar { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; }
+    .ps-block { flex: 1; min-width: 32px; display: flex; flex-direction: column; gap: 4px; align-items: center; }
+    .ps-label { font-size: 8px; color: var(--subtext0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; text-align: center; }
+    .ps-bar { width: 100%; height: 8px; border-radius: 4px; background: var(--surface1); position: relative; overflow: hidden; }
+    .ps-bar.completed { background: var(--green); }
+    .ps-bar.active { background: var(--blue); animation: pulse 1.5s infinite; }
+    .ps-bar.failed { background: var(--red); }
+    .ps-bar.skipped { background: var(--surface1); opacity: 0.5; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    /* DAG 流程圖（SVG + HTML 混合） */
+    .dag-container { position: relative; overflow-x: auto; overflow-y: hidden; min-height: 200px; }
+    .dag-node { position: absolute; background: var(--surface0); border: 2px solid var(--surface1); border-radius: 8px; padding: 8px 12px; cursor: pointer; transition: all 0.3s; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 80px; text-align: center; z-index: 2; }
+    .dag-node:hover { border-color: var(--blue); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    .dag-node.completed { border-color: var(--green); background: rgba(166,227,161,0.05); }
+    .dag-node.active { border-color: var(--blue); background: rgba(137,180,250,0.05); animation: dagPulse 2s ease-in-out infinite; }
+    .dag-node.failed { border-color: var(--red); background: rgba(243,139,168,0.05); animation: dagShake 0.5s ease-in-out; }
+    .dag-node.skipped { opacity: 0.35; filter: grayscale(0.8); border-style: dashed; }
+    .dag-node.pending { opacity: 0.5; }
+    .dag-node.selected { border-color: var(--yellow); box-shadow: 0 0 0 1px var(--yellow); }
+    @keyframes dagPulse {
+      0%,100% { box-shadow: 0 0 8px rgba(137,180,250,0.2); }
+      50% { box-shadow: 0 0 18px rgba(137,180,250,0.4); }
+    }
+    @keyframes dagShake {
+      0%,100% { transform: translateX(0); }
+      25% { transform: translateX(-2px); }
+      75% { transform: translateX(2px); }
+    }
+    .dag-emoji { font-size: 18px; line-height: 1; }
+    .dag-label { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; }
+    .dag-status { font-size: 9px; }
+    .dag-node.completed .dag-status { color: var(--green); }
+    .dag-node.active .dag-status { color: var(--blue); }
+    .dag-node.failed .dag-status { color: var(--red); }
+    .dag-node.pending .dag-status { color: var(--overlay0); }
+    .dag-svg { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 1; }
+    .dag-edge { fill: none; stroke-width: 1.5; }
+    .dag-edge.completed { stroke: var(--green); opacity: 0.7; }
+    .dag-edge.active { stroke: var(--blue); stroke-dasharray: 6 3; animation: dashFlow 1s linear infinite; }
+    .dag-edge.pending { stroke: var(--surface2); stroke-dasharray: 4 4; }
+    @keyframes dashFlow { 0% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -18; } }
+
+    /* Phase 分組框 */
+    .dag-phase { position: absolute; border: 1px solid rgba(137,180,250,0.2); border-radius: 10px; background: rgba(137,180,250,0.03); z-index: 0; }
+    .dag-phase-title { position: absolute; top: -10px; left: 8px; font-size: 9px; color: var(--blue); background: var(--bg); padding: 0 4px; white-space: nowrap; }
+
+    /* DAG 詳情面板 */
+    .dag-detail { background: var(--surface0); border-radius: 10px; padding: 12px 14px; border: 1px solid var(--surface1); min-height: 80px; transition: all 0.3s; }
+    .dag-detail h4 { font-size: 11px; color: var(--text); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+    .dag-detail-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
+    .dag-detail-row .label { color: var(--subtext0); }
+    .dag-detail-row .value { font-weight: 600; }
+    .dag-detail-empty { color: var(--overlay0); font-size: 10px; }
+    .rh-round { padding: 2px 0 2px 8px; border-left: 2px solid rgba(69,71,90,0.3); margin: 2px 0; font-size: 9px; }
+    .rh-round.pass { border-left-color: var(--green); }
+    .rh-round.fail { border-left-color: var(--red); color: var(--red); }
+
     /* MCP 統計 */
     .mcp-stats { background: var(--surface0); border-radius: 10px; padding: 12px 16px; border: 1px solid var(--surface1); }
     .mcp-stats h3 { font-size: 11px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
@@ -222,16 +197,6 @@
     .mcp-row .mcp-bar { flex: 1; height: 4px; background: var(--surface1); border-radius: 2px; overflow: hidden; }
     .mcp-row .mcp-fill { height: 100%; background: var(--cyan); border-radius: 2px; transition: width 0.5s; }
     .mcp-row .mcp-methods { font-size: 9px; color: var(--overlay0); max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    /* 響應式 Agent Panel */
-    @media (max-width: 1100px) {
-      .agent-row { grid-template-columns: 14px 110px 56px 48px 56px 1fr 38px; font-size: 10px; }
-      .ac-chip { font-size: 8px; padding: 1px 5px; }
-      .ac-chip.skill { font-size: 8px; }
-    }
-    @media (max-width: 800px) {
-      .agent-row { grid-template-columns: 14px 90px 48px 48px 48px 36px; font-size: 10px; }
-      .agent-extra { display: none; }
-    }
 
     /* Info Cards */
     .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -255,19 +220,7 @@
     .tl-item.active .msg { color: var(--blue); }
     @keyframes slideIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
 
-    /* Dashboard mini pipeline */
-    .mini-pipeline { display: flex; gap: 2px; margin: 12px 0; align-items: center; }
-    .mini-stage { flex: 1; height: 6px; border-radius: 3px; background: var(--surface1); position: relative; transition: background 0.3s; }
-    .mini-stage.pass { background: var(--green); }
-    .mini-stage.active { background: var(--blue); animation: pulse 1.5s infinite; }
-    .mini-stage.fail { background: var(--red); }
-    .mini-stage.skipped { background: var(--surface1); opacity: 0.5; }
-    .mini-stage-label { position: absolute; top: -14px; left: 50%; transform: translateX(-50%); font-size: 8px; color: var(--subtext0); white-space: nowrap; }
-    .mini-stage.active .mini-stage-label, .mini-stage.pass .mini-stage-label { color: var(--text); }
-    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
-    .mini-arrow { color: var(--surface2); font-size: 8px; flex-shrink: 0; }
-
-    /* Dashboard 雙欄佈局（橫向螢幕預設） */
+    /* Dashboard 雙欄佈局 */
     .dash-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
     .dash-left, .dash-right { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; }
     .dash-right { max-height: calc(100vh - 160px); }
@@ -277,9 +230,6 @@
     .mini-tl h4 { font-size: 10px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
     .mini-tl .tl-items-wrap { flex: 1; overflow-y: auto; min-height: 0; max-height: calc(100vh - 220px); }
     .mini-tl .tl-item { font-size: 10px; }
-    /* Clear button */
-    .tl-clear { background: none; border: 1px solid var(--surface2); color: var(--subtext0); border-radius: 4px; padding: 2px 8px; font-size: 9px; font-family: inherit; cursor: pointer; transition: all 0.15s; margin-left: auto; }
-    .tl-clear:hover { border-color: var(--red); color: var(--red); }
 
     /* Main Tabs */
     .main-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--surface1); margin-bottom: 12px; }
@@ -302,11 +252,9 @@
     .tl-chip:hover { background: var(--surface2); color: var(--text); }
     .tl-chip.active { background: var(--blue); color: var(--base); }
 
-    /* Sort/Filter bar */
-    .filter-bar { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
-    .filter-bar select { background: var(--surface0); color: var(--text); border: 1px solid var(--surface1); border-radius: 6px; padding: 3px 8px; font-size: 10px; font-family: inherit; cursor: pointer; }
-    .filter-bar select:hover { border-color: var(--surface2); }
-    .filter-bar label { font-size: 10px; color: var(--subtext0); }
+    /* Clear button */
+    .tl-clear { background: none; border: 1px solid var(--surface2); color: var(--subtext0); border-radius: 4px; padding: 2px 8px; font-size: 9px; font-family: inherit; cursor: pointer; transition: all 0.15s; margin-left: auto; }
+    .tl-clear:hover { border-color: var(--red); color: var(--red); }
 
     /* Empty */
     .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 12px; color: var(--subtext0); }
@@ -325,17 +273,6 @@
     .layout.fullscreen .sidebar { display: none; }
     .layout.fullscreen .main { padding: 20px 40px; }
 
-    /* 卡片聚焦模式 — VS Code 最小化 */
-    .focus-cards { grid-template-columns: 1fr !important; }
-    .focus-cards .sidebar { display: none; }
-    .focus-cards .main { padding: 8px 16px; gap: 8px; justify-content: start; }
-    .focus-cards .main h1 { font-size: 12px; }
-    .focus-cards .summary, .focus-cards .cards, .focus-cards .timeline { display: none; }
-    .focus-cards .celebrate { margin: 0; }
-    .focus-cards .progress-bar { height: 4px; }
-    .focus-cards .snake { gap: 10px 28px; }
-    .focus-cards .ac { min-height: 180px; padding: 12px; }
-
     /* Timeline 收合 */
     .timeline .tl-toggle { cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none; }
     .timeline .tl-toggle:hover { color: var(--text); }
@@ -353,332 +290,6 @@
     .kbd-toast { position: fixed; top: 12px; right: 12px; background: var(--surface0); border: 1px solid var(--surface1); border-radius: 8px; padding: 8px 14px; font-size: 10px; color: var(--subtext0); z-index: 200; animation: fadeInOut 2s ease forwards; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
     @keyframes fadeInOut { 0% { opacity: 0; transform: translateY(-8px); } 15% { opacity: 1; transform: translateY(0); } 85% { opacity: 1; } 100% { opacity: 0; } }
 
-    /* ======================= */
-    /* 🎮 像素風主題 (8-bit)  */
-    /* ======================= */
-    .pixel {
-      --bg: #0f0f23; --surface0: #1a1a3e; --surface1: #2a2a5e; --surface2: #3a3a7e;
-      --overlay0: #6a6aae; --text: #e0e0ff; --subtext0: #9a9acc; --subtext1: #b0b0dd;
-      --blue: #5599ff; --green: #55ff55; --red: #ff5555; --yellow: #ffff55;
-      --purple: #aa55ff; --cyan: #55ffff; --pink: #ff55ff; --orange: #ffaa55;
-      image-rendering: pixelated;
-    }
-    /* 基底：系統等寬字體（清晰可讀） */
-    .pixel, .pixel * { font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace !important; }
-    /* 裝飾性標題保留像素字體 */
-    .pixel .main h1,
-    .pixel .office-wall-top,
-    .pixel .ws-label,
-    .pixel .ma-label,
-    .pixel .group-hdr h2,
-    .pixel .card h3, .pixel .summary h3, .pixel .timeline h3,
-    .pixel .empty .hint,
-    .pixel .sc-title,
-    .pixel .deco-board { font-family: 'Press Start 2P', monospace !important; }
-    .pixel .layout { border: 4px solid #55ff55; }
-
-    /* 像素邊框 — 方角 + 粗邊 */
-    .pixel .ac, .pixel .card, .pixel .summary, .pixel .timeline, .pixel .sc,
-    .pixel .conn-indicator, .pixel .kbd-toast, .pixel .tool-btn, .pixel .filter-bar select {
-      border-radius: 0 !important; border-width: 3px !important; border-style: solid !important;
-      box-shadow: 4px 4px 0 rgba(0,0,0,0.5) !important;
-    }
-    .pixel .main-tab { font-family: 'Press Start 2P', monospace !important; font-size: 8px !important; border-bottom-width: 3px !important; }
-    .pixel .tl-tab { font-family: 'Press Start 2P', monospace !important; font-size: 7px !important; border-bottom-width: 3px !important; }
-    .pixel .tl-chip { border-radius: 0 !important; border: 2px solid var(--surface2) !important; box-shadow: 2px 2px 0 rgba(0,0,0,0.5) !important; font-family: 'Press Start 2P', monospace !important; font-size: 7px !important; }
-    .pixel .ac-badge, .pixel .task-badge, .pixel .group-hdr .count, .pixel .cleanup-btn,
-    .pixel .sc-bar, .pixel .progress-bar { border-radius: 0 !important; }
-    .pixel .ac-todo-dot, .pixel .dot, .pixel .live-dot, .pixel .light, .pixel .ac-retry {
-      border-radius: 0 !important;
-    }
-
-    /* 字體尺寸（裝飾元素保持原 Press Start 2P 尺寸，內容文字加大） */
-    .pixel .main h1 { font-size: 11px; }
-    .pixel .ac-name { font-size: 10px; }
-    .pixel .ac-name .agent-abbr { font-size: 10px; }
-    .pixel .ac-badge { font-size: 10px; padding: 2px 4px; }
-    .pixel .ac-todo { font-size: 10px; }
-    .pixel .row { font-size: 10px; }
-    .pixel .card h3, .pixel .summary h3, .pixel .timeline h3 { font-size: 10px; }
-    .pixel .light-row { font-size: 10px; }
-    .pixel .tl-item { font-size: 10px; }
-    .pixel .tl-item .time { font-size: 10px; }
-    .pixel .sc-title { font-size: 10px; }
-    .pixel .sc-meta { font-size: 10px; }
-    .pixel .task-badge { font-size: 10px; }
-    .pixel .conn-indicator { font-size: 10px; }
-    .pixel .tool-btn { font-size: 10px; }
-    .pixel .filter-bar select, .pixel .filter-bar label { font-size: 10px; }
-    .pixel .group-hdr h2 { font-size: 10px; }
-    .pixel .group-sep { font-size: 10px; }
-    .pixel .empty .hint { font-size: 10px; }
-    .pixel .kbd-toast { font-size: 10px; }
-
-    /* 像素進度條 — 方塊分段 */
-    .pixel .progress-fill { background: var(--green) !important; animation: none !important; }
-    .pixel .progress-fill.complete { background: var(--green) !important; }
-    .pixel .sc-bar-fill { background: var(--green) !important; }
-
-    /* 像素卡片脈衝 — 閃爍式 */
-    .pixel .ac.active { animation: pixelPulse 1s steps(2) infinite !important; }
-    @keyframes pixelPulse { 0%,100% { border-color: var(--sc, var(--blue)); } 50% { border-color: var(--yellow); } }
-
-    /* 像素 emoji 替代 */
-    .pixel .ac-emoji { font-size: 16px; }
-    .pixel .empty .icon { font-size: 40px; animation: pixelFloat 2s steps(4) infinite; }
-    @keyframes pixelFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
-
-    /* 像素按鈕 hover */
-    .pixel .tool-btn:hover { background: var(--green) !important; color: var(--bg) !important; border-color: var(--green) !important; }
-    .pixel .sb-toggle { border-radius: 0 !important; }
-    .pixel .sb-toggle:hover { background: var(--green) !important; color: var(--bg) !important; }
-
-    /* 像素 — 新元素 */
-    .pixel .sc-res-bar, .pixel .sc-res-fill { border-radius: 0 !important; }
-    .pixel .ac-stats { font-size: 10px; }
-    .pixel .sc-res { font-size: 10px; }
-    .pixel .confetti-piece { border-radius: 0 !important; }
-    .pixel .ac::before { font-family: monospace; }
-
-    /* ======================= */
-    /* 🏢 像素辦公室模式      */
-    /* ======================= */
-    .pixel .office {
-      background: repeating-conic-gradient(#1a1a3e 0% 25%, #151535 0% 50%) 0 0 / 40px 40px;
-      border: 4px solid #55ff55; padding: 20px; position: relative; min-height: 420px;
-      box-shadow: 4px 4px 0 rgba(0,0,0,0.5) !important;
-    }
-    .pixel .office-wall-top { display: flex; justify-content: space-between; align-items: center; padding: 0 8px 16px; font-size: 10px; }
-    .pixel .office-row { display: flex; justify-content: center; align-items: center; gap: 12px; margin: 8px 0; }
-    .pixel .office-arrow { font-size: 16px; color: var(--surface2); font-family: monospace !important; min-width: 20px; text-align: center; transition: all 0.3s; position: relative; }
-    .pixel .office-arrow.done { color: var(--green); text-shadow: 0 0 6px var(--green); }
-    .pixel .office-arrow.done::after { content: ''; position: absolute; bottom: -2px; left: 0; width: 100%; height: 2px; background: var(--green); opacity: 0.5; }
-    .pixel .office-arrow.active { color: var(--blue); animation: pixelPulse 1s steps(2) infinite; }
-    .pixel .office-turn { display: flex; justify-content: flex-end; padding-right: 72px; margin: 4px 0; font-size: 16px; color: var(--surface2); font-family: monospace !important; }
-    .pixel .office-turn.done { color: var(--green); text-shadow: 0 0 6px var(--green); }
-    .pixel .office-turn.active { animation: pixelPulse 1s steps(2) infinite; }
-    .pixel .office-deco { display: flex; justify-content: space-around; align-items: flex-end; padding: 16px 12px 4px; font-size: 10px; gap: 12px; }
-
-    /* 工位 */
-    .pixel .ws { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 120px; position: relative; }
-    .pixel .ws-bubble { background: var(--text); color: var(--bg); font-size: 10px; padding: 4px 6px; border: 2px solid var(--overlay0); position: relative; max-width: 120px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 18px; font-weight: 700; }
-    .pixel .ws-bubble::after { content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 5px solid var(--overlay0); }
-    .pixel .ws-bubble.pass { background: var(--green); color: var(--bg); border-color: color-mix(in srgb, var(--green) 60%, #000); }
-    .pixel .ws-bubble.pass::after { border-top-color: color-mix(in srgb, var(--green) 60%, #000); }
-    .pixel .ws-bubble.fail { background: var(--red); color: var(--text); border-color: color-mix(in srgb, var(--red) 60%, #000); }
-    .pixel .ws-bubble.fail::after { border-top-color: color-mix(in srgb, var(--red) 60%, #000); }
-    /* next 不再顯示 bubble，pending/skipped 無 bubble */
-    .pixel .ws-char { width: 28px; height: 40px; position: relative; z-index: 1; }
-    .pixel .ws-pixel { position: absolute; top: 0; left: 0; image-rendering: pixelated; }
-    .pixel .ws-desk { display: flex; flex-direction: column; align-items: center; margin-top: 2px; }
-    .pixel .ws-screen { width: 34px; height: 24px; background: var(--bg); border: 2px solid var(--overlay0); position: relative; transition: all 0.3s; }
-    .pixel .ws-screen::after { content: ''; position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%); width: 14px; height: 5px; background: var(--overlay0); }
-    .pixel .ws-desk-top { width: 56px; height: 7px; background: #8B6914; border: 2px solid #6B4914; margin-top: 2px; }
-    .pixel .ws-label { font-size: 10px; color: var(--subtext0); text-align: center; margin-top: 4px; }
-    .pixel .ws-label-name { font-size: 10px; color: var(--overlay0); font-family: monospace !important; }
-    .pixel .ws-retry { position: absolute; top: -4px; right: -4px; background: var(--orange); color: var(--bg); font-size: 10px; font-weight: 700; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; z-index: 2; animation: popIn 0.3s cubic-bezier(0.175,0.885,0.32,1.275); }
-
-    /* Main Agent 巡視角色 */
-    .pixel .main-agent { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 1px; transition: left 0.8s ease-in-out, top 0.8s ease-in-out; z-index: 10; pointer-events: none; transform: translateX(-50%); }
-    .pixel .main-agent .ma-bubble { background: var(--yellow); color: var(--bg); font-size: 11px; font-weight: 700; padding: 4px 8px; border: 2px solid color-mix(in srgb, var(--yellow) 60%, #000); white-space: nowrap; position: relative; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
-    .pixel .main-agent .ma-bubble::after { content: ''; position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 4px solid color-mix(in srgb, var(--yellow) 60%, #000); }
-    .pixel .main-agent .ma-char { width: 28px; height: 40px; position: relative; }
-    .pixel .main-agent .ma-pixel { position: absolute; top: 0; left: 0; image-rendering: pixelated; }
-    .pixel .main-agent .ma-label { font-size: 10px; color: var(--yellow); margin-top: 2px; }
-    .pixel .main-agent.walking .ma-char { animation: maWalk 0.4s steps(2) infinite; }
-    .pixel .main-agent.idle .ma-char { animation: wsIdle 2s steps(2) infinite; }
-    @keyframes maWalk { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px) rotate(-3deg); } }
-
-    /* 工位狀態 — active 打字搖晃 */
-    .pixel .ws.st-active .ws-char { animation: wsTyping 0.3s steps(2) infinite; }
-    .pixel .ws.st-active .ws-screen { background: color-mix(in srgb, var(--ac) 40%, #111); box-shadow: 0 0 8px var(--ac); animation: wsScreenPulse 1.5s steps(2) infinite; }
-    /* pass 慶祝跳動 */
-    .pixel .ws.st-pass .ws-char { animation: wsCelebrate 0.8s steps(2) infinite; }
-    .pixel .ws.st-pass .ws-screen { background: var(--green); box-shadow: 0 0 6px var(--green); }
-    /* fail 抖動 + 冒煙 */
-    .pixel .ws.st-fail .ws-char { animation: wsFrustrated 0.3s steps(2) infinite; }
-    .pixel .ws.st-fail .ws-screen { background: var(--red); animation: wsScreenBlink 0.5s steps(1) infinite; }
-    .pixel .ws.st-fail .ws-screen::after { content: '╳'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.3); font-size: 14px; }
-    /* next 微呼吸 */
-    .pixel .ws.st-next .ws-char { animation: wsIdle 2s steps(2) infinite; }
-    .pixel .ws.st-next .ws-screen { background: var(--surface0); }
-    /* pending zzz + 頭部傾斜 */
-    .pixel .ws.st-pending { opacity: 0.4; }
-    .pixel .ws.st-pending .ws-char { transform: rotate(-8deg); }
-    .pixel .ws.st-pending .ws-screen { background: color-mix(in srgb, var(--bg) 80%, #000); }
-    .pixel .ws.st-pending::after { content: 'z z z'; position: absolute; top: -4px; right: 4px; font-size: 7px; color: var(--overlay0); animation: wsSleep 2s steps(3) infinite; font-family: monospace !important; }
-    /* skipped 灰階 */
-    .pixel .ws.st-skipped { opacity: 0.45; filter: grayscale(0.6); }
-    .pixel .ws.st-skipped .ws-screen { background: color-mix(in srgb, var(--bg) 80%, #000); }
-    .pixel .ws.st-skipped .ws-screen::before { content: 'OFF'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--overlay0); font-size: 8px; font-weight: 700; letter-spacing: 1px; z-index: 1; }
-    .pixel .ws.st-skipped .ws-char { opacity: 0.5; }
-    .pixel .ws.st-skipped .ws-desk-top { opacity: 0.6; }
-    /* 點擊固定 tooltip */
-    .pixel .ws.pinned .ws-tip { opacity: 1; }
-    .pixel .ws.pinned { filter: brightness(1.15); z-index: 5; }
-
-    @keyframes wsTyping { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px) rotate(2deg); } }
-    /* wsBodySway 已移除（角色不再有獨立 body 元素） */
-    @keyframes wsCelebrate { 0%,100% { transform: translateY(0) rotate(0); } 30% { transform: translateY(-6px) rotate(-3deg); } 60% { transform: translateY(-2px) rotate(2deg); } }
-    @keyframes wsFrustrated { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
-    @keyframes wsIdle { 0%,100% { transform: scale(1); } 50% { transform: scale(1.02); } }
-    @keyframes wsSleep { 0% { opacity: 0.2; transform: translateY(0); } 50% { opacity: 0.8; transform: translateY(-4px); } 100% { opacity: 0.2; transform: translateY(-8px); } }
-    @keyframes wsStar { 0% { opacity: 0; transform: scale(0.5); } 50% { opacity: 1; transform: scale(1.2); } 100% { opacity: 0; transform: scale(0.5) translateY(-6px); } }
-    @keyframes wsSmoke { 0% { opacity: 0.6; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-10px); } }
-    @keyframes wsScreenPulse { 0%,100% { box-shadow: 0 0 4px var(--ac); } 50% { box-shadow: 0 0 12px var(--ac); } }
-    @keyframes wsScreenBlink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0.3; } }
-
-    /* 完成慶祝 — 全部 PASS 後角色歡呼 */
-    .pixel .office.complete .ws.st-pass .ws-char { animation: wsParty 1.2s ease-in-out infinite; }
-    .pixel .office.complete .ws.st-pass::after { content: '🎉'; position: absolute; top: -8px; left: 50%; transform: translateX(-50%); font-size: 12px; animation: wsPartyPop 2s steps(3) infinite; pointer-events: none; z-index: 3; }
-    .pixel .office.complete .ws.st-pass:nth-child(odd)::after { content: '🎊'; animation-delay: 0.5s; }
-    .pixel .office.complete .ws.st-pass:nth-child(3n)::after { content: '✨'; animation-delay: 1s; }
-    .pixel .office.complete .main-agent .ma-char { animation: wsParty 1s ease-in-out infinite !important; }
-    @keyframes wsParty { 0%,100% { transform: translateY(0) rotate(0); } 25% { transform: translateY(-8px) rotate(-5deg); } 50% { transform: translateY(-3px) rotate(3deg); } 75% { transform: translateY(-6px) rotate(-2deg); } }
-    @keyframes wsPartyPop { 0% { opacity: 0; transform: translateX(-50%) translateY(0) scale(0.5); } 20% { opacity: 1; transform: translateX(-50%) translateY(-6px) scale(1.1); } 40% { opacity: 1; transform: translateX(-50%) translateY(-10px) scale(1); } 100% { opacity: 0; transform: translateX(-50%) translateY(-16px) scale(0.6); } }
-
-    /* active 工位發光環 */
-    .pixel .ws.st-active { filter: brightness(1.1); }
-    .pixel .ws.st-active::before { content: ''; position: absolute; inset: -4px; border: 2px solid var(--ac); opacity: 0.4; animation: wsGlowRing 1.5s steps(2) infinite; z-index: -1; pointer-events: none; }
-    @keyframes wsGlowRing { 0%,100% { opacity: 0.2; box-shadow: 0 0 4px var(--ac); } 50% { opacity: 0.6; box-shadow: 0 0 12px var(--ac); } }
-
-    /* 裝飾元素 */
-    .pixel .deco-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-    .pixel .deco-coffee { position: relative; font-size: 16px; }
-    .pixel .deco-coffee::before { content: '~'; position: absolute; top: -14px; left: 40%; font-size: 10px; color: var(--surface2); animation: wsSteam 2.5s steps(2) infinite 0.5s; font-family: monospace !important; }
-    .pixel .deco-coffee::after { content: '~'; position: absolute; top: -10px; left: 55%; font-size: 8px; color: var(--surface2); animation: wsSteam 2s steps(2) infinite; font-family: monospace !important; }
-    .pixel .deco-plant { display: inline-block; font-size: 14px; animation: wsPlantSway 3s steps(2) infinite; transform-origin: bottom center; }
-    @keyframes wsSteam { 0%,100% { opacity: 0.3; transform: translateY(0); } 50% { opacity: 0.7; transform: translateY(-4px); } }
-    @keyframes wsPlantSway { 0%,100% { transform: rotate(0); } 50% { transform: rotate(3deg); } }
-    .pixel .deco-board { background: var(--surface0); border: 2px solid var(--surface1); padding: 4px 8px; font-size: 10px; min-width: 80px; text-align: center; }
-    .pixel .deco-board .bar { height: 4px; background: var(--surface1); margin-top: 3px; overflow: hidden; }
-    .pixel .deco-board .bar-fill { height: 100%; background: var(--green); transition: width 0.5s; }
-    .pixel .deco-window { width: 56px; height: 40px; background: linear-gradient(180deg, #060620 0%, #0e1040 50%, #1a1a4e 100%); border: 3px solid var(--surface1); position: relative; overflow: hidden; }
-    .pixel .deco-window::before { content: '🌙'; position: absolute; top: 4px; right: 6px; font-size: 8px; opacity: 0.7; }
-    .pixel .deco-star { position: absolute; color: #fff; animation: wsStarTwinkle 2s steps(2) infinite; }
-    @keyframes wsStarTwinkle { 0%,100% { opacity: 0.2; } 50% { opacity: 1; } }
-    .pixel .deco-clock { font-size: 10px; color: var(--green); font-variant-numeric: tabular-nums; }
-
-    /* ===== 辦公室模式加強 ===== */
-
-    /* 螢幕掃描線（active 時） */
-    .pixel .ws.st-active .ws-screen::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: rgba(255,255,255,0.2); animation: wsScanline 1.5s steps(10) infinite; z-index: 1; }
-    @keyframes wsScanline { 0% { top: 0; } 100% { top: calc(100% - 2px); } }
-
-    /* 螢幕內文字 */
-    .pixel .ws-screen-text { position: absolute; inset: 2px; font-size: 5px; overflow: hidden; z-index: 1; display: flex; align-items: center; justify-content: center; letter-spacing: 0.5px; }
-    .pixel .ws.st-active .ws-screen-text { color: var(--text); animation: wsTextBlink 2s steps(1) infinite; }
-    .pixel .ws.st-pass .ws-screen-text { color: var(--bg); font-weight: 700; }
-    .pixel .ws.st-fail .ws-screen-text { color: var(--text); font-weight: 700; }
-    @keyframes wsTextBlink { 0%,80% { opacity: 1; } 81%,100% { opacity: 0; } }
-
-    /* 桌面物件 */
-    .pixel .ws-desk-obj { position: absolute; bottom: 26px; font-size: 7px; z-index: 3; filter: drop-shadow(1px 1px 0 rgba(0,0,0,0.4)); }
-    .pixel .ws-desk-obj.left { left: 6px; }
-    .pixel .ws-desk-obj.right { right: 6px; }
-
-    /* 多重星星粒子（取代 ::after 單星） */
-    .pixel .ws-sparkle { position: absolute; font-size: 6px; color: var(--yellow); pointer-events: none; opacity: 0; }
-    .pixel .ws.st-active .ws-sparkle { opacity: 1; }
-    .pixel .ws.st-active .ws-sparkle:nth-child(2) { top: 2px; left: 6px; animation: wsStar 1.2s steps(3) infinite; }
-    .pixel .ws.st-active .ws-sparkle:nth-child(3) { top: -4px; right: 2px; animation: wsStar 0.9s steps(3) infinite 0.4s; }
-    .pixel .ws.st-active .ws-sparkle:nth-child(4) { bottom: 28px; left: 2px; animation: wsStar 1.5s steps(3) infinite 0.8s; }
-
-    /* 多重煙霧（取代 ::before 單煙） */
-    .pixel .ws-smoke { position: absolute; font-size: 10px; color: var(--surface2); font-family: monospace !important; pointer-events: none; opacity: 0; }
-    .pixel .ws.st-fail .ws-smoke { opacity: 1; }
-    .pixel .ws.st-fail .ws-smoke:nth-child(2) { top: 10px; right: 6px; animation: wsSmoke 1.5s steps(3) infinite; }
-    .pixel .ws.st-fail .ws-smoke:nth-child(3) { top: 2px; right: 14px; animation: wsSmoke 2s steps(3) infinite 0.5s; }
-    .pixel .ws.st-fail .ws-smoke:nth-child(4) { top: 6px; left: 8px; animation: wsSmoke 1.8s steps(3) infinite 0.3s; }
-
-    /* Main Agent 腳印 */
-    .pixel .main-agent.walking::after { content: '· · ·'; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); font-size: 4px; color: var(--yellow); opacity: 0.3; font-family: monospace !important; animation: maFootprint 0.6s steps(3) infinite; }
-    @keyframes maFootprint { 0% { opacity: 0.3; } 50% { opacity: 0.15; } 100% { opacity: 0; } }
-
-    /* 伺服器機架 */
-    .pixel .deco-rack { display: inline-flex; flex-direction: column; gap: 3px; padding: 4px 6px; background: var(--surface0); border: 2px solid var(--surface1); vertical-align: bottom; min-height: 28px; }
-    .pixel .deco-rack::before { content: 'SRV'; display: block; font-size: 4px; color: var(--subtext0); text-align: center; letter-spacing: 1px; }
-    .pixel .deco-rack-row { display: flex; gap: 3px; }
-    .pixel .deco-led { width: 4px; height: 4px; }
-    .pixel .deco-led.on { background: var(--green); box-shadow: 0 0 3px var(--green); animation: wsStarTwinkle 1.5s steps(2) infinite; }
-    .pixel .deco-led.blink { background: var(--yellow); animation: wsScreenBlink 0.8s steps(1) infinite; }
-    .pixel .deco-led.off { background: var(--surface2); }
-
-    /* 水族箱 */
-    .pixel .deco-tank { display: inline-block; width: 48px; height: 32px; background: linear-gradient(180deg, rgba(137,220,235,0.08) 0%, rgba(137,220,235,0.2) 100%); border: 2px solid color-mix(in srgb, var(--cyan) 60%, #000); position: relative; overflow: hidden; vertical-align: bottom; }
-    .pixel .deco-tank::after { content: '~~'; position: absolute; top: 0; left: 0; width: 100%; font-size: 5px; color: rgba(137,220,235,0.2); letter-spacing: 4px; text-align: center; animation: wsTankWave 3s steps(2) infinite; }
-    .pixel .deco-fish { position: absolute; font-size: 8px; top: 10px; animation: wsFishSwim 6s linear infinite; }
-    .pixel .deco-fish:nth-child(2) { top: 16px; font-size: 6px; animation-duration: 8s; animation-delay: -3s; }
-    .pixel .deco-bubble { position: absolute; width: 2px; height: 2px; background: rgba(137,220,235,0.5); border-radius: 0; animation: wsTankBubble 3s steps(4) infinite; }
-    @keyframes wsFishSwim { 0% { left: -10px; transform: scaleX(1); } 45% { left: calc(100% + 4px); transform: scaleX(1); } 50% { left: calc(100% + 4px); transform: scaleX(-1); } 95% { left: -10px; transform: scaleX(-1); } 100% { left: -10px; transform: scaleX(1); } }
-    @keyframes wsTankBubble { 0% { bottom: 2px; opacity: 0.6; } 100% { bottom: 100%; opacity: 0; } }
-    @keyframes wsTankWave { 0%,100% { transform: translateX(-2px); } 50% { transform: translateX(2px); } }
-
-    /* 入口地毯 */
-    .pixel .office-carpet { position: absolute; top: 28px; left: 3%; width: 10%; height: 8px; background: repeating-linear-gradient(90deg, var(--red) 0 4px, color-mix(in srgb, var(--red) 40%, #000) 4px 8px); opacity: 0.6; border: 1px solid color-mix(in srgb, var(--red) 30%, #000); }
-
-    /* Hover 互動 — 工位發光 + tooltip */
-    .pixel .ws { cursor: pointer; transition: filter 0.15s; }
-    .pixel .ws:hover { filter: brightness(1.15); z-index: 5; }
-    .pixel .ws-tip { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: var(--surface0); border: 2px solid var(--surface1); padding: 4px 6px; font-size: 10px; color: var(--text); white-space: nowrap; z-index: 20; opacity: 0; pointer-events: none; transition: opacity 0.15s; box-shadow: 3px 3px 0 rgba(0,0,0,0.5); }
-    .pixel .ws:hover .ws-tip { opacity: 1; }
-    .pixel .ws-tip::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 4px solid var(--surface1); }
-    .pixel .ws-tip-row { display: flex; gap: 6px; padding: 1px 0; }
-    .pixel .ws-tip-label { color: var(--subtext0); min-width: 30px; }
-    .pixel .ws-tip-value { font-weight: 700; }
-
-    /* 辦公室 responsive */
-    @media (max-width: 1100px) { .pixel .ws { width: 100px; } .pixel .office-row { gap: 8px; } .pixel .office-deco { gap: 8px; padding: 12px 8px 4px; } }
-    @media (max-width: 700px) { .pixel .office-row { flex-wrap: wrap; justify-content: center; } .pixel .ws { width: 90px; } .pixel .office-arrow, .pixel .office-turn { display: none; } .pixel .office-deco { flex-wrap: wrap; justify-content: center; } .pixel .deco-board { min-width: 60px; } }
-    /* 全螢幕像素模式 */
-    .fullscreen .pixel .office { min-height: 480px; padding: 24px 32px; }
-    .fullscreen .pixel .ws { width: 130px; }
-    .fullscreen .pixel .ws-char { transform: scale(1.25); transform-origin: center bottom; }
-    .fullscreen .pixel .ws-screen { width: 40px; height: 28px; }
-    .fullscreen .pixel .ws-desk-top { width: 64px; }
-    .fullscreen .pixel .ws-bubble { font-size: 12px; }
-    .fullscreen .pixel .ws-label { font-size: 11px; }
-    .fullscreen .pixel .office-arrow { font-size: 20px; }
-    .fullscreen .pixel .main-agent .ma-bubble { font-size: 12px; padding: 5px 10px; }
-    .fullscreen .pixel .main-agent .ma-char { transform: scale(1.3); transform-origin: center bottom; }
-    .fullscreen .pixel .main-agent .ma-label { font-size: 11px; }
-
-    /* Session 資源指標 */
-    .sc-res { display: flex; gap: 8px; margin-top: 3px; font-size: 9px; color: var(--subtext0); }
-    .sc-res-item { display: flex; align-items: center; gap: 3px; }
-    .sc-res-bar { width: 28px; height: 3px; background: var(--surface1); border-radius: 2px; overflow: hidden; }
-    .sc-res-fill { height: 100%; border-radius: 2px; transition: width 0.5s; }
-    .sc-res-fill.cpu { background: var(--cyan); }
-    .sc-res-fill.ram { background: var(--purple); }
-
-    /* 卡片統計列 */
-    .ac-skills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-    .ac-skill { font-size: 8px; padding: 1px 6px; border-radius: 3px; background: var(--surface0); color: var(--surface2); border: 1px solid var(--surface1); opacity: 0.5; }
-    .ac-skill.used { background: rgba(166,227,161,0.15); color: var(--green); border-color: var(--green); opacity: 1; }
-    .ac-stats { display: flex; gap: 10px; font-size: 9px; color: var(--subtext0); margin-top: auto; padding-top: 6px; border-top: 1px solid rgba(69,71,90,0.2); }
-    .ac-stats span { display: flex; align-items: center; gap: 3px; }
-    .ac-stats .stat-icon { font-size: 10px; }
-    .ac-retry-history { margin-top: 4px; font-size: 9px; color: var(--subtext0); }
-    .ac-retry-history summary { cursor: pointer; color: var(--orange); font-weight: 600; }
-    .ac-retry-history summary:hover { color: var(--yellow); }
-    .rh-round { padding: 2px 0 2px 8px; border-left: 2px solid rgba(69,71,90,0.3); margin: 2px 0; }
-    .rh-round.pass { border-left-color: var(--green); }
-    .rh-round.fail { border-left-color: var(--red); color: var(--red); }
-    .rh-sev { opacity: 0.6; font-size: 8px; }
-    .ac-crash { font-size: 9px; color: var(--red); margin-top: 2px; }
-
-    /* 卡片入場動畫 */
-    .snake .ac { animation: cardEnter 0.5s ease-out backwards; }
-    .snake .ac:nth-child(1) { animation-delay: 0.05s; }
-    .snake .ac:nth-child(2) { animation-delay: 0.12s; }
-    .snake .ac:nth-child(3) { animation-delay: 0.19s; }
-    .snake .ac:nth-child(4) { animation-delay: 0.26s; }
-    .snake-row2 .ac:nth-child(1) { animation-delay: 0.36s; }
-    .snake-row2 .ac:nth-child(2) { animation-delay: 0.43s; }
-    .snake-row2 .ac:nth-child(3) { animation-delay: 0.5s; }
-    .snake-row2 .ac:nth-child(4) { animation-delay: 0.57s; }
-    @keyframes cardEnter { from { opacity: 0; transform: translateY(16px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
-
     /* Confetti 慶祝 */
     .confetti-wrap { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 300; overflow: hidden; }
     .confetti-piece { position: absolute; top: -10px; opacity: 0; border-radius: 2px; animation: confettiFall var(--dur, 3s) var(--delay, 0s) ease-out forwards; }
@@ -688,21 +299,23 @@
       100% { transform: translateY(105vh) rotate(720deg) scale(0.3); opacity: 0; }
     }
 
-    /* Responsive — 平板 */
+    /* Session 資源指標 */
+    .sc-res { display: flex; gap: 8px; margin-top: 3px; font-size: 9px; color: var(--subtext0); }
+    .sc-res-item { display: flex; align-items: center; gap: 3px; }
+    .sc-res-bar { width: 28px; height: 3px; background: var(--surface1); border-radius: 2px; overflow: hidden; }
+    .sc-res-fill { height: 100%; border-radius: 2px; transition: width 0.5s; }
+    .sc-res-fill.ram { background: var(--purple); }
+
+    /* Responsive */
     @media (max-width: 1100px) {
-      .snake { grid-template-columns: repeat(3, 1fr); gap: 8px 16px; }
-      .snake-turn { grid-column: 3; }
-      .ac::after, .ac::before { display: none; }
-      .ac-stats { gap: 6px; }
+      .dash-grid { grid-template-columns: 1fr; }
+      .dash-right { max-height: none; }
     }
-    /* Responsive — 手機 */
     @media (max-width: 700px) {
       .layout, .layout.collapsed { grid-template-columns: 1fr; grid-template-rows: auto 1fr; --sidebar-w: 1fr; }
       .sidebar { max-height: 160px; border-right: none; border-bottom: 1px solid var(--surface1); }
       .sb-body { flex-direction: row; flex-wrap: wrap; gap: 6px; overflow-x: auto; }
       .sc { min-width: 130px; flex-shrink: 0; }
-      .snake { grid-template-columns: 1fr; }
-      .snake-turn { grid-column: 1; }
       .cards { grid-template-columns: 1fr; }
       .main { padding: 12px; }
       .main h1 { font-size: 13px; }
@@ -718,174 +331,8 @@
     import htm from 'https://esm.sh/htm@3.1.1';
     const html = htm.bind(h);
 
-    // --- 常量 ---
-    const TYPE_LABELS = {
-      // 舊 taskType（向後相容）
-      research: '研究探索', quickfix: '快速修復', bugfix: '修復 Bug', feature: '新功能開發', refactor: '重構', test: '測試', tdd: 'TDD 開發',
-      // 新 pipelineId (v1.0.33+)
-      none: '問答/研究', fix: '快速修復', 'quick-dev': '快速開發', standard: '標準開發', full: '完整開發',
-      'test-first': 'TDD 開發', 'ui-only': 'UI 調整', 'review-only': '程式碼審查', 'docs-only': '文件更新', security: '安全修復'
-    };
-    const typeLabel = t => TYPE_LABELS[t] || t || '—';
-    const ROW1 = ['PLAN', 'ARCH', 'DESIGN', 'DEV', 'REVIEW'];
-    const ROW2 = ['TEST', 'QA', 'E2E', 'DOCS'];
-    const ALL_STAGES = [...ROW1, ...ROW2];
-    const SM = {
-      PLAN:   { agent: 'planner',       color: '#cba6f7', emoji: '📋', label: '規劃', todos: ['分析需求', '定義範圍', '評估風險'], skills: ['plan'] },
-      ARCH:   { agent: 'architect',     color: '#89dceb', emoji: '🏛️', label: '架構', todos: ['分析架構', '設計方案', '評估取捨'], skills: ['architect'] },
-      DESIGN: { agent: 'designer',      color: '#7dcfff', emoji: '🎨', label: '設計', todos: ['讀取 design.md', '偵測 search.py', '產出設計系統', '產出 HTML mockup', '開啟瀏覽器預覽'], skills: ['design'] },
-      DEV:    { agent: 'developer',     color: '#f9e2af', emoji: '🏗️', label: '開發', todos: ['撰寫程式碼', '建立測試', '整合模組'], skills: ['lint', 'format', 'env-detect'] },
-      REVIEW: { agent: 'code-reviewer', color: '#89b4fa', emoji: '🔍', label: '審查', todos: ['檢查正確性', '安全性評估', '程式碼品質'], skills: ['review', 'security'] },
-      TEST:   { agent: 'tester',        color: '#f5c2e7', emoji: '🧪', label: '測試', todos: ['撰寫測試', '執行測試', '覆蓋率分析'], skills: ['tdd', 'coverage'] },
-      QA:     { agent: 'qa',            color: '#f9e2af', emoji: '✅', label: '驗證', todos: ['啟動服務', 'API 驗證', '行為測試'], skills: ['qa', 'verify'] },
-      E2E:    { agent: 'e2e-runner',    color: '#a6e3a1', emoji: '🌐', label: 'E2E', todos: ['分析頁面', '建 Page Objects', '撰寫測試'], skills: ['e2e'] },
-      DOCS:   { agent: 'doc-updater',   color: '#cba6f7', emoji: '📝', label: '文件', todos: ['分析變更', '更新文件', '同步 README'], skills: ['doc-sync'] },
-    };
-
-    // --- State 適配層 ---
-    // 將 DAG state 轉換為 UI 相容格式，所有 UI 邏輯不需修改
-    function adaptState(raw) {
-      if (!raw || !raw.dag) {
-        // 無 DAG（未分類或無 pipeline）→ 最小化 fallback，保留 UI 相容欄位原值
-        return {
-          ...raw,
-          expectedStages: raw?.expectedStages || [],
-          stageResults: raw?.stageResults || {},
-          currentStage: raw?.currentStage || null,
-          delegationActive: raw?.delegationActive || false,
-          taskType: raw?.classification?.taskType || raw?.taskType || null,
-          pipelineId: raw?.classification?.pipelineId || raw?.pipelineId || null,
-          lastTransition: raw?.meta?.lastTransition || raw?.lastTransition || null,
-          startedAt: raw?.classification?.classifiedAt || raw?.startedAt || null,
-          completed: raw?.completed || [],
-          skippedStages: raw?.skippedStages || [],
-          retries: raw?.retries || {},
-          environment: raw?.environment || {},
-        };
-      }
-
-      const stages = raw.stages || {};
-      const dagKeys = Object.keys(raw.dag);
-
-      // stageResults：展平 verdict 物件為 { verdict, severity, duration, completedAt }
-      // 只有 completed 或 failed 且有 verdict 的 stage 才放入
-      const stageResults = {};
-      for (const [id, info] of Object.entries(stages)) {
-        if (info?.status === 'completed' || info?.status === 'failed') {
-          const v = info.verdict;
-          if (!v) continue;
-          const verdictStr = (typeof v === 'object' && v !== null) ? (v.verdict || null) : v;
-          if (!verdictStr) continue;
-          stageResults[id] = {
-            verdict: verdictStr,
-            severity: (typeof v === 'object' && v !== null) ? v.severity : undefined,
-            duration: (info.startedAt && info.completedAt)
-              ? Math.round((new Date(info.completedAt) - new Date(info.startedAt)) / 1000)
-              : undefined,
-            completedAt: info.completedAt,
-          };
-        }
-      }
-
-      // currentStage：第一個 active stage
-      const activeStage = dagKeys.find(id => stages[id]?.status === 'active') || null;
-
-      // completed：已完成 stage 對應的 agent 名稱列表（向後相容）
-      const completed = dagKeys
-        .filter(id => stages[id]?.status === 'completed')
-        .map(id => stages[id]?.agent)
-        .filter(Boolean);
-
-      const skippedStages = dagKeys.filter(id => stages[id]?.status === 'skipped');
-      // Pipeline 完成旗標（所有 stage 都是 completed/skipped/failed）
-      const isPipelineComplete = dagKeys.length > 0 && dagKeys.every(id => {
-        const st = stages[id]?.status;
-        return st === 'completed' || st === 'skipped' || st === 'failed';
-      });
-
-      // M-4 修正：偵測 cancelled 狀態
-      // cancelled = pipelineActive=false，但有分類且尚未全部完成，且無活躍委派
-      const hasActiveClassification = !!(raw.classification?.pipelineId || raw.classification?.taskType);
-      const cancelled = !raw.pipelineActive && !isPipelineComplete && hasActiveClassification && !activeStage;
-
-      return {
-        ...raw,
-        expectedStages: dagKeys,
-        isPipelineComplete,
-        cancelled,
-        stageResults,
-        currentStage: activeStage,
-        delegationActive: !!activeStage,
-        taskType: raw.classification?.taskType || null,
-        pipelineId: raw.classification?.pipelineId || null,
-        lastTransition: raw.meta?.lastTransition || null,
-        startedAt: raw.classification?.classifiedAt || null,
-        completed,
-        skippedStages,
-        retries: raw.retries || {},
-        environment: raw.environment || {},
-      };
-    }
-
     // --- 輔助函式 ---
-    function getCurrent(s) {
-      return s?.currentStage || s?.expectedStages?.find(st => s.stageResults?.[st]?.verdict !== 'PASS') || null;
-    }
-    function getStatus(stage, s) {
-      if (!s?.expectedStages?.includes(stage)) return 'skipped';
-      const cur = getCurrent(s);
-      const r = s.stageResults?.[stage];
-      // 正在委派中 = active（覆蓋 retry 場景的舊 PASS 結果）
-      if (stage === cur && s.delegationActive) return 'active';
-      // 當前 stage 但未委派（等待開始或剛完成過渡中）
-      if (stage === cur && r?.verdict !== 'PASS') return 'next';
-      if (r?.verdict === 'PASS') return 'pass';
-      if (r?.verdict === 'FAIL') return 'fail';
-      return 'pending';
-    }
-    function pct(s) {
-      if (!s?.expectedStages?.length) return 0;
-      const active = s.expectedStages.filter(st => !s.skippedStages?.includes(st));
-      if (!active.length) return 0;
-      return Math.round(active.filter(st => s.stageResults?.[st]?.verdict === 'PASS').length / active.length * 100);
-    }
-    function hasPipeline(s) { return (s?.expectedStages?.length || 0) > 0; }
-    function isLive(s) { return s?._alive || s?.delegationActive || false; }
     function sid(id) { return id?.length > 8 ? id.slice(0, 8) : id || '—'; }
-    /** Session 分類：live > active > done > stale */
-    function sessionCategory(s) {
-      if (!s) return 'stale';
-      const hasStages = hasPipeline(s);
-      if (s._alive || s.delegationActive) return 'live';
-      if (hasStages && pct(s) >= 100) return 'done';
-      if (hasStages) return 'active';
-      // 無 pipeline
-      const last = s.lastTransition || s.startedAt;
-      if (!last) return 'stale';
-      const age = Date.now() - new Date(last).getTime();
-      if (age > 1800_000) return 'stale'; // 30 min
-      return 'active'; // 近期有活動的非 pipeline session
-    }
-    /** Session 顯示名稱：pipeline 類型 > taskType > 研究模式 */
-    function sessionName(s) {
-      if (s?._heartbeatOnly) return '對話中';
-      const pid = s?.pipelineId || s?.taskType;
-      if (pid) return typeLabel(pid);
-      return '研究模式';
-    }
-    /** 當前 stage 名稱 */
-    function currentStageName(s) {
-      const cur = getCurrent(s);
-      if (!cur) return null;
-      const meta = SM[cur];
-      return meta ? `${meta.emoji} ${meta.label}` : cur;
-    }
-    async function deleteSession(id) {
-      try { await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }); } catch {}
-    }
-    async function cleanupStale() {
-      try { await fetch('/api/sessions/cleanup', { method: 'POST' }); } catch {}
-    }
     function now() { return new Date().toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
     function elapsed(iso) {
       if (!iso) return '';
@@ -894,475 +341,440 @@
       if (d < 3600) return `${Math.floor(d/60)}m`;
       return `${Math.floor(d/3600)}h`;
     }
-
-    // 秒數格式化
     function fmtSec(secs) {
       if (!secs && secs !== 0) return '—';
       if (secs < 60) return Math.round(secs) + 's';
       const m = Math.floor(secs / 60), s = Math.round(secs % 60);
       return s > 0 ? `${m}m${s}s` : `${m}m`;
     }
-
-    // --- Agent 名冊（14 agents = 3 系統 + 9 Pipeline + 2 輔助）---
-    const AGENT_ROSTER = [
-      { id: 'main', name: 'Main Agent', emoji: '🎯', model: 'opus', color: '#f9e2af', role: '管理者', group: 'system', skills: ['scope', 'classify', 'delegate'] },
-      { id: 'explore', name: 'Explore', emoji: '🔭', model: 'opus', color: '#89dceb', role: '探索', group: 'system', skills: ['Glob', 'Grep', 'Read'] },
-      { id: 'plan', name: 'Plan', emoji: '📐', model: 'opus', color: '#cba6f7', role: '規劃', group: 'system', skills: ['plan', 'research'] },
-      ...Object.entries(SM).map(([stage, m]) => ({
-        id: m.agent, name: m.agent, emoji: m.emoji,
-        model: ({ planner:'opus', architect:'opus', designer:'sonnet', developer:'sonnet', 'code-reviewer':'opus', tester:'sonnet', qa:'sonnet', 'e2e-runner':'sonnet', 'doc-updater':'haiku' })[m.agent] || 'sonnet',
-        color: m.color, role: stage, stage, group: 'pipeline', skills: m.skills || [],
-      })),
-      { id: 'security-reviewer', name: 'security', emoji: '🛡️', model: 'opus', color: '#f38ba8', role: '安全審查', group: 'support', skills: ['OWASP', 'scan'] },
-      { id: 'build-error-resolver', name: 'build-err', emoji: '🔧', model: 'haiku', color: '#fab387', role: 'Build 修復', group: 'support', skills: ['diagnose', 'fix'] },
-    ];
-
-    // --- 像素辦公室：角色像素系統 ---
-    const PXS = 4; // 每個像素 4px × 4px（放大角色可見度）
-    const SK = '#ffd8b4', EY = '#222', MO = '#c47a5a', LG = '#445';
-
-    // 角色像素網格（7 wide × 10 tall，字母映射到顏色）
-    const CHARS = {
-      planner:        ['..PPP..', '.PPPPP.', '.SESES.', '.SSSSS.', '..SMS..', '.BBBBB.', 'ABBBBBA', '..BBB..', '.LL.LL.', '.L...L.'],
-      architect:      ['..XXX..', 'XXXXXXX', '.SESES.', '.SSSSS.', '..SMS..', '.BBBBB.', 'ABBBBBA', '..BBB..', '.LL.LL.', '.L...L.'],
-      developer:      ['..HHH..', '.HHHHH.', '.SESES.', '.SSSSS.', '..SMS..', 'HBBBBBH', 'HBBBBBH', '..BBB..', '.LL.LL.', '.L...L.'],
-      'code-reviewer':['..HHH..', '.HHHHH.', '.GEGEG.', '.SSSSS.', '..SMS..', '.BBBBB.', 'ABBBBBA', '..BBB..', '.LL.LL.', '.L...L.'],
-      tester:         ['..HHH..', '.HHHHH.', '.SESES.', '.SSSSS.', '..SMS..', '.WWWWW.', 'WWBBBWW', '..WWW..', '.LL.LL.', '.L...L.'],
-      qa:             ['..CCC..', 'CCCCCCC', '.SESES.', '.SSSSS.', '..SMS..', '.BBBBB.', 'ABBBBBA', '..BBB..', '.LL.LL.', '.L...L.'],
-      'e2e-runner':   ['..HHH..', 'OHHHHHO', '.SESES.', '.SSSSS.', '..SMS..', '.BBBBB.', 'ABBBBBA', '..BBB..', '.LL.LL.', '.L...L.'],
-      'doc-updater':  ['..HHHX.', '.HHHHH.', '.SESES.', '.SSSSS.', '..SMS..', '.BBBBB.', 'ABBBBBA', '..BBB..', '.LL.LL.', '.L...L.'],
-    };
-    const CHAR_MAIN = ['.X.X.X.', '.XXXXX.', '.SESES.', '.SSSSS.', '..SMS..', '.GGGGG.', 'GGGGGGG', '..GGG..', '.LL.LL.', '.L...L.'];
-
-    // 各角色專屬調色盤（P/H/X/G/C/O/W = 配件，B = 衣服，A = 手臂）
-    const CHAR_PAL = {
-      planner:        { P: '#9370db', B: '#cba6f7', A: '#a888d0' },
-      architect:      { X: '#ffd700', B: '#89dceb', A: '#6bb8c6' },
-      developer:      { H: '#555', B: '#f9e2af', A: '#d4c090' },
-      'code-reviewer':{ H: '#667', G: '#5599ff', B: '#89b4fa', A: '#6b96d0' },
-      tester:         { H: '#d4739d', W: '#dde0f0', B: '#f5c2e7', A: '#d0a4c0' },
-      qa:             { C: '#bb9933', B: '#f9e2af', A: '#d4c090' },
-      'e2e-runner':   { H: '#556', O: '#333', B: '#a6e3a1', A: '#88c084' },
-      'doc-updater':  { H: '#8866bb', X: '#ffd700', B: '#cba6f7', A: '#a888d0' },
-    };
-    const PAL_MAIN = { X: '#ffd700', G: '#ffd700' };
-
-    // 表情覆蓋（改變 E=眼睛、M=嘴巴顏色）
-    const EXPR_PAL = {
-      active:  { E: EY, M: MO },
-      pass:    { E: SK, M: '#e88a6a' },
-      fail:    { E: '#ff4444', M: '#333' },
-      next:    { E: EY, M: MO },
-      pending: { E: '#e0c8a0', M: SK },
-      skipped: { E: '#888', M: '#888', S: '#999', L: '#666' },
-    };
-
-    // 網格 → CSS box-shadow
-    function charShadow(grid, agentPal, exprPal) {
-      const p = { S: SK, E: EY, M: MO, L: LG, ...agentPal, ...(exprPal || {}) };
-      const s = [];
-      for (let r = 0; r < grid.length; r++)
-        for (let c = 0; c < grid[r].length; c++) {
-          const ch = grid[r][c];
-          if (ch !== '.' && p[ch]) s.push(`${c * PXS}px ${r * PXS}px 0 0 ${p[ch]}`);
-        }
-      return s.join(',');
+    function fmtDuration(startedAt) {
+      if (!startedAt) return '—';
+      const secs = Math.round((Date.now() - new Date(startedAt).getTime()) / 1000);
+      return fmtSec(secs);
     }
-    const CHAR_W = 7 * PXS, CHAR_H = 10 * PXS;
+    async function deleteSession(id) {
+      try { await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }); } catch {}
+    }
+    async function cleanupStale() {
+      try { await fetch('/api/sessions/cleanup', { method: 'POST' }); } catch {}
+    }
 
-    // EXPR fallback（AgentCard 仍用 emoji）
-    const EXPR = { active: '😤', pass: '😎', fail: '🤯', next: '🙂', pending: '😴', skipped: '👻' };
+    // --- v4 State 直接操作函式（不依賴 adaptState） ---
+    function getStageStatus(stageId, state) {
+      if (!state?.stages?.[stageId]) return 'pending';
+      return state.stages[stageId].status; // 'pending' | 'active' | 'completed' | 'failed' | 'skipped'
+    }
+    function getStageVerdict(stageId, state) {
+      const stage = state?.stages?.[stageId];
+      if (!stage?.verdict) return null;
+      if (typeof stage.verdict === 'object') return stage.verdict.verdict || null;
+      return stage.verdict;
+    }
+    function getStageSeverity(stageId, state) {
+      const stage = state?.stages?.[stageId];
+      if (!stage?.verdict) return null;
+      if (typeof stage.verdict === 'object') return stage.verdict.severity || null;
+      return null;
+    }
+    function getStageDuration(stageId, state) {
+      const stage = state?.stages?.[stageId];
+      if (!stage?.startedAt || !stage?.completedAt) return null;
+      return Math.round((new Date(stage.completedAt) - new Date(stage.startedAt)) / 1000);
+    }
+    function getPipelineProgress(state) {
+      if (!state?.dag) return 0;
+      const stages = Object.keys(state.dag);
+      if (!stages.length) return 0;
+      const done = stages.filter(id => {
+        const st = state.stages?.[id]?.status;
+        return st === 'completed' || st === 'skipped';
+      });
+      return Math.round(done.length / stages.length * 100);
+    }
+    function hasPipeline(state) { return !!(state?.dag && Object.keys(state.dag).length > 0); }
+    function isLive(state) { return !!(state?._alive || (state?.activeStages?.length > 0) || state?.pipelineActive); }
+    function getActiveStages(state) {
+      if (!state?.dag) return [];
+      return Object.keys(state.dag).filter(id => state.stages?.[id]?.status === 'active');
+    }
 
-    // --- Agent Card 元件 ---
-    function AgentCard({ stage, s, tick }) {
-      const status = getStatus(stage, s);
-      const meta = SM[stage];
-      const retries = s.retries?.[stage] || 0;
-      const r = s.stageResults?.[stage];
-      const sev = r?.severity;
-      const todos = meta.todos || [];
-      const dur = r?.duration;
-      const tools = r?.toolCalls;
+    // Session 分類
+    function sessionCategory(s) {
+      if (!s) return 'stale';
+      if (s._alive || isLive(s)) return 'live';
+      const prog = getPipelineProgress(s);
+      if (hasPipeline(s) && prog >= 100) return 'done';
+      if (hasPipeline(s)) return 'active';
+      const last = s.meta?.lastTransition;
+      if (!last) return 'stale';
+      const age = Date.now() - new Date(last).getTime();
+      if (age > 1800_000) return 'stale';
+      return 'active';
+    }
+    function sessionName(s, registry) {
+      if (s?._heartbeatOnly) return '對話中';
+      const pid = s?.classification?.pipelineId;
+      if (pid && registry?.pipelines?.[pid]) return registry.pipelines[pid].label;
+      if (pid) return pid;
+      return '研究模式';
+    }
+    function currentStageName(s, registry) {
+      const active = getActiveStages(s);
+      if (!active.length) return null;
+      const stage = active[0];
+      const stageBase = stage.split(':')[0];
+      const meta = registry?.stages?.[stageBase];
+      return meta ? `${meta.emoji} ${meta.label}` : stage;
+    }
+
+    // --- DAG 節點佈局演算法 ---
+    // 根據 deps 計算拓撲排序深度，同深度垂直排列
+    function computeDagLayout(dag, containerWidth) {
+      if (!dag || !Object.keys(dag).length) return { nodes: [], width: 0, height: 0 };
+      const stages = Object.keys(dag);
+      // 計算每個 stage 的深度（最長路徑）
+      const depth = {};
+      function getDepth(id) {
+        if (depth[id] !== undefined) return depth[id];
+        const deps = dag[id]?.deps || [];
+        if (!deps.length) { depth[id] = 0; return 0; }
+        const d = Math.max(...deps.map(getDepth)) + 1;
+        depth[id] = d;
+        return d;
+      }
+      stages.forEach(id => getDepth(id));
+
+      // 按深度分組
+      const byDepth = {};
+      stages.forEach(id => {
+        const d = depth[id];
+        if (!byDepth[d]) byDepth[d] = [];
+        byDepth[d].push(id);
+      });
+
+      const NODE_W = 88, NODE_H = 72, H_GAP = 40, V_GAP = 20;
+      const maxDepth = Math.max(...Object.keys(byDepth).map(Number));
+      const totalW = (maxDepth + 1) * (NODE_W + H_GAP) - H_GAP;
+
+      const nodes = [];
+      Object.entries(byDepth).forEach(([d, ids]) => {
+        const colH = ids.length * (NODE_H + V_GAP) - V_GAP;
+        ids.forEach((id, i) => {
+          const x = Number(d) * (NODE_W + H_GAP);
+          const y = i * (NODE_H + V_GAP);
+          nodes.push({ id, x, y, w: NODE_W, h: NODE_H, depth: Number(d) });
+        });
+      });
+
+      const totalH = Math.max(...Object.values(byDepth).map(ids => ids.length)) * (NODE_H + V_GAP) - V_GAP;
+      return { nodes, width: totalW, height: totalH };
+    }
+
+    // 計算 SVG 連線路徑（貝茲曲線）
+    function buildEdges(dag, nodes) {
+      if (!dag || !nodes.length) return [];
+      const nodeMap = Object.fromEntries(nodes.map(n => [n.id, n]));
+      const edges = [];
+      for (const [id, cfg] of Object.entries(dag)) {
+        const target = nodeMap[id];
+        if (!target) continue;
+        for (const dep of (cfg?.deps || [])) {
+          const source = nodeMap[dep];
+          if (!source) continue;
+          const x1 = source.x + source.w;
+          const y1 = source.y + source.h / 2;
+          const x2 = target.x;
+          const y2 = target.y + target.h / 2;
+          const cx = (x1 + x2) / 2;
+          edges.push({ id: `${dep}->${id}`, path: `M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}`, from: dep, to: id });
+        }
+      }
+      return edges;
+    }
+
+    // 偵測 phase 分組（suffixed stages: DEV:1, REVIEW:1 → phase 1）
+    function detectPhases(dag) {
+      if (!dag) return {};
+      const phases = {};
+      for (const id of Object.keys(dag)) {
+        const m = id.match(/:(\d+)$/);
+        if (m) {
+          const n = m[1];
+          if (!phases[n]) phases[n] = [];
+          phases[n].push(id);
+        }
+      }
+      return Object.keys(phases).length >= 2 ? phases : {};
+    }
+
+    // --- DAG 流程圖元件 ---
+    function DagView({ state, registry }) {
+      const [selected, setSelected] = useState(null);
+      const dag = state?.dag || {};
+      const stages = state?.stages || {};
+
+      const { nodes, width, height } = useMemo(() => computeDagLayout(dag, 800), [dag]);
+      const edges = useMemo(() => buildEdges(dag, nodes), [dag, nodes]);
+      const phases = useMemo(() => detectPhases(dag), [dag]);
+
+      if (!nodes.length) {
+        return html`<div style="color:var(--subtext0);font-size:11px;padding:20px;text-align:center">無 Pipeline DAG 資料</div>`;
+      }
+
+      const PADDING = 24;
+      const svgW = width + PADDING * 2;
+      const svgH = height + PADDING * 2;
+
+      // 取 stage 節點的狀態色彩
+      const edgeClass = (from, to) => {
+        const fromStatus = getStageStatus(from, state);
+        if (fromStatus === 'completed') return 'completed';
+        if (fromStatus === 'active') return 'active';
+        return 'pending';
+      };
+
+      // 取 stage metadata（支援 suffixed stage）
+      const getStageMeta = (id) => {
+        const base = id.split(':')[0];
+        return registry?.stages?.[base] || { emoji: '📌', label: base, color: null };
+      };
+
+      const selectedStage = selected ? stages[selected] : null;
+      const selectedMeta = selected ? getStageMeta(selected) : null;
+      const selectedVerdict = selected ? getStageVerdict(selected, state) : null;
+      const selectedSeverity = selected ? getStageSeverity(selected, state) : null;
+      const selectedDur = selected ? getStageDuration(selected, state) : null;
+      const selectedRetries = selected ? (state?.retries?.[selected] || 0) : 0;
+      const selectedCrashes = selected ? (state?.crashes?.[selected] || 0) : 0;
+      const selectedHistory = selected ? (state?.retryHistory?.[selected] || []) : [];
+
       return html`
-        <div class="ac ${status}" style="--sc:${meta.color}">
-          ${retries > 0 && html`<div class="ac-retry">${retries}</div>`}
-          <div class="ac-top">
-            <span class="ac-emoji">${meta.emoji}</span>
-            <div class="ac-info">
-              <div class="ac-name" style="${status === 'active' ? `color:${meta.color}` : ''}">${stage} <span class="agent-abbr">${meta.agent}</span></div>
-            </div>
-            ${status === 'pass' && html`<span class="ac-badge">PASS</span>`}
-            ${status === 'fail' && html`<span class="ac-badge">${sev || 'FAIL'}</span>`}
-            ${status === 'active' && html`<span class="ac-badge">Working…</span>`}
-            ${status === 'next' && html`<span class="ac-badge">Next</span>`}
-            ${status === 'skipped' && html`<span class="ac-badge">Skip</span>`}
-          </div>
-          <div class="ac-todos">
-            ${todos.map((todo, i) => {
-              let ts = 'pending';
-              if (status === 'pass') ts = 'done';
-              else if (status === 'fail') ts = i < todos.length - 1 ? 'done' : 'fail';
-              else if (status === 'active') {
-                const n = todos.length;
-                const cycle = n > 1 ? n * 2 - 2 : 1;
-                const raw = Math.floor(tick / 3) % cycle;
-                const phase = raw < n ? raw : cycle - raw;
-                ts = i < phase ? 'done' : i === phase ? 'active' : 'pending';
-              }
-              else if (status === 'skipped') ts = 'skip';
-              return html`<div class="ac-todo ${ts}"><span class="ac-todo-dot"></span><span>${todo}</span></div>`;
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <!-- Barrier 並行進度（若有） -->
+          ${selected === null && html`<${BarrierDisplay} barrierState=${null} />`}
+
+          <!-- DAG 視圖 -->
+          <div class="dag-container" style="min-height:${svgH + 20}px">
+            <svg class="dag-svg" width=${svgW} height=${svgH} style="position:absolute;top:0;left:0">
+              ${edges.map(e => html`
+                <path key=${e.id}
+                  class="dag-edge ${edgeClass(e.from, e.to)}"
+                  d=${e.path}
+                  transform="translate(${PADDING},${PADDING})"
+                />
+              `)}
+            </svg>
+            ${nodes.map(n => {
+              const status = getStageStatus(n.id, state);
+              const verdict = getStageVerdict(n.id, state);
+              const severity = getStageSeverity(n.id, state);
+              const meta = getStageMeta(n.id);
+              const isSelected = selected === n.id;
+              let statusText = '';
+              if (status === 'completed') statusText = verdict || 'PASS';
+              else if (status === 'failed') statusText = severity || verdict || 'FAIL';
+              else if (status === 'active') statusText = '進行中';
+              else if (status === 'skipped') statusText = '跳過';
+              else statusText = '等待';
+
+              return html`
+                <div key=${n.id}
+                  class="dag-node ${status} ${isSelected ? 'selected' : ''}"
+                  style="left:${n.x + PADDING}px;top:${n.y + PADDING}px;width:${n.w}px;height:${n.h}px;"
+                  onClick=${() => setSelected(isSelected ? null : n.id)}
+                >
+                  <span class="dag-emoji">${meta.emoji}</span>
+                  <span class="dag-label">${n.id}</span>
+                  <span class="dag-status">${statusText}</span>
+                </div>
+              `;
+            })}
+            <!-- Phase 分組框 -->
+            ${Object.entries(phases).map(([phaseN, phaseIds]) => {
+              const phaseNodes = nodes.filter(n => phaseIds.includes(n.id));
+              if (!phaseNodes.length) return null;
+              const xs = phaseNodes.map(n => n.x + PADDING);
+              const ys = phaseNodes.map(n => n.y + PADDING);
+              const x2s = phaseNodes.map(n => n.x + n.w + PADDING);
+              const y2s = phaseNodes.map(n => n.y + n.h + PADDING);
+              const bx = Math.min(...xs) - 8;
+              const by = Math.min(...ys) - 14;
+              const bw = Math.max(...x2s) - bx + 8;
+              const bh = Math.max(...y2s) - by + 8;
+              return html`
+                <div key=${'phase'+phaseN} class="dag-phase" style="left:${bx}px;top:${by}px;width:${bw}px;height:${bh}px">
+                  <span class="dag-phase-title">Phase ${phaseN}</span>
+                </div>
+              `;
             })}
           </div>
-          ${meta.skills?.length > 0 && html`
-            <div class="ac-skills">
-              ${meta.skills.map(sk => {
-                const used = r?.skillsUsed?.includes(sk);
-                return html`<span class="ac-skill ${used ? 'used' : ''}">${sk}</span>`;
-              })}
-            </div>
-          `}
-          ${(dur || tools) && html`
-            <div class="ac-stats">
-              ${dur && html`<span><span class="stat-icon">⏱</span>${dur}s</span>`}
-              ${tools && html`<span><span class="stat-icon">🔧</span>${tools} calls</span>`}
-            </div>
-          `}
-          ${(() => {
-            const rh = s.retryHistory?.[stage] || [];
-            const cr = s.crashes?.[stage] || 0;
-            if (!rh.length && !cr) return null;
-            return html`
-              ${rh.length > 0 && html`
-                <details class="ac-retry-history">
-                  <summary>↻ ${rh.length} round${rh.length > 1 ? 's' : ''}</summary>
-                  ${rh.map(h => html`
-                    <div class="rh-round ${h.verdict?.toLowerCase()}">R${h.round}: ${h.verdict} <span class="rh-sev">${h.severity}</span></div>
-                  `)}
-                </details>
+
+          <!-- 點擊展開詳情 -->
+          ${selected && html`
+            <div class="dag-detail">
+              <h4>${selectedMeta?.emoji} ${selected} — ${selectedMeta?.label}</h4>
+              ${selectedVerdict ? html`
+                <div class="dag-detail-row">
+                  <span class="label">Verdict</span>
+                  <span class="value" style="color:var(--${selectedVerdict === 'PASS' ? 'green' : 'red'})">${selectedVerdict}${selectedSeverity ? ' ('+selectedSeverity+')' : ''}</span>
+                </div>
+              ` : html`
+                <div class="dag-detail-row"><span class="label">狀態</span><span class="value">${getStageStatus(selected, state)}</span></div>
               `}
-              ${cr > 0 && html`<div class="ac-crash">💥 ${cr} crash${cr > 1 ? 'es' : ''}</div>`}
-            `;
-          })()}
+              ${selectedDur !== null && html`
+                <div class="dag-detail-row"><span class="label">耗時</span><span class="value">${fmtSec(selectedDur)}</span></div>
+              `}
+              ${selectedRetries > 0 && html`
+                <div class="dag-detail-row"><span class="label">重試</span><span class="value" style="color:var(--orange)">${selectedRetries} 次</span></div>
+              `}
+              ${selectedCrashes > 0 && html`
+                <div class="dag-detail-row"><span class="label">Crash</span><span class="value" style="color:var(--red)">${selectedCrashes} 次</span></div>
+              `}
+              ${selectedHistory.length > 0 && html`
+                <div style="margin-top:6px;font-size:9px;color:var(--subtext0)">重試歷史</div>
+                ${selectedHistory.map(h => html`
+                  <div class="rh-round ${h.verdict?.toLowerCase()}">R${h.round}: ${h.verdict} <span style="opacity:0.6">${h.severity || ''}</span></div>
+                `)}
+              `}
+            </div>
+          `}
         </div>
       `;
     }
 
-    // --- 桌面物件映射（每個 stage 固定一個物件）---
-    const DESK_OBJ = { PLAN: '📌', ARCH: '📐', DEV: '☕', REVIEW: '🔎', TEST: '🧫', QA: '📊', E2E: '🖱️', DOCS: '✏️' };
-
-    // --- Workstation 元件（像素辦公室工位）---
-    function Workstation({ stage, s, tick, pinnedWs, setPinnedWs }) {
-      const status = getStatus(stage, s);
-      const meta = SM[stage];
-      const r = s.stageResults?.[stage];
-      const retries = s.retries?.[stage] || 0;
-      const todos = meta.todos || [];
-
-      // 螢幕內容
-      let screenText = null;
-      if (status === 'active') {
-        const si = Math.floor(tick / 4) % (meta.skills?.length || 1);
-        screenText = meta.skills?.[si] || '...';
-      } else if (status === 'pass' && r?.duration) {
-        screenText = `${r.duration}s ✓`;
-      } else if (status === 'fail') {
-        screenText = r?.severity || 'ERR';
-      }
-
-      // 氣泡框邏輯 — 只有 active 的 agent 才「說話」，其他靜態狀態
-      let bubble = null;
-      if (status === 'active') {
-        const todoIdx = Math.floor(tick / 3) % todos.length;
-        const replies = ['收到！', `正在${todos[todoIdx]}`, `${todos[todoIdx]}...`, '快好了...'];
-        bubble = html`<div class="ws-bubble">${replies[tick % replies.length]}</div>`;
-      } else if (status === 'pass') {
-        bubble = html`<div class="ws-bubble pass">Done!</div>`;
-      } else if (status === 'fail') {
-        bubble = html`<div class="ws-bubble fail">FAIL${r?.severity ? ' '+r.severity : ''}</div>`;
-      }
-
-      // Tooltip 詳情
-      const tip = html`
-        <div class="ws-tip">
-          <div style="font-weight:700;margin-bottom:1px">${meta.emoji} ${stage} — ${meta.agent}</div>
-          ${r?.verdict && html`<div class="ws-tip-row"><span class="ws-tip-label">Verdict</span><span class="ws-tip-value" style="color:${r.verdict === 'PASS' ? 'var(--green)' : 'var(--red)'}">${r.verdict}${r.severity ? ' ('+r.severity+')' : ''}</span></div>`}
-          ${r?.duration && html`<div class="ws-tip-row"><span class="ws-tip-label">Duration</span><span class="ws-tip-value">${r.duration}s</span></div>`}
-          ${r?.toolCalls && html`<div class="ws-tip-row"><span class="ws-tip-label">Tools</span><span class="ws-tip-value">${r.toolCalls} calls</span></div>`}
-          ${r?.skillsUsed?.length > 0 && html`<div class="ws-tip-row"><span class="ws-tip-label">Skills</span><span class="ws-tip-value">${r.skillsUsed.join(', ')}</span></div>`}
-          ${retries > 0 && html`<div class="ws-tip-row"><span class="ws-tip-label">Retries</span><span class="ws-tip-value" style="color:var(--orange)">${retries}</span></div>`}
-          ${(s.retryHistory?.[stage] || []).map(h => html`
-            <div class="ws-tip-row"><span class="ws-tip-label">R${h.round}</span><span class="ws-tip-value" style="color:${h.verdict === 'PASS' ? 'var(--green)' : 'var(--red)'}">${h.verdict} ${h.severity || ''}</span></div>
+    // --- Barrier 顯示元件 ---
+    function BarrierDisplay({ barrierState }) {
+      if (!barrierState || !Object.keys(barrierState.groups || {}).length) return null;
+      return html`
+        <div style="padding:8px 12px;background:var(--surface0);border-radius:8px;border:1px solid var(--surface1)">
+          <div style="font-size:10px;color:var(--subtext0);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Barrier 並行進度</div>
+          ${Object.entries(barrierState.groups || {}).map(([group, g]) => html`
+            <div key=${group} style="display:flex;align-items:center;gap:10px;font-size:11px;margin-bottom:4px">
+              <span style="color:var(--blue);min-width:80px">${group}</span>
+              <span style="color:${g.resolved ? (Object.values(g.results || {}).some(r => r.verdict === 'FAIL') ? 'var(--red)' : 'var(--green)') : 'var(--yellow)'}">${g.completed.length}/${g.total}</span>
+              <span style="color:var(--subtext0)">${g.siblings.map(st => g.completed.includes(st) ? (g.results?.[st]?.verdict === 'FAIL' ? '❌' : '✅') : '⏳').join(' ')} ${g.siblings.join(' + ')}</span>
+              ${g.resolved && html`<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:${Object.values(g.results || {}).some(r => r.verdict === 'FAIL') ? 'var(--red)' : 'var(--green)'};color:var(--bg)">${g.next ? '→ ' + g.next : '完成'}</span>`}
+              ${!g.resolved && html`<span style="font-size:9px;color:var(--yellow);animation:blink 1s infinite">等待中...</span>`}
+            </div>
           `)}
-          ${(s.crashes?.[stage] || 0) > 0 && html`<div class="ws-tip-row"><span class="ws-tip-label">Crashes</span><span class="ws-tip-value" style="color:var(--red)">${s.crashes[stage]}</span></div>`}
-          ${status === 'active' && html`<div class="ws-tip-row"><span class="ws-tip-label">Status</span><span class="ws-tip-value" style="color:var(--blue)">Working…</span></div>`}
-        </div>
-      `;
-
-      const pinned = pinnedWs === stage;
-      const onPin = (e) => { e.stopPropagation(); setPinnedWs(pinned ? null : stage); };
-
-      return html`
-        <div class="ws st-${status} ${pinned ? 'pinned' : ''}" style="--ac:${meta.color}" onClick=${onPin}>
-          ${retries > 0 && html`<div class="ws-retry">${retries}</div>`}
-          <span class="ws-sparkle">✦</span><span class="ws-sparkle">✦</span><span class="ws-sparkle">✦</span>
-          <span class="ws-smoke">~</span><span class="ws-smoke">~</span><span class="ws-smoke">~</span>
-          ${tip}
-          ${bubble}
-          <div class="ws-char">
-            <div class="ws-pixel" style=${{ width: PXS+'px', height: PXS+'px', boxShadow: charShadow(CHARS[meta.agent], CHAR_PAL[meta.agent], EXPR_PAL[status]) }}></div>
-          </div>
-          <div class="ws-desk">
-            <div class="ws-screen">
-              ${screenText && html`<div class="ws-screen-text">${screenText}</div>`}
-            </div>
-            <div class="ws-desk-top"></div>
-          </div>
-          <div class="ws-desk-obj ${ROW1.includes(stage) ? 'right' : 'left'}">${DESK_OBJ[stage]}</div>
-          <div class="ws-label">${stage}<div class="ws-label-name">${meta.agent}</div></div>
         </div>
       `;
     }
 
-    // --- OfficeView 元件（像素辦公室場景）---
-    // --- Main Agent 位置映射（%，相對 office 容器，偏左避免重疊工位）---
-    const MA_POS = {
-      PLAN:   { left: '11%', top: '22%' },
-      ARCH:   { left: '26%', top: '22%' },
-      DEV:    { left: '41%', top: '22%' },
-      REVIEW: { left: '56%', top: '22%' },
-      TEST:   { left: '56%', top: '52%' },
-      QA:     { left: '41%', top: '52%' },
-      E2E:    { left: '26%', top: '52%' },
-      DOCS:   { left: '11%', top: '52%' },
-    };
-    const MA_IDLE = { left: '4%', top: '12%' };
+    // --- 簡化版 Agent 狀態面板 ---
+    function AgentStatus({ state, tick, events, registry, alive, memory }) {
+      const timers = useRef({});
 
-    function OfficeView({ s, tick }) {
-      const [pinnedWs, setPinnedWs] = useState(null);
-      const arrowStatus = (fromStage) => {
-        const st = getStatus(fromStage, s);
-        return st === 'pass' ? 'done' : st === 'active' ? 'active' : '';
-      };
-      const progress = pct(s);
-      const r2 = [...ROW2].reverse();
-      const isComplete = progress === 100;
+      // 從 registry 動態建立 agent 清單（3 群組）
+      const systemAgents = [
+        { id: 'main', name: 'Main Agent', emoji: '🎯', group: 'system' },
+        { id: 'explore', name: 'Explore', emoji: '🔭', group: 'system' },
+        { id: 'plan', name: 'Plan', emoji: '📐', group: 'system' },
+      ];
+      const pipelineAgents = registry?.stages
+        ? Object.entries(registry.stages).map(([stageId, cfg]) => ({
+            id: cfg.agent, name: cfg.agent, emoji: cfg.emoji, stage: stageId, group: 'pipeline', color: cfg.color,
+          }))
+        : [];
+      const supportAgents = [
+        { id: 'security-reviewer', name: 'security', emoji: '🛡️', group: 'support' },
+        { id: 'build-error-resolver', name: 'build-err', emoji: '🔧', group: 'support' },
+        { id: 'pipeline-architect', name: 'pipeline-architect', emoji: '📐', group: 'support' },
+      ];
+      const allAgents = [...systemAgents, ...pipelineAgents, ...supportAgents];
 
-      // Main Agent 巡視邏輯（完成後回門口）
-      const cur = getCurrent(s);
-      const isDelegating = s.delegationActive;
-      const maPos = isComplete ? MA_IDLE : (MA_POS[cur] || MA_IDLE);
-
-      // Main Agent 對話台詞（根據狀態循環，營造指揮官交流感）
-      const maBubble = (() => {
-        if (isComplete) return ['🎉 收工！','完美的一天','大家辛苦了','全部 PASS！'][tick % 4];
-        if (!s?.expectedStages?.length) return ['等待任務...','☕ 先喝杯咖啡','...'][tick % 3];
-        const agent = cur ? SM[cur]?.agent : null;
-        if (isDelegating && agent) {
-          // 委派中：指令 ↔ 鼓勵 交替
-          const cmds = [`${agent}，開始！`,`交給你了`,`看你的`,`拜託了`];
-          const cheer = ['加油！','注意細節','不錯不錯...','繼續！','有進展嗎？'];
-          return tick % 3 === 0 ? cmds[Math.floor(tick/3) % cmds.length] : cheer[tick % cheer.length];
+      // 取得每個 agent 的簡化狀態
+      function getAgentStatus(agent) {
+        // 主 agent
+        if (agent.id === 'main') {
+          if (alive === false) return { status: 'idle', label: '閒置', dur: null };
+          const activeCount = getActiveStages(state).length;
+          if (activeCount > 0) return { status: 'delegating', label: '委派中', dur: null };
+          if (state?.pipelineActive) return { status: 'running', label: '運行中', dur: null };
+          return { status: 'idle', label: '閒置', dur: null };
         }
-        // 過渡中（剛完成 / 剛失敗）
-        const lastDone = [...(s.expectedStages||[])].reverse().find(st => s.stageResults?.[st]);
-        const lastR = lastDone ? s.stageResults[lastDone] : null;
-        if (lastR?.verdict === 'FAIL') return ['有問題！','回去修','需要重來','別急'][tick % 4];
-        if (lastR?.verdict === 'PASS') return ['漂亮！','下一位...','Nice！','繼續前進'][tick % 4];
-        return ['嗯...思考中','準備中...','讓我想想'][tick % 3];
-      })();
-
-      const maState = isDelegating ? 'active' : isComplete ? 'pass' : 'next';
-      const maShadow = charShadow(CHAR_MAIN, PAL_MAIN, EXPR_PAL[maState]);
-
-      // 白板增強資訊
-      const curAgent = cur ? SM[cur]?.agent : null;
-      const stagesDone = s.expectedStages?.filter(st => s.stageResults?.[st]?.verdict === 'PASS').length || 0;
-      const stagesTotal = s.expectedStages?.length || 0;
-
-      return html`
-        <div class="office${isComplete ? ' complete' : ''}" onClick=${() => setPinnedWs(null)}>
-          <div class="office-carpet"></div>
-          <div class="office-wall-top">
-            <span>🚪 ENTRANCE</span>
-            <div class="deco-clock">${now()}</div>
-          </div>
-
-          <!-- Main Agent 巡視角色 -->
-          <div class="main-agent ${isDelegating ? 'walking' : 'idle'}" style="left:${maPos.left};top:${maPos.top}">
-            <div class="ma-bubble">${maBubble}</div>
-            <div class="ma-char">
-              <div class="ma-pixel" style=${{ width: PXS+'px', height: PXS+'px', boxShadow: maShadow }}></div>
-            </div>
-            <div class="ma-label">MAIN</div>
-          </div>
-
-          <div class="office-row">
-            ${ROW1.map((stage, i) => html`
-              ${i > 0 && html`<div class="office-arrow ${arrowStatus(ROW1[i-1])}">→</div>`}
-              <${Workstation} stage=${stage} s=${s} tick=${tick} pinnedWs=${pinnedWs} setPinnedWs=${setPinnedWs} />
-            `)}
-            <div class="deco-item">
-              <div class="deco-coffee">☕</div>
-            </div>
-          </div>
-
-          <div class="office-turn ${arrowStatus('REVIEW')}">↓</div>
-
-          <div class="office-row">
-            ${r2.map((stage, i) => html`
-              ${i > 0 && html`<div class="office-arrow ${arrowStatus(r2[i])}">←</div>`}
-              <${Workstation} stage=${stage} s=${s} tick=${tick} pinnedWs=${pinnedWs} setPinnedWs=${setPinnedWs} />
-            `)}
-            <div class="deco-item"><span class="deco-plant">🌿</span></div>
-          </div>
-
-          <div class="office-deco">
-            <div class="deco-board">
-              <div>Pipeline</div>
-              <div class="bar"><div class="bar-fill" style="width:${progress}%"></div></div>
-              <div>${stagesDone}/${stagesTotal} · ${progress}%</div>
-              ${curAgent && html`<div style="margin-top:2px;color:var(--blue)">→ ${curAgent}</div>`}
-              <div style="margin-top:2px;color:var(--subtext0)">⏱ ${elapsed(s.startedAt || s.lastTransition)}</div>
-            </div>
-            <div class="deco-rack">
-              <div class="deco-rack-row"><div class="deco-led on"></div><div class="deco-led ${isDelegating ? 'blink' : 'on'}"></div><div class="deco-led on"></div></div>
-              <div class="deco-rack-row"><div class="deco-led ${isDelegating ? 'on' : 'off'}"></div><div class="deco-led on"></div><div class="deco-led off"></div></div>
-              <div class="deco-rack-row"><div class="deco-led on"></div><div class="deco-led off"></div><div class="deco-led on"></div></div>
-            </div>
-            <div class="deco-tank">
-              <div class="deco-fish">🐠</div>
-              <div class="deco-fish">🐟</div>
-              <div class="deco-bubble" style="left:10px;animation-delay:0s"></div>
-              <div class="deco-bubble" style="left:28px;animation-delay:1.5s"></div>
-              <div class="deco-bubble" style="left:18px;animation-delay:2.5s"></div>
-            </div>
-            <div class="deco-window">
-              <div class="deco-star" style="top:6px;left:6px;font-size:7px">✦</div>
-              <div class="deco-star" style="top:18px;left:20px;font-size:5px;animation-delay:0.5s">✦</div>
-              <div class="deco-star" style="bottom:8px;left:10px;font-size:4px;animation-delay:1s">·</div>
-              <div class="deco-star" style="top:10px;right:14px;font-size:6px;animation-delay:1.5s">✦</div>
-              <div class="deco-star" style="bottom:14px;right:8px;font-size:3px;animation-delay:0.7s">·</div>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    // --- Agent 狀態面板 ---
-    function getAgentInfo(agent, s, askPending, events, alive) {
-      let status = 'idle', statusLabel = '閒置', dur = null, tools = null, retries = 0;
-
-      if (agent.id === 'main') {
-        // Main Agent：閒置/等待/委派/運行
-        // alive===false 表示 session heartbeat 已消失 → 強制 idle（undefined=未知，不影響）
-        if (alive === false) { /* session 已結束 → 閒置 */ }
-        else if (!s || !s.taskType) { /* 尚未分類 → 閒置 */ }
-        else if (askPending) { /* 等待使用者輸入 = 閒置 */ }
-        else { status = s.delegationActive ? 'delegating' : 'running'; statusLabel = s.delegationActive ? '委派中' : '運行中'; }
-      } else {
-        // 所有 sub-agents：事件驅動偵測（適用 pipeline + support + system）
-        // 1. 正在運行？找最近的 delegation.start 看是不是這個 agent
-        if (s?.delegationActive && events?.length) {
-          const lastDel = events.find(e => e.eventType === 'delegation.start');
-          if (lastDel?.text?.includes(agent.id)) {
-            status = 'running'; statusLabel = '運行中';
+        // Pipeline stage agents
+        if (agent.stage) {
+          const dagKeys = Object.keys(state?.dag || {});
+          // 尋找含此 base stage 的 suffixed stages
+          const matchedStages = dagKeys.filter(k => k === agent.stage || k.split(':')[0] === agent.stage);
+          for (const sid of matchedStages) {
+            const status = getStageStatus(sid, state);
+            if (status === 'active') {
+              return { status: 'running', label: '運行中', dur: null };
+            }
           }
-        }
-        // 2. Pipeline 補充：已完成的階段顯示 pass/fail/duration
-        if (agent.stage && s?.stageResults?.[agent.stage]) {
-          const r = s.stageResults[agent.stage];
-          dur = r.duration; tools = r.toolCalls;
-          retries = s.retries?.[agent.stage] || 0;
-          if (status !== 'running') {
-            if (r.completedAt || r.verdict === 'PASS') { status = 'completed'; statusLabel = 'PASS'; }
-            else if (r.verdict === 'FAIL') { status = 'error'; statusLabel = r.severity || 'FAIL'; }
+          // 找已完成的最近一個
+          const completedStages = matchedStages.filter(k => getStageStatus(k, state) === 'completed' || getStageStatus(k, state) === 'failed');
+          if (completedStages.length > 0) {
+            const last = completedStages[completedStages.length - 1];
+            const verdict = getStageVerdict(last, state);
+            const dur = getStageDuration(last, state);
+            if (verdict === 'FAIL') return { status: 'error', label: getStageSeverity(last, state) || 'FAIL', dur };
+            return { status: 'completed', label: verdict || 'PASS', dur };
           }
+          return { status: 'idle', label: '等待', dur: null };
         }
-        // 3. Support agents：曾被委派 → 完成（無 stage 結果可查）
-        if (status === 'idle' && agent.group === 'support' && events?.length) {
-          if (events.some(e => e.eventType === 'delegation.start' && e.text?.includes(agent.id))) {
-            status = 'completed'; statusLabel = '完成';
-          }
+        // 從事件串流偵測 support/system agents
+        if (events?.length) {
+          const lastDel = events.find(e => e.eventType === 'delegation.start' && e.text?.includes(agent.id));
+          if (lastDel) return { status: 'completed', label: '完成', dur: null };
         }
-        // 4. Pipeline 排程：待命/等待/跳過（pipeline 完成後跳過，避免顯示待命）
-        if (status === 'idle' && !s?.isPipelineComplete && agent.stage && s?.expectedStages?.includes(agent.stage)) {
-          const st = getStatus(agent.stage, s);
-          if (st === 'next') { status = 'standby'; statusLabel = '待命'; }
-          else if (st === 'skipped') { status = 'skipped'; statusLabel = '跳過'; }
-          else if (st !== 'pass' && st !== 'fail' && st !== 'active') { status = 'pending'; statusLabel = '等待'; }
-        }
+        return { status: 'idle', label: '閒置', dur: null };
       }
 
-      const isActive = ['running', 'delegating'].includes(status);
-      const skillsLit = isActive;
-      return { ...agent, status, statusLabel, dur, tools, retries, isActive, skillsLit };
-    }
-
-    function AgentStatus({ s, tick, events, taskLabel, alive }) {
-      // 偵測 AskUserQuestion 等待中（最新事件是 ask.question = 正在等待回覆）
-      const askPending = useMemo(() => {
-        if (!events?.length) return false;
-        return events[0]?.eventType === 'ask.question';
-      }, [events]);
-      // 每個 agent 獨立計時器（agent 變 active 時記錄起始時間）
-      const timers = useRef({});
-      const allAgents = AGENT_ROSTER.map(a => getAgentInfo(a, s, askPending, events, alive));
-      // 同步計時器狀態（只在 running 時計時，delegating 暫停）
-      allAgents.forEach(a => {
-        const shouldTimer = a.status === 'running';
-        if (shouldTimer && !timers.current[a.id]) timers.current[a.id] = Date.now();
-        else if (!shouldTimer) delete timers.current[a.id];
+      const enriched = allAgents.map(a => ({ ...a, ...getAgentStatus(a) }));
+      // 同步計時器
+      enriched.forEach(a => {
+        if (a.status === 'running' && !timers.current[a.id]) timers.current[a.id] = Date.now();
+        else if (a.status !== 'running') delete timers.current[a.id];
       });
-      // 統計數據
-      const activeCount = allAgents.filter(a => a.isActive).length;
-      const completedCount = allAgents.filter(a => a.status === 'completed').length;
-      const totalDur = allAgents.reduce((sum, a) => sum + (a.dur || 0), 0);
-      // 分組（系統/Pipeline/輔助）
+
+      const activeCount = enriched.filter(a => a.status === 'running' || a.status === 'delegating').length;
+      const completedCount = enriched.filter(a => a.status === 'completed').length;
+
       const groups = [
-        { label: '系統', agents: allAgents.filter(a => a.group === 'system') },
-        { label: 'PIPELINE', agents: allAgents.filter(a => a.group === 'pipeline') },
-        { label: '輔助', agents: allAgents.filter(a => a.group === 'support') },
+        { label: '系統', agents: enriched.filter(a => a.group === 'system') },
+        { label: 'PIPELINE', agents: enriched.filter(a => a.group === 'pipeline') },
+        { label: '輔助', agents: enriched.filter(a => a.group === 'support') },
       ];
 
       const renderRow = (a) => {
         let durText = '';
-        if (a.status === 'running' && timers.current[a.id]) {
+        if ((a.status === 'running' || a.status === 'delegating') && timers.current[a.id]) {
           durText = fmtSec(Math.round((Date.now() - timers.current[a.id]) / 1000));
         } else if (a.dur) {
           durText = fmtSec(a.dur);
         }
         return html`
-          <div class="agent-row">
-            <span class="al ${a.status}"></span>
-            <span class="agent-name" style="${a.isActive ? `color:${a.color}` : ''}">${a.emoji} ${a.name}</span>
-            <span class="ac-chip">${a.role}</span>
-            <span class="ac-chip model">${a.model}</span>
-            <span class="ac-chip st-${a.status}">${a.statusLabel}</span>
-            <div class="agent-extra">
-              ${a.retries > 0 && html`<span class="ac-chip retry-chip">↻${a.retries}</span>`}
-              ${(a.skills || []).map(sk => html`<span class="ac-chip skill ${a.skillsLit ? 'skill-on' : ''}">${sk}</span>`)}
-              ${a.tools && html`<span class="ac-chip skill-on">🔧${a.tools}</span>`}
-            </div>
+          <div key=${a.id + (a.stage || '')} class="agent-row">
+            <span class="al ${a.status === 'running' || a.status === 'delegating' ? a.status : a.status === 'completed' ? 'completed' : a.status === 'error' ? 'error' : 'idle'}"></span>
+            <span class="agent-name" style="${(a.status === 'running' || a.status === 'delegating') && a.color ? 'color:' + a.color : ''}">${a.emoji} ${a.name}</span>
+            <span class="agent-status-text ${a.status}">${a.label}</span>
             <span class="agent-dur">${durText}</span>
           </div>
         `;
       };
 
+      // 記憶體格式化（MB）
+      const heapMB = memory ? Math.round(memory.heapUsed / 1024 / 1024) : null;
+
       return html`
         <div class="agent-panel">
           <div class="agent-panel-hdr">
-            <h3>🤖 Agents 當前狀態${taskLabel ? html` <span class="task-badge">${taskLabel}</span>` : ''}</h3>
+            <h3>🤖 Agents 當前狀態</h3>
             <div class="agent-panel-stats">
               <span class="agent-panel-stat">活躍 <span class="num">${activeCount}</span></span>
               <span class="agent-panel-stat">完成 <span class="num">${completedCount}</span></span>
-              ${totalDur > 0 && html`<span class="agent-panel-stat">耗時 <span class="num">${fmtSec(totalDur)}</span></span>`}
-              <span class="agent-panel-stat">共 <span class="num">${allAgents.length}</span></span>
+              ${heapMB !== null && html`<span class="agent-panel-stat" title="Server heap 用量">堆 <span class="num">${heapMB}MB</span></span>`}
             </div>
           </div>
-          ${groups.map((g, gi) => html`
-            ${gi > 0 && html`<div class="agent-sep"></div>`}
-            <div class="agent-group-label">${g.label}</div>
-            ${g.agents.map(renderRow)}
+          ${groups.map((g, gi) => g.agents.length > 0 && html`
+            <div key=${g.label}>
+              ${gi > 0 && html`<div class="agent-sep"></div>`}
+              <div class="agent-group-label">${g.label}</div>
+              ${g.agents.map(renderRow)}
+            </div>
           `)}
         </div>
       `;
@@ -1374,7 +786,6 @@
         const servers = {};
         for (const ev of events) {
           if (!ev.text) continue;
-          // 偵測 MCP 格式：server:method（例如 chrome:computer、claude-mem:search）
           const m = ev.text.match(/^([a-z][a-z0-9_-]*):/i);
           if (!m) continue;
           const server = m[1];
@@ -1394,7 +805,7 @@
           ${stats.map(([server, s]) => {
             const topMethods = Object.entries(s.methods).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([m]) => m).join(', ');
             return html`
-              <div class="mcp-row">
+              <div key=${server} class="mcp-row">
                 <span class="mcp-server">${server}</span>
                 <span class="mcp-count">${s.count}</span>
                 <div class="mcp-bar"><div class="mcp-fill" style="width:${(s.count / maxCount * 100)}%"></div></div>
@@ -1406,40 +817,119 @@
       `;
     }
 
-    // --- Confetti 慶祝元件 ---
+    // --- 統計卡片（4 張）---
+    function StatsCards({ state, events, tick }) {
+      // 統計1：Compact 次數（從 timeline 事件計算）
+      const compactCount = useMemo(() =>
+        events.filter(e => e.eventType === 'session.compact' || e.text?.includes('compact')).length,
+        [events]
+      );
+      // 統計2：Guard 攔截次數
+      const guardCount = useMemo(() =>
+        events.filter(e => e.eventType === 'tool.blocked').length,
+        [events]
+      );
+      // 統計3：Retry 回退次數（從 state.retries 求和）
+      const retryCount = useMemo(() =>
+        Object.values(state?.retries || {}).reduce((a, b) => a + (b || 0), 0),
+        [state]
+      );
+      // 統計4：Session 時長（從 classifiedAt 計算）
+      const startedAt = state?.classification?.classifiedAt;
+      const sessionDur = startedAt ? fmtDuration(startedAt) : '—';
+
+      return html`
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-label">📦 Compact</span>
+            <span class="stat-value">${compactCount}</span>
+            <span class="stat-sub">context 壓縮次數</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">🛡️ Guard 攔截</span>
+            <span class="stat-value">${guardCount}</span>
+            <span class="stat-sub">pipeline-guard 阻擋</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">🔁 Retry 回退</span>
+            <span class="stat-value">${retryCount}</span>
+            <span class="stat-sub">各 stage 重試總和</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">⏱ Session 時長</span>
+            <span class="stat-value" style="font-size:16px">${sessionDur}</span>
+            <span class="stat-sub">${startedAt ? new Date(startedAt).toLocaleTimeString('zh-TW', { hour12: false }) : '未開始'}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    // --- 動態 Pipeline 進度條 ---
+    function PipelineProgressBar({ state, registry }) {
+      if (!hasPipeline(state)) return null;
+      const dag = state.dag || {};
+      const dagKeys = Object.keys(dag);
+      const progress = getPipelineProgress(state);
+      const isComp = progress === 100;
+
+      return html`
+        <div class="pipeline-progress">
+          <h3 style="display:flex;align-items:center;justify-content:space-between">
+            <span>📊 Pipeline 進度</span>
+            <span style="font-size:12px;color:${isComp ? 'var(--green)' : 'var(--blue)'};font-weight:700">${progress}%</span>
+          </h3>
+          <div class="pipeline-stages-bar">
+            ${dagKeys.map(id => {
+              const status = getStageStatus(id, state);
+              const stageBase = id.split(':')[0];
+              const meta = registry?.stages?.[stageBase];
+              return html`
+                <div key=${id} class="ps-block">
+                  <span class="ps-label">${meta?.emoji || ''} ${id}</span>
+                  <div class="ps-bar ${status}"></div>
+                </div>
+              `;
+            })}
+          </div>
+        </div>
+      `;
+    }
+
+    // --- Confetti ---
     const CONFETTI_COLORS = ['#a6e3a1', '#89b4fa', '#f9e2af', '#f5c2e7', '#cba6f7', '#89dceb', '#fab387', '#f38ba8'];
     function Confetti() {
       const pieces = useMemo(() => Array.from({ length: 60 }, (_, i) => ({
-        left: Math.random() * 100,
-        delay: Math.random() * 1.5,
-        dur: 2.5 + Math.random() * 2,
-        color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-        w: 5 + Math.random() * 7,
-        h: 3 + Math.random() * 5,
+        left: Math.random() * 100, delay: Math.random() * 1.5, dur: 2.5 + Math.random() * 2,
+        color: CONFETTI_COLORS[i % CONFETTI_COLORS.length], w: 5 + Math.random() * 7, h: 3 + Math.random() * 5,
       })), []);
       return html`<div class="confetti-wrap">
-        ${pieces.map(p => html`<div class="confetti-piece" style="left:${p.left}%;--delay:${p.delay}s;--dur:${p.dur}s;background:${p.color};width:${p.w}px;height:${p.h}px"></div>`)}
+        ${pieces.map((p, i) => html`<div key=${i} class="confetti-piece" style="left:${p.left}%;--delay:${p.delay}s;--dur:${p.dur}s;background:${p.color};width:${p.w}px;height:${p.h}px"></div>`)}
       </div>`;
     }
 
     // --- 報告導出 ---
-    function exportReport(s, active, events, format) {
-      if (!s) return;
-      const stages = ALL_STAGES.map(stage => {
-        const status = getStatus(stage, s);
-        const r = s.stageResults?.[stage];
-        return { stage, agent: SM[stage].agent, label: SM[stage].label, status, verdict: r?.verdict || (status === 'skipped' ? 'SKIP' : '—'), retries: s.retries?.[stage] || 0 };
+    function exportReport(state, sessionId, events, format, registry) {
+      if (!state) return;
+      const dag = state.dag || {};
+      const stages = Object.keys(dag).map(id => {
+        const status = getStageStatus(id, state);
+        const verdict = getStageVerdict(id, state);
+        const meta = registry?.stages?.[id.split(':')[0]];
+        return { stage: id, agent: meta?.agent || '—', label: meta?.label || id, status, verdict: verdict || (status === 'skipped' ? 'SKIP' : '—'), retries: state.retries?.[id] || 0 };
       });
+      const pid = state.classification?.pipelineId;
+      const pLabel = (registry?.pipelines?.[pid]?.label) || pid || '—';
+
       if (format === 'json') {
-        const report = { sessionId: active, pipelineId: s.pipelineId, taskType: s.taskType, progress: pct(s) + '%', environment: s.environment, stages, timeline: events.slice(0, 50).map(e => ({ time: e.time, text: e.text, type: e.type })), exportedAt: new Date().toISOString() };
+        const report = { sessionId, pipelineId: pid, progress: getPipelineProgress(state) + '%', stages, timeline: events.slice(0, 50).map(e => ({ time: e.time, text: e.text, type: e.type })), exportedAt: new Date().toISOString() };
         const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `pipeline-${active?.slice(0, 8) || 'report'}.json`; a.click();
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `pipeline-${sessionId?.slice(0, 8) || 'report'}.json`; a.click();
       } else {
-        const lines = [`# Pipeline Report\n`, `- **Session**: ${active}`, `- **Pipeline**: ${typeLabel(s.pipelineId || s.taskType)}`, `- **Progress**: ${pct(s)}%`, `- **Exported**: ${new Date().toISOString()}\n`, `## Stages\n`, `| Stage | Agent | Verdict | Retries |`, `|-------|-------|---------|---------|`];
+        const lines = [`# Pipeline Report\n`, `- **Session**: ${sessionId}`, `- **Pipeline**: ${pLabel}`, `- **Progress**: ${getPipelineProgress(state)}%`, `- **Exported**: ${new Date().toISOString()}\n`, `## Stages\n`, `| Stage | Agent | Verdict | Retries |`, `|-------|-------|---------|---------|`];
         for (const st of stages) lines.push(`| ${st.stage} | ${st.agent} | ${st.verdict} | ${st.retries} |`);
         if (events.length) { lines.push(`\n## Timeline\n`); for (const ev of events.slice(0, 30)) lines.push(`- \`${ev.time}\` ${ev.text}`); }
         const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `pipeline-${active?.slice(0, 8) || 'report'}.md`; a.click();
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `pipeline-${sessionId?.slice(0, 8) || 'report'}.md`; a.click();
       }
     }
 
@@ -1448,44 +938,52 @@
       const [sessions, setSessions] = useState({});
       const [active, setActive] = useState(null);
       const [conn, setConn] = useState(false);
-      const [events, setEvents] = useState([]);
       const [sideOpen, setSideOpen] = useState(true);
-      const [sort, setSort] = useState('recent');
       const [tlOpen, setTlOpen] = useState(true);
       const [fullscreen, setFullscreen] = useState(false);
       const [toast, setToast] = useState(null);
-      const [theme, setTheme] = useState('default');
-      const [focusCards, setFocusCards] = useState(false);
       const [tick, setTick] = useState(0);
       const [showConfetti, setShowConfetti] = useState(false);
       const [zoom, setZoom] = useState(100);
       const [timelineEvents, setTimelineEvents] = useState({});
-      const [alive, setAlive] = useState({}); // sessionId → boolean（heartbeat 活性）
-      const [barrierStates, setBarrierStates] = useState({}); // sessionId → barrier state
-      const [tlFilter, setTlFilter] = useState(0); // 0=全部, 10/30/60=分鐘
-      const [tlTab, setTlTab] = useState('all'); // all/agent/pipeline/quality/task
-      const [mainTab, setMainTab] = useState('dashboard'); // dashboard/pipeline/timeline
-      const prevRef = useRef({});
+      const [alive, setAlive] = useState({});
+      const [barrierStates, setBarrierStates] = useState({});
+      const [memory, setMemory] = useState(null);
+      const [tlFilter, setTlFilter] = useState(0);
+      const [tlTab, setTlTab] = useState('all');
+      const [mainTab, setMainTab] = useState('dashboard');
+      const [registry, setRegistry] = useState(null);
+      const [showStale, setShowStale] = useState(false);
       const confettiShown = useRef(new Set());
 
-      // 合併 alive 狀態到 sessions（_alive 欄位供 sessionCategory/isLive 使用）
-      // 同時加入 heartbeat-only sessions（有 heartbeat 但無 pipeline-state 的活躍終端）
+      // 載入 registry
+      useEffect(() => {
+        fetch('/api/registry')
+          .then(r => r.json())
+          .then(setRegistry)
+          .catch(() => {});
+      }, []);
+
+      // registry typeLabel 函式
+      const typeLabel = (t) => {
+        if (!registry) return t || '—';
+        const p = registry.pipelines?.[t];
+        return p?.label || t || '—';
+      };
+
+      // 合併 alive 狀態
       const mergedSessions = useMemo(() => {
         const out = {};
         for (const [id, s] of Object.entries(sessions)) {
           out[id] = alive[id] ? { ...s, _alive: true } : s;
         }
-        // Heartbeat-only sessions（活著但無 pipeline state）
         for (const id of Object.keys(alive)) {
-          if (alive[id] && !out[id]) {
-            out[id] = { _alive: true, _heartbeatOnly: true };
-          }
+          if (alive[id] && !out[id]) out[id] = { _alive: true, _heartbeatOnly: true };
         }
         return out;
       }, [sessions, alive]);
 
-      // 分組：live + active | done | stale
-      const [showStale, setShowStale] = useState(false);
+      // 分組（活躍優先 → 最近活動）自動排序
       const { liveSessions, doneSessions, staleSessions } = useMemo(() => {
         const live = [], done = [], stale = [];
         for (const [id, s] of Object.entries(mergedSessions)) {
@@ -1494,27 +992,24 @@
           else if (cat === 'done') done.push([id, s]);
           else stale.push([id, s]);
         }
-        // alive 優先排序（活著的終端永遠在最上面）
-        const aliveFirst = (a, b) => (b[1]._alive ? 1 : 0) - (a[1]._alive ? 1 : 0);
-        const sortFn = sort === 'progress' ? (a, b) => aliveFirst(a, b) || pct(b[1]) - pct(a[1])
-          : sort === 'type' ? (a, b) => aliveFirst(a, b) || (a[1].pipelineId || a[1].taskType || '').localeCompare(b[1].pipelineId || b[1].taskType || '')
-          : (a, b) => aliveFirst(a, b) || new Date(b[1].lastTransition || 0) - new Date(a[1].lastTransition || 0);
-        live.sort(sortFn);
-        done.sort((a, b) => new Date(b[1].lastTransition || 0) - new Date(a[1].lastTransition || 0));
-        stale.sort((a, b) => new Date(b[1].lastTransition || 0) - new Date(a[1].lastTransition || 0));
+        // 活躍優先 → 最近活動時間排序
+        const byRecent = (a, b) => {
+          const aAlive = a[1]._alive ? 1 : 0, bAlive = b[1]._alive ? 1 : 0;
+          if (aAlive !== bAlive) return bAlive - aAlive;
+          return new Date(b[1].meta?.lastTransition || 0) - new Date(a[1].meta?.lastTransition || 0);
+        };
+        live.sort(byRecent);
+        done.sort((a, b) => new Date(b[1].meta?.lastTransition || 0) - new Date(a[1].meta?.lastTransition || 0));
+        stale.sort((a, b) => new Date(b[1].meta?.lastTransition || 0) - new Date(a[1].meta?.lastTransition || 0));
         return { liveSessions: live, doneSessions: done, staleSessions: stale };
-      }, [mergedSessions, sort]);
+      }, [mergedSessions]);
 
-      // --- 計算值（必須在 useEffect 之前）---
       const s = active ? mergedSessions[active] : null;
       const activeBarrier = active ? barrierStates[active] : null;
-      const progress = s ? pct(s) : 0;
+      const progress = s ? getPipelineProgress(s) : 0;
       const isComplete = progress === 100 && hasPipeline(s);
-      const selectSession = id => { setActive(id); setEvents([]); prevRef.current = {}; };
-      const clearTimeline = () => { if (active) setTimelineEvents(prev => ({ ...prev, [active]: [] })); };
-      const row2Reversed = [...ROW2].reverse();
+      const selectSession = id => { setActive(id); };
 
-      // Timeline 篩選（時間 + 分類雙重過濾，tick 每秒觸發重算）
       const tlAll = timelineEvents[active] || [];
       const tlFiltered = useMemo(() => {
         let list = tlAll;
@@ -1523,7 +1018,7 @@
         return list;
       }, [tlAll, tlFilter, tlTab, tick]);
 
-      // 每秒 tick（驅動 elapsed 更新 + 資源刷新）
+      // 每秒 tick
       useEffect(() => { const id = setInterval(() => setTick(t => t + 1), 1000); return () => clearInterval(id); }, []);
 
       // Confetti 觸發
@@ -1547,16 +1042,16 @@
           ws.onmessage = e => {
             if (e.data === 'pong') return;
             const m = JSON.parse(e.data);
-            if (m.sessions) setSessions(Object.fromEntries(Object.entries(m.sessions).map(([k, v]) => [k, adaptState(v)])));
+            // 直接存原始 v4 state（不 adaptState）
+            if (m.sessions) setSessions(m.sessions);
             if (m.alive) setAlive(prev => ({ ...prev, ...m.alive }));
-            // Timeline 事件推送（增量更新）
+            if (m.memory) setMemory(m.memory);
             if (m.type === 'timeline' && m.sessionId && m.event) {
               setTimelineEvents(prev => {
                 const list = prev[m.sessionId] || [];
                 return { ...prev, [m.sessionId]: [m.event, ...list].slice(0, 200) };
               });
             }
-            // Barrier 狀態更新
             if (m.type === 'barrier' && m.sessionId) {
               setBarrierStates(prev => ({ ...prev, [m.sessionId]: m.barrierState }));
             }
@@ -1566,7 +1061,7 @@
         return () => { ws?.close(); clearTimeout(rt); clearInterval(hb); };
       }, []);
 
-      // 縮放控制 — 攔截 CMD+/CMD-/CMD+0，僅縮放頁面不影響 VSCode
+      // 縮放控制
       useEffect(() => {
         function onZoom(e) {
           if (!(e.metaKey || e.ctrlKey)) return;
@@ -1578,11 +1073,10 @@
         return () => window.removeEventListener('keydown', onZoom, true);
       }, []);
 
-      // 套用縮放 — transform: scale() + 容器尺寸補償（填滿整個視窗）
       const zoomStyle = useMemo(() => {
         if (zoom === 100) return '';
-        const s = zoom / 100;
-        return `transform:scale(${s});transform-origin:0 0;width:${100/s}vw;height:${100/s}vh;`;
+        const sc = zoom / 100;
+        return `transform:scale(${sc});transform-origin:0 0;width:${100/sc}vw;height:${100/sc}vh;`;
       }, [zoom]);
 
       // 鍵盤快捷鍵
@@ -1598,18 +1092,16 @@
             case 's': case 'S': setSideOpen(p => !p); showToast('S — 側邊欄切換'); break;
             case 'f': case 'F': setFullscreen(p => !p); showToast('F — 全螢幕切換'); break;
             case 't': case 'T': setMainTab('timeline'); showToast('T — Timeline'); break;
-            case 'p': case 'P': setTheme(t => t === 'default' ? 'pixel' : 'default'); showToast('P — 主題切換'); break;
-            case 'c': case 'C': setFocusCards(p => !p); showToast('C — 卡片聚焦'); break;
             case '1': setMainTab('dashboard'); showToast('1 — Dashboard'); break;
             case '2': setMainTab('pipeline'); showToast('2 — Pipeline'); break;
             case '3': setMainTab('timeline'); showToast('3 — Timeline'); break;
-            case '?': showToast('1/2/3 Tab · ↑↓ 切換 · S 側邊 · F 全螢幕 · C 聚焦 · E 導出 · P 主題 · ⌘± 縮放'); break;
-            case 'e': case 'E': if (s) { exportReport(s, active, events, 'md'); showToast('E — 導出 Markdown'); } break;
+            case '?': showToast('1/2/3 Tab · ↑↓ 切換 · S 側邊 · F 全螢幕 · E 導出 · ⌘± 縮放'); break;
+            case 'e': case 'E': if (s) { exportReport(s, active, tlAll, 'md', registry); showToast('E — 導出 Markdown'); } break;
           }
         }
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-      }, [active, liveSessions, doneSessions, staleSessions, s, events]);
+      }, [active, liveSessions, doneSessions, staleSessions, s, tlAll, registry]);
 
       function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2000); }
 
@@ -1617,79 +1109,43 @@
       useEffect(() => {
         const sids = Object.keys(mergedSessions);
         if (!sids.length) return;
-        // 找到正在工作的 session（delegationActive 或 alive）
-        const liveSid = liveSessions.find(([, ss]) => ss._alive || ss.delegationActive)?.[0];
-        // 如果有活躍 session 且不是當前選的 → 自動切換
+        const liveSid = liveSessions.find(([, ss]) => ss._alive || isLive(ss))?.[0];
         if (liveSid && liveSid !== active) { selectSession(liveSid); return; }
-        // 如果當前 active 已消失 → 選最近的
         if (!active || !mergedSessions[active]) {
           setActive(liveSessions[0]?.[0] || doneSessions[0]?.[0] || sids[sids.length - 1]);
         }
       }, [mergedSessions, liveSessions]);
 
-      // Timeline 追蹤
-      useEffect(() => {
-        if (!active || !mergedSessions[active]) return;
-        const curr = mergedSessions[active], prev = prevRef.current[active], t = now();
-        if (prev) {
-          for (const agent of (curr.completed || []).filter(a => !(prev.completed || []).includes(a))) {
-            const e = Object.entries(SM).find(([, m]) => m.agent === agent);
-            if (e) { const [stage, meta] = e; const v = curr.stageResults?.[stage]?.verdict; const sev = curr.stageResults?.[stage]?.severity;
-              setEvents(ev => [{ time: t, text: `${meta.emoji} ${meta.label}（${agent}）→ ${v || '完成'}${sev ? ' ['+sev+']' : ''}`, type: v?.toLowerCase() || 'info' }, ...ev]); }
-          }
-          if (curr.delegationActive && !prev.delegationActive) { const cur = getCurrent(curr); if (cur && SM[cur]) setEvents(ev => [{ time: t, text: `${SM[cur].emoji} ${SM[cur].label}（${SM[cur].agent}）開始工作...`, type: 'active' }, ...ev]); }
-          const currType = curr.pipelineId || curr.taskType;
-          const prevType = prev.pipelineId || prev.taskType;
-          if (currType && !prevType) setEvents(ev => [{ time: t, text: `🏷️ 任務分類：${typeLabel(currType)}（${curr.expectedStages?.length || 0} 階段）`, type: 'info' }, ...ev]);
-          for (const stage of Object.keys(curr.retries || {}).filter(k => (curr.retries[k] || 0) > (prev.retries?.[k] || 0)))
-            setEvents(ev => [{ time: t, text: `🔁 ${stage} 重試 #${curr.retries[stage]}`, type: 'fail' }, ...ev]);
-          if (pct(curr) === 100 && pct(prev) < 100) setEvents(ev => [{ time: t, text: `🎉 Pipeline 完成！所有階段通過`, type: 'pass' }, ...ev]);
-        }
-        prevRef.current[active] = JSON.parse(JSON.stringify(curr));
-      }, [sessions, active]);
-
       return html`
-        <div class="${theme === 'pixel' ? 'pixel ' : ''}${focusCards ? 'focus-cards ' : ''}layout ${sideOpen && !fullscreen ? '' : fullscreen ? 'fullscreen' : 'collapsed'}"
-          style="${zoomStyle}${theme === 'pixel' ? 'image-rendering:pixelated' : ''}"
-        >
-          <!-- Confetti -->
+        <div class="layout ${sideOpen && !fullscreen ? '' : fullscreen ? 'fullscreen' : 'collapsed'}" style="${zoomStyle}">
           ${showConfetti && html`<${Confetti} />`}
-          <!-- Toast -->
           ${toast && html`<div class="kbd-toast">${toast}</div>`}
+
           <!-- Sidebar -->
           <div class="sidebar">
             <div class="sb-top">
               <button class="sb-toggle" onClick=${() => setSideOpen(!sideOpen)}>${sideOpen ? '◀' : '▶'}</button>
+              ${sideOpen && html`<div class="conn"><span class="dot ${conn ? 'on' : 'off'}"></span><span>${conn ? '已連線' : '連線中…'}</span></div>`}
             </div>
             <div class="sb-body">
-              ${sideOpen && html`
-                <div class="filter-bar">
-                  <label>排序</label>
-                  <select value=${sort} onChange=${e => setSort(e.target.value)}>
-                    <option value="recent">最近活動</option>
-                    <option value="progress">進度</option>
-                    <option value="type">類型</option>
-                  </select>
-                </div>
-              `}
-
               ${liveSessions.length > 0 && html`
                 <div class="group-hdr"><h2>進行中</h2><span class="count">${liveSessions.length}</span></div>
                 ${liveSessions.map(([id, ss]) => {
                   const cat = sessionCategory(ss);
-                  const p = pct(ss);
-                  const stage = currentStageName(ss);
+                  const p = getPipelineProgress(ss);
+                  const stage = currentStageName(ss, registry);
                   return html`
-                    <div class="sc ${cat} ${id === active ? 'selected' : ''}" data-pct="${p}%" onClick=${() => selectSession(id)} title=${id}>
+                    <div key=${id} class="sc ${cat} ${id === active ? 'selected' : ''}" data-pct="${p}%" onClick=${() => selectSession(id)} title=${id}>
                       <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
                       <div class="sc-title">
                         ${isLive(ss) && html`<span class="live-dot"></span>`}
-                        ${sessionName(ss)}
+                        ${sessionName(ss, registry)}
                       </div>
-                      <div class="sc-sub">${sid(id)} · ${elapsed(ss.startedAt || ss.lastTransition)}</div>
+                      <div class="sc-sub">${sid(id)} · ${elapsed(ss.meta?.lastTransition || ss.classification?.classifiedAt)}</div>
                       ${stage && html`<div class="sc-meta">${stage}${p > 0 ? ` · ${p}%` : ''}</div>`}
-                      ${hasPipeline(ss) && html`<div class="sc-bar"><div class="sc-bar-fill" style="width:${p}%"></div></div>`}
-                    </div>`;
+                      ${hasPipeline(ss) && html`<div class="sc-bar"><div class="sc-bar-fill ${p >= 100 ? 'complete' : ''}" style="width:${p}%"></div></div>`}
+                    </div>
+                  `;
                 })}
               `}
 
@@ -1699,10 +1155,10 @@
                   <button class="cleanup-btn" onClick=${() => doneSessions.forEach(([id]) => deleteSession(id))}>清理</button>
                 </div>
                 ${doneSessions.map(([id, ss]) => html`
-                  <div class="sc done ${id === active ? 'selected' : ''}" data-pct="✅" onClick=${() => selectSession(id)} title=${id}>
+                  <div key=${id} class="sc done ${id === active ? 'selected' : ''}" data-pct="✅" onClick=${() => selectSession(id)} title=${id}>
                     <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
-                    <div class="sc-title">✅ ${sessionName(ss)}</div>
-                    <div class="sc-sub">${sid(id)} · ${elapsed(ss.lastTransition)}</div>
+                    <div class="sc-title">✅ ${sessionName(ss, registry)}</div>
+                    <div class="sc-sub">${sid(id)} · ${elapsed(ss.meta?.lastTransition)}</div>
                   </div>
                 `)}
               `}
@@ -1714,10 +1170,10 @@
                   <button class="cleanup-btn" style="margin-left:auto" onClick=${e => { e.stopPropagation(); cleanupStale(); }}>清理</button>
                 </div>
                 ${showStale && staleSessions.map(([id, ss]) => html`
-                  <div class="sc stale ${id === active ? 'selected' : ''}" data-pct="—" onClick=${() => selectSession(id)} title=${id}>
+                  <div key=${id} class="sc stale ${id === active ? 'selected' : ''}" data-pct="—" onClick=${() => selectSession(id)} title=${id}>
                     <button class="x" onClick=${e => { e.stopPropagation(); deleteSession(id); }}>×</button>
-                    <div class="sc-title">${sessionName(ss)}</div>
-                    <div class="sc-sub">${sid(id)} · ${elapsed(ss.lastTransition)} 前</div>
+                    <div class="sc-title">${sessionName(ss, registry)}</div>
+                    <div class="sc-sub">${sid(id)} · ${elapsed(ss.meta?.lastTransition)} 前</div>
                   </div>
                 `)}
               `}
@@ -1740,11 +1196,10 @@
                 <div style="font-size:14px">Session 活躍中 — 尚未啟動 Pipeline</div>
                 <div style="font-size:12px;margin-top:8px;opacity:0.7">使用 <code>[pipeline:xxx]</code> 語法或自然語言描述任務來啟動工作流</div>
               </div>
-              ${(timelineEvents[active] || []).length > 0 && html`
-                <h2 style="font-size:13px;margin:16px 0 8px;color:var(--subtext0)">Timeline</h2>
-                <div class="tl-list" style="max-height:400px;overflow-y:auto">
-                  ${(timelineEvents[active] || []).slice(0, 50).map(ev => html`
-                    <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
+              ${tlAll.length > 0 && html`
+                <div class="tl-items-wrap" style="max-height:400px;overflow-y:auto">
+                  ${tlAll.slice(0, 50).map((ev, i) => html`
+                    <div key=${i} class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
                   `)}
                 </div>
               `}
@@ -1752,14 +1207,11 @@
               <h1>
                 🎯 Pipeline — ${sid(active)}
                 ${isComplete && html`<span style="margin-left:4px">🎉</span>`}
-                ${s.cancelled && html`<span class="task-badge" style="background:rgba(243,139,168,0.15);color:var(--red);margin-left:4px">已取消</span>`}
                 <div class="toolbar">
-                  <button class="tool-btn ${theme === 'pixel' ? 'active' : ''}" onClick=${() => setTheme(t => t === 'default' ? 'pixel' : 'default')} title="像素風 (P)">🎮 像素</button>
-                  <button class="tool-btn ${focusCards ? 'active' : ''}" onClick=${() => setFocusCards(!focusCards)} title="卡片聚焦 (C)">🃏 聚焦</button>
                   <button class="tool-btn ${fullscreen ? 'active' : ''}" onClick=${() => setFullscreen(!fullscreen)} title="全螢幕 (F)">${fullscreen ? '⊡' : '⊞'} 全螢幕</button>
                   <div class="toolbar-sep"></div>
-                  <button class="tool-btn" onClick=${() => exportReport(s, active, events, 'md')} title="導出 Markdown (E)">📄 MD</button>
-                  <button class="tool-btn" onClick=${() => exportReport(s, active, events, 'json')} title="導出 JSON">{ } JSON</button>
+                  <button class="tool-btn" onClick=${() => exportReport(s, active, tlAll, 'md', registry)} title="導出 Markdown (E)">📄 MD</button>
+                  <button class="tool-btn" onClick=${() => exportReport(s, active, tlAll, 'json', registry)} title="導出 JSON">{ } JSON</button>
                   <div class="toolbar-sep"></div>
                   <button class="tool-btn" onClick=${() => setZoom(z => Math.max(50, z - 10))} title="縮小 (⌘-)">−</button>
                   <button class="tool-btn" style="min-width:48px;justify-content:center;font-variant-numeric:tabular-nums" onClick=${() => setZoom(100)} title="重設縮放 (⌘0)">${zoom}%</button>
@@ -1776,48 +1228,29 @@
                 <button class="main-tab ${mainTab === 'timeline' ? 'active' : ''}" onClick=${() => setMainTab('timeline')}>📋 Timeline${tlAll.length ? html`<span class="tab-count">(${tlAll.length})</span>` : ''}</button>
               </div>
 
-              <!-- Tab: Dashboard（雙欄：左=Agents+MCP，右=Timeline） -->
+              <!-- Tab: Dashboard -->
               ${mainTab === 'dashboard' && html`
               <div class="dash-grid">
                 <div class="dash-left">
-                  <${AgentStatus} s=${s} tick=${tick} events=${tlAll} taskLabel=${(s.pipelineId || s.taskType) ? typeLabel(s.pipelineId || s.taskType) : ''} alive=${active ? !!alive[active] : false} />
+                  <${AgentStatus} state=${s} tick=${tick} events=${tlAll} registry=${registry} alive=${active ? !!alive[active] : false} memory=${memory} />
                   <${MCPStats} events=${tlAll} />
-                  ${hasPipeline(s) && !isComplete && html`
-                    <div class="summary">
-                      <h3>📊 Pipeline 進度</h3>
-                      ${(s.expectedStages || []).map(stage => {
-                        const st = getStatus(stage, s);
-                        const r = s.stageResults?.[stage];
-                        const meta = SM[stage];
-                        return html`<div class="light-row">
-                          <span class="light ${st === 'pass' ? 'pass' : st === 'fail' || st === 'active' ? 'fail' : st === 'skipped' ? 'skip' : ''}"></span>
-                          <span class="light-stage">${meta?.emoji || ''} ${stage}</span>
-                          <span class="light-label">${meta?.label || stage}</span>
-                          <span class="light-verdict" style="color:var(--${st === 'pass' ? 'green' : st === 'active' ? 'blue' : st === 'fail' ? 'red' : 'subtext0'})">${
-                            st === 'active' ? '進行中' : st === 'pass' ? 'PASS' : st === 'fail' ? (r?.severity || 'FAIL') : st === 'next' ? '等待中' : st === 'skipped' ? '跳過' : '—'
-                          }</span>
-                        </div>`;
-                      })}
-                    </div>
-                  `}
+                  <${StatsCards} state=${s} events=${tlAll} tick=${tick} />
+                  <${PipelineProgressBar} state=${s} registry=${registry} />
                   ${isComplete && html`
-                    <!-- 完成摘要 -->
                     <div class="cards">
                       <div class="card">
                         <h3>🎉 完成摘要</h3>
-                        <div class="row"><span class="label">Pipeline</span><span class="value">${typeLabel(s.pipelineId || s.taskType)}</span></div>
-                        <div class="row"><span class="label">階段</span><span class="value" style="color:var(--green)">${(s.expectedStages || []).length} / ${(s.expectedStages || []).length} 全部通過</span></div>
+                        <div class="row"><span class="label">Pipeline</span><span class="value">${typeLabel(s.classification?.pipelineId)}</span></div>
+                        <div class="row"><span class="label">進度</span><span class="value" style="color:var(--green)">100% 完成</span></div>
                         <div class="row"><span class="label">總重試</span><span class="value">${Object.values(s.retries || {}).reduce((a, b) => a + b, 0) || '無'}</span></div>
-                        ${s.skippedStages?.length > 0 && html`<div class="row"><span class="label">已跳過</span><span class="value" style="color:var(--subtext0)">${s.skippedStages.join(', ')}</span></div>`}
-                        <div class="row"><span class="label">經過時間</span><span class="value">${elapsed(s.startedAt || s.lastTransition)}</span></div>
+                        <div class="row"><span class="label">時長</span><span class="value">${elapsed(s.classification?.classifiedAt || s.meta?.lastTransition)}</span></div>
                       </div>
                       <div class="card">
                         <h3>⏱ 各階段耗時</h3>
-                        ${(s.expectedStages || []).map(stage => {
-                          const r = s.stageResults?.[stage];
-                          const dur = r?.duration;
-                          const tools = r?.toolCalls;
-                          return html`<div class="row"><span class="label">${SM[stage]?.emoji || ''} ${stage}</span><span class="value">${dur ? fmtSec(dur) : '—'}${tools ? ` · ${tools} calls` : ''}</span></div>`;
+                        ${Object.keys(s.dag || {}).map(id => {
+                          const dur = getStageDuration(id, s);
+                          const meta = registry?.stages?.[id.split(':')[0]];
+                          return html`<div key=${id} class="row"><span class="label">${meta?.emoji || ''} ${id}</span><span class="value">${dur ? fmtSec(dur) : '—'}</span></div>`;
                         })}
                       </div>
                     </div>
@@ -1826,16 +1259,14 @@
                 <div class="dash-right">
                   <div class="mini-tl">
                     <div style="display:flex;align-items:center;justify-content:space-between">
-                      <h4>📋 最近事件</h4>
-                      ${tlAll.length > 0 && html`<button class="tl-clear" onClick=${clearTimeline}>清除</button>`}
+                      <h4>📋 里程碑事件</h4>
                     </div>
                     <div class="tl-items-wrap">
                       ${(() => {
-                        // 里程碑過濾：只顯示重要事件（delegation/stage/pipeline/block/ask），過濾 tool.used 噪音
-                        const MILESTONE_TYPES = ['delegation.start', 'delegation.end', 'stage.start', 'stage.complete', 'stage.retry', 'pipeline.init', 'pipeline.classified', 'pipeline.complete', 'pipeline.cancelled', 'block.prevented', 'ask.question', 'ask.answered', 'session.start'];
+                        const MILESTONE_TYPES = ['delegation.start', 'stage.start', 'stage.complete', 'stage.retry', 'stage.crash-recovery', 'pipeline.complete', 'pipeline.incomplete', 'pipeline.cancelled', 'task.classified', 'ask.question', 'ask.answered', 'session.start'];
                         const milestones = tlAll.filter(ev => MILESTONE_TYPES.includes(ev.eventType));
-                        return milestones.length ? milestones.map(ev => html`
-                          <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
+                        return milestones.length ? milestones.map((ev, i) => html`
+                          <div key=${i} class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
                         `) : html`<div style="color:var(--subtext0);font-size:10px">等待事件流…</div>`;
                       })()}
                     </div>
@@ -1844,31 +1275,10 @@
               </div>
               `}
 
-              <!-- Tab: Pipeline -->
+              <!-- Tab: Pipeline（DAG 流程圖） -->
               ${mainTab === 'pipeline' && html`
-              ${theme === 'pixel' ? html`<${OfficeView} s=${s} tick=${tick} />` : html`
-                ${activeBarrier && Object.keys(activeBarrier.groups || {}).length > 0 && html`
-                  <div style="margin-bottom:10px;padding:8px 12px;background:var(--surface0);border-radius:8px;border:1px solid var(--surface1)">
-                    <div style="font-size:10px;color:var(--subtext0);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Barrier 並行進度</div>
-                    ${Object.entries(activeBarrier.groups || {}).map(([group, g]) => html`
-                      <div key=${group} style="display:flex;align-items:center;gap:10px;font-size:11px;margin-bottom:4px">
-                        <span style="color:var(--blue);min-width:80px">${group}</span>
-                        <span style="color:${g.resolved ? (Object.values(g.results || {}).some(r => r.verdict === 'FAIL') ? 'var(--red)' : 'var(--green)') : 'var(--yellow)'}">${g.completed.length}/${g.total}</span>
-                        <span style="color:var(--subtext0)">${g.siblings.map(st => g.completed.includes(st) ? (g.results[st]?.verdict === 'FAIL' ? '❌' : '✅') : '⏳').join(' ')} ${g.siblings.join(' + ')}</span>
-                        ${g.resolved && html`<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:${Object.values(g.results || {}).some(r => r.verdict === 'FAIL') ? 'var(--red)' : 'var(--green)'};color:var(--bg)">${g.next ? `→ ${g.next}` : '完成'}</span>`}
-                        ${!g.resolved && html`<span style="font-size:9px;color:var(--yellow);animation:blink 1s infinite">等待中...</span>`}
-                      </div>
-                    `)}
-                  </div>
-                `}
-                <div class="snake">
-                  ${ROW1.map(stage => html`<${AgentCard} stage=${stage} s=${s} tick=${tick} />`)}
-                  <div class="snake-turn ${getStatus('REVIEW', s) === 'active' ? 'flowing' : getStatus('REVIEW', s) === 'pass' ? 'done' : ''}">↓</div>
-                  <div class="snake-row2">
-                    ${row2Reversed.map(stage => html`<${AgentCard} stage=${stage} s=${s} tick=${tick} />`)}
-                  </div>
-                </div>
-              `}
+                <${BarrierDisplay} barrierState=${activeBarrier} />
+                <${DagView} state=${s} registry=${registry} />
               `}
 
               <!-- Tab: Timeline -->
@@ -1876,18 +1286,17 @@
               <div class="tl-full">
                 <div class="tl-tabs">
                   ${[['all', '全部'], ['agent', '🔧 工具'], ['pipeline', '🔄 Pipeline'], ['quality', '✅ 品質'], ['task', '📋 任務']].map(([v, label]) => html`
-                    <button class="tl-tab ${tlTab === v ? 'active' : ''}" onClick=${() => setTlTab(v)}>${label}</button>
+                    <button key=${v} class="tl-tab ${tlTab === v ? 'active' : ''}" onClick=${() => setTlTab(v)}>${label}</button>
                   `)}
                 </div>
                 <div class="tl-filter">
                   ${[[0, '全部'], [10, '10m'], [30, '30m'], [60, '1h']].map(([v, label]) => html`
-                    <button class="tl-chip ${tlFilter === v ? 'active' : ''}" onClick=${() => setTlFilter(v)}>${label}</button>
+                    <button key=${v} class="tl-chip ${tlFilter === v ? 'active' : ''}" onClick=${() => setTlFilter(v)}>${label}</button>
                   `)}
-                  ${tlAll.length > 0 && html`<button class="tl-clear" onClick=${clearTimeline}>清除</button>`}
                 </div>
                 <div class="tl-items">
-                  ${tlFiltered.length ? tlFiltered.map(ev => html`
-                    <div class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
+                  ${tlFiltered.length ? tlFiltered.map((ev, i) => html`
+                    <div key=${i} class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
                   `) : html`<div style="color:var(--subtext0);font-size:11px;padding:6px 0">${(tlFilter || tlTab !== 'all') ? '此篩選條件下無事件' : '等待事件流…'}</div>`}
                 </div>
               </div>

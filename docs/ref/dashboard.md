@@ -1,6 +1,6 @@
 # Vibe Dashboard 規格文件
 
-> 最後更新：2026-02-20 | 基於 vibe v2.0.13 實作
+> 最後更新：2026-02-21 | 基於 vibe v5.0.5 實作（Phase 1-5 重設計）
 
 ---
 
@@ -8,16 +8,23 @@
 
 ### 1.1 系統定位
 
-Vibe Dashboard 是 Pipeline v4 的即時視覺監控系統，提供 Pipeline 執行狀態的全程視覺化——從 task-classifier 分類完成到最後一個 stage 結束。
+Vibe Dashboard 是 Pipeline v4/v5 的即時視覺監控系統，提供 Pipeline 執行狀態的全程視覺化——從 task-classifier 分類完成到最後一個 stage 結束。
 
-### 1.2 雙系統架構
+**v5.0.5 重設計重點**：
+- Tab 2 Pipeline 改為 SVG+HTML DAG 流程圖（取代 Snake Grid + Pixel Office）
+- Tab 1 Dashboard 新增 StatsCards 統計卡片 + 動態 Pipeline 進度條
+- Sidebar 自動排序（活躍優先 → 最近活動，移除排序下拉）
+- Toolbar 精簡（保留全螢幕/導出/縮放，移除像素主題和聚焦模式按鈕）
+- `/api/registry` 端點：前端動態取得 stages/pipelines/agents metadata（不再硬編碼）
+- Agent 面板標題列顯示 Server heap 記憶體用量
+
+### 1.2 系統架構
 
 | 系統 | 路徑 | 技術 | 用途 |
 |------|------|------|------|
 | **Runtime 即時監控** | `plugins/vibe/web/index.html` + `plugins/vibe/server.js` | Preact + HTM + Bun HTTP/WebSocket | 即時追蹤執行中的 pipeline |
-| **Build-time 靜態報告** | `dashboard/` | Node.js 靜態生成 | Pipeline 完成後的靜態 HTML 報告（10 主題） |
 
-兩個系統共用 `dashboard/config.json` 作為視覺配置 Single Source of Truth。
+注意：Build-time 靜態報告系統（`dashboard/`）已廢棄，`dashboard/config.json` 已移除。
 
 **自動啟動流程**：
 ```
@@ -33,9 +40,10 @@ SessionStart hook
 
 **Runtime SPA（`web/index.html`）**：
 - Preact 10.25.4（ESM via `esm.sh`）+ HTM 3.1.1（tagged template literal JSX）
-- 單檔 SPA（~1920 行，CSS + JS 全內嵌，零建置步驟）
-- 字體：SF Mono / Cascadia Code / Fira Code（系統等寬）+ Press Start 2P（Google Fonts，像素模式裝飾用）
+- 單檔 SPA（~1320 行，CSS + JS 全內嵌，零建置步驟）
+- 字體：SF Mono / Cascadia Code / Fira Code（系統等寬，移除 Press Start 2P 像素字體）
 - 色彩系統：Catppuccin Mocha（`:root` CSS 變數）
+- 資料層：`/api/registry` 取代前端硬編碼的 SM/TYPE_LABELS/AGENT_ROSTER
 
 **後端（`server.js`）**：
 - Bun HTTP + WebSocket Server（`Bun.serve()`）
@@ -350,106 +358,38 @@ const MILESTONE_TYPES = [
 
 ### 4.3 Pipeline 視圖（Tab 2）
 
-由工具列 `🎮 像素` 按鈕切換 Default/Pixel 兩種呈現模式。
+**v5.0.5 重設計**：Pipeline Tab 改為 SVG+HTML 混合 DAG 流程圖，取代原 Snake Grid + Pixel Office 雙模式。移除工具列像素主題按鈕。
 
-#### 4.3.1 Default 模式（Snake Grid）
+#### 4.3.1 DAG 流程圖（`DagView`）
 
-5+1+4 蛇形佈局（`.snake`，`grid-template-columns: repeat(5, 1fr)`）：
+**DAG 佈局演算法（`computeDagLayout`）**：
+- 拓撲排序：計算各 stage 最長路徑深度（`depth`），同深度垂直排列
+- 節點尺寸：88×72px，水平間距 40px，垂直間距 20px
+- SVG 貝茲曲線（`buildEdges`）：連接各 stage（`M x1,y1 C cx,y1 cx,y2 x2,y2`）
 
-```
-Row 1: PLAN → ARCH → DESIGN → DEV → REVIEW
-                                            ↓（snake-turn）
-Row 2: TEST ← QA ← E2E ← DOCS
-```
+**DAG 節點狀態（`.dag-node`）**：
 
-Row 1 連接箭頭 `→`（`::before`）；Row 2 連接箭頭 `←`（`.snake-row2 .ac::before`）；轉角 `↓`（`.snake-turn`）。
+| 狀態 | CSS 類別 | 視覺 |
+|------|---------|------|
+| `completed` | `.dag-node.completed` | green 邊框 |
+| `active` | `.dag-node.active` | blue 邊框 + `dagPulse` 動畫 |
+| `failed` | `.dag-node.failed` | red 邊框 + `dagShake` 動畫 |
+| `skipped` | `.dag-node.skipped` | 半透明 dashed 邊框 |
+| `pending` | `.dag-node.pending` | opacity 0.5 |
+| selected | `.dag-node.selected` | yellow 邊框 |
 
-**AgentCard（`.ac`）欄位**：
-- 邊框色：`var(--sc)` = stage 主色
-- Stage 名稱 + agent 短名（`agent-abbr`）
-- Badge：pass/fail/active/next/skip 狀態標籤
-- Retry badge（`.ac-retry`）：右上角圓點，retries > 0 時顯示
-- Todo 列表（`.ac-todos`）：3 個階段任務，active 時動態掃描動畫（`tick / 3` 循環）
-- Skills 標籤（`.ac-skills`）：`used` 狀態 = 已使用（`r?.skillsUsed?.includes(sk)`）
-- 統計列（`.ac-stats`）：耗時（秒）+ 工具呼叫次數
-- Retry History（`<details>`）：每輪 PASS/FAIL verdict + severity
-- Crash count（`.ac-crash`）：💥 x crashes
+**邊連線狀態（`.dag-edge`）**：
+- `completed`：green 實線
+- `active`：blue 虛線 + `dashFlow` 流動動畫
+- `pending`：surface2 虛線
 
-**6 種卡片狀態**：
+**Phase 分組框**（suffixed stages 如 `DEV:1`/`REVIEW:1`）：藍色半透明分組框 + 「Phase N」標題。
 
-| 狀態 | CSS 類別 | 邊框 | 背景 |
-|------|---------|------|------|
-| `pass` | `.ac.pass` | `var(--green)` | rgba(166,227,161,0.05) |
-| `fail` | `.ac.fail` | `var(--red)` | rgba(243,139,168,0.05) |
-| `active` | `.ac.active` | `var(--sc)` | 5% stage 主色，`cardPulse` 動畫 |
-| `pending` | `.ac.pending` | surface1 | opacity 0.45，grayscale 0.6 |
-| `next` | `.ac.next` | 50% stage 主色 | opacity 0.7 |
-| `skipped` | `.ac.skipped` | dashed surface1 | opacity 0.25，grayscale 1 |
+**節點點擊展開詳情（`.dag-detail`）**：verdict/耗時/重試次數/crash 數/重試歷史。
 
-**連接箭頭狀態同步**：pass=green，fail=red，active=stage 主色（`arrowFlowR/L` 動畫）。
-
-**Barrier 並行進度條**（條件顯示）：
-- 顯示條件：`activeBarrier && Object.keys(activeBarrier.groups).length > 0`
+**Barrier 並行進度條（`BarrierDisplay`）**（條件顯示）：
 - 每個 group：group ID + 完成計數（X/N）+ sibling stage 圖示（✅/❌/⏳）+ next stage 或「完成」標籤
 - 未解決時「等待中...」黃色閃爍
-
-#### 4.3.2 Pixel 模式（辦公室場景，`OfficeView`）
-
-主題切換：`body` 加上 `.pixel` class，替換 CSS 變數（Catppuccin → 像素調色盤）。
-
-**辦公室容器（`.office`）**：
-- 棋盤格背景（`repeating-conic-gradient(#1a1a3e 0% 25%, #151535 0% 50%) 0 0 / 40px 40px`）
-- 綠色像素邊框（4px solid `#55ff55`）
-- 紅地毯（`.office-carpet`）+ 入口門牌「🚪 ENTRANCE」
-
-**Main Agent 巡視**：
-- 絕對定位（`.main-agent`），在 stage 位置間移動（`left/top %`，`transition: 0.8s ease-in-out`）
-- 位置映射（`MA_POS`）：PLAN→11%/22%, ARCH→26%/22%, DEV→41%/22%, REVIEW→56%/22%, TEST→56%/52%, QA→41%/52%, E2E→26%/52%, DOCS→11%/52%（⚠️ 缺少 DESIGN stage 的位置定義）
-- 委派中：`.walking` 動畫（`maWalk 0.4s steps(2) infinite`）
-- 閒置：`.idle` 動畫（`wsIdle 2s steps(2) infinite`）
-- 對話氣泡（`.ma-bubble`）：根據 pipeline 狀態循環台詞（指令 + 鼓勵 + 完成語）
-- 腳印（`::after`）：走動時顯示 `· · ·`
-
-**工位（`Workstation`）**：
-
-```
-[bubble]     — 對話氣泡（active/pass/fail）
-[ws-char]    — 像素角色（box-shadow 繪製，7x10 grid）
-[ws-screen]  — 螢幕（34x24px，active 時顯示 skill 名稱）
-[ws-desk-top]— 桌面（56x7px，棕色）
-[ws-desk-obj]— 桌面物件（📌📐☕🔎🧫📊🖱️✏️ 各 stage 固定一個，⚠️ 缺少 DESIGN stage 的定義）
-[ws-label]   — stage ID + agent 短名
-```
-
-**5 種工位動畫**：
-
-| 狀態 | 角色動畫 | 螢幕 | 特效 |
-|------|---------|------|------|
-| `active` | `wsTyping 0.3s steps(2)` | 主色發光（`wsScreenPulse`）+ 掃描線 | 3 顆星星（`wsStar`）|
-| `pass` | `wsCelebrate 0.8s steps(2)` | green | 氣泡「Done!」 |
-| `fail` | `wsFrustrated 0.3s steps(2)` | red（`wsScreenBlink`）| 3 縷煙霧（`wsSmoke`）|
-| `pending` | `rotate(-8deg)`（靜態傾斜） | 暗色 | `z z z` 文字（`wsSleep`）|
-| `skipped` | opacity 0.5 | 顯示「OFF」文字 | grayscale 0.6 |
-
-完成慶祝（`.office.complete`）：所有 pass 工位觸發 `wsParty`動畫 + 🎉🎊✨ 彩票。
-
-**像素角色系統**：
-- 像素尺寸：`PXS = 4`（每格 4×4 px）
-- 網格大小：7 寬 × 10 高（`CHAR_W = 28px, CHAR_H = 40px`）
-- 渲染方式：`box-shadow` CSS 多值疊加（每個非透明格子一個 shadow）
-- 8 個角色像素網格（`CHARS`）：planner, architect, developer, code-reviewer, tester, qa, e2e-runner, doc-updater
-- 每個角色有專屬調色盤（`CHAR_PAL`）：配件色彩（帽子/髮色/裝飾）+ 衣服色 + 手臂色
-- 6 種表情調色盤（`EXPR_PAL`）：active/pass/fail/next/pending/skipped 影響眼睛 E 和嘴巴 M 顏色
-
-**Tooltip**（`.ws-tip`）：hover 顯示詳細資訊（verdict/duration/toolCalls/skillsUsed/retries/crashes）；點擊固定（`.pinned`）。
-
-**辦公室裝飾**：
-- 白板（`.deco-board`）：Pipeline 進度條 + 百分比 + 當前 agent
-- 伺服器機架（`.deco-rack`）：SRV 標籤 + 3×3 LED 燈號陣列（委派時 blink）
-- 水族箱（`.deco-tank`）：兩條魚游動（`wsFishSwim`）+ 3 個氣泡（`wsTankBubble`）
-- 窗戶（`.deco-window`）：深藍夜色 + 月亮 + 5 顆星星（`wsStarTwinkle`）
-- 咖啡杯（`.deco-coffee`）：蒸氣動畫（`wsSteam`）
-- 盆栽（`.deco-plant`）：搖擺動畫（`wsPlantSway`）
 
 ### 4.4 Timeline 視圖（Tab 3）
 
@@ -507,21 +447,11 @@ Row 1 連接箭頭 `→`（`::before`）；Row 2 連接箭頭 `←`（`.snake-ro
 2. 若該 session 不是當前選取的 → 自動切換
 3. 若當前 active 消失 → 選最近的（live > done > 任意）
 
-### 5.3 主題切換
+### 5.3 主題
 
-工具列「🎮 像素」按鈕 + 鍵盤 `P`：
-- `default`：Catppuccin Mocha，系統等寬字體
-- `pixel`：深色像素調色盤，`image-rendering: pixelated`，裝飾元素使用 Press Start 2P 字體
+v5.0.5 起移除 Pixel 主題（Pixel Office 視圖廢棄），工具列不再有「🎮 像素」按鈕，鍵盤 `P` 快捷鍵亦移除。
 
-像素主題替換的色彩變數：
-```css
-.pixel {
-  --bg: #0f0f23; --surface0: #1a1a3e; --surface1: #2a2a5e; --surface2: #3a3a7e;
-  --overlay0: #6a6aae; --text: #e0e0ff; --subtext0: #9a9acc; --subtext1: #b0b0dd;
-  --blue: #5599ff; --green: #55ff55; --red: #ff5555; --yellow: #ffff55;
-  --purple: #aa55ff; --cyan: #55ffff; --pink: #ff55ff; --orange: #ffaa55;
-}
-```
+Dashboard 固定使用 Catppuccin Mocha 色彩系統（`:root` CSS 變數），系統等寬字體。
 
 ### 5.4 報告導出
 
@@ -663,23 +593,12 @@ App
         │       └── mini-tl（里程碑事件流）
         │
         ├── [Tab: pipeline]
-        │   ├── [theme=pixel] OfficeView
-        │   │   ├── office-carpet
-        │   │   ├── office-wall-top（ENTRANCE + 時鐘）
-        │   │   ├── main-agent（Main Agent 巡視）
-        │   │   ├── office-row（ROW1: PLAN→REVIEW）
-        │   │   │   └── Workstation × 5 + deco-coffee
-        │   │   ├── office-turn（↓）
-        │   │   ├── office-row（ROW2 reversed: DOCS→TEST）
-        │   │   │   └── Workstation × 4 + deco-plant
-        │   │   └── office-deco（白板/伺服器機架/水族箱/窗戶）
-        │   └── [theme=default]
-        │       ├── [activeBarrier] Barrier 並行進度條
-        │       └── snake（5+1+4 Grid）
-        │           ├── AgentCard × 5（ROW1）
-        │           ├── snake-turn（↓）
-        │           └── snake-row2
-        │               └── AgentCard × 4（ROW2 reversed）
+        │   ├── BarrierDisplay（條件渲染，有 barrier 時）
+        │   └── DagView（SVG+HTML DAG 流程圖）
+        │       ├── dag-svg（SVG 連線）
+        │       ├── dag-node × N（各 stage 節點）
+        │       ├── dag-phase × M（Phase 分組框，suffixed stages 時）
+        │       └── dag-detail（點擊節點展開詳情）
         │
         └── [Tab: timeline]
             ├── tl-tabs（all/agent/pipeline/quality/task）
@@ -707,14 +626,13 @@ App
 
 1. **Session 自動清理**：空 session（無 DAG 無分類）超過 30 分鐘才清理；display-worthy session 不自動清理
 2. **Timeline Consumer 啟動時機**：新 session 在 pipeline-state 首次被偵測時啟動，可能遺漏分類前的早期事件
-3. **stale 判斷**：`isStaleSession` 使用 1 小時（3600s）作為清理批次的閾值，而 sidebar 分組使用 30 分鐘（1800s）
-4. **Server.js AGENT_EMOJI 與 registry.js 重複**：`server.js` 第 126-133 行硬編碼了 agent emoji，與 `registry.js` 的 STAGES 定義重複
-5. **前端 SM 與 registry.js 不同步**：`index.html` 的 `SM` 物件硬編碼 stage metadata，與 `registry.js` 的 STAGES 各自維護
-6. **DESIGN stage 無像素工位**：`CHARS` 物件沒有 `designer` 的像素網格定義，OfficeView 僅顯示 ROW1（PLAN/ARCH/DEV/REVIEW）+ ROW2（TEST/QA/E2E/DOCS）共 9 個 stage 中的 8 個，DESIGN 缺席
-7. **skillsLit 為布林值**：`getAgentInfo` 回傳的 `skillsLit` 只是 `isActive`（布林值），無法顯示具體在使用哪個 skill
+3. **stale 判斷（v5.0.5 已修復）**：`server.js` 現統一使用 30 分鐘（`STALE_THRESHOLD_MS`），與 sidebar 分組一致
+4. **AGENT_EMOJI 重複（v5.0.5 已修復）**：`server.js` 現動態從 `registry.js` 建構，不再硬編碼
+5. **前端 SM 物件（v5.0.5 已移除）**：新 Dashboard 透過 `/api/registry` 取得 stage metadata，無 `SM` 物件
+6. **DESIGN stage Pixel 工位（已移除）**：Pixel Office 視圖廢棄，此問題不再存在
+7. **skill 使用狀態顯示**：新 AgentStatus 面板不顯示 skill chip，此問題不再適用
 
 ### 8.3 效能建議
 
 - 100+ sessions 時 sidebar 可能有 DOM 效能問題（Preact 未做虛擬列表）
-- DESIGN stage 缺少工位會導致 Pixel 模式下 designer agent 沒有視覺呈現
 - 高頻 `tool.used` 事件仍會發送到前端（WebSocket），只是 Dashboard Tab 的里程碑過濾掉，Timeline Tab 會全部顯示

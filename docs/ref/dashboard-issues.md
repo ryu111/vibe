@@ -1,38 +1,35 @@
 # Dashboard Issues — 待做清單
 
 > 從 `dashboard.md` 規格分析中提取的已知問題和改進項目。
-> 基於 vibe v2.0.13，`web/index.html` + `server.js` 實際程式碼審查。
+> 基於 vibe v5.0.4，`web/index.html` + `server.js` 實際程式碼審查。
+> Phase 1-5 重設計完成（v5.0.5），部分問題已解決，見各項標記。
 
 ---
 
 ## Bug Fixes（已損壞/不正確的功能）
 
-- [ ] **MILESTONE_TYPES 含 4 個無效事件類型**：Dashboard Tab 右欄「最近事件」的里程碑過濾清單 `MILESTONE_TYPES`（`index.html` L1835）包含 4 個在 `schema.js` 中不存在的事件類型，這些類型永遠不會匹配到任何實際 timeline 事件（dead filter 條目）：
-  - `delegation.end`（schema.js 只有 `delegation.start`，無對應 end 事件）
-  - `pipeline.init`（不存在，分類完成事件為 `task.classified`）
-  - `pipeline.classified`（不存在，應為 `task.classified`）
-  - `block.prevented`（不存在，工具阻擋事件為 `tool.blocked`）
+- [x] **MILESTONE_TYPES 含 4 個無效事件類型** ✅ 已解決（Phase 1-3 重設計）：新 Dashboard 里程碑事件清單已修正，移除 `delegation.end`/`pipeline.init`/`pipeline.classified`/`block.prevented` 等無效類型，改為 `task.classified`/`tool.blocked` 等正確類型。
 - [ ] **Session 資源指標未渲染**：`.sc-res`（CPU/RAM 指標）CSS 已完整定義（`.sc-res-bar`、`.sc-res-fill.cpu`、`.sc-res-fill.ram`），但前端 Session Card 模板完全沒有渲染這個元素，功能停擺
 - [ ] **skillsLit 布林值無法顯示使用中的 skill**：`getAgentInfo()` 回傳 `skillsLit = isActive`（純布林），`AgentStatus` 中所有 skill chip 要嘛全亮、要嘛全暗，無法顯示目前真正使用中的具體 skill（`r?.skillsUsed` 有資料但沒傳到 `AgentStatus`）
 - [ ] **DESIGN stage 在 Pixel 模式沒有工位（多處缺失）**：Pixel 模式下 DESIGN stage 缺失三個映射：
   1. `CHARS['designer']` 未定義 — `charShadow()` 對 designer 回傳空字串，工位角色完全不可見
   2. `MA_POS` 缺少 `DESIGN` 鍵 — Main Agent 進入 DESIGN stage 時，位置 fallback 到 `MA_IDLE`（辦公室左上角），不會移動到 DESIGN 工位
   3. `DESK_OBJ` 缺少 `DESIGN` 鍵 — DESIGN 工位的桌面物件 `${DESK_OBJ[stage]}` 渲染為 `undefined`（顯示為空）
-- [ ] **stale 判斷閾值不一致**：Sidebar 分組使用 30 分鐘（`1800_000ms`），`isStaleSession()`（批次清理用）使用 1 小時（`3600_000ms`），兩個函式的閾值不同，導致「顯示為 stale 但清理按鈕不清理」的邏輯矛盾
+- [x] **stale 判斷閾值不一致** ✅ 已解決（Phase 1 server.js 修復）：`server.js` 已統一使用 `STALE_THRESHOLD_MS = 30 * 60 * 1000`（30 分鐘），與前端 sidebar 一致。
 - [ ] **`ac-skill.used` 判斷永遠為 false**：`AgentCard` 中 `r?.skillsUsed?.includes(sk)` 判斷 skill 是否已使用，但 `stageResults` 的 `verdict` 物件沒有 `skillsUsed` 欄位（v4 state schema 無此欄位），永遠顯示未使用狀態
 
 ---
 
 ## Tech Debt（技術債務）
 
-- [ ] **`server.js` AGENT_EMOJI 與 `registry.js` STAGES 重複**：`server.js` 第 126-133 行硬編碼了 12 個 agent→emoji 映射，與 `registry.js` 的 `STAGES` 物件（emoji unicode）各自維護，新增 agent 必須同時改兩處
-- [ ] **前端 `SM` 物件與 `registry.js` 不同步**：`index.html` 的 `SM` 硬編碼 9 個 stage 的 agent 名稱、emoji、color、todos、skills，與 `registry.js` STAGES 獨立維護，新增/修改 stage 需同步兩處
-- [ ] **前端 `TYPE_LABELS` 與 `registry.js` 重複**：`index.html` 的 `TYPE_LABELS` 映射 10 個 pipeline ID → 中文標籤，與 `registry.js` REFERENCE_PIPELINES 的 `label` 欄位重複
-- [ ] **`config.json` taskRoutes 與 `registry.js` REFERENCE_PIPELINES 重複**：`dashboard/config.json` 的 `taskRoutes` 陣列定義了 10 個 pipeline 的 label/stages/color，與 `registry.js` 定義重複
-- [ ] **`adaptState()` 適配層長期應移除**：v4 已穩定，前端應直接讀取 `dag`/`stages` 欄位，不需要透過 `adaptState()` 轉換為 v2 扁平格式；適配層增加閱讀複雜度且不易除錯
+- [x] **`server.js` AGENT_EMOJI 與 `registry.js` STAGES 重複** ✅ 已解決（Phase 1 重設計）：`server.js` 現在動態從 `registry.js` 的 `STAGES` 建構 `AGENT_EMOJI`，消除重複維護。
+- [x] **前端 `SM` 物件與 `registry.js` 不同步** ✅ 已解決（Phase 1-3 重設計）：新 Dashboard 透過 `/api/registry` 端點動態取得 stage metadata，前端不再有硬編碼的 `SM` 物件。
+- [x] **前端 `TYPE_LABELS` 與 `registry.js` 重複** ✅ 已解決（Phase 1-3 重設計）：新 Dashboard 透過 `/api/registry` 取得 pipeline 標籤，前端的 `typeLabel()` 函式直接使用 `registry.pipelines[t].label`。
+- [x] **`config.json` taskRoutes 與 `registry.js` REFERENCE_PIPELINES 重複** ✅ 已解決（Phase 5 清理）：`dashboard/config.json` 已移除（整個 build-time 靜態生成系統已廢棄），不再有重複定義。
+- [x] **`adaptState()` 適配層長期應移除** ✅ 已解決（Phase 1-3 重設計）：新 Dashboard 完全移除 `adaptState()`，直接操作 v4 DAG state（`dag`/`stages` 欄位）。
 - [ ] **`adaptState()` 的 `environment` 欄位說明不精確**：`adaptState()` 輸出的 `environment` 欄位直接使用 `raw.environment || {}`，但 v4 state schema 本身不保證 `environment` 存在（該欄位是 pipeline-architect agent 自行填入的選填欄位），`node-context.js` 注入給 sub-agent 的環境快照欄位名為 `env`（精簡版），兩者語意不同
 - [ ] **`AGENT_ROSTER` 中 `main`、`explore`、`plan` 三個系統 agent 無真實對應**：這三個 agent 是前端 UI 概念（從 pipeline agent 推斷 Main Agent 狀態），但顯示方式（detect `delegation.start` 事件）不夠精確，可能誤報
-- [ ] **eventCat 分類邏輯在 `server.js` 和 `schema.js` 各定義一份**：`server.js` 的 `eventCat()` 用字串前綴判斷分類，但 `schema.js` 的 `CATEGORIES` 才是 SoT，兩者可能不同步
+- [x] **eventCat 分類邏輯在 `server.js` 和 `schema.js` 各定義一份** ✅ 已解決（Phase 1 server.js 修復）：`server.js` 現在動態從 `schema.js` 的 `CATEGORIES` 建構 `EVENT_TYPE_TO_CAT` 映射，`eventCat()` 函式使用此映射，消除重複。
 - [ ] **Timeline 事件的 `agent name` 無獨立欄位**：`formatEvent()` 把 emoji + text 合成一個字串，前端無法獨立取得 agent 名稱做進一步篩選或群組
 
 ---
@@ -70,12 +67,26 @@
 
 ---
 
+## Phase 1-5 重設計成果（v5.0.5）
+
+以下功能已在 Dashboard Phase 1-5 重設計中完成：
+
+| 功能 | 說明 |
+|------|------|
+| DAG 流程圖 | 取代 Snake Grid + Pixel Office，SVG+HTML 混合 DAG 視覺化 |
+| StatsCards 統計卡片 | 4 張統計卡片（Compact/Guard 攔截/Retry 回退/Session 時長）|
+| 動態 Pipeline 進度條 | 各 stage 狀態色塊 |
+| Sidebar 自動排序 | 活躍優先 → 最近活動，移除排序下拉 |
+| Toolbar 精簡 | 保留全螢幕/導出/縮放，移除像素主題和聚焦模式 |
+| /api/registry 端點 | stages/pipelines/agents metadata，前端不再硬編碼 |
+| Heartbeat Memory 顯示 | Agent 面板標題列顯示 Server heap 用量（MB）|
+
 ## 相關檔案索引
 
-| 檔案 | 路徑 | 主要問題 |
-|------|------|---------|
-| Runtime SPA | `plugins/vibe/web/index.html` | MILESTONE_TYPES dead filter、SM/TYPE_LABELS 重複、CHARS/MA_POS/DESK_OBJ 缺 designer/DESIGN、adaptState 適配層 |
-| Dashboard Server | `plugins/vibe/server.js` | AGENT_EMOJI 重複、eventCat 重複、stale 閾值 |
-| Stage Registry | `plugins/vibe/scripts/lib/registry.js` | 應為 SoT，但多處未被 Dashboard 引用 |
-| Timeline Schema | `plugins/vibe/scripts/lib/timeline/schema.js` | CATEGORIES 是 SoT 但 server.js eventCat 未使用 |
-| 視覺配置 | `dashboard/config.json` | taskRoutes 與 registry.js 重複 |
+| 檔案 | 路徑 | 狀態 |
+|------|------|------|
+| Runtime SPA | `plugins/vibe/web/index.html` | ✅ 重設計完成（Phase 1-5）|
+| Dashboard Server | `plugins/vibe/server.js` | ✅ 重構完成（registry/schema/stale 統一）|
+| Stage Registry | `plugins/vibe/scripts/lib/registry.js` | ✅ 現為 SoT，server.js 動態引用 |
+| Timeline Schema | `plugins/vibe/scripts/lib/timeline/schema.js` | ✅ CATEGORIES 現由 server.js 動態引用 |
+| 視覺配置 | `dashboard/config.json` | ✅ 已廢棄移除（build-time 靜態系統廢棄）|

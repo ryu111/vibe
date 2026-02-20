@@ -13,6 +13,38 @@ const { createConsumer } = await import('./scripts/lib/timeline/consumer.js');
 const { query } = await import('./scripts/lib/timeline/timeline.js');
 const { formatEventText, EMOJI_MAP } = await import('./scripts/lib/timeline/formatter.js');
 
+// Task 1.1 / 1.2 / 1.3：從 registry.js 和 schema.js 讀取 metadata
+const { STAGES, REFERENCE_PIPELINES } = require(`${import.meta.dir}/scripts/lib/registry.js`);
+const { CATEGORIES } = require(`${import.meta.dir}/scripts/lib/timeline/schema.js`);
+
+// Task 1.2：從 STAGES 動態建立 agent→emoji 映射
+// registry.js 的 STAGES 涵蓋 9 個 pipeline stage agent，額外加入 pipeline-architect
+const AGENT_EMOJI = {
+  ...Object.fromEntries(
+    Object.values(STAGES).map(cfg => [cfg.agent, cfg.emoji])
+  ),
+  'pipeline-architect': '📐',
+};
+
+// Task 1.3：從 CATEGORIES 動態建立 eventType→category 映射
+// 優先序：pipeline > quality > agent > remote > safety > task > session
+const CAT_PRIORITY = ['pipeline', 'quality', 'agent', 'remote', 'safety', 'task', 'session'];
+const EVENT_TYPE_TO_CAT = {};
+for (const catName of [...CAT_PRIORITY].reverse()) {
+  const types = CATEGORIES[catName] || [];
+  for (const t of types) {
+    EVENT_TYPE_TO_CAT[t] = catName;
+  }
+}
+// 向後相容覆寫：以下事件在前端視同 pipeline 分類（與原 eventCat() 行為一致）
+// session.start、task.classified、prompt.received、task.incomplete 概念上屬於 pipeline 流程
+for (const t of ['session.start', 'task.classified', 'prompt.received', 'task.incomplete']) {
+  EVENT_TYPE_TO_CAT[t] = 'pipeline';
+}
+
+// Task 1.5：統一 stale 閾值常數（30 分鐘，與前端 sidebar 一致）
+const STALE_THRESHOLD_MS = 30 * 60 * 1000;
+
 // --port CLI 參數 or 環境變數
 const portArg = process.argv.find(a => a.startsWith('--port='));
 const PORT = Number(portArg?.split('=')[1]) || Number(process.env.VIBE_DASHBOARD_PORT) || 3800;
@@ -90,10 +122,10 @@ function autoCleanup() {
     const fp = join(CLAUDE_DIR, f);
     try {
       const state = JSON.parse(readFileSync(fp, 'utf8'));
-      // 空 session（無 DAG、無分類）且超過 30 分鐘 → 清理
+      // 空 session（無 DAG、無分類）且超過閾值 → 清理
       if (!isDisplayWorthy(state)) {
         const mtime = statSync(fp).mtimeMs;
-        if (now - mtime > 30 * 60 * 1000) {
+        if (now - mtime > STALE_THRESHOLD_MS) {
           unlinkSync(fp);
           delete sessions[sid];
           stopTimelineConsumer(sid);
@@ -112,24 +144,10 @@ function broadcast(msg) {
   }
 }
 
-/** 事件類型→分類映射（前端 Tab 篩選用） */
+/** 事件類型→分類映射（前端 Tab 篩選用），動態從 schema.js CATEGORIES 生成 */
 function eventCat(type) {
-  if (type.startsWith('stage.') || type.startsWith('pipeline.') || type.startsWith('barrier.') || type === 'agent.crash') return 'pipeline';
-  if (type.startsWith('quality.') || type === 'tool.blocked' || type === 'tool.guarded') return 'quality';
-  if (type === 'tool.used' || type === 'delegation.start') return 'agent';
-  if (type === 'session.start' || type === 'task.classified' || type === 'prompt.received' || type === 'task.incomplete') return 'pipeline';
-  if (type.startsWith('ask.') || type.startsWith('compact.') || type.startsWith('say.') || type === 'turn.summary') return 'task';
-  return 'task';
+  return EVENT_TYPE_TO_CAT[type] || 'task';
 }
-
-/** Agent→emoji 映射（pipeline stage 對應） */
-const AGENT_EMOJI = {
-  planner: '📋', architect: '🏛️', designer: '🎨', developer: '🏗️',
-  'code-reviewer': '🔍', tester: '🧪', qa: '✅', 'e2e-runner': '🌐',
-  'doc-updater': '📝',
-  'security-reviewer': '🛡️', 'build-error-resolver': '🔧',
-  'pipeline-architect': '📐',
-};
 
 /**
  * 格式化 timeline 事件為結構化物件（用於前端推送）
@@ -225,7 +243,13 @@ if (existsSync(CLAUDE_DIR)) {
     if (filename?.startsWith('heartbeat-')) {
       clearTimeout(hbTimer);
       hbTimer = setTimeout(() => {
-        broadcast({ type: 'heartbeat', alive: getAliveMap() });
+        // Task 1.4：加入記憶體資訊供前端 Session Card 顯示
+        const mem = process.memoryUsage();
+        broadcast({
+          type: 'heartbeat',
+          alive: getAliveMap(),
+          memory: { rss: mem.rss, heapUsed: mem.heapUsed, heapTotal: mem.heapTotal },
+        });
       }, 500);
       return;
     }
@@ -283,12 +307,12 @@ function pct100(state) {
   return dagKeys.every(id => stages[id]?.status === 'completed' || stages[id]?.status === 'skipped');
 }
 
-/** 過期 session（1h 無活動 + 未完成） */
+/** 過期 session（30 分鐘無活動 + 未完成） */
 function isStaleSession(state) {
   if (!state) return true;
   const last = state.meta?.lastTransition || state.lastTransition;
   if (!last) return true;
-  return (Date.now() - new Date(last).getTime()) > 3600_000;
+  return (Date.now() - new Date(last).getTime()) > STALE_THRESHOLD_MS;
 }
 
 sessions = scanSessions();
@@ -326,6 +350,32 @@ Bun.serve({
     // REST API
     if (url.pathname === '/api/sessions') {
       return Response.json(sessions);
+    }
+
+    // Task 1.1：registry 端點，提供 stages/pipelines/agents metadata 給前端
+    if (url.pathname === '/api/registry') {
+      // 轉換 STAGES 格式，確保 emoji unicode 正確序列化
+      const stages = Object.fromEntries(
+        Object.entries(STAGES).map(([id, cfg]) => [id, {
+          agent: cfg.agent,
+          emoji: cfg.emoji,
+          label: cfg.label,
+          color: cfg.color,
+        }])
+      );
+      // 轉換 REFERENCE_PIPELINES 格式
+      const pipelines = Object.fromEntries(
+        Object.entries(REFERENCE_PIPELINES).map(([id, cfg]) => [id, {
+          label: cfg.label,
+          stages: cfg.stages,
+          description: cfg.description,
+          enforced: cfg.enforced,
+        }])
+      );
+      // agents 列表：從 STAGES 取出所有 agent + 額外的 pipeline-architect
+      const agentsFromStages = Object.values(STAGES).map(cfg => cfg.agent);
+      const agents = [...agentsFromStages, 'pipeline-architect'];
+      return Response.json({ stages, pipelines, agents });
     }
 
     // 查詢連線中的 WebSocket 客戶端數
