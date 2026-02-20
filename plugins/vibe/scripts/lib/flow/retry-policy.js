@@ -89,10 +89,102 @@ function analyzeTrend(retryHistory) {
   return 'stable';
 }
 
+// ────────────────── adaptiveRetryLimit ──────────────────
+
+/**
+ * 自適應重試上限 — 根據趨勢動態調整 maxRetries。
+ *
+ * 策略：
+ * - worsening → max(1, baseLimit - 1)（提早放棄，避免浪費 token）
+ * - improving → baseLimit + 1（允許額外一輪，因為有改善跡象）
+ * - stable/null → baseLimit（不調整）
+ *
+ * 硬下限：1（至少一次重試機會）
+ * 硬上限：baseLimit + 1（不允許無限膨脹）
+ *
+ * @param {number} baseLimit - 原始 maxRetries（通常從 registry.js MAX_RETRIES 取得）
+ * @param {Array} retryHistory - 該 stage 的 retryHistory
+ * @param {string|null} trend - analyzeTrend() 的回傳值
+ * @returns {number} 調整後的 maxRetries
+ */
+function adaptiveRetryLimit(baseLimit, retryHistory, trend) {
+  // 防呆：baseLimit 必須是正整數
+  if (!baseLimit || typeof baseLimit !== 'number' || baseLimit < 1) return 1;
+
+  switch (trend) {
+    case 'worsening':
+      // 趨勢惡化，提早放棄（硬下限 1）
+      return Math.max(1, baseLimit - 1);
+    case 'improving':
+      // 趨勢改善，允許額外一輪（硬上限 baseLimit + 1）
+      return baseLimit + 1;
+    case 'stable':
+    default:
+      // 穩定或無趨勢，維持原設定
+      return baseLimit;
+  }
+}
+
+// ────────────────── detectDuplicateHints ──────────────────
+
+/**
+ * 偵測重複 hint — 連續兩輪的 severity + hint 相同。
+ *
+ * 比較邏輯：
+ * - retryHistory 最後兩筆的 severity 相同
+ * - hint 前 50 字元相同（精確前綴匹配，不用模糊算法）
+ *
+ * 用途：當 agent 連續給出相同問題的相同建議但 DEV 未改善時，
+ * 強調必須採用完全不同的修復策略。
+ *
+ * @param {Array<{severity?: string, hint?: string}>} retryHistory
+ * @returns {{ isDuplicate: boolean, consecutiveCount: number }}
+ */
+function detectDuplicateHints(retryHistory) {
+  // 防呆：陣列為空或不足兩筆，無法比較
+  if (!Array.isArray(retryHistory) || retryHistory.length < 2) {
+    return { isDuplicate: false, consecutiveCount: 0 };
+  }
+
+  const HINT_PREFIX_LEN = 50;
+  const last = retryHistory[retryHistory.length - 1];
+  const prev = retryHistory[retryHistory.length - 2];
+
+  // severity 必須相同（null/undefined 視為不同）
+  if (last.severity !== prev.severity || last.severity === undefined) {
+    return { isDuplicate: false, consecutiveCount: 0 };
+  }
+
+  // hint 前 50 字元比較（兩者都必須有實際內容才比較）
+  const lastHint = (last.hint || '').slice(0, HINT_PREFIX_LEN);
+  const prevHint = (prev.hint || '').slice(0, HINT_PREFIX_LEN);
+
+  // 兩者都必須非空字串才進行比較
+  if (!lastHint || !prevHint || lastHint !== prevHint) {
+    return { isDuplicate: false, consecutiveCount: 0 };
+  }
+
+  // 向前搜尋連續重複次數（至少 2 筆已確認相同）
+  let count = 2;
+  for (let i = retryHistory.length - 3; i >= 0; i--) {
+    const entry = retryHistory[i];
+    const entryHint = (entry.hint || '').slice(0, HINT_PREFIX_LEN);
+    if (entry.severity === last.severity && entryHint === lastHint) {
+      count++;
+    } else {
+      break;
+    }
+  }
+
+  return { isDuplicate: true, consecutiveCount: count };
+}
+
 module.exports = {
   shouldStop,
   analyzeTrend,
   detectStagnation,
+  adaptiveRetryLimit,
+  detectDuplicateHints,
   MAX_RETRIES,
   QUALITY_STAGES,
 };

@@ -30,7 +30,8 @@
           "remote", "remote-config",
           "hook-diag",
           "health",
-          "memory-audit"
+          "memory-audit",
+          "history"
         ],
         "agents": [
           "planner", "architect", "designer", "developer", "pipeline-architect",

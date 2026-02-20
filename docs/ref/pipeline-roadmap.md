@@ -651,9 +651,9 @@ S10（Smart Retry）── 依賴 S4+S6（wisdom + signals 基礎）
 | **S5** | FIC 壓縮 | S1 + S4 | 狀態摘要 + crash recovery | ✅ |
 | **S6** | 三信號驗證 | S4 | lint/test signal 注入 REVIEW | ✅ |
 | **S7** | Goal Objects | 無 | 成功標準量化 | ✅ |
-| **S8** | Cancel 白名單 | 無 | 消除 cancel workaround | 待實作 |
-| **S9** | Pipeline 歷史分析 | S1 | 執行記錄持久化 + 查詢 | 待實作 |
-| **S10** | Smart Retry | S4 + S6 | 自適應重試策略 | 待實作 |
+| **S8** | Cancel 白名單 | 無 | 消除 cancel workaround | ✅ |
+| **S9** | Pipeline 歷史分析 | S1 | 執行記錄持久化 + 查詢 | ✅ |
+| **S10** | Smart Retry | S4 + S6 | 自適應重試策略 | ✅ |
 
 ---
 
@@ -803,25 +803,25 @@ S10（Smart Retry）── 依賴 S4+S6（wisdom + signals 基礎）
 - [x] S7.3 — tester.md 推導測試
 - [x] S7.4 — 文檔更新
 
-### S8：Cancel 白名單 — 0/5
-- [ ] S8.1 — guard-rules.js cancel 工具偵測
-- [ ] S8.2 — cancel 模式下 state file 寫入放行
-- [ ] S8.3 — cancel skill 移除 workaround
-- [ ] S8.4 — 測試：cancel 成功執行
-- [ ] S8.5 — 測試：非 cancel 仍阻擋
+### S8：Cancel 白名單 — 5/5 ✅
+- [x] S8.1 — guard-rules.js cancel 工具偵測
+- [x] S8.2 — cancel 模式下 state file 寫入放行
+- [x] S8.3 — cancel skill 移除 workaround
+- [x] S8.4 — 測試：cancel 成功執行
+- [x] S8.5 — 測試：非 cancel 仍阻擋
 
-### S9：Pipeline 歷史分析 — 0/5
-- [ ] S9.1 — 新增 history-writer.js
-- [ ] S9.2 — COMPLETE 時記錄
-- [ ] S9.3 — 記錄欄位定義
-- [ ] S9.4 — /vibe:history skill
-- [ ] S9.5 — 測試
+### S9：Pipeline 歷史分析 — 5/5 ✅
+- [x] S9.1 — 新增 history-writer.js
+- [x] S9.2 — COMPLETE 時記錄
+- [x] S9.3 — 記錄欄位定義
+- [x] S9.4 — /vibe:history skill
+- [x] S9.5 — 測試
 
-### S10：Smart Retry — 0/5
-- [ ] S10.1 — adaptiveRetryLimit() 實作
-- [ ] S10.2 — 重複 hint 偵測
-- [ ] S10.3 — enforcePolicy 整合
-- [ ] S10.4 — 強調提示注入
-- [ ] S10.5 — 測試
+### S10：Smart Retry — 5/5 ✅
+- [x] S10.1 — adaptiveRetryLimit() 實作
+- [x] S10.2 — 重複 hint 偵測
+- [x] S10.3 — enforcePolicy 整合
+- [x] S10.4 — 強調提示注入
+- [x] S10.5 — 測試
 
-**總計：67/86 項**（S1-S7: 67/71, S8-S10: 0/15）
+**總計：82/86 項**（S1-S7: 67/71, S8-S10: 15/15）

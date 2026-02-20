@@ -26,7 +26,7 @@ const ds = require('./dag-state.js');
 const { getBaseStage, resolveAgent, validateDag, repairDag, enrichCustomDag, linearToDag, templateToDag, buildBlueprint } = require('./dag-utils.js');
 const { shouldSkip } = require('./skip-predicates.js');
 const { ensureCurrentSchema } = require('./state-migrator.js');
-const { shouldStop } = require('./retry-policy.js');
+const { shouldStop, analyzeTrend, adaptiveRetryLimit } = require('./retry-policy.js');
 const { parseRoute, validateRoute, enforcePolicy, inferRouteFromContent } = require('./route-parser.js');
 const { writeReflection, cleanReflectionForStage } = require('./reflection.js');
 const { buildNodeContext, formatNodeContext, buildPhaseScopeHint } = require('./node-context.js');
@@ -53,6 +53,9 @@ const { extractWisdom, writeWisdom } = require('./wisdom.js');
 
 // FIC 狀態壓縮（S5：Context 效率 + Crash Recovery）
 const { updateStatus: updatePipelineStatus } = require('./status-writer.js');
+
+// Pipeline 歷史記錄（S9：History Analytics）
+const { recordCompletion: historyRecordCompletion } = require('./history-writer.js');
 
 // v4 Phase 4：Barrier 並行同步
 const { createBarrierGroup, updateBarrier, mergeContextFiles, readBarrier, checkTimeout, deleteBarrier, sweepTimedOutGroups } = require('./barrier.js');
@@ -794,7 +797,13 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
   const verdictForStop = validatedRoute
     ? { verdict: validatedRoute.verdict, severity: validatedRoute.severity }
     : null;
-  const stopResult = shouldStop(currentStage, verdictForStop, retryCount, retryHistory);
+
+  // S10 Smart Retry：根據趨勢動態調整 maxRetries
+  // worsening → 提早放棄（baseLimit - 1）；improving → 多一輪機會（baseLimit + 1）
+  const trend = analyzeTrend(retryHistory);
+  const adjustedLimit = adaptiveRetryLimit(MAX_RETRIES, retryHistory, trend);
+
+  const stopResult = shouldStop(currentStage, verdictForStop, retryCount, retryHistory, adjustedLimit);
 
   // 判斷是否需要回退：
   // - route 明確指向 DEV，且 shouldStop 說繼續 → 回退
@@ -870,7 +879,7 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
 
     return {
       systemMessage:
-        `🔄 ${currentStage} FAIL（${retryCount + 1}/${MAX_RETRIES}）\n` +
+        `🔄 ${currentStage} FAIL（${retryCount + 1}/${adjustedLimit}）\n` +
         `➡️ ${devHint}` +
         (contextHint ? `\n${contextHint}` : '') +
         devNodeContextStr +
@@ -1055,7 +1064,7 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
 
       return {
         systemMessage:
-          `${timeoutWarning}🔄 Barrier ${barrierGroup} FAIL（${retryCount + 1}/${MAX_RETRIES}）\n` +
+          `${timeoutWarning}🔄 Barrier ${barrierGroup} FAIL（${retryCount + 1}/${adjustedLimit}）\n` +
           `➡️ ${devHint}` +
           (contextHint ? `\n${contextHint}` : ''),
       };
@@ -1735,6 +1744,9 @@ function buildPhaseCompletionHint(stageId, verdict) {
 
 /** 組裝完成輸出 */
 function buildCompleteOutput(state, completedStage, pipeline) {
+  // S9：記錄 pipeline 完成歷史（非關鍵路徑，靜默忽略錯誤）
+  try { historyRecordCompletion(state); } catch (_) {}
+
   const completed = ds.getCompletedStages(state);
   const skipped = ds.getSkippedStages(state);
   const pipelineId = ds.getPipelineId(state) || 'pipeline';

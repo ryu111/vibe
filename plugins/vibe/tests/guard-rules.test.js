@@ -806,6 +806,87 @@ test('目標 3.10：Write 其他 .jsonl 檔案 → block（防止白名單過寬
 });
 
 // ═══════════════════════════════════════════════
+console.log('\n🔓 Rule 6.5 Cancel 白名單 — 完整驗證');
+console.log('═'.repeat(55));
+// ═══════════════════════════════════════════════
+// 以下 8 個測試對應 S8 cancel 白名單任務清單的 8 個 case，
+// 確保 cancel skill 在各種 pipelineActive/activeStages 情境下都能正確寫入 state file。
+
+// S8 Case 1：pipelineActive=true + activeStages=[] + Write pipeline-state-*.json → allow
+// cancel skill Relay 模式下可直接寫入解除 pipeline
+test('S8 Case 1：Relay 模式（activeStages=[]）Write pipeline-state-*.json → allow', () => {
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
+  const filePath = path.join(os.homedir(), '.claude', 'pipeline-state-session123.json');
+  const r = evaluate('Write', { file_path: filePath }, state);
+  assert.strictEqual(r.decision, 'allow', 'cancel skill 應能在 Relay 模式下寫入 pipeline-state');
+});
+
+// S8 Case 2：pipelineActive=true + activeStages=[] + Write task-guard-state-*.json → allow
+// cancel skill Relay 模式下可直接寫入解除 task-guard
+test('S8 Case 2：Relay 模式（activeStages=[]）Write task-guard-state-*.json → allow', () => {
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
+  const filePath = path.join(os.homedir(), '.claude', 'task-guard-state-session123.json');
+  const r = evaluate('Write', { file_path: filePath }, state);
+  assert.strictEqual(r.decision, 'allow', 'cancel skill 應能在 Relay 模式下寫入 task-guard-state');
+});
+
+// S8 Case 3：pipelineActive=true + activeStages=[] + Write classifier-corpus.jsonl → allow
+// cancel skill 蒐集誤判語料
+test('S8 Case 3：Relay 模式（activeStages=[]）Write classifier-corpus.jsonl → allow', () => {
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
+  const filePath = path.join(os.homedir(), '.claude', 'classifier-corpus.jsonl');
+  const r = evaluate('Write', { file_path: filePath }, state);
+  assert.strictEqual(r.decision, 'allow', 'cancel skill 應能在 Relay 模式下寫入 classifier-corpus.jsonl');
+});
+
+// S8 Case 4：pipelineActive=true + activeStages=[] + Write ~/.claude/other-file.json → block
+// 非白名單 state file 不應被放行（白名單精確匹配）
+test('S8 Case 4：Relay 模式 Write ~/.claude/ 下的非白名單檔案 → block', () => {
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
+  const filePath = path.join(os.homedir(), '.claude', 'other-state-file.json');
+  const r = evaluate('Write', { file_path: filePath }, state);
+  assert.strictEqual(r.decision, 'block', '非白名單 state file 應被阻擋（must-delegate）');
+  assert.strictEqual(r.reason, 'must-delegate');
+});
+
+// S8 Case 5：pipelineActive=true + activeStages=[] + Write /tmp/pipeline-state-*.json → block
+// 路徑不在 ~/.claude/ 下 — 防止繞過（路徑欺騙）
+test('S8 Case 5：Relay 模式 Write /tmp/ 下的 pipeline-state-*.json → block（非 ~/.claude/ 路徑）', () => {
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
+  const r = evaluate('Write', { file_path: '/tmp/pipeline-state-hijack.json' }, state);
+  assert.strictEqual(r.decision, 'block', '非 ~/.claude/ 路徑的 pipeline-state 應被阻擋');
+  assert.strictEqual(r.reason, 'must-delegate');
+});
+
+// S8 Case 6：pipelineActive=true + activeStages=['DEV'] + Write pipeline-state-*.json → allow
+// 委派中（Rule 4 放行）— activeStages 有值時所有寫入都被 Rule 4 放行
+// 注意：這走的是 Rule 4 放行路徑（非 Rule 6.5），但結果同樣是 allow
+test('S8 Case 6：委派中（activeStages=[DEV]）Write pipeline-state-*.json → allow（Rule 4 放行）', () => {
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: ['DEV'] });
+  const filePath = path.join(os.homedir(), '.claude', 'pipeline-state-session123.json');
+  const r = evaluate('Write', { file_path: filePath }, state);
+  assert.strictEqual(r.decision, 'allow', '委派中 Rule 4 放行所有寫入工具');
+});
+
+// S8 Case 7：pipelineActive=false + Write anything → allow（非 pipeline 模式）
+// pipeline 非活躍時 Rule 3 核心放行
+test('S8 Case 7：pipelineActive=false Write pipeline-state-*.json → allow（Rule 3 核心放行）', () => {
+  const state = makeGuardTestState({ pipelineActive: false });
+  const filePath = path.join(os.homedir(), '.claude', 'pipeline-state-session123.json');
+  const r = evaluate('Write', { file_path: filePath }, state);
+  assert.strictEqual(r.decision, 'allow', 'pipelineActive=false 時 Rule 3 直接放行');
+});
+
+// S8 Case 8：pipelineActive=true + activeStages=[] + Edit pipeline-state-*.json → allow
+// Edit 工具也應受白名單保護（非僅 Write）
+test('S8 Case 8：Relay 模式 Edit pipeline-state-*.json → allow（Edit 也在白名單）', () => {
+  const state = makeGuardTestState({ pipelineActive: true, activeStages: [] });
+  const filePath = path.join(os.homedir(), '.claude', 'pipeline-state-session456.json');
+  const r = evaluate('Edit', { file_path: filePath }, state);
+  assert.strictEqual(r.decision, 'allow', 'Edit pipeline-state 也應被白名單放行');
+});
+
+// ═══════════════════════════════════════════════
 // 結果輸出
 // ═══════════════════════════════════════════════
 

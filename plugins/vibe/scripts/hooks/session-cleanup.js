@@ -18,6 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const hookLogger = require(path.join(__dirname, '..', 'lib', 'hook-logger.js'));
+const { truncateHistory } = require(path.join(__dirname, '..', 'lib', 'flow', 'history-writer.js'));
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const STALE_DAYS = 3;
@@ -62,6 +63,9 @@ process.stdin.on('end', () => {
     cleanStaleFiles('barrier-state-*.json', results);
     // 提前清理：COMPLETE pipeline 或超過 48h 的 pipeline state
     cleanCompletedPipelineStates(sessionId, results);
+
+    // --- 4b. 截斷 pipeline 歷史記錄（保留最新 100 筆）---
+    try { truncateHistory(); } catch (_) {}
 
     // --- 5. 清理 MCP log ---
     cleanMcpLogs(results);

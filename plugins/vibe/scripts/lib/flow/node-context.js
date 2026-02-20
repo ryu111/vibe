@@ -21,6 +21,7 @@ const { execSync } = require('child_process');
 const { readReflection, getReflectionPath } = require('./reflection.js');
 const { getBaseStage } = require('./dag-utils.js');
 const { readWisdom } = require('./wisdom.js');
+const { detectDuplicateHints } = require('./retry-policy.js');
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
@@ -140,14 +141,29 @@ function getRetryContext(sessionId, stage, state) {
   const reflectionFile = getReflectionPath(sessionId, failedStage);
   const reflectionContent = readReflection(sessionId, failedStage);
 
+  // S10：偵測重複 hint（連續相同問題未改善）
+  // 當 retryHistory 中連續出現相同 severity + hint 前綴，強調必須改變策略
+  const stageRetryHistory = state.retryHistory?.[failedStage] || [];
+  const duplicateInfo = detectDuplicateHints(stageRetryHistory);
+
+  // 組裝基本 hint
+  let hint = `⚠️ 你是因為 ${failedStage} FAIL 而被回退的。請先閱讀反思記憶檔案：${reflectionFile}`;
+
+  // 若偵測到重複 hint，在前面加上強調警告
+  if (duplicateInfo.isDuplicate) {
+    hint = `⛔ 警告：連續 ${duplicateInfo.consecutiveCount} 輪回退未見改善（相同問題重複出現），請嘗試完全不同的修復策略。\n\n${hint}`;
+  }
+
   return {
     failedStage,
     round: (retries[failedStage] || 0) + 1,
     reflectionFile,
-    // 只包含摘要 hint，避免 Node Context 過大
-    hint: `⚠️ 你是因為 ${failedStage} FAIL 而被回退的。請先閱讀反思記憶檔案：${reflectionFile}`,
+    // 包含摘要 hint（可能含重複警告），避免 Node Context 過大
+    hint,
     // reflectionContent 提供給需要 inline 讀取的場景（如 retryContext.reflectionContent）
     reflectionContent: reflectionContent ? reflectionContent.slice(0, 500) : null,
+    // 重複 hint 資訊（供 formatNodeContext 顯示）
+    duplicateHint: duplicateInfo.isDuplicate ? duplicateInfo : undefined,
   };
 }
 
