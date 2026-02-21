@@ -598,7 +598,7 @@ start_claude_tmux() {
   tmux kill-session -t "$sess" 2>/dev/null || true
   tmux new-session -d -s "$sess" -x 200 -y 50
   sleep 1
-  local claude_cmd="cd '$project_dir' && $(_claude_base_args "$uuid" "$mem_dir")"
+  local claude_cmd="unset CLAUDECODE && cd '$project_dir' && $(_claude_base_args "$uuid" "$mem_dir")"
   tmux send-keys -t "$sess" "$claude_cmd" Enter
   sleep 10
   echo "$sess"
