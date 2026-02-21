@@ -40,7 +40,7 @@ if (!fs.existsSync(resultsDir)) {
 
 // 讀取所有 JSON 結果檔案
 const resultFiles = fs.readdirSync(resultsDir)
-  .filter(f => f.endsWith('.json') && f !== 'summary.json')
+  .filter(f => f.endsWith('.json') && f !== 'summary.json' && !f.includes('.state-snapshot'))
   .sort();
 
 if (resultFiles.length === 0) {
@@ -63,6 +63,7 @@ const CATEGORY_LABELS = {
   B: '自然語言分類',
   C: '回復路徑',
   D: '環境適配',
+  E: 'v4 機制驗證',
 };
 
 const categories = {};
@@ -113,7 +114,7 @@ console.log(`${C.cyan}║${C.dim}${tsLine}${' '.repeat(W - tsLine.length)}${C.re
 console.log(`${C.cyan}╠${line}╣${C.reset}`);
 
 // 各分類統計
-for (const cat of ['A', 'B', 'C', 'D']) {
+for (const cat of ['A', 'B', 'C', 'D', 'E']) {
   const data = categories[cat];
   if (!data) continue;
 
