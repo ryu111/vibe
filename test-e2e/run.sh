@@ -424,11 +424,21 @@ poll_state() {
         } catch(e) { console.log('UNKNOWN'); }
       " 2>/dev/null)
 
+      # 持續快照有意義的 state（防止 COMPLETE→reset 競爭條件遺失 pipeline 資料）
+      node -e "
+        try {
+          const s = JSON.parse(require('fs').readFileSync('$state_file','utf8'));
+          if (s.dagStages && s.dagStages.length > 0) {
+            require('fs').copyFileSync('$state_file', '$RESULTS_DIR/${scenario_id}.state-snapshot.json');
+          }
+        } catch {}
+      " 2>/dev/null
+
       set_status "$scenario_id" "⏳ ${phase} (閒置${idle_elapsed}s/總${elapsed}s)"
 
       case "$phase" in
         COMPLETE)
-          # 快照 state（防止被其他 session 的 cleanup 刪除）
+          # 最終快照（確保 COMPLETE 狀態被記錄）
           cp "$state_file" "$RESULTS_DIR/${scenario_id}.state-snapshot.json" 2>/dev/null || true
           echo "COMPLETE"
           return 0

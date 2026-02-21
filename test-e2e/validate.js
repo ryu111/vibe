@@ -56,17 +56,24 @@ const expected = scenario.expected;
 function readState() {
   // 主要路徑：直接讀取 ~/.claude/ 的 state 檔案
   const primary = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
-  try { return JSON.parse(fs.readFileSync(primary, 'utf8')); } catch {}
+  let primaryState = null;
+  try { primaryState = JSON.parse(fs.readFileSync(primary, 'utf8')); } catch {}
 
-  // Fallback：讀取 run.sh 在 COMPLETE 偵測時建立的快照
-  // 防止並行 session 的 session-cleanup 在 validate 前刪除 state
+  // 快照路徑：run.sh 在 poll loop 中持續更新的 state 快照
   const snapshotDir = process.env.VIBE_E2E_RESULTS_DIR;
+  let snapshotState = null;
   if (snapshotDir) {
     const snapshot = path.join(snapshotDir, `${scenarioId}.state-snapshot.json`);
-    try { return JSON.parse(fs.readFileSync(snapshot, 'utf8')); } catch {}
+    try { snapshotState = JSON.parse(fs.readFileSync(snapshot, 'utf8')); } catch {}
   }
 
-  return null;
+  // 優先邏輯：primary state 被 reset（dagStages 空）但 snapshot 有資料 → 用 snapshot
+  // 防止 COMPLETE→reset 競爭條件遺失 pipeline 資料
+  if (primaryState && (!primaryState.dagStages || primaryState.dagStages.length === 0) && snapshotState && snapshotState.dagStages && snapshotState.dagStages.length > 0) {
+    return snapshotState;
+  }
+
+  return primaryState || snapshotState || null;
 }
 
 function readTimeline() {
