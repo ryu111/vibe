@@ -245,8 +245,21 @@ function App() {
           <!-- Tab: Dashboard -->
           ${mainTab === 'dashboard' && html`
           <div class="dash-grid">
-            <div class="dash-left">
               <${AgentStatus} state=${s} tick=${tick} events=${tlAll} registry=${registry} alive=${active ? !!alive[active] : false} memory=${memory} />
+              <div class="mini-tl">
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                  <h4>📋 里程碑事件</h4>
+                </div>
+                <div class="tl-items-wrap">
+                  ${(() => {
+                    const MILESTONE_TYPES = ['delegation.start', 'stage.start', 'stage.complete', 'stage.retry', 'stage.crash-recovery', 'pipeline.complete', 'pipeline.incomplete', 'pipeline.cancelled', 'task.classified', 'ask.question', 'ask.answered', 'session.start'];
+                    const milestones = tlAll.filter(ev => MILESTONE_TYPES.includes(ev.eventType));
+                    return milestones.length ? milestones.map((ev, i) => html`
+                      <div key=${i} class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
+                    `) : html`<div style="color:var(--subtext0);font-size:10px">等待事件流…</div>`;
+                  })()}
+                </div>
+              </div>
               <${MCPStats} events=${tlAll} />
               <${StatsCards} state=${s} events=${tlAll} tick=${tick} metrics=${active ? sessionMetrics[active] : null} />
               <${PipelineProgressBar} state=${s} registry=${registry} />
@@ -279,23 +292,6 @@ function App() {
                   </div>
                 </div>
               `}
-            </div>
-            <div class="dash-right">
-              <div class="mini-tl">
-                <div style="display:flex;align-items:center;justify-content:space-between">
-                  <h4>📋 里程碑事件</h4>
-                </div>
-                <div class="tl-items-wrap">
-                  ${(() => {
-                    const MILESTONE_TYPES = ['delegation.start', 'stage.start', 'stage.complete', 'stage.retry', 'stage.crash-recovery', 'pipeline.complete', 'pipeline.incomplete', 'pipeline.cancelled', 'task.classified', 'ask.question', 'ask.answered', 'session.start'];
-                    const milestones = tlAll.filter(ev => MILESTONE_TYPES.includes(ev.eventType));
-                    return milestones.length ? milestones.map((ev, i) => html`
-                      <div key=${i} class="tl-item ${ev.type}"><span class="time">${ev.time}</span><span class="msg">${ev.emoji} ${ev.text}</span></div>
-                    `) : html`<div style="color:var(--subtext0);font-size:10px">等待事件流…</div>`;
-                  })()}
-                </div>
-              </div>
-            </div>
           </div>
           `}
 

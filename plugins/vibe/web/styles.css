@@ -220,15 +220,14 @@ body { font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Menlo', monospace;
 .tl-item.active .msg { color: var(--blue); }
 @keyframes slideIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
 
-/* Dashboard 雙欄佈局 */
-.dash-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 360px); gap: 14px; align-items: start; }
-.dash-left, .dash-right { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; }
-.dash-right { max-height: calc(100vh - 130px); overflow-y: auto; }
-@media (max-width: 960px) { .dash-grid { grid-template-columns: 1fr; } .dash-right { max-height: none; overflow-y: visible; } }
+/* Dashboard 扁平 Grid 佈局（agent-panel 與 mini-tl 同行等高） */
+.dash-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 360px); gap: 14px; }
+.dash-grid > * { grid-column: 1; min-width: 0; }
+.dash-grid > .mini-tl { grid-column: 2; grid-row: 1; align-self: stretch; overflow-y: auto; }
 /* Dashboard mini timeline */
 .mini-tl { min-height: 0; display: flex; flex-direction: column; background: var(--surface0); border-radius: 10px; padding: 12px 14px; border: 1px solid var(--surface1); }
 .mini-tl h4 { font-size: 10px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; flex-shrink: 0; }
-.mini-tl .tl-items-wrap { overflow-y: auto; min-height: 120px; max-height: calc(100vh - 200px); }
+.mini-tl .tl-items-wrap { overflow-y: auto; flex: 1; min-height: 80px; }
 .mini-tl .tl-item { font-size: 10px; align-items: flex-start; }
 .mini-tl .tl-item .msg { white-space: normal; }
 
@@ -313,7 +312,7 @@ body { font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Menlo', monospace;
 }
 @media (max-width: 1100px) {
   .dash-grid { grid-template-columns: 1fr; }
-  .dash-right { max-height: none; overflow-y: visible; }
+  .dash-grid > .mini-tl { grid-column: 1; grid-row: auto; align-self: auto; max-height: 400px; }
 }
 @media (max-width: 700px) {
   .layout, .layout.collapsed { grid-template-columns: 1fr; grid-template-rows: auto 1fr; --sidebar-w: 1fr; }
