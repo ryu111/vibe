@@ -2,7 +2,7 @@
 
 > 從 `dashboard.md` 規格分析中提取的已知問題和改進項目。
 > 基於 vibe v5.0.4，`web/index.html` + `server.js` 實際程式碼審查。
-> Phase 1-5 重設計完成（v5.0.5），部分問題已解決，見各項標記。
+> Phase 1-5 重設計完成（v5.0.5），部分問題已解決；v5.0.8 時前端組件化重構完成，見各項標記。
 
 ---
 
@@ -85,7 +85,7 @@
 
 | 檔案 | 路徑 | 狀態 |
 |------|------|------|
-| Runtime SPA | `plugins/vibe/web/index.html` | ✅ 重設計完成（Phase 1-5）|
+| Runtime SPA | `plugins/vibe/web/` | ✅ 重設計完成（Phase 1-5）+ ✅ v5.0.8 組件化重構|
 | Dashboard Server | `plugins/vibe/server.js` | ✅ 重構完成（registry/schema/stale 統一）|
 | Stage Registry | `plugins/vibe/scripts/lib/registry.js` | ✅ 現為 SoT，server.js 動態引用 |
 | Timeline Schema | `plugins/vibe/scripts/lib/timeline/schema.js` | ✅ CATEGORIES 現由 server.js 動態引用 |

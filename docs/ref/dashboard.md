@@ -21,9 +21,9 @@ Vibe Dashboard 是 Pipeline v4/v5 的即時視覺監控系統，提供 Pipeline 
 
 ### 1.2 系統架構
 
-| 系統                 | 路徑                                                     | 技術                              | 用途                      |
-| -------------------- | -------------------------------------------------------- | --------------------------------- | ------------------------- |
-| **Runtime 即時監控** | `plugins/vibe/web/index.html` + `plugins/vibe/server.js` | Preact + HTM + Bun HTTP/WebSocket | 即時追蹤執行中的 pipeline |
+| 系統                 | 路徑                                                                         | 技術                              | 用途                      |
+| -------------------- | ---------------------------------------------------------------------------- | --------------------------------- | ------------------------- |
+| **Runtime 即時監控** | `plugins/vibe/web/` (組件化) + `plugins/vibe/server.js`                    | Preact + HTM + Bun HTTP/WebSocket | 即時追蹤執行中的 pipeline |
 
 注意：Build-time 靜態報告系統（`dashboard/`）已廢棄，`dashboard/config.json` 已移除。
 
@@ -40,13 +40,37 @@ SessionStart hook
 
 ### 1.3 技術棧
 
-**Runtime SPA（`web/index.html`）**：
+**Runtime SPA（`web/` 組件化架構）**：
 
 - Preact 10.25.4（ESM via `esm.sh`）+ HTM 3.1.1（tagged template literal JSX）
-- 單檔 SPA（~1320 行，CSS + JS 全內嵌，零建置步驟）
+- 14 個 ES module 檔案（`app.js` + 9 個 component + 2 個 lib + 1 個 state）+ `styles.css`
 - 字體：SF Mono / Cascadia Code / Fira Code（系統等寬，移除 Press Start 2P 像素字體）
 - 色彩系統：Catppuccin Mocha（`:root` CSS 變數）
 - 資料層：`/api/registry` 取代前端硬編碼的 SM/TYPE_LABELS/AGENT_ROSTER
+
+**Web 目錄結構**：
+
+```
+web/
+├── index.html              # HTML shell（14 行）
+├── styles.css              # 主樣式（~336 行）
+├── app.js                  # 應用主控制（~280 行，App + WebSocket + tabs）
+├── lib/
+│   ├── preact.js           # Preact CDN re-export hub
+│   └── utils.js            # 共用 helpers（sid/now/elapsed/fmtSec/fmtDuration/fmtSize）
+├── state/
+│   └── pipeline.js         # 11 個 state accessor 函式
+└── components/             # 9 個組件
+    ├── sidebar.js          # Session 列表 + 側邊欄
+    ├── dag-view.js         # DAG 流程圖 + layout 演算法
+    ├── barrier-display.js  # Barrier 狀態顯示
+    ├── agent-status.js     # Agent 面板 + 狀態燈
+    ├── mcp-stats.js        # MCP 工具統計
+    ├── stats-cards.js      # 8 張統計卡片
+    ├── pipeline-progress.js# 進度條
+    ├── confetti.js         # 完成慶祝動畫
+    └── export-report.js    # 報告匯出
+```
 
 **後端（`server.js`）**：
 
@@ -172,7 +196,7 @@ Pipeline state 儲存於 `~/.claude/pipeline-state-{sessionId}.json`，格式：
 
 ### 2.4 adaptState() 適配層
 
-`adaptState(raw)` 函式（定義於 `web/index.html`）將 v4 DAG state 轉換為前端 UI 使用的 v2 相容扁平格式：
+`adaptState(raw)` 函式（定義於 `web/app.js`）將 v4 DAG state 轉換為前端 UI 使用的 v2 相容扁平格式：
 
 ```js
 // 輸入：v4 DAG state（含 dag + stages + classification）

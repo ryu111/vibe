@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 5.0.8 | 全方位開發工作流 | 38 | 12 | 19 | 54 |
+| **vibe** | 5.1.0 | 全方位開發工作流 | 38 | 12 | 19 | 54 |
 
 ### vibe plugin 功能模組
 
@@ -107,7 +107,13 @@ plugins/vibe/
 ├── agents/                  # 12 個 agent 定義
 ├── server.js                # Dashboard HTTP+WebSocket server
 ├── bot.js                   # Telegram daemon
-├── web/index.html           # Dashboard 前端
+├── web/                     # Dashboard 前端（組件化架構）
+│   ├── index.html           # HTML shell
+│   ├── styles.css           # 主樣式
+│   ├── app.js               # 應用主控制
+│   ├── lib/                 # 共用函式庫（preact、utils）
+│   ├── state/               # 狀態層（pipeline.js）
+│   └── components/          # 9 個組件（sidebar/dag-view/barrier/agent-status/mcp-stats/stats-cards/pipeline-progress/confetti/export-report）
 └── tests/                   # E2E 測試
 ```
 
