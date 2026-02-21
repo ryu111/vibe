@@ -49,6 +49,12 @@ const PASS_PATTERNS = [
   /(?:審查|review)\s*完成/i,
   /tester\s*測試撰寫完成/i,
   /code\s*reviewer\s*審查完成/i,
+  // TDD 測試撰寫完成信號（RED phase 輸出自然包含 "fail"，需在 hasFAILSignal 之前捕獲）
+  /(?:wrote|created|added)\s+\d+\s*tests?/i,
+  /寫了\s*\d+\s*(?:個\s*)?測試/,
+  /\d+\s*(?:個\s*)?測試\s*(?:已建立|已撰寫|撰寫完成|寫完|建立完成)/,
+  /(?:RED|GREEN|VERIFY)\s*(?:phase|階段)\s*(?:完成|結束|done)/i,
+  /TDD\s*(?:完整\s*)?(?:週期|cycle)\s*完成/i,
 ];
 
 // FAIL 信號正則（hasFAILSignal 用）
@@ -66,6 +72,9 @@ const CRITICAL_ZERO_COLON_RE = /CRITICAL\s*[:：]\s*0/i;
 
 // FAIL 類 false-positive 排除正則（onFail、failover、failsafe）
 const FAIL_FALSE_POSITIVE_RE = /\bonFail\b|\bfailover\b|\bfailsafe\b/gi;
+
+// TDD 上下文正則：出現這些模式時，"fail" 類詞語是預期行為而非真正的品質失敗
+const TDD_CONTEXT_RE = /\bRED\s*(?:phase|階段)\b|\bTDD\b|如預期\s*失敗|expected\s*(?:to\s+)?fail/i;
 
 // ────────────────── 1. parseRoute ──────────────────
 
@@ -291,6 +300,10 @@ function extractIssueCount(text, severity) {
  * 使用模組頂層預編譯的 FAIL_PATTERNS，避免每次呼叫重建陣列。
  */
 function hasFAILSignal(text) {
+  // TDD 上下文：出現 RED phase / TDD / "如預期失敗" 時，
+  // "fail" 類信號是預期行為（TDD RED phase 測試本應失敗），不視為真正的 FAIL
+  const isTddContext = TDD_CONTEXT_RE.test(text);
+
   for (const pat of FAIL_PATTERNS) {
     if (pat.test(text)) {
       // 排除 "0 CRITICAL" / "CRITICAL: 0" 的 false positive
@@ -299,9 +312,11 @@ function hasFAILSignal(text) {
           continue;
         }
       }
-      // 排除 /fail/ 模式的 false positive（onFail、failover 等）
-      if (/fail/i.test(pat.source)) {
-        // 確認不是只因為 false-positive 模式才匹配
+      // 排除 /fail/ 和 /測試失敗/ 模式的 false positive
+      if (/fail|失敗/.test(pat.source)) {
+        // TDD 上下文中 "fail" 是預期行為
+        if (isTddContext) continue;
+        // 非 TDD 上下文：排除 onFail、failover 等技術術語
         const cleaned = text.replace(FAIL_FALSE_POSITIVE_RE, '');
         if (!pat.test(cleaned)) continue;
       }
