@@ -385,6 +385,8 @@ poll_state() {
             } catch(e) { console.log('UNKNOWN'); }
           " 2>/dev/null)
           if [ "$exit_phase" = "COMPLETE" ]; then
+            # 快照 state（防止被其他 session 的 cleanup 刪除）
+            cp "$state_file" "$RESULTS_DIR/${scenario_id}.state-snapshot.json" 2>/dev/null || true
             echo "COMPLETE"
             return 0
           fi
@@ -426,6 +428,8 @@ poll_state() {
 
       case "$phase" in
         COMPLETE)
+          # 快照 state（防止被其他 session 的 cleanup 刪除）
+          cp "$state_file" "$RESULTS_DIR/${scenario_id}.state-snapshot.json" 2>/dev/null || true
           echo "COMPLETE"
           return 0
           ;;
@@ -764,7 +768,7 @@ run_scenario() {
 EOF
     set_status "$id" "✗ 逾時 (${duration}s)"
   else
-    node "$VALIDATE_SCRIPT" "$uuid" "$id" "$SCENARIOS_FILE" > "$result_file" 2>/dev/null || true
+    VIBE_E2E_RESULTS_DIR="$RESULTS_DIR" node "$VALIDATE_SCRIPT" "$uuid" "$id" "$SCENARIOS_FILE" > "$result_file" 2>/dev/null || true
 
     if [ -f "$result_file" ]; then
       node -e "

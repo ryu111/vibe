@@ -78,7 +78,7 @@
         "pipelineId": "test-first",
         "phase": "COMPLETE",
         "stageCount": 3,
-        "stages": ["TEST", "DEV", "TEST:2"],
+        "stages": ["TEST", "DEV", "TEST:verify"],
         "source": "explicit"
       },
       "timeout": 120
@@ -89,6 +89,7 @@
       "categoryLabel": "Pipeline 正路徑",
       "name": "ui-only 純 UI 調整",
       "prompt": "[pipeline:ui-only] 在 plugins/vibe/web/index.html 的 footer 加一個 vibe 版號顯示",
+      "projectVariant": "frontend",
       "expected": {
         "pipelineId": "ui-only",
         "phase": "COMPLETE",
@@ -96,7 +97,8 @@
         "stages": ["DESIGN", "DEV", "QA"],
         "source": "explicit"
       },
-      "timeout": 120
+      "timeout": 120,
+      "_note": "ui-only 包含 DESIGN stage，需要 frontend variant 才不會被 skip-predicates 跳過"
     },
     {
       "id": "A07",
@@ -165,11 +167,10 @@
       "name": "自然語言→main-agent（新增模組）",
       "prompt": "新增一個 session 管理模組到 plugins/vibe/scripts/lib/ 目錄，包含 createSession、destroySession、getSessionInfo 三個函式",
       "expected": {
-        "pipelineId": "none",
-        "phase": "IDLE"
+        "noCrash": true
       },
       "timeout": 120,
-      "_note": "新增模組 → Layer 2 main-agent 自主判斷（heuristic 不分類多階段 pipeline）"
+      "_note": "v5 Always-Pipeline：新增模組 → Main Agent 主動選擇 pipeline（standard/quick-dev/fix 均可），不驗具體 pipelineId 避免非確定性失敗"
     },
     {
       "id": "B02",
@@ -199,14 +200,14 @@
       "id": "B04",
       "category": "B",
       "categoryLabel": "自然語言分類",
-      "name": "自然語言→fix（修復）",
+      "name": "自然語言→fix 或 quick-dev（修復）",
       "prompt": "修復 plugins/vibe/scripts/lib/sentinel/tool-detector.js 的快取機制，加上過期時間 5 分鐘",
       "expected": {
-        "pipelineId": "fix",
+        "noCrash": true,
         "phase": "COMPLETE"
       },
       "timeout": 120,
-      "_note": "修復 → heuristic:bugfix → fix pipeline（單階段 DEV）"
+      "_note": "v5 Always-Pipeline：修復任務 → Main Agent 可能選 fix 或 quick-dev，只驗完成且不 crash"
     },
     {
       "id": "B05",
@@ -227,11 +228,10 @@
       "name": "自然語言→main-agent（重構）",
       "prompt": "重構 plugins/vibe/scripts/lib/sentinel/lang-map.js 把硬編碼的語言映射抽出成可配置的 JSON",
       "expected": {
-        "pipelineId": "none",
-        "phase": "IDLE"
+        "noCrash": true
       },
       "timeout": 120,
-      "_note": "重構 → Layer 2 main-agent 自主判斷（heuristic 不分類多階段 pipeline）"
+      "_note": "v5 Always-Pipeline：重構 → Main Agent 主動選擇 pipeline（standard/quick-dev 均可），不驗具體 pipelineId 避免非確定性失敗"
     },
     {
       "id": "B07",

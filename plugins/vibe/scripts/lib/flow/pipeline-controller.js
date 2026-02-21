@@ -520,8 +520,20 @@ async function classify(sessionId, prompt, options = {}) {
     return { output: null };
   }
 
-  // COMPLETE → 允許新 pipeline
+  // COMPLETE → 允許新 pipeline（含冷卻期防護）
   if (state && ds.isComplete(state)) {
+    // 30 秒冷卻期：COMPLETE 後的非顯式分類被忽略
+    // 防止 stop hook decision:"block" 的 reason 被 classifier 誤判為新任務，
+    // 導致 COMPLETE state 被 reset 覆寫為 none（E03 根因）
+    const COMPLETE_COOLDOWN_MS = 30 * 1000;
+    const completedAt = state.meta?.completedAt;
+    if (completedAt && result.source !== 'explicit') {
+      const elapsed = Date.now() - new Date(completedAt).getTime();
+      if (elapsed < COMPLETE_COOLDOWN_MS) {
+        return { output: null };
+      }
+    }
+
     if (result.source === 'explicit') {
       // 顯式 [pipeline:xxx]：保留前一個 classification 供 reclassification 追蹤
       state = ds.resetKeepingClassification(state);
@@ -1131,7 +1143,12 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
 
     if (passReadyStages.length === 0 && ds.isComplete(state)) {
       // 無更多 ready stages 且全部完成 → COMPLETE
-      state = { ...state, pipelineActive: false, activeStages: [] };
+      state = {
+        ...state,
+        pipelineActive: false,
+        activeStages: [],
+        meta: { ...(state.meta || {}), completedAt: new Date().toISOString() },
+      };
       cleanupPatches();
       ds.writeState(sessionId, state);
       // FIC 狀態壓縮（S5）：barrier 完成後也更新 status file
@@ -1354,7 +1371,12 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
   // 檢查是否完成：若完成，合併 pipelineActive=false 到同一次寫入
   if (ds.isComplete(state)) {
     // v4（任務 3.4）：最後一個 stage 完成 → pipelineActive = false（guard 解除）
-    state = { ...state, pipelineActive: false, activeStages: [] };
+    state = {
+      ...state,
+      pipelineActive: false,
+      activeStages: [],
+      meta: { ...(state.meta || {}), completedAt: new Date().toISOString() },
+    };
     cleanupPatches();
     ds.writeState(sessionId, state);
     autoCheckpoint(currentStage);

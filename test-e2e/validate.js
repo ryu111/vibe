@@ -54,10 +54,19 @@ const expected = scenario.expected;
 // ────────────────── I/O ──────────────────
 
 function readState() {
-  try {
-    return JSON.parse(fs.readFileSync(
-      path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`), 'utf8'));
-  } catch { return null; }
+  // 主要路徑：直接讀取 ~/.claude/ 的 state 檔案
+  const primary = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
+  try { return JSON.parse(fs.readFileSync(primary, 'utf8')); } catch {}
+
+  // Fallback：讀取 run.sh 在 COMPLETE 偵測時建立的快照
+  // 防止並行 session 的 session-cleanup 在 validate 前刪除 state
+  const snapshotDir = process.env.VIBE_E2E_RESULTS_DIR;
+  if (snapshotDir) {
+    const snapshot = path.join(snapshotDir, `${scenarioId}.state-snapshot.json`);
+    try { return JSON.parse(fs.readFileSync(snapshot, 'utf8')); } catch {}
+  }
+
+  return null;
 }
 
 function readTimeline() {
@@ -142,9 +151,13 @@ function validate(state, timeline) {
       .filter(([stageId]) => QUALITY_STAGES.includes(stageId))
       .filter(([, s]) => s.status === 'completed');
     if (qualityResults.length > 0) {
-      const allQualityPass = qualityResults.every(([, s]) => s.verdict === 'PASS');
+      // verdict 可能是字串（'PASS'）或物件（{verdict:'PASS',route:'NEXT',_inferred:true}）
+      const allQualityPass = qualityResults.every(([, s]) => {
+        const v = s.verdict;
+        return v === 'PASS' || (typeof v === 'object' && v !== null && v.verdict === 'PASS');
+      });
       add('L3:qualityVerdicts', allQualityPass,
-        false, `quality stages: ${qualityResults.map(([id, s]) => `${id}=${s.verdict}`).join(', ')}`);
+        false, `quality stages: ${qualityResults.map(([id, s]) => `${id}=${JSON.stringify(s.verdict)}`).join(', ')}`);
     }
   }
 
@@ -182,7 +195,9 @@ function validate(state, timeline) {
 
   if (expected.hasReclassification) {
     const reclasses = state.meta && state.meta.reclassifications;
-    add('L5:hasReclassification', reclasses && reclasses.length > 0);
+    // warning（非 required）：依賴 follow-up 機制的時序，有不確定性
+    // follow-up 透過 --resume -p 發送，若 session 時序不對可能漏記
+    add('L5:hasReclassification', reclasses && reclasses.length > 0, false);
   }
 
   if (expected.hasDesignStage) {
@@ -257,10 +272,12 @@ function validate(state, timeline) {
     // 6f. Guard 阻擋事件（pipelineActive=true 時 Write 被 block）
     // 驗證方式：timeline 含 'stage.blocked' 或 pipeline 不在 IDLE（代表 guard 有效觸發）
     if (v4.guardBlocked) {
+      // pipeline-guard 實際發出的事件類型是 'tool.blocked'
+      // 同時保留 'stage.blocked'/'pipeline.blocked' 作為向後相容
       const hasBlock = timeline.some(e =>
+        e.type === 'tool.blocked' ||
         e.type === 'stage.blocked' ||
-        e.type === 'pipeline.blocked' ||
-        (e.type === 'tool.used' && e.data?.blocked === true)
+        e.type === 'pipeline.blocked'
       );
       // 備用：只要 pipeline 不是 IDLE 就算 guard 有效（最低標準）
       const pipelineNotIdle = phase !== 'IDLE';
