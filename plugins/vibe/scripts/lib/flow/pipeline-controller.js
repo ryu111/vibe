@@ -800,7 +800,7 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
 
   // 偵測是否為 pipeline-architect
   if (shortAgent === 'pipeline-architect') {
-    return handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline);
+    return handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline, lastAssistantMessage);
   }
 
   // 正常 stage agent（支援 suffixed stage 如 TEST:2）
@@ -1462,7 +1462,7 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
 }
 
 /** 處理 pipeline-architect agent 完成 */
-function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline) {
+function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline, lastAssistantMessage = '') {
   let state = loadState(sessionId);
   if (!state) state = ds.createInitialState(sessionId);
 
@@ -1477,21 +1477,59 @@ function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline) {
   }
 
   // 從 transcript 解析 DAG
+  // 優先用 lastAssistantMessage（已解碼文字），fallback 到 JSONL 解析
   let dag = null;
   let blueprint = null;
   let enforced = true;
   let rationale = '';
 
-  if (transcriptPath && fs.existsSync(transcriptPath)) {
-    try {
-      const content = fs.readFileSync(transcriptPath, 'utf8');
-      const dagMatch = content.match(/<!-- PIPELINE_DAG_START -->\s*([\s\S]*?)\s*<!-- PIPELINE_DAG_END -->/);
-      if (dagMatch) {
+  const dagRegex = /<!-- PIPELINE_DAG_START -->\s*([\s\S]*?)\s*<!-- PIPELINE_DAG_END -->/;
+
+  // 策略 1：從 lastAssistantMessage 提取（SubagentStop 事件的已解碼文字）
+  if (lastAssistantMessage) {
+    const dagMatch = lastAssistantMessage.match(dagRegex);
+    if (dagMatch) {
+      try {
         const parsed = JSON.parse(dagMatch[1]);
         dag = parsed.dag;
         blueprint = parsed.blueprint || null;
         enforced = parsed.enforced !== false;
         rationale = parsed.rationale || '';
+      } catch (_) {}
+    }
+  }
+
+  // 策略 2：從 JSONL transcript 解析（正確解碼 JSON 字串後搜尋）
+  if (!dag && transcriptPath && fs.existsSync(transcriptPath)) {
+    try {
+      const content = fs.readFileSync(transcriptPath, 'utf8');
+      const lines = content.trim().split('\n');
+      // 逆序掃描（DAG 通常在最後幾條訊息）
+      for (let i = lines.length - 1; i >= 0 && !dag; i--) {
+        if (!lines[i].trim()) continue;
+        try {
+          const entry = JSON.parse(lines[i]);
+          // 提取 text content（解碼 JSON 字串轉義）
+          const msgContent = entry.message?.content;
+          let text = '';
+          if (Array.isArray(msgContent)) {
+            text = msgContent
+              .filter(b => b.type === 'text' && b.text)
+              .map(b => b.text)
+              .join('\n');
+          } else if (typeof msgContent === 'string') {
+            text = msgContent;
+          }
+          if (!text) continue;
+          const dagMatch = text.match(dagRegex);
+          if (dagMatch) {
+            const parsed = JSON.parse(dagMatch[1]);
+            dag = parsed.dag;
+            blueprint = parsed.blueprint || null;
+            enforced = parsed.enforced !== false;
+            rationale = parsed.rationale || '';
+          }
+        } catch (_) { continue; }
       }
     } catch (_) {}
   }

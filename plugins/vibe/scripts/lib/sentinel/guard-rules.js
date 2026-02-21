@@ -150,8 +150,9 @@ function evaluateBashDanger(command) {
 // ────────────────── Bash 寫檔偵測 ──────────────────
 
 // 寫入指令模式（精確匹配特定指令，避免誤擋 npm run build > output.log）
+// 注意：(?<![0-9]) 排除 fd 重導向（2>/dev/null 等），避免誤判 stderr 抑制為寫入
 const WRITE_PATTERNS = [
-  /\b(?:echo|cat|printf)\b.*?>{1,2}\s*(\S+)/,
+  /\b(?:echo|cat|printf)\b.*?(?<![0-9])>{1,2}\s*(\S+)/,
   /\|\s*tee\s+(?:-a\s+)?(\S+)/,
   /\bsed\s+(?:-[^i]*)?-i['"=]?\s*(?:'[^']*'|"[^"]*"|\S+)\s+(\S+)/,
   /\bcp\s+(?:-\w+\s+)*\S+\s+(\S+)/,           // cp source target
@@ -166,6 +167,8 @@ function detectBashWriteTarget(command) {
     const match = command.match(pattern);
     if (match && match[1]) {
       const targetFile = match[1].replace(/["']/g, '');
+      // /dev/null 是安全目標（輸出丟棄），不視為寫入
+      if (targetFile === '/dev/null') continue;
       if (!isNonCodeFile(targetFile)) {
         return {
           decision: 'block',

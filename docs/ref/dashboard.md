@@ -194,28 +194,20 @@ Pipeline state 儲存於 `~/.claude/pipeline-state-{sessionId}.json`，格式：
 4. `deleteBarrier`：FAIL 時清理 group
 5. timeout force-unlock：absent sibling → 視為 FAIL
 
-### 2.4 adaptState() 適配層
+### 2.4 State 存取層
 
-`adaptState(raw)` 函式（定義於 `web/app.js`）將 v4 DAG state 轉換為前端 UI 使用的 v2 相容扁平格式：
+> **v5.0.5 變更**：`adaptState()` 適配層已移除。前端直接操作 v4 DAG state（`dag`/`stages`/`classification` 欄位），透過 `state/pipeline.js` 的 11 個 accessor 函式存取：
 
 ```js
-// 輸入：v4 DAG state（含 dag + stages + classification）
-// 輸出：前端 UI 相容格式
-{
-  expectedStages: [...],       // dag key 列表
-  stageResults: {              // 展平 verdict 物件
-    DEV: { verdict, severity, duration, completedAt }
-  },
-  currentStage: 'REVIEW',     // 第一個 active stage
-  delegationActive: true,      // !!activeStage
-  isPipelineComplete: false,   // 所有 stage completed/skipped/failed
-  cancelled: false,            // pipelineActive=false 且未完成
-  completed: [...],            // completed stage 對應的 agent 名稱
-  skippedStages: [...],
-  taskType, pipelineId,
-  lastTransition, startedAt,
-  retries, environment,
-}
+// state/pipeline.js — 主要 accessor
+getPipelineProgress(state)   // 進度百分比
+hasPipeline(state)           // 是否有 pipeline
+isLive(state, alive)         // 是否活躍
+sessionCategory(state, alive)// 分組：live/done/stale
+getStageStatus(stageId, state)   // stage 狀態
+getStageVerdict(stageId, state)  // stage verdict
+getStageDuration(stageId, state) // stage 耗時
+getActiveStages(state)       // 當前 activeStages
 ```
 
 ---
@@ -306,13 +298,11 @@ Pipeline state 儲存於 `~/.claude/pipeline-state-{sessionId}.json`，格式：
 | `active`（已完成，進度 = 100%） | `pct >= 100 && hasPipeline` | 55%（`.done`）            |
 | `stale`（30 分鐘以上無活動）    | `age > 1800s`               | 40%（`.stale`），預設折疊 |
 
-**排序選項**（排序 `<select>`）：
+**自動排序**（v5.0.5 移除排序下拉）：
 
-- `recent`：最近活動時間（`lastTransition` DESC）
-- `progress`：完成進度（`pct` DESC）
-- `type`：Pipeline 類型（字母排序）
-
-排序規則：alive session 永遠排在最上面（`aliveFirst` 優先）。
+- 活躍 session（alive/delegationActive）永遠排最上
+- 其餘按最近活動時間（`lastTransition` DESC）排序
+- 三個群組（live → done → stale）各自獨立排序
 
 **收合模式**（`.collapsed`）：
 
@@ -332,13 +322,13 @@ Pipeline state 儲存於 `~/.claude/pipeline-state-{sessionId}.json`，格式：
 
 #### 4.2.1 Agent 狀態面板（`AgentStatus`）
 
-14 個 agents，分 3 群組（系統 3 + Pipeline 9 + 輔助 2）：
+15 個 agents，分 3 群組（系統 3 + Pipeline 9 + 輔助 3）：
 
 | 群組     | Agents                                                                                      |
 | -------- | ------------------------------------------------------------------------------------------- |
 | 系統     | Main Agent（🎯），Explore（🔭），Plan（📐）                                                 |
 | PIPELINE | planner, architect, designer, developer, code-reviewer, tester, qa, e2e-runner, doc-updater |
-| 輔助     | security-reviewer（🛡️），build-error-resolver（🔧）                                         |
+| 輔助     | security-reviewer（🛡️），build-error-resolver（🔧），pipeline-architect（📐）                |
 
 Grid 7 欄（`.agent-row`）：`16px 140px 68px 54px 64px 1fr 44px`（燈號 + 名稱 + 職責 + model + 狀態 + chips + 時長）
 
@@ -491,13 +481,11 @@ const MILESTONE_TYPES = [
 | `s` / `S` | 切換側邊欄展開/收合                                              |
 | `f` / `F` | 切換全螢幕模式                                                   |
 | `t` / `T` | 切換至 Timeline Tab                                              |
-| `p` / `P` | 切換 default/pixel 主題                                          |
-| `c` / `C` | 切換卡片聚焦模式                                                 |
 | `1`       | 切換至 Dashboard Tab                                             |
 | `2`       | 切換至 Pipeline Tab                                              |
 | `3`       | 切換至 Timeline Tab                                              |
 | `e` / `E` | 導出當前 session 報告（Markdown）                                |
-| `?`       | 顯示快捷鍵提示 Toast（注意：提示內容不完整，缺少部分快捷鍵說明） |
+| `?`       | 顯示快捷鍵提示 Toast（`1/2/3 Tab · ↑↓ 切換 · S 側邊 · F 全螢幕 · E 導出 · ⌘± 縮放`） |
 
 縮放快捷鍵（攔截避免影響 VSCode）：
 
@@ -515,7 +503,7 @@ const MILESTONE_TYPES = [
 
 ### 5.3 主題
 
-v5.0.5 起移除 Pixel 主題（Pixel Office 視圖廢棄），工具列不再有「🎮 像素」按鈕，鍵盤 `P` 快捷鍵亦移除。
+v5.0.5 起移除 Pixel 主題（Pixel Office 視圖廢棄），工具列不再有像素主題按鈕。
 
 Dashboard 固定使用 Catppuccin Mocha 色彩系統（`:root` CSS 變數），系統等寬字體。
 
@@ -540,10 +528,9 @@ Blob URL 觸發下載（`a.click()`）。
 - 4 秒後自動清除 (`setShowConfetti(false)`)
 - 像素模式：彩紙為方形（`border-radius: 0`）
 
-### 5.6 卡片聚焦模式（`.focus-cards`）
+### 5.6 卡片聚焦模式（已移除）
 
-隱藏側邊欄 + 縮減主區 padding + 隱藏 summary/cards/timeline。
-主要用途：在 VS Code Simple Browser 中最小化 UI 占用。
+> **v5.0.5 變更**：聚焦模式（`.focus-cards`）已移除，工具列不再有聚焦模式按鈕，鍵盤 `C` 快捷鍵亦移除。
 
 ---
 

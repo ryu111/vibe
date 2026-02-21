@@ -28,12 +28,23 @@ export function AgentStatus({ state, tick, events, registry, alive, memory }) {
   ];
   const allAgents = [...systemAgents, ...pipelineAgents, ...supportAgents];
 
-  // Pipeline 是否已完成（所有燈號熄滅用）
-  const pipelineDone = hasPipeline(state) && getPipelineProgress(state) >= 100 && !state?.pipelineActive && (state?.activeStages || []).length === 0;
+  // Pipeline 是否不活躍（完成 / 取消 / 重設 → 無 activeStages 且 pipelineActive=false）
+  const pipelineInactive = !state?.pipelineActive && (state?.activeStages || []).length === 0;
+  // Pipeline 是否已完成 100%（燈號全滅用）
+  const pipelineDone = pipelineInactive && hasPipeline(state) && getPipelineProgress(state) >= 100;
+
+  // session 切換時清除所有計時器，避免跨 session 殘留
+  const prevStateRef = useRef(state);
+  if (prevStateRef.current !== state) {
+    prevStateRef.current = state;
+    timers.current = {};
+  }
 
   // 取得每個 agent 的簡化狀態
   function getAgentStatus(agent) {
-    // Pipeline 完全結束 → 所有燈號熄滅
+    // Pipeline 不活躍且無 pipeline → idle
+    if (pipelineInactive && !hasPipeline(state)) return { status: 'idle', label: '—', dur: null };
+    // Pipeline 已完全完成 → 所有燈號熄滅
     if (pipelineDone) return { status: 'idle', label: '—', dur: null };
 
     // 主 agent
@@ -65,8 +76,12 @@ export function AgentStatus({ state, tick, events, registry, alive, memory }) {
         if (verdict === 'FAIL') return { status: 'error', label: getStageSeverity(last, state) || 'FAIL', dur };
         return { status: 'pass', label: verdict || 'PASS', dur };
       }
-      // 在 DAG 中但還沒開始 → 等待；不在 DAG 中 → 閒置
-      if (matchedStages.length > 0) return { status: 'idle', label: '等待', dur: null };
+      // 在 DAG 中但還沒開始
+      if (matchedStages.length > 0) {
+        // pipeline 已不活躍（取消/重設）→ 不會再執行，顯示 idle
+        if (pipelineInactive) return { status: 'idle', label: '—', dur: null };
+        return { status: 'idle', label: '等待', dur: null };
+      }
       return { status: 'idle', label: '—', dur: null };
     }
     // 從事件串流偵測 support/system agents（僅 pipeline 存在時顯示）

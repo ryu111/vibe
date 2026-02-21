@@ -439,6 +439,38 @@ test('空指令 → null', () => {
   assert.strictEqual(detectBashWriteTarget(''), null);
 });
 
+// ── fd 重導向 + /dev/null 安全目標 ──
+
+test('cat file 2>/dev/null → null（fd 重導向，非寫入）', () => {
+  assert.strictEqual(detectBashWriteTarget('cat ~/.claude/dashboard-server.pid 2>/dev/null'), null);
+});
+
+test('echo foo > /dev/null → null（/dev/null 安全目標）', () => {
+  assert.strictEqual(detectBashWriteTarget('echo foo > /dev/null'), null);
+});
+
+test('echo foo 2>/dev/null → null（fd 重導向）', () => {
+  assert.strictEqual(detectBashWriteTarget('echo foo 2>/dev/null'), null);
+});
+
+test('cat file 2>>/dev/null → null（fd append 重導向）', () => {
+  assert.strictEqual(detectBashWriteTarget('cat file 2>>/dev/null'), null);
+});
+
+test('echo "test" > app.js 2>/dev/null → block（真正寫入 + fd 重導向）', () => {
+  const r = detectBashWriteTarget('echo "test" > app.js 2>/dev/null');
+  assert.strictEqual(r.decision, 'block');
+  assert.ok(r.message.includes('app.js'));
+});
+
+test('printf "x" > /dev/null → null（/dev/null 安全目標）', () => {
+  assert.strictEqual(detectBashWriteTarget('printf "x" > /dev/null'), null);
+});
+
+test('lsof -i :3800 2>/dev/null → null（非寫入指令 + fd 重導向）', () => {
+  assert.strictEqual(detectBashWriteTarget('lsof -i :3800 2>/dev/null'), null);
+});
+
 // ═══════════════════════════════════════════════
 console.log('\n🔗 evaluate() — Bash 整合測試');
 console.log('═'.repeat(55));

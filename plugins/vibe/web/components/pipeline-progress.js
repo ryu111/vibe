@@ -8,9 +8,12 @@ import { hasPipeline, getPipelineProgress, getStageStatus } from '../state/pipel
  */
 export function PipelineProgressBar({ state, registry }) {
   if (!hasPipeline(state)) return null;
+  // pipeline 不活躍（取消 / 重設）且尚未完成 → 不顯示進度條
+  const pipelineInactive = !state?.pipelineActive && (state?.activeStages || []).length === 0;
+  const progress = getPipelineProgress(state);
+  if (pipelineInactive && progress < 100) return null;
   const dag = state.dag || {};
   const dagKeys = Object.keys(dag);
-  const progress = getPipelineProgress(state);
   const isComp = progress === 100;
 
   return html`
