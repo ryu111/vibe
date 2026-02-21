@@ -126,7 +126,8 @@ test('G05: 連續阻擋 ≥3 次 → stopReason 含 cancel 提示', () => {
 
   const result = ctrl.onSessionStop(sid);
   assert.ok(result, 'onSessionStop 應回傳非 null（pipeline 未完成）');
-  assert.strictEqual(result.continue, false, 'continue 應為 false');
+  // v5.1.1：onSessionStop 不再回傳 continue:false（死碼移除），pipeline-check.js 用 decision:"block" 阻擋
+  assert.ok(result.systemMessage, 'systemMessage 應存在（供 pipeline-check 輸出 decision:block）');
   assert.ok(result.stopReason, 'stopReason 應存在');
   // 第 3 次應含 cancel 提示
   assert.ok(

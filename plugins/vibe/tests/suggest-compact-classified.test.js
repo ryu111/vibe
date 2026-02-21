@@ -315,8 +315,9 @@ test('compact 提醒 + CLASSIFIED 提醒 → 合併為單一 systemMessage（包
   const sessionId = 'test-sc-c-combined';
   writeState(sessionId, makeClassifiedState(sessionId, { pipelineId: 'standard' }));
   writeClassifiedCount(sessionId, 2);
-  // 設定 counter 達 compact 閾值（60）
-  writeCounter(sessionId, 99);
+  // 設定 counter 達 compact 閾值（THRESHOLD=200, REMIND_INTERVAL=40）
+  // increment 後 count=200，200-0 >= 40 → 觸發 compact 提醒
+  writeCounter(sessionId, 199);
 
   try {
     const output = runHook({ session_id: sessionId, tool_name: 'Read', tool_input: { file_path: '/x.js' } });

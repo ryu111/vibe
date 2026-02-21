@@ -3,7 +3,7 @@
  * task-guard.js — Stop hook
  *
  * 未完成任務時阻擋 Claude 結束回合。
- * 強度：絕對阻擋（continue: false）。
+ * 強度：decision:"block" + reason（prompt 重注入，與 pipeline-check 一致）。
  *
  * 任務解析邏輯委託給 lib/task-parser.js（純函式模組）。
  *
@@ -12,7 +12,9 @@
  * 強制宣告完成，繞過 TaskUpdate 狀態檢查。
  *
  * 阻擋格式：
- *   { continue: false, stopReason: "描述", systemMessage: "狀態資訊" }
+ *   { decision: "block", reason: "指令文字（作為新 prompt 送回 Claude）" }
+ *
+ * 互斥：Pipeline 活躍時讓 pipeline-check 處理，避免雙重阻擋。
  */
 'use strict';
 const fs = require('fs');
@@ -46,6 +48,18 @@ process.stdin.on('end', () => {
     }
 
     const sessionId = data.session_id || 'unknown';
+
+    // 1.5 Pipeline 活躍時讓 pipeline-check 處理（避免雙重 block）
+    const pipelineStatePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
+    if (fs.existsSync(pipelineStatePath)) {
+      try {
+        const ps = JSON.parse(fs.readFileSync(pipelineStatePath, 'utf8'));
+        if (ps.pipelineActive) {
+          process.exit(0);
+        }
+      } catch (_) { /* ignore */ }
+    }
+
     const transcriptPath = data.transcript_path;
     const statePath = path.join(CLAUDE_DIR, `task-guard-state-${sessionId}.json`);
 
@@ -128,9 +142,8 @@ process.stdin.on('end', () => {
     });
 
     console.log(JSON.stringify({
-      continue: false,
-      stopReason: `${incomplete.length} 個任務未完成`,
-      systemMessage: `${SYSTEM_MARKER}⛔ 任務尚未完成（第 ${state.blockCount}/${state.maxBlocks || MAX_BLOCKS} 次阻擋）\n\n未完成項目（${incomplete.length}/${taskIds.length}）：\n${todoList}\n\n請繼續完成以上項目。完成後請將所有任務標記為 completed。\n如果確實已全部完成，輸出 <promise>${expectedPromise}</promise> 以退出。`,
+      decision: 'block',
+      reason: `${SYSTEM_MARKER}⛔ 任務尚未完成（第 ${state.blockCount}/${state.maxBlocks || MAX_BLOCKS} 次阻擋）\n\n未完成項目（${incomplete.length}/${taskIds.length}）：\n${todoList}\n\n你必須繼續完成以上項目。完成後將所有任務標記為 completed。\n如果確實已全部完成，輸出 <promise>${expectedPromise}</promise>`,
     }));
   } catch (err) {
     hookLogger.error('task-guard', err);

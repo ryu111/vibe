@@ -736,6 +736,25 @@ function onDelegate(sessionId, agentType, toolInput) {
     };
   }
 
+  // DAG 就緒檢查：確保 stage 的所有依賴都已完成，防止跳過中間階段
+  if (stage && state.dag?.[stage] && ds.isActive(state)) {
+    const ready = ds.getReadyStages(state);
+    const active = ds.getActiveStages(state);
+    const stageStatus = state.stages?.[stage]?.status;
+    // 允許：(1) stage 在 ready 列表 (2) stage 已 active (3) stage 不在 DAG 的 stages 追蹤中（新 stage）
+    if (stageStatus === ds.STAGE_STATUS.PENDING && !ready.includes(stage) && !active.includes(stage)) {
+      const deps = state.dag[stage].deps || [];
+      const unmet = deps.filter(d => {
+        const s = state.stages?.[d]?.status;
+        return s !== ds.STAGE_STATUS.COMPLETED && s !== ds.STAGE_STATUS.SKIPPED;
+      });
+      return {
+        allow: false,
+        message: `⛔ 無法委派 ${stage} — 依賴 ${unmet.join(', ')} 尚未完成。\n請先委派就緒的階段：${ready.join(', ') || '（無）'}\n`,
+      };
+    }
+  }
+
   // 標記 stage active + 重設阻擋計數
   if (stage && state.dag && state.stages[stage]) {
     state = ds.markStageActive(state, stage, shortAgent);
@@ -1915,12 +1934,11 @@ function onSessionStop(sessionId) {
   }).join('、');
 
   return {
-    continue: false,
     stopReason: `Pipeline 未完成 — 缺 ${missing.length} 個階段${cancelHint}`,
     systemMessage:
       `⛔ 禁止停止！Pipeline 缺 ${missing.join(', ')} 尚未完成。\n` +
-      `你必須立即呼叫 Skill 工具：${hints}\n` +
-      `不要輸出文字，直接呼叫工具。`,
+      `你必須立即使用 Skill 工具委派下一階段：${hints}\n` +
+      `不要輸出任何文字摘要，直接呼叫工具委派。`,
   };
 }
 

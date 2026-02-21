@@ -965,12 +965,14 @@ test('pipeline-check reason 格式：SYSTEM_MARKER 前綴 + systemMessage', () =
   );
 });
 
-test('task-guard 阻擋路徑 systemMessage 含 SYSTEM_MARKER 前綴', () => {
+test('task-guard 阻擋路徑輸出含 SYSTEM_MARKER 前綴', () => {
   const tgContent = fs.readFileSync(
     path.join(__dirname, '..', 'scripts', 'hooks', 'task-guard.js'), 'utf8'
   );
-  const systemMessageMatches = tgContent.match(/systemMessage:.*SYSTEM_MARKER/g) || [];
-  assert.ok(systemMessageMatches.length >= 2, `task-guard 應有至少 2 處 systemMessage 含 SYSTEM_MARKER，實際: ${systemMessageMatches.length}`);
+  // v5.1.1：阻擋改為 decision:"block" + reason，安全閥保持 systemMessage
+  // 檢查所有含 SYSTEM_MARKER 的輸出欄位（systemMessage 或 reason）
+  const markerMatches = tgContent.match(/(?:systemMessage|reason):.*SYSTEM_MARKER/g) || [];
+  assert.ok(markerMatches.length >= 2, `task-guard 應有至少 2 處輸出含 SYSTEM_MARKER，實際: ${markerMatches.length}`);
 });
 
 // ─── Part 5b: AskUserQuestion guard 放行驗證 ──

@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 5.1.0 | 全方位開發工作流 | 38 | 12 | 19 | 54 |
+| **vibe** | 5.1.1 | 全方位開發工作流 | 38 | 12 | 19 | 54 |
 
 ### vibe plugin 功能模組
 
@@ -215,6 +215,7 @@ PLAN → ARCH → DESIGN → DEV → REVIEW → TEST → QA → E2E → DOCS
 |------|---------|------|------|
 | `additionalContext` | Claude | 軟建議 | 背景知識、上下文注入 |
 | `systemMessage` | Claude | 強指令 | 系統級規則（模型不可忽略） |
+| `decision: "block"` + `reason` | Claude | **硬阻擋** | 阻止 session 結束，reason 作為新 prompt 重注入（pipeline-check / task-guard） |
 | `stderr` + exit 2 | 使用者 | **硬阻擋** | 阻止工具執行（pipeline-guard / Bash 危險指令） |
 | `hookLogger.error()` | log 檔案 | 無 | 記錄到 `~/.claude/hook-errors.log`（`/hook-diag` 查看） |
 

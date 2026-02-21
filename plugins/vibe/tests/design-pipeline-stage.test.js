@@ -647,71 +647,37 @@ test('dashboard config flowPhases FLOW 包含 designer', () => {
 });
 
 // ═══════════════════════════════════════════════
-console.log('\n🧪 Part 7: Runtime Dashboard（web/index.html）');
+console.log('\n🧪 Part 7: Dashboard DESIGN Stage（registry.js SoT + 組件化前端）');
 // ═══════════════════════════════════════════════
 
-test('web/index.html ROW1 包含 DESIGN', () => {
-  const htmlContent = fs.readFileSync(
-    path.join(PLUGIN_ROOT, 'web', 'index.html'), 'utf8'
-  );
-
-  // 找到 ROW1 定義（JavaScript 部分）
-  const row1Match = htmlContent.match(/const\s+ROW1\s*=\s*\[([^\]]+)\]/);
-  assert.ok(row1Match, '應有 ROW1 定義');
-  const row1Content = row1Match[1];
-  assert.ok(row1Content.includes('DESIGN'), 'ROW1 應包含 DESIGN');
-
-  // 確認順序：PLAN, ARCH, DESIGN, DEV
-  const stages = row1Content.match(/'(\w+)'/g).map(s => s.replace(/'/g, ''));
-  const planIdx = stages.indexOf('PLAN');
-  const archIdx = stages.indexOf('ARCH');
-  const designIdx = stages.indexOf('DESIGN');
-  const devIdx = stages.indexOf('DEV');
-  assert.ok(planIdx >= 0 && archIdx >= 0 && designIdx >= 0 && devIdx >= 0,
-    'ROW1 應包含 PLAN, ARCH, DESIGN, DEV');
+test('registry.js STAGES 順序含 DESIGN（在 ARCH 和 DEV 之間）', () => {
+  // v5.1.0 組件化後：前端 stage metadata 由 registry.js（SoT）經 /api/registry 提供
+  const { STAGES } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'registry.js'));
+  const stageIds = Object.keys(STAGES);
+  const planIdx = stageIds.indexOf('PLAN');
+  const archIdx = stageIds.indexOf('ARCH');
+  const designIdx = stageIds.indexOf('DESIGN');
+  const devIdx = stageIds.indexOf('DEV');
+  assert.ok(designIdx >= 0, 'STAGES 應包含 DESIGN');
   assert.ok(planIdx < archIdx && archIdx < designIdx && designIdx < devIdx,
-    'ROW1 順序應為 PLAN → ARCH → DESIGN → DEV');
+    'STAGES 順序應為 PLAN → ARCH → DESIGN → DEV');
 });
 
-test('web/index.html SM 物件有 DESIGN entry', () => {
-  const htmlContent = fs.readFileSync(
-    path.join(PLUGIN_ROOT, 'web', 'index.html'), 'utf8'
-  );
-
-  // 找到 SM 物件定義（整個物件）
-  const smMatch = htmlContent.match(/const\s+SM\s*=\s*\{[\s\S]*?\n\s*\};/);
-  assert.ok(smMatch, '應有 SM 物件定義');
-
-  const smContent = smMatch[0];
-  assert.ok(smContent.includes('DESIGN'), 'SM 物件應包含 DESIGN key');
-
-  // 檢查 DESIGN entry 的結構（應有 agent, label 等欄位）
-  const designEntryMatch = smContent.match(/DESIGN\s*:\s*\{[^}]*\}/);
-  assert.ok(designEntryMatch, '應有完整的 DESIGN entry');
-
-  const designEntry = designEntryMatch[0];
-  assert.ok(designEntry.includes('label'), 'DESIGN entry 應有 label 欄位');
-  assert.ok(designEntry.includes('agent'), 'DESIGN entry 應有 agent 欄位');
-  assert.ok(designEntry.includes('designer'), 'DESIGN 的 agent 應為 designer');
+test('registry.js DESIGN entry 有完整欄位', () => {
+  const { STAGES } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'registry.js'));
+  const design = STAGES.DESIGN;
+  assert.ok(design, '應有 DESIGN entry');
+  assert.ok(design.label, 'DESIGN entry 應有 label 欄位');
+  assert.ok(design.agent, 'DESIGN entry 應有 agent 欄位');
+  assert.strictEqual(design.agent, 'designer', 'DESIGN 的 agent 應為 designer');
 });
 
-test('web/index.html DESIGN 的 emoji 為 🎨', () => {
-  const htmlContent = fs.readFileSync(
-    path.join(PLUGIN_ROOT, 'web', 'index.html'), 'utf8'
-  );
-
-  // 檢查 SM 物件中 DESIGN 的 emoji（可能用 Unicode 或直接 emoji）
-  const designMatch = htmlContent.match(/DESIGN\s*:\s*\{[^}]*\}/s);
-  assert.ok(designMatch, '應有 DESIGN entry');
-  const designContent = designMatch[0];
-
-  // 🎨 的 Unicode 是 U+1F3A8
-  assert.ok(
-    designContent.includes('🎨') ||
-    designContent.includes('\\u{1F3A8}') ||
-    designContent.includes('\\uD83C\\uDFA8'),
-    'DESIGN 的 emoji 應為 🎨'
-  );
+test('registry.js DESIGN 的 emoji 為 🎨', () => {
+  const { STAGES } = require(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'registry.js'));
+  const design = STAGES.DESIGN;
+  assert.ok(design, '應有 DESIGN entry');
+  // registry.js 用 \u{1F3A8} 儲存，JS 解析後為 🎨
+  assert.strictEqual(design.emoji, '🎨', 'DESIGN 的 emoji 應為 🎨');
 });
 
 // ═══════════════════════════════════════════════

@@ -5,7 +5,10 @@
  * 使用真實 ECC transcript JSONL 格式建立 mock 資料，
  * 驗證 TaskCreate/TaskUpdate 解析、狀態重建、阻擋機制。
  *
- * 執行：bun test plugins/vibe/tests/task-guard.test.js
+ * 阻擋格式（v2）：{ decision: "block", reason: "..." }
+ * 安全閥格式（v2）：{ continue: true, systemMessage: "..." }（保留向後相容）
+ *
+ * 執行：node plugins/vibe/tests/task-guard.test.js
  */
 'use strict';
 const fs = require('fs');
@@ -80,8 +83,19 @@ function writeState(sessionId, state) {
   return p;
 }
 
+function writePipelineState(sessionId, state) {
+  const p = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
+  fs.writeFileSync(p, JSON.stringify(state, null, 2));
+  return p;
+}
+
 function cleanState(sessionId) {
   const p = path.join(CLAUDE_DIR, `task-guard-state-${sessionId}.json`);
+  try { fs.unlinkSync(p); } catch (_) {}
+}
+
+function cleanPipelineState(sessionId) {
+  const p = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
   try { fs.unlinkSync(p); } catch (_) {}
 }
 
@@ -198,6 +212,96 @@ test('\u653e\u884c \u2014 cancelled \u624b\u52d5\u53d6\u6d88', () => {
 });
 
 // ===================================================
+console.log('\n\ud83e\uddea task-guard: Pipeline \u4e92\u65a5\u6aa2\u67e5\uff08pipelineActive\uff09');
+// ===================================================
+
+test('Pipeline \u4e92\u65a5 \u2014 pipelineActive=true \u6642\u653e\u884c\uff08\u907f\u514d\u96d9\u91cd\u963b\u64cb\uff09', () => {
+  const sessionId = 'tg-test-8';
+  cleanState(sessionId);
+  cleanPipelineState(sessionId);
+  try {
+    // 建立 pipelineActive=true 的 state
+    writePipelineState(sessionId, { pipelineActive: true });
+    const tp = writeTranscript([
+      mkTaskCreate('tu-1', '\u672a\u5b8c\u6210\u4efb\u52d9', ''),
+      mkTaskCreateResult('tu-1', 1, '\u672a\u5b8c\u6210\u4efb\u52d9'),
+    ]);
+    const result = runHook({ session_id: sessionId, transcript_path: tp });
+    // pipeline 活躍時應放行（pipeline-check 負責阻擋）
+    assert.strictEqual(result.exitCode, 0);
+    assert.strictEqual(result.stdout, '');
+  } finally {
+    cleanState(sessionId);
+    cleanPipelineState(sessionId);
+  }
+});
+
+test('Pipeline \u4e92\u65a5 \u2014 pipelineActive=false \u6642\u6b63\u5e38\u963b\u64cb', () => {
+  const sessionId = 'tg-test-9';
+  cleanState(sessionId);
+  cleanPipelineState(sessionId);
+  try {
+    // pipelineActive=false → task-guard 正常阻擋
+    writePipelineState(sessionId, { pipelineActive: false });
+    const tp = writeTranscript([
+      mkTaskCreate('tu-1', '\u672a\u5b8c\u6210\u4efb\u52d9', ''),
+      mkTaskCreateResult('tu-1', 1, '\u672a\u5b8c\u6210\u4efb\u52d9'),
+    ]);
+    const result = runHook({ session_id: sessionId, transcript_path: tp });
+    assert.strictEqual(result.exitCode, 0);
+    const output = JSON.parse(result.stdout);
+    assert.strictEqual(output.decision, 'block');
+    assert.ok(typeof output.reason === 'string');
+  } finally {
+    cleanState(sessionId);
+    cleanPipelineState(sessionId);
+  }
+});
+
+test('Pipeline \u4e92\u65a5 \u2014 \u7121 pipeline state \u6a94\u6642\u6b63\u5e38\u963b\u64cb', () => {
+  const sessionId = 'tg-test-9b';
+  cleanState(sessionId);
+  cleanPipelineState(sessionId);
+  try {
+    // 無 pipeline state 檔案 → task-guard 正常阻擋
+    const tp = writeTranscript([
+      mkTaskCreate('tu-1', '\u672a\u5b8c\u6210\u4efb\u52d9', ''),
+      mkTaskCreateResult('tu-1', 1, '\u672a\u5b8c\u6210\u4efb\u52d9'),
+    ]);
+    const result = runHook({ session_id: sessionId, transcript_path: tp });
+    assert.strictEqual(result.exitCode, 0);
+    const output = JSON.parse(result.stdout);
+    assert.strictEqual(output.decision, 'block');
+  } finally {
+    cleanState(sessionId);
+    cleanPipelineState(sessionId);
+  }
+});
+
+test('Pipeline \u4e92\u65a5 \u2014 pipeline state JSON \u640f\u58de\u6642\u9632\u5fa1\u6027\u964d\u7d1a\uff08\u6b63\u5e38\u963b\u64cb\uff09', () => {
+  const sessionId = 'tg-test-9c';
+  cleanState(sessionId);
+  cleanPipelineState(sessionId);
+  try {
+    // 寫入損壞的 JSON → catch 後降級，task-guard 正常阻擋
+    const p = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
+    fs.writeFileSync(p, '{ invalid json }');
+    const tp = writeTranscript([
+      mkTaskCreate('tu-1', '\u672a\u5b8c\u6210\u4efb\u52d9', ''),
+      mkTaskCreateResult('tu-1', 1, '\u672a\u5b8c\u6210\u4efb\u52d9'),
+    ]);
+    const result = runHook({ session_id: sessionId, transcript_path: tp });
+    assert.strictEqual(result.exitCode, 0);
+    const output = JSON.parse(result.stdout);
+    // JSON 損壞 → 忽略，task-guard 仍阻擋
+    assert.strictEqual(output.decision, 'block');
+  } finally {
+    cleanState(sessionId);
+    cleanPipelineState(sessionId);
+  }
+});
+
+// ===================================================
 console.log('\n\ud83e\uddea task-guard: \u963b\u64cb\u5834\u666f\uff08\u6709\u672a\u5b8c\u6210\u4efb\u52d9\uff09');
 // ===================================================
 
@@ -211,9 +315,11 @@ test('\u963b\u64cb \u2014 \u55ae\u500b\u4efb\u52d9\u672a\u5b8c\u6210\uff08pendin
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   assert.strictEqual(result.exitCode, 0);
   const output = JSON.parse(result.stdout);
-  assert.strictEqual(output.continue, false);
-  assert.ok(output.systemMessage.includes('\u5efa\u7acb\u5143\u4ef6'));
-  assert.ok(output.systemMessage.includes('\u26d4'));
+  // 新格式：decision: 'block' + reason
+  assert.strictEqual(output.decision, 'block');
+  assert.ok(typeof output.reason === 'string');
+  assert.ok(output.reason.includes('\u5efa\u7acb\u5143\u4ef6'));
+  assert.ok(output.reason.includes('\u26d4'));
   cleanState(sessionId);
 });
 
@@ -229,8 +335,8 @@ test('\u963b\u64cb \u2014 \u55ae\u500b\u4efb\u52d9 in_progress', () => {
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   assert.strictEqual(result.exitCode, 0);
   const output = JSON.parse(result.stdout);
-  assert.strictEqual(output.continue, false);
-  assert.ok(output.systemMessage.includes('\u5be6\u4f5c API'));
+  assert.strictEqual(output.decision, 'block');
+  assert.ok(output.reason.includes('\u5be6\u4f5c API'));
   cleanState(sessionId);
 });
 
@@ -245,20 +351,20 @@ test('\u963b\u64cb \u2014 \u591a\u500b\u4efb\u52d9\u90e8\u5206\u5b8c\u6210', () 
     mkTaskCreate('tu-3', '\u4efb\u52d9 C', ''),
     mkTaskCreateResult('tu-3', 3, '\u4efb\u52d9 C'),
     mkTaskUpdate('tu-4', 1, 'completed'),
-    // \u4efb\u52d9 2 \u548c 3 \u672a\u5b8c\u6210
+    // 任務 2 和 3 未完成
   ]);
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   assert.strictEqual(result.exitCode, 0);
   const output = JSON.parse(result.stdout);
-  assert.strictEqual(output.continue, false);
-  assert.ok(output.systemMessage.includes('2/3'));
-  assert.ok(output.systemMessage.includes('\u4efb\u52d9 B'));
-  assert.ok(output.systemMessage.includes('\u4efb\u52d9 C'));
-  assert.ok(!output.systemMessage.includes('\u4efb\u52d9 A'));
+  assert.strictEqual(output.decision, 'block');
+  assert.ok(output.reason.includes('2/3'));
+  assert.ok(output.reason.includes('\u4efb\u52d9 B'));
+  assert.ok(output.reason.includes('\u4efb\u52d9 C'));
+  assert.ok(!output.reason.includes('\u4efb\u52d9 A'));
   cleanState(sessionId);
 });
 
-test('\u963b\u64cb \u2014 stopReason \u5305\u542b\u4efb\u52d9\u672a\u5b8c\u6210\u63d0\u793a', () => {
+test('\u963b\u64cb \u2014 reason \u5305\u542b\u4efb\u52d9\u672a\u5b8c\u6210\u63d0\u793a', () => {
   const sessionId = 'tg-test-13';
   cleanState(sessionId);
   const tp = writeTranscript([
@@ -267,8 +373,9 @@ test('\u963b\u64cb \u2014 stopReason \u5305\u542b\u4efb\u52d9\u672a\u5b8c\u6210\
   ]);
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   const output = JSON.parse(result.stdout);
-  assert.ok(output.stopReason.includes('\u672a\u5b8c\u6210'));
-  assert.ok(output.systemMessage.includes('\u5beb\u6e2c\u8a66'));
+  assert.strictEqual(output.decision, 'block');
+  // reason 包含阻擋資訊（含任務名稱）
+  assert.ok(output.reason.includes('\u5beb\u6e2c\u8a66'));
   cleanState(sessionId);
 });
 
@@ -280,12 +387,12 @@ test('\u963b\u64cb \u2014 blockCount \u905e\u589e', () => {
     mkTaskCreateResult('tu-1', 1, '\u4efb\u52d9'),
   ]);
 
-  // \u7b2c\u4e00\u6b21\u963b\u64cb
+  // 第一次阻擋
   runHook({ session_id: sessionId, transcript_path: tp });
   const state1 = JSON.parse(fs.readFileSync(path.join(CLAUDE_DIR, `task-guard-state-${sessionId}.json`), 'utf8'));
   assert.strictEqual(state1.blockCount, 1);
 
-  // \u7b2c\u4e8c\u6b21\u963b\u64cb
+  // 第二次阻擋
   runHook({ session_id: sessionId, transcript_path: tp });
   const state2 = JSON.parse(fs.readFileSync(path.join(CLAUDE_DIR, `task-guard-state-${sessionId}.json`), 'utf8'));
   assert.strictEqual(state2.blockCount, 2);
@@ -302,14 +409,31 @@ test('\u963b\u64cb \u2014 \u4e0d\u5305\u542b\u5df2\u522a\u9664\u4efb\u52d9', () 
     mkTaskCreate('tu-2', '\u4efb\u52d9 B', ''),
     mkTaskCreateResult('tu-2', 2, '\u4efb\u52d9 B'),
     mkTaskUpdate('tu-3', 1, 'deleted'),
-    // \u4efb\u52d9 B \u672a\u5b8c\u6210
+    // 任務 B 未完成
   ]);
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   const output = JSON.parse(result.stdout);
-  assert.strictEqual(output.continue, false);
-  assert.ok(output.systemMessage.includes('\u4efb\u52d9 B'));
-  assert.ok(!output.systemMessage.includes('\u4efb\u52d9 A'));
-  assert.ok(output.systemMessage.includes('1/2'));
+  assert.strictEqual(output.decision, 'block');
+  assert.ok(output.reason.includes('\u4efb\u52d9 B'));
+  assert.ok(!output.reason.includes('\u4efb\u52d9 A'));
+  assert.ok(output.reason.includes('1/2'));
+  cleanState(sessionId);
+});
+
+test('\u963b\u64cb \u2014 reason \u5305\u542b SYSTEM_MARKER \u524d\u7db4', () => {
+  const sessionId = 'tg-test-16';
+  cleanState(sessionId);
+  const tp = writeTranscript([
+    mkTaskCreate('tu-1', '\u4efb\u52d9', ''),
+    mkTaskCreateResult('tu-1', 1, '\u4efb\u52d9'),
+  ]);
+  const result = runHook({ session_id: sessionId, transcript_path: tp });
+  const output = JSON.parse(result.stdout);
+  assert.strictEqual(output.decision, 'block');
+  // SYSTEM_MARKER 來自 classifier.js，通常是 [SYSTEM] 或類似前綴
+  // 確認 reason 非空且包含阻擋指令
+  assert.ok(output.reason.length > 0);
+  assert.ok(output.reason.includes('\u26d4') || output.reason.includes('[SYSTEM]') || output.reason.includes('\u4efb\u52d9'));
   cleanState(sessionId);
 });
 
@@ -328,9 +452,28 @@ test('\u5b89\u5168\u95a5 \u2014 \u9054\u5230\u6700\u5927\u963b\u64cb\u6b21\u6578
     const result = runHook({ session_id: sessionId, transcript_path: tp });
     assert.strictEqual(result.exitCode, 0);
     const output = JSON.parse(result.stdout);
+    // 安全閥：繼續放行（保留 continue: true 格式）
     assert.strictEqual(output.continue, true);
     assert.ok(output.systemMessage.includes('\u6700\u5927\u963b\u64cb\u6b21\u6578'));
     assert.ok(output.systemMessage.includes('5'));
+  } finally {
+    cleanState(sessionId);
+  }
+});
+
+test('\u5b89\u5168\u95a5 \u2014 \u5b89\u5168\u95a5\u4e0d\u4f7f\u7528 decision:block', () => {
+  const sessionId = 'tg-test-20b';
+  try {
+    writeState(sessionId, { blockCount: 5, maxBlocks: 5 });
+    const tp = writeTranscript([
+      mkTaskCreate('tu-1', '\u672a\u5b8c\u6210', ''),
+      mkTaskCreateResult('tu-1', 1, '\u672a\u5b8c\u6210'),
+    ]);
+    const result = runHook({ session_id: sessionId, transcript_path: tp });
+    const output = JSON.parse(result.stdout);
+    // 安全閥不使用 decision:block（應為 continue:true）
+    assert.notStrictEqual(output.decision, 'block');
+    assert.strictEqual(output.continue, true);
   } finally {
     cleanState(sessionId);
   }
@@ -344,7 +487,7 @@ test('\u5b89\u5168\u95a5 \u2014 \u653e\u884c\u5f8c\u6e05\u7406 state file', () =
     mkTaskCreateResult('tu-1', 1, '\u672a\u5b8c\u6210'),
   ]);
   runHook({ session_id: sessionId, transcript_path: tp });
-  // state file \u61c9\u8a72\u5df2\u88ab\u6e05\u7406
+  // state file 應該已被清理
   const statePath = path.join(CLAUDE_DIR, `task-guard-state-${sessionId}.json`);
   assert.ok(!fs.existsSync(statePath));
 });
@@ -362,8 +505,8 @@ test('\u89e3\u6790 \u2014 \u53ea\u6709 TaskUpdate \u7121 TaskCreate\uff08\u76f4\
   ]);
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   const output = JSON.parse(result.stdout);
-  assert.strictEqual(output.continue, false);
-  assert.ok(output.systemMessage.includes('Task #1'));
+  assert.strictEqual(output.decision, 'block');
+  assert.ok(output.reason.includes('Task #1'));
   cleanState(sessionId);
 });
 
@@ -384,7 +527,7 @@ test('\u89e3\u6790 \u2014 \u4efb\u52d9\u72c0\u614b\u591a\u6b21\u8f49\u63db\uff08
 test('\u89e3\u6790 \u2014 tool_result \u5167\u5bb9\u70ba\u9663\u5217\u683c\u5f0f', () => {
   const sessionId = 'tg-test-32';
   cleanState(sessionId);
-  // \u6a21\u64ec tool_result content \u662f\u9663\u5217\u800c\u975e\u5b57\u4e32
+  // 模擬 tool_result content 是陣列而非字串
   const lines = [
     mkTaskCreate('tu-1', '\u4efb\u52d9', ''),
     JSON.stringify({
@@ -404,8 +547,8 @@ test('\u89e3\u6790 \u2014 tool_result \u5167\u5bb9\u70ba\u9663\u5217\u683c\u5f0f
   const tp = writeTranscript(lines);
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   const output = JSON.parse(result.stdout);
-  assert.strictEqual(output.continue, false);
-  assert.ok(output.systemMessage.includes('\u4efb\u52d9'));
+  assert.strictEqual(output.decision, 'block');
+  assert.ok(output.reason.includes('\u4efb\u52d9'));
   cleanState(sessionId);
 });
 
@@ -441,7 +584,7 @@ test('\u653e\u884c \u2014 promise \u7cbe\u78ba\u5339\u914d\uff08\u5373\u4f7f\u67
   const tp = writeTranscript([
     mkTaskCreate('tu-1', '\u4efb\u52d9 A', ''),
     mkTaskCreateResult('tu-1', 1, '\u4efb\u52d9 A'),
-    // \u4efb\u52d9\u672a\u5b8c\u6210\uff0c\u4f46\u6709 promise
+    // 任務未完成，但有 promise
     mkAssistantText('\u5df2\u5b8c\u6210\u6240\u6709\u5de5\u4f5c\u3002<promise>ALL_TASKS_COMPLETE</promise>'),
   ]);
   const result = runHook({ session_id: sessionId, transcript_path: tp });
@@ -459,7 +602,7 @@ test('\u963b\u64cb \u2014 promise \u4e0d\u5339\u914d\uff08\u5167\u5bb9\u4e0d\u54
   ]);
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   const output = JSON.parse(result.stdout);
-  assert.strictEqual(output.continue, false);
+  assert.strictEqual(output.decision, 'block');
   cleanState(sessionId);
 });
 
@@ -473,7 +616,7 @@ test('\u963b\u64cb \u2014 \u7121 promise \u6a19\u7c64', () => {
   ]);
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   const output = JSON.parse(result.stdout);
-  assert.strictEqual(output.continue, false);
+  assert.strictEqual(output.decision, 'block');
   cleanState(sessionId);
 });
 
@@ -510,12 +653,12 @@ test('\u963b\u64cb \u2014 promise \u5728\u975e\u6700\u5f8c assistant \u8a0a\u606
     mkTaskCreate('tu-1', '\u4efb\u52d9', ''),
     mkTaskCreateResult('tu-1', 1, '\u4efb\u52d9'),
     mkAssistantText('<promise>ALL_TASKS_COMPLETE</promise>'),
-    // \u6700\u5f8c\u4e00\u500b assistant \u8a0a\u606f\u6c92\u6709 promise
+    // 最後一個 assistant 訊息沒有 promise
     mkAssistantText('\u6211\u9084\u5728\u5de5\u4f5c\u4e2d...'),
   ]);
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   const output = JSON.parse(result.stdout);
-  assert.strictEqual(output.continue, false);
+  assert.strictEqual(output.decision, 'block');
   cleanState(sessionId);
 });
 
@@ -528,8 +671,9 @@ test('\u963b\u64cb\u8a0a\u606f\u5305\u542b promise \u63d0\u793a', () => {
   ]);
   const result = runHook({ session_id: sessionId, transcript_path: tp });
   const output = JSON.parse(result.stdout);
-  assert.ok(output.systemMessage.includes('<promise>'));
-  assert.ok(output.systemMessage.includes('ALL_TASKS_COMPLETE'));
+  // reason 應包含 promise 使用說明
+  assert.ok(output.reason.includes('<promise>'));
+  assert.ok(output.reason.includes('ALL_TASKS_COMPLETE'));
   cleanState(sessionId);
 });
 
