@@ -9,7 +9,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | Plugin | 版號 | 定位 | Skills | Agents | Hooks | Scripts |
 |--------|------|------|:------:|:------:|:-----:|:-------:|
 | **forge** | 0.1.5 | 造工具的工具（meta plugin builder） | 4 | 0 | 0 | 7 |
-| **vibe** | 5.1.3 | 全方位開發工作流 | 38 | 12 | 19 | 54 |
+| **vibe** | 5.2.0 | 全方位開發工作流 | 38 | 12 | 19 | 53 |
 
 ### vibe plugin 功能模組
 
@@ -20,7 +20,7 @@ Vibe 是 Claude Code marketplace，為全端開發者提供從規劃到部署的
 | 品質 | lint、format、review、security、TDD、E2E、QA、coverage、verify、build-fix | 10 | 6 (code-reviewer/security-reviewer/tester/build-error-resolver/e2e-runner/qa) |
 | 知識 | 語言/框架模式庫 + 重構（純知識） | 9 | 0 |
 | 進化 | 知識進化、文件同步 | 2 | 1 (doc-updater) |
-| 監控 | Pipeline 儀表板、Timeline、Context 狀態、Hook 診斷、執行歷史 | 5 | 0 |
+| 監控 | Pipeline 儀表板、Timeline、Context 狀態、Hook 診斷、執行歷史 | 6 | 0 |
 | 遠端 | Telegram 遠端控制 + tmux 操作 | 2 | 0 |
 | 工具 | 檢查點、環境偵測、健康檢查、文檔審計 | 4 | 0 |
 
@@ -103,7 +103,7 @@ plugins/vibe/
 │       ├── dashboard/       # server-manager
 │       ├── remote/          # telegram, transcript, bot-manager
 │       └── timeline/        # schema, timeline, consumer, formatter, index
-├── skills/                  # 37 個 skill 目錄
+├── skills/                  # 38 個 skill 目錄
 ├── agents/                  # 12 個 agent 定義
 ├── server.js                # Dashboard HTTP+WebSocket server
 ├── bot.js                   # Telegram daemon
@@ -113,7 +113,8 @@ plugins/vibe/
 │   ├── app.js               # 應用主控制
 │   ├── lib/                 # 共用函式庫（preact、utils）
 │   ├── state/               # 狀態層（pipeline.js）
-│   └── components/          # 9 個組件（sidebar/dag-view/barrier/agent-status/mcp-stats/stats-cards/pipeline-progress/confetti/export-report）
+│   ├── hooks/               # 3 個 React hooks（useWebSocket/useKeyboard/useSessionManager）
+│   └── components/          # 12 個組件（sidebar/dag-view/barrier/agent-status/mcp-stats/stats-cards/pipeline-progress/confetti/export-report/header/dashboard-tab/timeline-tab）
 └── tests/                   # E2E 測試
 ```
 

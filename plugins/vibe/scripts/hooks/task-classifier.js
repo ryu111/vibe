@@ -18,6 +18,9 @@ safeRun('task-classifier', async (data) => {
 
   emit(EVENT_TYPES.PROMPT_RECEIVED, sessionId, {});
 
+  // Main Agent 開始處理（Dashboard agent-level 活躍信號）
+  ctrl.setMainAgentActive(sessionId);
+
   const result = await ctrl.classify(sessionId, prompt);
 
   if (result.output) {

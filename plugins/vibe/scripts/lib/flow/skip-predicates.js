@@ -28,9 +28,11 @@ function shouldSkip(stageId, state) {
   const frameworkName = ((env.framework?.name) || '').toLowerCase();
 
   if (base === 'DESIGN') {
-    // ui-only pipeline 概念：dag 中只有 DESIGN/DEV/QA → 不跳
     // 明確標記 needsDesign → 不跳
     if (state.needsDesign === true) return { skip: false, reason: '' };
+    // pipeline 選擇含 DESIGN 意圖（full/ui-only）→ 不跳
+    const pid = state.classification?.pipelineId;
+    if (pid === 'full' || pid === 'ui-only') return { skip: false, reason: '' };
     // 偵測到前端框架或前端信號 → 不跳
     if (env.frontend?.detected) return { skip: false, reason: '' };
     if (FRONTEND_FRAMEWORKS.some(f => frameworkName.includes(f))) return { skip: false, reason: '' };

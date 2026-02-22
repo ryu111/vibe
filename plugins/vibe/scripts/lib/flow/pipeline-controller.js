@@ -572,10 +572,16 @@ async function classify(sessionId, prompt, options = {}) {
   });
   ds.writeState(sessionId, state);
 
+  // Timeline：任務分類完成
+  tlEmit(EVENT_TYPES.TASK_CLASSIFIED, sessionId, {
+    taskType, pipelineId, source: result.source, confidence: result.confidence,
+  });
+
   // 重設 none-writes 計數器（新分類開始，重新計數）
   try { fs.unlinkSync(path.join(CLAUDE_DIR, `none-writes-${sessionId}.json`)); } catch (_) {}
 
-  // Main Agent 主動選擇：注入 pipeline 選擇表（systemMessage 強制）
+  // Main Agent 主動選擇：注入 pipeline 選擇表
+  // ⛔ 語氣強制 — pipeline-guard 會阻擋未選擇 pipeline 的程式碼修改
   if (stages.length === 0 || pipelineId === 'none') {
     const kh = buildKnowledgeHints(state);
     const contextParts = [];
@@ -584,12 +590,11 @@ async function classify(sessionId, prompt, options = {}) {
     return {
       output: {
         systemMessage:
-          '你是 Pipeline 路由器。分析使用者需求，選擇最合適的工作流。\n\n' +
+          '⛔ 修改程式碼前必須先選擇 pipeline。分析使用者需求，選擇最合適的工作流後呼叫 /vibe:pipeline。\n\n' +
           '| Pipeline | 適用場景 | 使用方式 |\n' +
           '|----------|---------|--------|\n' +
-          '| chat | 問答、研究、解釋、查詢、trivial | 直接回答，不呼叫 pipeline |\n' +
           '| fix | hotfix、一行修改、改設定/常量 | /vibe:pipeline [pipeline:fix] |\n' +
-          '| quick-dev | bugfix + 補測試、小改動（2-5 檔案） | /vibe:pipeline [pipeline:quick-dev] |\n' +
+          '| quick-dev | bugfix + 測試、小改動（2-5 檔案） | /vibe:pipeline [pipeline:quick-dev] |\n' +
           '| standard | 新功能（無 UI）、大重構 | /vibe:pipeline [pipeline:standard] |\n' +
           '| full | 新功能（含 UI） | /vibe:pipeline [pipeline:full] |\n' +
           '| test-first | TDD 工作流 | /vibe:pipeline [pipeline:test-first] |\n' +
@@ -597,8 +602,9 @@ async function classify(sessionId, prompt, options = {}) {
           '| review-only | 程式碼審查 | /vibe:pipeline [pipeline:review-only] |\n' +
           '| docs-only | 純文件更新 | /vibe:pipeline [pipeline:docs-only] |\n' +
           '| security | 安全修復 | /vibe:pipeline [pipeline:security] |\n\n' +
-          '判斷原則：\n' +
-          '- 偏向使用 pipeline（寧可多走品質流程也不要漏）\n' +
+          '⛔ 判斷原則：\n' +
+          '- 涉及程式碼修改 → 必須使用 pipeline（fix/quick-dev/standard/full）\n' +
+          '- 純問答/研究/解釋 → 直接回答，不需 pipeline\n' +
           '- 不確定時用 AskUserQuestion 問使用者選擇 pipeline\n' +
           '- 複合任務：分解後依序執行（第一個完成 → 開始第二個）',
         ...(contextParts.length > 0 ? { additionalContext: contextParts.join('\n') } : {}),
@@ -623,6 +629,13 @@ async function classify(sessionId, prompt, options = {}) {
       }
     }
     ds.writeState(sessionId, state);
+
+    // Pipeline 啟動事件
+    tlEmit(EVENT_TYPES.PIPELINE_START, sessionId, {
+      pipelineId,
+      stageCount: stages.length,
+      stages,
+    });
 
     const ready = ds.getReadyStages(state);
     const pipeline = discoverPipeline();
@@ -686,20 +699,39 @@ async function classify(sessionId, prompt, options = {}) {
  * 統一入口：載入 state 後代理到 guard-rules.evaluate()。
  * 消除 canProceed/evaluate 邏輯重複（v1.0.56/57 根因）。
  *
- * 在 guardEvaluate 之前額外檢查 none pipeline 寫入閾值防護：
- * - 條件：pipelineId === 'none' 且非 active 且工具為 Write/Edit 且目標為程式碼檔案
- * - 閾值：計數 >= NONE_WRITE_LIMIT → 硬阻擋（讀取計數器，不遞增）
+ * none pipeline 寫入防護（兩層）：
+ * - Layer A：source='main-agent'（未選擇 pipeline）→ 立即阻擋程式碼 Write/Edit
+ * - Layer B：source='explicit'（刻意選 none）→ 閾值 >= NONE_WRITE_LIMIT 才阻擋
  *
  * @returns {{ decision: 'allow'|'block', message?: string, reason?: string }}
  */
 function canProceed(sessionId, toolName, toolInput) {
   const state = loadState(sessionId);
 
-  // none pipeline 寫入閾值防護（在 guard evaluate 之前）
+  // none pipeline 寫入防護（在 guard evaluate 之前）
   if (state && state.classification?.pipelineId === 'none' && !ds.isActive(state)) {
     if (toolName === 'Write' || toolName === 'Edit') {
       const filePath = toolInput?.file_path || '';
       if (filePath && !guardIsNonCodeFile(filePath)) {
+        // Layer A：source='main-agent' → 未主動選擇 pipeline，立即阻擋
+        // v5 根因修復：systemMessage 選擇表是建議，此處是強制
+        if (state.classification?.source === 'main-agent') {
+          return {
+            decision: 'block',
+            reason: 'none-pipeline-unselected',
+            message:
+              `⛔ 尚未選擇 pipeline，不能直接修改程式碼。\n` +
+              `請先分析使用者需求並呼叫 /vibe:pipeline [pipeline:xxx]。\n\n` +
+              `常用選項：\n` +
+              `- [pipeline:fix] — 一行修改、hotfix\n` +
+              `- [pipeline:quick-dev] — bugfix + 測試、小改動\n` +
+              `- [pipeline:standard] — 新功能、重構\n` +
+              `- [pipeline:full] — 含 UI 的新功能\n\n` +
+              `純問答/研究任務不需要 pipeline，可直接回答（不涉及程式碼修改）。`,
+          };
+        }
+
+        // Layer B：source='explicit'（刻意選 none）→ 保留閾值防護
         const counterPath = path.join(CLAUDE_DIR, `none-writes-${sessionId}.json`);
         let count = 0;
         try {
@@ -768,8 +800,27 @@ function onDelegate(sessionId, agentType, toolInput) {
   }
 
   // 標記 stage active + 重設阻擋計數
-  if (stage && state.dag && state.stages[stage]) {
-    state = ds.markStageActive(state, stage, shortAgent);
+  if (stage && state.dag) {
+    if (state.stages[stage]) {
+      // DAG 內的 stage：正常 markStageActive
+      state = ds.markStageActive(state, stage, shortAgent);
+    } else if (AGENT_TO_STAGE[shortAgent]) {
+      // DAG 外但為已知 stage agent（如 DAG 解析降級後仍委派了 E2E/DOCS）
+      // 動態建立 stage 記錄，確保 startedAt 被追蹤（Dashboard 計時器需要）
+      state = {
+        ...state,
+        stages: {
+          ...state.stages,
+          [stage]: {
+            status: 'active',
+            agent: shortAgent,
+            verdict: null,
+            contextFile: null,
+            startedAt: new Date().toISOString(),
+          },
+        },
+      };
+    }
     if (state.meta?.pipelineCheckBlocks) {
       state.meta.pipelineCheckBlocks = 0;
     }
@@ -780,9 +831,15 @@ function onDelegate(sessionId, agentType, toolInput) {
       activeStages.push(stage);
     }
     state = { ...state, activeStages };
-
-    ds.writeState(sessionId, state);
   }
+
+  // 統一 agent 活躍追蹤（Dashboard 用）：所有被委派的 agent 都記錄
+  const normalizedAgent = shortAgent.toLowerCase();
+  const activeAgents = { ...(state.activeAgents || {}) };
+  activeAgents[normalizedAgent] = true;
+  state = { ...state, activeAgents };
+
+  ds.writeState(sessionId, state);
 
   return { allow: true, stage, shortAgent };
 }
@@ -797,6 +854,9 @@ function onDelegate(sessionId, agentType, toolInput) {
 function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMessage = '') {
   const pipeline = discoverPipeline();
   const shortAgent = extractShortAgent(agentType);
+
+  // 統一清理 activeAgents（所有 agent 完成都清理，不只 stage agents）
+  clearActiveAgent(sessionId, shortAgent);
 
   // 偵測是否為 pipeline-architect
   if (shortAgent === 'pipeline-architect') {
@@ -915,6 +975,12 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
     state = ds.markStageFailed(state, currentStage, routeResult);
     state = ds.setPendingRetry(state, {
       stages: [{ id: currentStage, severity: routeResult?.severity, round: retryCount + 1 }],
+    });
+
+    // Timeline：stage 回退重試
+    tlEmit(EVENT_TYPES.STAGE_RETRY, sessionId, {
+      stage: currentStage, attempt: retryCount + 1,
+      verdict: routeResult?.verdict || 'FAIL', severity: routeResult?.severity,
     });
     // v4（任務 3.4）：從 activeStages 移除失敗的 stage（等待 DEV 修復）
     if (state.activeStages) {
@@ -1114,6 +1180,14 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
           round: retryCount + 1,
         })),
       });
+
+      // Timeline：barrier 回退重試
+      for (const fStage of failedStages) {
+        tlEmit(EVENT_TYPES.STAGE_RETRY, sessionId, {
+          stage: fStage, attempt: retryCount + 1,
+          verdict: 'FAIL', severity: resolvedMergedResult.severity, barrier: barrierGroup,
+        });
+      }
       // H-1 修正：回退到 DEV 時清除 barrier state，
       // 確保 DEV 修復後重跑品質階段時 barrier 計數器是全新狀態
       deleteBarrier(sessionId);
@@ -1151,6 +1225,11 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
       };
       cleanupPatches();
       ds.writeState(sessionId, state);
+      // Timeline：pipeline 完成
+      tlEmit(EVENT_TYPES.PIPELINE_COMPLETE, sessionId, {
+        pipelineId: state.classification?.pipelineId,
+        stages: Object.keys(state.dag || {}),
+      });
       // FIC 狀態壓縮（S5）：barrier 完成後也更新 status file
       try { updatePipelineStatus(sessionId, state); } catch (_) {}
       autoCheckpoint(currentStage);
@@ -1379,6 +1458,11 @@ function onStageComplete(sessionId, agentType, transcriptPath, lastAssistantMess
     };
     cleanupPatches();
     ds.writeState(sessionId, state);
+    // Timeline：pipeline 完成
+    tlEmit(EVENT_TYPES.PIPELINE_COMPLETE, sessionId, {
+      pipelineId: state.classification?.pipelineId,
+      stages: Object.keys(state.dag || {}),
+    });
     autoCheckpoint(currentStage);
     // 若當前 stage 為 FAIL 但因 enforcePolicy（如無 DEV in DAG）強制前進至完成，
     // 在完成訊息前加入 FAIL 警告
@@ -1605,6 +1689,16 @@ function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline, la
       { step: 2, stages: ['REVIEW', 'TEST'], parallel: true },
     ];
     rationale = 'DAG 解析失敗，降級為 quick-dev';
+    // 記錄診斷資訊，幫助追蹤 DAG 解析失敗原因
+    try {
+      hookLogger.error('pipeline-controller', new Error(
+        `pipeline-architect DAG 解析失敗 → 降級為 quick-dev。` +
+        `lastAssistantMessage 長度=${lastAssistantMessage?.length || 0}，` +
+        `transcriptPath=${transcriptPath || 'N/A'}，` +
+        `transcript 存在=${!!(transcriptPath && fs.existsSync(transcriptPath))}` +
+        (lastAssistantMessage ? `，前 200 字：${lastAssistantMessage.slice(0, 200)}` : '')
+      ));
+    } catch (_) {}
   }
 
   // 設定 DAG
@@ -1628,6 +1722,15 @@ function handlePipelineArchitectComplete(sessionId, transcriptPath, pipeline, la
   }
 
   ds.writeState(sessionId, state);
+
+  // Pipeline 啟動事件
+  const customPipelineId = state.classification?.pipelineId || 'custom';
+  const customStages = Object.keys(dag);
+  tlEmit(EVENT_TYPES.PIPELINE_START, sessionId, {
+    pipelineId: customPipelineId,
+    stageCount: customStages.length,
+    stages: customStages,
+  });
 
   // 計算第一批
   const ready = ds.getReadyStages(state);
@@ -2004,12 +2107,52 @@ function onSessionStop(sessionId) {
 
 // ────────────────── Exports ──────────────────
 
+// ────────────────── 6. Main Agent 活躍信號 ──────────────────
+
+/**
+ * 從 activeAgents 清除指定 agent（SubagentStop 時呼叫）
+ */
+function clearActiveAgent(sessionId, shortAgent) {
+  const state = loadState(sessionId);
+  if (!state?.activeAgents) return;
+  const normalizedAgent = shortAgent.toLowerCase();
+  if (!state.activeAgents[normalizedAgent]) return;
+  const activeAgents = { ...state.activeAgents };
+  delete activeAgents[normalizedAgent];
+  state.activeAgents = activeAgents;
+  ds.writeState(sessionId, state);
+}
+
+/**
+ * 標記 Main Agent 開始處理（UserPromptSubmit 呼叫）
+ * Dashboard 用此信號判斷 Main Agent 是否正在執行
+ */
+function setMainAgentActive(sessionId) {
+  const state = loadState(sessionId);
+  if (!state) return;
+  state.mainAgentActive = true;
+  ds.writeState(sessionId, state);
+}
+
+/**
+ * 標記 Main Agent 結束處理（Stop hook 呼叫）
+ */
+function setMainAgentIdle(sessionId) {
+  const state = loadState(sessionId);
+  if (!state) return;
+  if (!state.mainAgentActive) return; // 已是 idle，不重複寫
+  state.mainAgentActive = false;
+  ds.writeState(sessionId, state);
+}
+
 module.exports = {
   classify,
   canProceed,
   onDelegate,
   onStageComplete,
   onSessionStop,
+  setMainAgentActive,
+  setMainAgentIdle,
   // 暴露用於測試
   loadState,
   buildDelegationHint,

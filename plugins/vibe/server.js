@@ -245,7 +245,7 @@ function formatEvent(event, sessionId) {
     type = 'fail';
   }
 
-  return { time: t, ts: event.timestamp, type, cat: eventCat(event.type), emoji, text, eventType: event.type };
+  return { time: t, ts: event.timestamp, type, cat: eventCat(event.type), emoji, text, eventType: event.type, tool: d.tool || null };
 }
 
 /**

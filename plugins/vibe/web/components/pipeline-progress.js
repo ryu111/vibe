@@ -1,26 +1,39 @@
 // Pipeline 進度條組件
 import { html } from '../lib/preact.js';
-import { hasPipeline, getPipelineProgress, getStageStatus } from '../state/pipeline.js';
+import { hasPipeline, getPipelineProgress, getStageStatus, getAllStageKeys } from '../state/pipeline.js';
 
 /**
  * 動態 Pipeline 各 stage 進度條
  * @param {{ state: object, registry: object }} props
  */
 export function PipelineProgressBar({ state, registry }) {
-  if (!hasPipeline(state)) return null;
-  // pipeline 不活躍（取消 / 重設）且尚未完成 → 不顯示進度條
+  const dag = state?.dag || {};
+  const dagKeys = getAllStageKeys(state);
+  const hasDag = dagKeys.length > 0;
+
+  // 無 DAG 時顯示佔位
+  if (!hasDag) {
+    return html`
+      <div class="pipeline-progress">
+        <h3 style="display:flex;align-items:center;justify-content:space-between">
+          <span>📊 Pipeline 進度</span>
+          <span style="font-size:12px;color:var(--overlay0);font-weight:700">—</span>
+        </h3>
+        <div style="font-size:10px;color:var(--overlay0);padding:4px 0">尚未啟動 Pipeline</div>
+      </div>
+    `;
+  }
+
   const pipelineInactive = !state?.pipelineActive && (state?.activeStages || []).length === 0;
   const progress = getPipelineProgress(state);
-  if (pipelineInactive && progress < 100) return null;
-  const dag = state.dag || {};
-  const dagKeys = Object.keys(dag);
   const isComp = progress === 100;
+  const isCancelled = pipelineInactive && !isComp && state?.meta?.cancelled;
 
   return html`
     <div class="pipeline-progress">
       <h3 style="display:flex;align-items:center;justify-content:space-between">
-        <span>📊 Pipeline 進度</span>
-        <span style="font-size:12px;color:${isComp ? 'var(--green)' : 'var(--blue)'};font-weight:700">${progress}%</span>
+        <span>📊 Pipeline 進度${isCancelled ? ' · 已取消' : ''}</span>
+        <span style="font-size:12px;color:${isComp ? 'var(--green)' : isCancelled ? 'var(--orange)' : 'var(--blue)'};font-weight:700">${progress}%</span>
       </h3>
       <div class="pipeline-stages-bar">
         ${dagKeys.map(id => {

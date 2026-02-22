@@ -17,6 +17,9 @@ safeRun('pipeline-check', (data) => {
   // stop_hook_active 表示已有 Stop hook 阻擋過一次，但我們用 blockCount 控制上限
   const sessionId = data.session_id || 'unknown';
 
+  // Main Agent turn 結束（Dashboard agent-level 活躍信號）
+  ctrl.setMainAgentIdle(sessionId);
+
   const result = ctrl.onSessionStop(sessionId);
 
   if (!result) process.exit(0);

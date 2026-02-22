@@ -25,6 +25,7 @@ const EMOJI_MAP = {
   'stage.start':        '▶️',
   'stage.complete':     '✅',
   'stage.retry':        '🔄',
+  'pipeline.start':     '🎯',
   'pipeline.complete':  '🎉',
   'pipeline.incomplete':'⚠️',
   'route.fallback':     '↩️',
@@ -113,6 +114,10 @@ function formatEventText(event) {
   switch (event.type) {
     case 'session.start':
       return 'Session 啟動';
+    case 'pipeline.start': {
+      const stageCount = d.stageCount || '?';
+      return `Pipeline 啟動 — ${d.pipelineId || '?'}（${stageCount} 階段）`;
+    }
     case 'prompt.received':
       return '收到使用者輸入';
     case 'task.classified': {
@@ -362,7 +367,7 @@ function formatCompact(events, options = {}) {
  */
 function formatSummary(events) {
   const milestones = events.filter(e =>
-    ['session.start', 'task.classified', 'delegation.start', 'stage.complete',
+    ['session.start', 'pipeline.start', 'task.classified', 'delegation.start', 'stage.complete',
      'stage.retry', 'pipeline.complete', 'pipeline.incomplete',
      'tool.blocked', 'compact.executed'].includes(e.type)
   );

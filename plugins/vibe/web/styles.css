@@ -85,25 +85,20 @@ body { font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Menlo', monospace;
 .agent-panel-stats { display: flex; gap: 12px; }
 .agent-panel-stat { font-size: 10px; color: var(--subtext0); }
 .agent-panel-stat .num { font-weight: 700; color: var(--text); }
-/* 簡化三欄：[燈] [名稱] [狀態] [耗時] */
-.agent-row { display: grid; grid-template-columns: 16px 1fr auto 48px; column-gap: 8px; align-items: center; padding: 5px 4px; font-size: 11px; border-bottom: 1px solid rgba(69,71,90,0.15); transition: background 0.15s; }
+/* 四欄：[燈] [名稱] [狀態(固定)] [耗時(固定,容納 h)] — 固定寬度確保跨行對齊 */
+.agent-row { display: grid; grid-template-columns: 16px 1fr 42px 60px; column-gap: 8px; align-items: center; padding: 5px 4px; font-size: 11px; border-bottom: 1px solid rgba(69,71,90,0.15); transition: background 0.15s; }
 .agent-row:last-child { border-bottom: none; }
 .agent-row:hover { background: rgba(69,71,90,0.1); border-radius: 4px; }
 .al { width: 8px; height: 8px; border-radius: 50%; justify-self: center; }
 .al.running { background: var(--green); box-shadow: 0 0 8px var(--green); animation: alPulse 1.5s ease infinite; }
-.al.completed { background: var(--surface2); opacity: 0.6; }
-.al.error { background: var(--red); box-shadow: 0 0 6px var(--red); animation: alPulse 1.5s ease infinite; }
 .al.delegating { background: var(--purple); box-shadow: 0 0 8px var(--purple); animation: alPulse 1.5s ease infinite; }
 .al.idle { background: var(--surface2); opacity: 0.5; }
-.al.pass { background: var(--green); opacity: 0.8; }
 @keyframes alPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 .agent-name { font-weight: 600; display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.agent-status-text { font-size: 10px; color: var(--subtext0); white-space: nowrap; }
+.agent-status-text { font-size: 10px; color: var(--subtext0); white-space: nowrap; text-align: right; }
 .agent-status-text.running { color: var(--green); }
-.agent-status-text.error { color: var(--red); }
 .agent-status-text.delegating { color: var(--purple); }
-.agent-status-text.pass { color: var(--green); }
-.agent-dur { font-size: 10px; color: var(--subtext0); text-align: right; font-variant-numeric: tabular-nums; }
+.agent-dur { font-size: 10px; color: var(--subtext0); text-align: right; white-space: nowrap; min-width: 32px; }
 .agent-group-label { font-size: 9px; color: var(--overlay0); text-transform: uppercase; letter-spacing: 1.2px; padding: 6px 4px 2px; }
 .agent-sep { border-top: 1px dashed rgba(69,71,90,0.3); margin: 4px 0; }
 @media (max-width: 1100px) {
@@ -220,10 +215,9 @@ body { font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Menlo', monospace;
 .tl-item.active .msg { color: var(--blue); }
 @keyframes slideIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
 
-/* Dashboard 扁平 Grid 佈局（agent-panel 與 mini-tl 同行等高） */
-.dash-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 360px); gap: 14px; }
-.dash-grid > * { grid-column: 1; min-width: 0; }
-.dash-grid > .mini-tl { grid-column: 2; grid-row: 1; align-self: stretch; overflow-y: auto; }
+/* Dashboard Grid 基礎（具體佈局由 .layout-{id} 定義） */
+.dash-grid { display: grid; gap: 14px; }
+.dash-grid > * { min-width: 0; }
 /* Dashboard mini timeline */
 .mini-tl { min-height: 0; display: flex; flex-direction: column; background: var(--surface0); border-radius: 10px; padding: 12px 14px; border: 1px solid var(--surface1); }
 .mini-tl h4 { font-size: 10px; color: var(--subtext0); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; flex-shrink: 0; }
@@ -306,14 +300,173 @@ body { font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Menlo', monospace;
 .sc-res-fill { height: 100%; border-radius: 2px; transition: width 0.5s; }
 .sc-res-fill.ram { background: var(--purple); }
 
-/* Responsive */
-@media (max-width: 1200px) {
-  .dash-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 320px); }
+/* ===== Mosaic 佈局 =====
+  組件類別對照：
+    .agent-panel    → AgentStatus（Agent 狀態燈號列表）
+    .mini-tl        → Mini Timeline（里程碑事件時間軸）
+    .mcp-stats      → MCPStats（MCP 工具呼叫統計）
+    .stats-grid     → StatsCards（8 張統計卡片）
+    .pipeline-progress → PipelineProgressBar（Pipeline stage 進度條）
+    .cards          → 完成摘要（僅 pipeline 100% 時出現）
+
+  CSS 策略（消除三重覆寫）：
+    基礎 Mosaic 樣式 = ≤1100px（窄屏）值，不設 media query
+    寬屏緊湊值 = @media (min-width: 1101px) 覆寫
+    結果：每個屬性最多被設定 2 次，消除第 3 層撤回
+*/
+
+/* ─── Mosaic 基礎（≤1100px 雙欄，寬屏由 min-width:1101px 覆寫）─────── */
+.dash-grid.layout-mosaic {
+  display: grid;
+  gap: 12px;
+  /* ≤1100px 預設：雙欄雙列佈局 */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto;
+  grid-template-areas:
+    "prog  prog"
+    "agent tl"
+    "stats stats"
+    "mcp   mcp"
+    "cards cards";
 }
-@media (max-width: 1100px) {
-  .dash-grid { grid-template-columns: 1fr; }
-  .dash-grid > .mini-tl { grid-column: 1; grid-row: auto; align-self: auto; max-height: 400px; }
+.dash-grid.layout-mosaic > .agent-panel    { grid-area: agent; align-self: start; }
+.dash-grid.layout-mosaic > .mini-tl        { grid-area: tl; align-self: start; overflow-y: auto; min-height: 0; }
+.dash-grid.layout-mosaic > .stats-grid     { grid-area: stats; align-self: start; }
+.dash-grid.layout-mosaic > .mcp-stats      { grid-area: mcp; align-self: stretch; overflow-y: visible; }
+.dash-grid.layout-mosaic > .pipeline-progress { grid-area: prog; align-self: start; }
+.dash-grid.layout-mosaic > .cards          { grid-area: cards; }
+
+/* Mosaic Pipeline Progress 空置佔位（尚未啟動）視覺強化 */
+.dash-grid.layout-mosaic .pipeline-progress .pipeline-stages-bar:empty::after,
+.dash-grid.layout-mosaic .pipeline-progress:not(:has(.ps-block)) .pipeline-stages-bar::after {
+  content: '';
+  display: flex;
+  width: 100%;
 }
+/* Mosaic 統計卡固定 2x2 */
+.dash-grid.layout-mosaic .stats-grid { grid-template-columns: repeat(2, 1fr); }
+
+/* ─── ≤1100px（基礎值即為此值，不需 media query）─────────────────── */
+.dash-grid.layout-mosaic > .agent-panel { max-height: 320px; overflow-y: auto; padding: 12px 14px; }
+.dash-grid.layout-mosaic > .mini-tl { max-height: 320px; align-self: stretch; padding: 12px 14px; }
+.dash-grid.layout-mosaic .stats-grid { gap: 10px; }
+.dash-grid.layout-mosaic .stat-card { padding: 10px 12px; }
+.dash-grid.layout-mosaic .stat-card .stat-value { font-size: 18px; }
+.dash-grid.layout-mosaic .stat-card .stat-label { font-size: 9px; letter-spacing: 1px; }
+.dash-grid.layout-mosaic .stat-card .stat-sub { font-size: 9px; line-height: 1.3; }
+.dash-grid.layout-mosaic .stat-hint { font-size: 8px; }
+/* ≤1100px：MCP 顯示 bar + methods（空間足夠） */
+.dash-grid.layout-mosaic .mcp-row .mcp-bar { display: flex; }
+.dash-grid.layout-mosaic .mcp-row .mcp-methods { display: block; }
+.dash-grid.layout-mosaic .mcp-stats { padding: 12px 16px; }
+.dash-grid.layout-mosaic .mcp-stats h3 { margin-bottom: 8px; font-size: 11px; }
+.dash-grid.layout-mosaic .mcp-row { padding: 3px 0; font-size: 11px; justify-content: flex-start; }
+.dash-grid.layout-mosaic .mcp-row .mcp-server { min-width: 90px; font-size: 11px; }
+.dash-grid.layout-mosaic .mcp-row .mcp-count { min-width: 36px; font-size: 11px; }
+.dash-grid.layout-mosaic .pipeline-progress { padding: 12px 14px; }
+.dash-grid.layout-mosaic .pipeline-progress h3 { margin-bottom: 10px; font-size: 11px; }
+.dash-grid.layout-mosaic .ps-block { min-width: 36px; }
+.dash-grid.layout-mosaic .ps-label { font-size: 9px; }
+.dash-grid.layout-mosaic .ps-bar { height: 8px; }
+/* ≤1100px：Agent 標準字體 */
+.dash-grid.layout-mosaic .agent-panel { padding: 12px 14px; }
+.dash-grid.layout-mosaic .agent-panel-hdr { margin-bottom: 8px; }
+.dash-grid.layout-mosaic .agent-panel-hdr h3 { font-size: 11px; letter-spacing: 1px; }
+.dash-grid.layout-mosaic .agent-panel-stat { font-size: 10px; }
+.dash-grid.layout-mosaic .agent-panel-stats { gap: 12px; }
+.dash-grid.layout-mosaic .agent-row { font-size: 11px; column-gap: 8px; padding: 5px 4px; grid-template-columns: 16px 1fr 42px 60px; }
+.dash-grid.layout-mosaic .al { width: 8px; height: 8px; }
+.dash-grid.layout-mosaic .agent-name { font-size: 11px; gap: 4px; }
+.dash-grid.layout-mosaic .agent-status-text { font-size: 10px; }
+.dash-grid.layout-mosaic .agent-dur { font-size: 10px; min-width: 32px; }
+.dash-grid.layout-mosaic .agent-group-label { font-size: 9px; padding: 6px 4px 2px; letter-spacing: 1.2px; }
+.dash-grid.layout-mosaic .agent-sep { margin: 4px 0; }
+/* ≤1100px：Timeline 標準樣式 */
+.dash-grid.layout-mosaic .mini-tl { padding: 12px 14px; }
+.dash-grid.layout-mosaic .mini-tl h4 { font-size: 10px; margin-bottom: 6px; letter-spacing: 1px; }
+.dash-grid.layout-mosaic .tl-item { font-size: 11px; padding: 4px 2px; gap: 8px; align-items: center; }
+.dash-grid.layout-mosaic .tl-item .time { min-width: 52px; font-size: 9px; padding-top: 0; flex-shrink: 0; }
+.dash-grid.layout-mosaic .tl-item .msg { white-space: nowrap; display: block; overflow: hidden; text-overflow: ellipsis; line-height: inherit; word-break: normal; }
+
+/* ─── ≥1101px：三欄 Mosaic 緊湊模式 ──────────────────────────────── */
+@media (min-width: 1101px) {
+  /* 三欄等寬 Grid */
+  .dash-grid.layout-mosaic {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto auto auto 1fr auto;
+    grid-template-areas:
+      "agent tl    prog"
+      "agent tl    stats"
+      "agent tl    mcp"
+      "agent tl    mcp"
+      "cards cards cards";
+  }
+  .dash-grid.layout-mosaic > .agent-panel { max-height: none; overflow-y: visible; padding: 0.8em 1em; }
+  .dash-grid.layout-mosaic > .mini-tl { max-height: none; padding: 0.8em 1em; }
+  /* 統計卡緊湊 */
+  .dash-grid.layout-mosaic .stats-grid { gap: 0.5em; }
+  .dash-grid.layout-mosaic .stat-card { padding: 0.6em 0.8em; gap: 0.15em; }
+  .dash-grid.layout-mosaic .stat-card .stat-value { font-size: 1.3em; }
+  .dash-grid.layout-mosaic .stat-card .stat-label { font-size: 8px; letter-spacing: 0.05em; }
+  .dash-grid.layout-mosaic .stat-card .stat-sub { font-size: 8px; line-height: 1.2; }
+  .dash-grid.layout-mosaic .stat-hint { font-size: 7px; }
+  /* MCP 緊湊：隱藏 bar 和 methods */
+  .dash-grid.layout-mosaic .mcp-row .mcp-bar { display: none; }
+  .dash-grid.layout-mosaic .mcp-row .mcp-methods { display: none; }
+  .dash-grid.layout-mosaic .mcp-stats { padding: 0.8em 1em; }
+  .dash-grid.layout-mosaic .mcp-stats h3 { margin-bottom: 0.5em; font-size: 10px; }
+  .dash-grid.layout-mosaic .mcp-row { padding: 0.3em 0; font-size: 10px; justify-content: space-between; }
+  .dash-grid.layout-mosaic .mcp-row .mcp-server { min-width: unset; font-size: 10px; flex-shrink: 0; }
+  .dash-grid.layout-mosaic .mcp-row .mcp-count { min-width: unset; font-size: 10px; text-align: right; margin-left: auto; }
+  /* Pipeline Progress 緊湊 */
+  .dash-grid.layout-mosaic .pipeline-progress { padding: 0.8em 1em; }
+  .dash-grid.layout-mosaic .pipeline-progress h3 { margin-bottom: 0.6em; font-size: 10px; }
+  .dash-grid.layout-mosaic .ps-block { min-width: 2em; }
+  .dash-grid.layout-mosaic .ps-label { font-size: 8px; }
+  .dash-grid.layout-mosaic .ps-bar { height: 0.6em; }
+  /* Agent 面板緊湊 */
+  .dash-grid.layout-mosaic .agent-panel-hdr { margin-bottom: 0.5em; }
+  .dash-grid.layout-mosaic .agent-panel-hdr h3 { font-size: 10px; letter-spacing: 0.05em; }
+  .dash-grid.layout-mosaic .agent-panel-stat { font-size: 9px; }
+  .dash-grid.layout-mosaic .agent-panel-stats { gap: 0.6em; }
+  .dash-grid.layout-mosaic .agent-row {
+    grid-template-columns: 0.9em 1fr 3.2em 4.8em;
+    column-gap: 0.4em;
+    padding: 0.3em 0.2em;
+    font-size: 10px;
+  }
+  .dash-grid.layout-mosaic .al { width: 0.7em; height: 0.7em; }
+  .dash-grid.layout-mosaic .agent-name { font-size: 10px; gap: 3px; }
+  .dash-grid.layout-mosaic .agent-status-text { font-size: 9px; }
+  .dash-grid.layout-mosaic .agent-dur { font-size: 9px; min-width: 2.2em; }
+  .dash-grid.layout-mosaic .agent-group-label { font-size: 8px; padding: 0.3em 0.2em 0.05em; letter-spacing: 0.08em; }
+  .dash-grid.layout-mosaic .agent-sep { margin: 0.15em 0; }
+  /* Mini Timeline 緊湊（時間欄加寬、訊息顯示兩行上限） */
+  .dash-grid.layout-mosaic .mini-tl h4 { font-size: 10px; margin-bottom: 0.5em; letter-spacing: 0.05em; }
+  .dash-grid.layout-mosaic .tl-item {
+    font-size: 10px;
+    padding: 0.3em 0.2em;
+    gap: 0.5em;
+    align-items: flex-start;
+  }
+  .dash-grid.layout-mosaic .tl-item .time {
+    min-width: 5.5em;
+    font-size: 9px;
+    padding-top: 0.1em;
+    flex-shrink: 0;
+  }
+  .dash-grid.layout-mosaic .tl-item .msg {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+}
+
+/* 通用響應式（700px 以下手機版由下方 media query 處理） */
 @media (max-width: 700px) {
   .layout, .layout.collapsed { grid-template-columns: 1fr; grid-template-rows: auto 1fr; --sidebar-w: 1fr; }
   .sidebar { max-height: 160px; border-right: none; border-bottom: 1px solid var(--surface1); }

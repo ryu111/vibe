@@ -26,7 +26,7 @@
           "coding-standards", "frontend-patterns", "backend-patterns", "db-patterns",
           "typescript-patterns", "python-patterns", "go-patterns", "testing-patterns", "refactor",
           "evolve", "doc-sync",
-          "dashboard",
+          "dashboard", "dashboard-config",
           "remote", "remote-config",
           "hook-diag",
           "health",

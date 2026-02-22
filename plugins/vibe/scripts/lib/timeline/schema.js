@@ -6,7 +6,7 @@
  * envelope 建構函式和驗證邏輯。
  *
  * @module timeline/schema
- * @exports {Object} EVENT_TYPES - 32 種事件類型常數
+ * @exports {Object} EVENT_TYPES - 33 種事件類型常數
  * @exports {Object} CATEGORIES - 事件分類群組
  * @exports {function} createEnvelope - 建構統一 envelope
  * @exports {function} validate - 驗證事件格式
@@ -14,7 +14,7 @@
 'use strict';
 const crypto = require('crypto');
 
-// ── 32 種事件類型（7 大類） ─────────────────────────────
+// ── 33 種事件類型（7 大類） ─────────────────────────────
 
 const EVENT_TYPES = {
   // Session 生命週期
@@ -31,6 +31,7 @@ const EVENT_TYPES = {
   STAGE_COMPLETE:      'stage.complete',
   STAGE_RETRY:         'stage.retry',
   PIPELINE_COMPLETE:   'pipeline.complete',
+  PIPELINE_START:      'pipeline.start',
   PIPELINE_INCOMPLETE: 'pipeline.incomplete',
   // v4 Phase 1：路由協議相關事件
   ROUTE_FALLBACK:      'route.fallback',   // parseRoute 回退到 v3 VERDICT 解析
@@ -74,7 +75,7 @@ const CATEGORIES = {
   task:     ['task.classified', 'prompt.received', 'delegation.start', 'task.incomplete'],
   agent:    ['tool.used', 'delegation.start'],
   // 注意：部分事件有意跨分類（如 delegation.start 同屬 task+agent，agent.crash 同屬 pipeline+safety）
-  pipeline: ['stage.start', 'stage.complete', 'stage.retry', 'pipeline.complete', 'pipeline.incomplete', 'route.fallback', 'retry.exhausted', 'barrier.waiting', 'barrier.resolved', 'agent.crash', 'pipeline.cancelled', 'barrier.crash-guard', 'stage.crash-recovery'],
+  pipeline: ['pipeline.start', 'stage.start', 'stage.complete', 'stage.retry', 'pipeline.complete', 'pipeline.incomplete', 'route.fallback', 'retry.exhausted', 'barrier.waiting', 'barrier.resolved', 'agent.crash', 'pipeline.cancelled', 'barrier.crash-guard', 'stage.crash-recovery'],
   quality:  ['tool.blocked', 'tool.guarded', 'quality.lint', 'quality.format', 'quality.test-needed'],
   remote:   ['ask.question', 'ask.answered', 'turn.summary', 'say.sent', 'say.completed', 'compact.suggested', 'compact.executed'],
   safety:   ['agent.crash', 'safety.transcript-leak', 'barrier.crash-guard', 'stage.crash-recovery'],

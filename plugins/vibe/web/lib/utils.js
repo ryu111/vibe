@@ -50,6 +50,7 @@ export function fmtSec(secs) {
 export function fmtDuration(startedAt) {
   if (!startedAt) return '—';
   const secs = Math.round((Date.now() - new Date(startedAt).getTime()) / 1000);
+  if (secs < 0) return '—';
   return fmtSec(secs);
 }
 

@@ -124,8 +124,154 @@ function cleanup(sessionId) {
 // 唯一 session ID 前綴（避免測試間汙染）
 const TS = Date.now();
 
+/** 建立 none pipeline state（指定 source） */
+function writeNoneStateWithSource(sessionId, source) {
+  const state = {
+    version: 4,
+    sessionId,
+    classification: { taskType: 'chat', pipelineId: 'none', source },
+    dag: {},
+    dagStages: [],
+    stages: {},
+    pipelineActive: false,
+    activeStages: [],
+    retries: {},
+    retryHistory: {},
+    crashes: {},
+    meta: { initialized: true },
+  };
+  const stateFilePath = path.join(CLAUDE_DIR, `pipeline-state-${sessionId}.json`);
+  fs.writeFileSync(stateFilePath, JSON.stringify(state, null, 2), 'utf8');
+  return stateFilePath;
+}
+
 // ═══════════════════════════════════════════════════════
-console.log('\n🔒 A. canProceed() none-write-limit 硬阻擋');
+console.log('\n🚫 A0. Layer A：source=main-agent 立即阻擋');
+console.log('═'.repeat(60));
+// ═══════════════════════════════════════════════════════
+
+test('A0-1: source=main-agent + Write 程式碼檔案 → 立即 block（無需計數器）', () => {
+  const sid = `test-a0-1-${TS}`;
+  writeNoneStateWithSource(sid, 'main-agent');
+  // 不建立計數器
+  try {
+    const r = canProceed(sid, 'Write', { file_path: '/Users/test/src/app.js' });
+    assert.strictEqual(r.decision, 'block', 'source=main-agent 應立即阻擋');
+    assert.strictEqual(r.reason, 'none-pipeline-unselected', 'reason 應為 none-pipeline-unselected');
+    assert.ok(r.message.includes('⛔'), 'message 應包含 ⛔');
+    assert.ok(r.message.includes('/vibe:pipeline'), 'message 應提示使用 /vibe:pipeline');
+    assert.ok(r.message.includes('[pipeline:fix]'), 'message 應包含常用 pipeline 選項');
+  } finally {
+    cleanup(sid);
+  }
+});
+
+test('A0-2: source=main-agent + Edit 程式碼檔案 → 立即 block', () => {
+  const sid = `test-a0-2-${TS}`;
+  writeNoneStateWithSource(sid, 'main-agent');
+  try {
+    const r = canProceed(sid, 'Edit', { file_path: '/Users/test/src/utils.py' });
+    assert.strictEqual(r.decision, 'block', 'source=main-agent Edit 也應立即阻擋');
+    assert.strictEqual(r.reason, 'none-pipeline-unselected');
+  } finally {
+    cleanup(sid);
+  }
+});
+
+test('A0-3: source=main-agent + Write .md 檔案 → allow（非程式碼檔案不阻擋）', () => {
+  const sid = `test-a0-3-${TS}`;
+  writeNoneStateWithSource(sid, 'main-agent');
+  try {
+    const r = canProceed(sid, 'Write', { file_path: '/Users/test/docs/README.md' });
+    assert.strictEqual(r.decision, 'allow', 'Markdown 檔案不受 Layer A 影響');
+  } finally {
+    cleanup(sid);
+  }
+});
+
+test('A0-4: source=main-agent + Read 工具 → allow（Layer A 只檢查 Write/Edit）', () => {
+  const sid = `test-a0-4-${TS}`;
+  writeNoneStateWithSource(sid, 'main-agent');
+  try {
+    const r = canProceed(sid, 'Read', { file_path: '/Users/test/src/app.js' });
+    assert.strictEqual(r.decision, 'allow', 'Read 工具不受 Layer A 影響');
+  } finally {
+    cleanup(sid);
+  }
+});
+
+test('A0-5: source=explicit + Write 程式碼檔案 + count=0 → allow（Layer A 不觸發）', () => {
+  const sid = `test-a0-5-${TS}`;
+  writeNoneStateWithSource(sid, 'explicit');
+  writeCounter(sid, 0);
+  try {
+    const r = canProceed(sid, 'Write', { file_path: '/Users/test/src/app.js' });
+    assert.strictEqual(r.decision, 'allow', 'source=explicit 不觸發 Layer A，count=0 低於閾值放行');
+  } finally {
+    cleanup(sid);
+  }
+});
+
+test('A0-6: source=explicit + Write 程式碼檔案 + count>=3 → block（Layer B 閾值）', () => {
+  const sid = `test-a0-6-${TS}`;
+  writeNoneStateWithSource(sid, 'explicit');
+  writeCounter(sid, 3);
+  try {
+    const r = canProceed(sid, 'Write', { file_path: '/Users/test/src/app.js' });
+    assert.strictEqual(r.decision, 'block', 'source=explicit count>=3 仍被 Layer B 阻擋');
+    assert.strictEqual(r.reason, 'none-pipeline-write-limit', 'reason 應為 none-pipeline-write-limit（Layer B）');
+  } finally {
+    cleanup(sid);
+  }
+});
+
+test('A0-7: source=system + Write 程式碼檔案 → allow（系統回饋不阻擋）', () => {
+  const sid = `test-a0-7-${TS}`;
+  writeNoneStateWithSource(sid, 'system');
+  writeCounter(sid, 0);
+  try {
+    const r = canProceed(sid, 'Write', { file_path: '/Users/test/src/app.js' });
+    assert.strictEqual(r.decision, 'allow', 'source=system 不觸發 Layer A，count=0 低於閾值放行');
+  } finally {
+    cleanup(sid);
+  }
+});
+
+test('A0-8: source=main-agent + Write .json 設定檔 → allow（非程式碼）', () => {
+  const sid = `test-a0-8-${TS}`;
+  writeNoneStateWithSource(sid, 'main-agent');
+  try {
+    const r = canProceed(sid, 'Write', { file_path: '/Users/test/config/settings.json' });
+    assert.strictEqual(r.decision, 'allow', 'JSON 設定檔不受 Layer A 影響');
+  } finally {
+    cleanup(sid);
+  }
+});
+
+test('A0-9: source=main-agent + Task 工具 → allow（委派工具不受限）', () => {
+  const sid = `test-a0-9-${TS}`;
+  writeNoneStateWithSource(sid, 'main-agent');
+  try {
+    const r = canProceed(sid, 'Task', { subagent_type: 'vibe:developer', prompt: 'test' });
+    assert.strictEqual(r.decision, 'allow', 'Task 工具不受 Layer A 影響');
+  } finally {
+    cleanup(sid);
+  }
+});
+
+test('A0-10: source=fallback（空 prompt）+ Write 程式碼檔案 → allow（Layer A 只擋 main-agent）', () => {
+  const sid = `test-a0-10-${TS}`;
+  writeNoneStateWithSource(sid, 'fallback');
+  try {
+    const r = canProceed(sid, 'Write', { file_path: '/Users/test/src/app.js' });
+    assert.strictEqual(r.decision, 'allow', 'source=fallback 不觸發 Layer A，count=0 低於閾值放行');
+  } finally {
+    cleanup(sid);
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+console.log('\n🔒 A. canProceed() none-write-limit 硬阻擋（Layer B）');
 console.log('═'.repeat(60));
 // ═══════════════════════════════════════════════════════
 

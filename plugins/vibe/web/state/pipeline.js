@@ -51,13 +51,26 @@ export function getStageDuration(stageId, state) {
 }
 
 /**
+ * 取得所有 stage ID（合併 DAG + stages，保持 DAG 拓撲順序）
+ * DAG 中的 stage 在前，動態新增的 stage（不在 DAG 但有記錄）追加到末尾
+ * @param {object} state
+ * @returns {string[]}
+ */
+export function getAllStageKeys(state) {
+  const dagKeys = Object.keys(state?.dag || {});
+  const stageKeys = Object.keys(state?.stages || {});
+  const extraKeys = stageKeys.filter(k => !dagKeys.includes(k));
+  return [...dagKeys, ...extraKeys];
+}
+
+/**
  * 計算 pipeline 完成百分比（0-100）
+ * 合併 DAG + stages 的所有 stage（涵蓋動態新增的 stage）
  * @param {object} state
  * @returns {number}
  */
 export function getPipelineProgress(state) {
-  if (!state?.dag) return 0;
-  const stages = Object.keys(state.dag);
+  const stages = getAllStageKeys(state);
   if (!stages.length) return 0;
   const done = stages.filter(id => {
     const st = state.stages?.[id]?.status;
@@ -85,13 +98,12 @@ export function isLive(state) {
 }
 
 /**
- * 取得目前 active 的 stage ID 清單
+ * 取得目前 active 的 stage ID 清單（涵蓋 DAG 外動態新增的 stage）
  * @param {object} state
  * @returns {string[]}
  */
 export function getActiveStages(state) {
-  if (!state?.dag) return [];
-  return Object.keys(state.dag).filter(id => state.stages?.[id]?.status === 'active');
+  return getAllStageKeys(state).filter(id => state.stages?.[id]?.status === 'active');
 }
 
 /**

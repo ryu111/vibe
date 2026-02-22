@@ -1,14 +1,24 @@
 // Agent 狀態面板組件
 import { html, useRef } from '../lib/preact.js';
 import { fmtSec } from '../lib/utils.js';
-import { getStageStatus, getStageVerdict, getStageSeverity, getStageDuration, hasPipeline, getPipelineProgress, getActiveStages } from '../state/pipeline.js';
+import { getStageStatus } from '../state/pipeline.js';
 
 /**
- * 簡化版 Agent 狀態面板
- * @param {{ state: object, tick: number, events: object[], registry: object, alive: boolean, memory: object }} props
+ * Agent 狀態面板 — 三態簡化版（—/委派中/運行中）+ 累積運行時間
+ * Stage agent：從 pipeline-state 的 startedAt/completedAt 讀取（重整不歸零）
+ * 非 stage agent：client-side 累積計時，session 內不歸零（重整會歸零）
+ * @param {{ state: object, tick: number, registry: object, alive: boolean, sessionId: string }} props
  */
-export function AgentStatus({ state, tick, events, registry, alive, memory }) {
+export function AgentStatus({ state, tick, registry, alive, sessionId }) {
+  // 累積計時器：{ [agentId]: { startedAt: number|null, accumulated: number } }
   const timers = useRef({});
+  const prevSessionRef = useRef(sessionId);
+
+  // Session 切換時清除計時器（用 sessionId 而非 state reference）
+  if (prevSessionRef.current !== sessionId) {
+    prevSessionRef.current = sessionId;
+    timers.current = {};
+  }
 
   // 從 registry 動態建立 agent 清單（3 群組）
   const systemAgents = [
@@ -18,7 +28,7 @@ export function AgentStatus({ state, tick, events, registry, alive, memory }) {
   ];
   const pipelineAgents = registry?.stages
     ? Object.entries(registry.stages).map(([stageId, cfg]) => ({
-        id: cfg.agent, name: cfg.agent, emoji: cfg.emoji, stage: stageId, group: 'pipeline', color: cfg.color,
+        id: cfg.agent, name: cfg.agent, emoji: cfg.emoji, stage: stageId, group: 'pipeline',
       }))
     : [];
   const supportAgents = [
@@ -28,116 +38,86 @@ export function AgentStatus({ state, tick, events, registry, alive, memory }) {
   ];
   const allAgents = [...systemAgents, ...pipelineAgents, ...supportAgents];
 
-  // Pipeline 是否不活躍（完成 / 取消 / 重設 → 無 activeStages 且 pipelineActive=false）
-  const pipelineInactive = !state?.pipelineActive && (state?.activeStages || []).length === 0;
-  // Pipeline 是否已完成 100%（燈號全滅用）
-  const pipelineDone = pipelineInactive && hasPipeline(state) && getPipelineProgress(state) >= 100;
+  // 統一 activeAgents map（server-side 追蹤所有被委派的 agent）
+  const activeAgents = state?.activeAgents || {};
 
-  // session 切換時清除所有計時器，避免跨 session 殘留
-  const prevStateRef = useRef(state);
-  if (prevStateRef.current !== state) {
-    prevStateRef.current = state;
-    timers.current = {};
-  }
-
-  // 取得每個 agent 的簡化狀態
-  function getAgentStatus(agent) {
-    // Pipeline 不活躍且無 pipeline → idle
-    if (pipelineInactive && !hasPipeline(state)) return { status: 'idle', label: '—', dur: null };
-    // Pipeline 已完全完成 → 所有燈號熄滅
-    if (pipelineDone) return { status: 'idle', label: '—', dur: null };
-
-    // 主 agent
+  // 三態判斷：idle / delegating / running
+  function getStatus(agent) {
+    // Main Agent: prompt 驅動（UserPromptSubmit → running，Stop → idle，委派 → delegating）
     if (agent.id === 'main') {
-      if (alive === false) return { status: 'idle', label: '—', dur: null };
-      const activeCount = getActiveStages(state).length;
-      if (activeCount > 0) return { status: 'delegating', label: '委派中', dur: null };
-      if (state?.pipelineActive) return { status: 'running', label: '執行中', dur: null };
-      return { status: 'idle', label: '—', dur: null };
+      if (Object.keys(activeAgents).length > 0) return 'delegating';
+      if (state?.mainAgentActive) return 'running';
+      return 'idle';
     }
-    // Pipeline stage agents — 同時檢查 DAG stages 和 activeStages
-    if (agent.stage) {
-      // 優先檢查 activeStages（delegation-tracker 追蹤的實際運行 agent）
-      const isInActiveStages = (state?.activeStages || []).some(s => s === agent.stage || s.split(':')[0] === agent.stage);
-      if (isInActiveStages) return { status: 'running', label: '執行中', dur: null };
 
+    // 統一檢查：activeAgents 有記錄 → running（適用所有 agent）
+    if (activeAgents[agent.id]) return 'running';
+
+    // Stage agent 額外 fallback：從 DAG status 判斷（處理 activeAgents 被清理後的狀態）
+    if (agent.stage) {
       const dagKeys = Object.keys(state?.dag || {});
-      const matchedStages = dagKeys.filter(k => k === agent.stage || k.split(':')[0] === agent.stage);
-      for (const stageSid of matchedStages) {
-        const status = getStageStatus(stageSid, state);
-        if (status === 'active') return { status: 'running', label: '執行中', dur: null };
+      const matched = dagKeys.filter(k => k === agent.stage || k.split(':')[0] === agent.stage);
+      for (const k of matched) {
+        if (getStageStatus(k, state) === 'active') return 'running';
       }
-      // 找已完成的最近一個
-      const completedStages = matchedStages.filter(k => getStageStatus(k, state) === 'completed' || getStageStatus(k, state) === 'failed');
-      if (completedStages.length > 0) {
-        const last = completedStages[completedStages.length - 1];
-        const verdict = getStageVerdict(last, state);
-        const dur = getStageDuration(last, state);
-        if (verdict === 'FAIL') return { status: 'error', label: getStageSeverity(last, state) || 'FAIL', dur };
-        return { status: 'pass', label: verdict || 'PASS', dur };
-      }
-      // 在 DAG 中但還沒開始
-      if (matchedStages.length > 0) {
-        // pipeline 已不活躍（取消/重設）→ 不會再執行，顯示 idle
-        if (pipelineInactive) return { status: 'idle', label: '—', dur: null };
-        return { status: 'idle', label: '等待', dur: null };
-      }
-      return { status: 'idle', label: '—', dur: null };
     }
-    // 從事件串流偵測 support/system agents（僅 pipeline 存在時顯示）
-    if (events?.length && hasPipeline(state)) {
-      const lastDel = events.find(e => e.eventType === 'delegation.start' && e.text?.includes(agent.id));
-      if (lastDel) return { status: 'idle', label: '完成', dur: null };
-    }
-    return { status: 'idle', label: '—', dur: null };
+
+    return 'idle';
   }
 
-  const enriched = allAgents.map(a => {
-    const s = getAgentStatus(a);
-    // running 狀態時，從 timeline events 取最新 delegation.start 描述作為 label
-    if (s.status === 'running' && events?.length) {
-      const lastActivity = [...events].reverse().find(e =>
-        e.eventType === 'delegation.start' &&
-        e.text?.toLowerCase().includes(a.id)
-      );
-      if (lastActivity?.text) {
-        const t = lastActivity.text;
-        s.label = t.length > 20 ? t.slice(0, 20) + '…' : t;
-      }
+  // 從 pipeline-state 計算 stage agent 的累積運行時間（秒）
+  // 支援 suffixed stages（DEV:1, DEV:2...）累加，重整不歸零
+  function getStageDuration(agent) {
+    if (!agent.stage || !state?.stages) return 0;
+    let totalSecs = 0;
+    for (const [k, info] of Object.entries(state.stages)) {
+      if (k !== agent.stage && k.split(':')[0] !== agent.stage) continue;
+      if (!info?.startedAt) continue;
+      const start = new Date(info.startedAt).getTime();
+      if (!start || isNaN(start)) continue;
+      const end = info.completedAt ? new Date(info.completedAt).getTime() : Date.now();
+      const diff = Math.round((end - start) / 1000);
+      if (diff > 0) totalSecs += diff;
     }
-    return { ...a, ...s };
+    return totalSecs;
+  }
+
+  const enriched = allAgents.map(a => ({ ...a, status: getStatus(a) }));
+
+  // 非 stage agent 的累積計時器（session 內不歸零）
+  enriched.forEach(a => {
+    if (a.stage) return;
+    if (!timers.current[a.id]) {
+      timers.current[a.id] = { startedAt: null, accumulated: 0 };
+    }
+    const t = timers.current[a.id];
+    if ((a.status === 'running' || a.status === 'delegating') && !t.startedAt) {
+      // 開始計時
+      t.startedAt = Date.now();
+    } else if (a.status === 'idle' && t.startedAt) {
+      // 結算累積，停止計時（不歸零）
+      t.accumulated += Math.round((Date.now() - t.startedAt) / 1000);
+      t.startedAt = null;
+    }
   });
 
-  // 同步計時器
-  enriched.forEach(a => {
-    if (a.status === 'running' && !timers.current[a.id]) timers.current[a.id] = Date.now();
-    else if (a.status !== 'running') delete timers.current[a.id];
-  });
+  // 計算顯示時間（stage agent 讀 server-side，非 stage agent 讀累積計時器）
+  function getDuration(a) {
+    if (a.stage) return getStageDuration(a);
+    const t = timers.current[a.id];
+    if (!t) return 0;
+    const running = t.startedAt ? Math.round((Date.now() - t.startedAt) / 1000) : 0;
+    return t.accumulated + running;
+  }
 
   const activeCount = enriched.filter(a => a.status === 'running' || a.status === 'delegating').length;
+  const statusLabel = (s) => s === 'running' ? '運行中' : s === 'delegating' ? '委派中' : '—';
 
   const groups = [
     { label: '系統', agents: enriched.filter(a => a.group === 'system') },
     { label: 'PIPELINE', agents: enriched.filter(a => a.group === 'pipeline') },
     { label: '輔助', agents: enriched.filter(a => a.group === 'support') },
   ];
-
-  const renderRow = (a) => {
-    let durText = '';
-    if ((a.status === 'running' || a.status === 'delegating') && timers.current[a.id]) {
-      durText = fmtSec(Math.round((Date.now() - timers.current[a.id]) / 1000));
-    } else if (a.dur) {
-      durText = fmtSec(a.dur);
-    }
-    return html`
-      <div key=${a.id + (a.stage || '')} class="agent-row">
-        <span class="al ${a.status === 'running' || a.status === 'delegating' ? a.status : a.status === 'completed' ? 'completed' : a.status === 'error' ? 'error' : a.status === 'pass' ? 'pass' : 'idle'}"></span>
-        <span class="agent-name" style="${(a.status === 'running' || a.status === 'delegating') && a.color ? 'color:' + a.color : a.status === 'pass' ? 'color:var(--green)' : a.status === 'error' ? 'color:var(--red)' : ''}">${a.emoji} ${a.name}</span>
-        <span class="agent-status-text ${a.status}">${a.label}</span>
-        <span class="agent-dur">${durText}</span>
-      </div>
-    `;
-  };
 
   return html`
     <div class="agent-panel">
@@ -151,7 +131,17 @@ export function AgentStatus({ state, tick, events, registry, alive, memory }) {
         <div key=${g.label}>
           ${gi > 0 && html`<div class="agent-sep"></div>`}
           <div class="agent-group-label">${g.label}</div>
-          ${g.agents.map(renderRow)}
+          ${g.agents.map(a => {
+            const secs = getDuration(a);
+            return html`
+              <div key=${a.id + (a.stage || '')} class="agent-row">
+                <span class="al ${a.status}"></span>
+                <span class="agent-name">${a.emoji} ${a.name}</span>
+                <span class="agent-status-text ${a.status}">${statusLabel(a.status)}</span>
+                <span class="agent-dur">${fmtSec(secs)}</span>
+              </div>
+            `;
+          })}
         </div>
       `)}
     </div>

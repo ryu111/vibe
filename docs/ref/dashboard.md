@@ -43,7 +43,7 @@ SessionStart hook
 **Runtime SPA（`web/` 組件化架構）**：
 
 - Preact 10.25.4（ESM via `esm.sh`）+ HTM 3.1.1（tagged template literal JSX）
-- 14 個 ES module 檔案（`app.js` + 9 個 component + 2 個 lib + 1 個 state）+ `styles.css`
+- 20 個 ES module 檔案（`app.js` + 12 個 component + 2 個 lib + 1 個 state + 3 個 hooks）+ `styles.css`
 - 字體：SF Mono / Cascadia Code / Fira Code（系統等寬，移除 Press Start 2P 像素字體）
 - 色彩系統：Catppuccin Mocha（`:root` CSS 變數）
 - 資料層：`/api/registry` 取代前端硬編碼的 SM/TYPE_LABELS/AGENT_ROSTER
@@ -53,20 +53,27 @@ SessionStart hook
 ```
 web/
 ├── index.html              # HTML shell（14 行）
-├── styles.css              # 主樣式（~336 行）
-├── app.js                  # 應用主控制（~280 行，App + WebSocket + tabs）
+├── styles.css              # 主樣式（兩層結構，無 triple-override）
+├── app.js                  # 應用主控制（提取 hooks/組件，簡化為 ~200 行）
 ├── lib/
 │   ├── preact.js           # Preact CDN re-export hub
 │   └── utils.js            # 共用 helpers（sid/now/elapsed/fmtSec/fmtDuration/fmtSize）
 ├── state/
 │   └── pipeline.js         # 11 個 state accessor 函式
-└── components/             # 9 個組件
+├── hooks/                  # 3 個 React hooks
+│   ├── useWebSocket.js     # WebSocket 連線管理
+│   ├── useKeyboard.js      # 鍵盤快捷鍵
+│   └── useSessionManager.js# Session 狀態管理
+└── components/             # 12 個組件
+    ├── header.js           # 頂部工具列（新）
     ├── sidebar.js          # Session 列表 + 側邊欄
+    ├── dashboard-tab.js    # Dashboard grid（新）
+    ├── timeline-tab.js     # Timeline 檢視（新）
     ├── dag-view.js         # DAG 流程圖 + layout 演算法
     ├── barrier-display.js  # Barrier 狀態顯示
-    ├── agent-status.js     # Agent 面板 + 狀態燈
+    ├── agent-status.js     # Agent 面板 + 狀態燈（統一 getStatus）
     ├── mcp-stats.js        # MCP 工具統計
-    ├── stats-cards.js      # 8 張統計卡片
+    ├── stats-cards.js      # 統計卡片
     ├── pipeline-progress.js# 進度條
     ├── confetti.js         # 完成慶祝動畫
     └── export-report.js    # 報告匯出
